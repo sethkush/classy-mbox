@@ -212,3 +212,48 @@ NSString *DFU_StatusName(uint8_t s) {
     }
     return [NSString stringWithFormat:@"unknown(%u)", s];
 }
+
+// Open the DFU-mode Mbox (VID 0xFFFF PID 0xFFFE) and read its DFU status.
+// Safe, read-only.
+BOOL DFU_QueryStatus(DFUStatus *out, NSError **error) {
+    CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
+    if (!match) { if (error) *error = usbError(@"IOServiceMatching", -1); return NO; }
+    CFDictionarySetValue(match, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(0xFFFF));
+    CFDictionarySetValue(match, CFSTR(kUSBProductID), (__bridge CFNumberRef)@(0xFFFE));
+    io_iterator_t it = IO_OBJECT_NULL;
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return NO;
+    io_service_t svc = IOIteratorNext(it);
+    IOObjectRelease(it);
+    if (!svc) { if (error) *error = usbError(@"DFU-mode Mbox not found", -1); return NO; }
+
+    IOCFPlugInInterface **plugin = NULL;
+    SInt32 score = 0;
+    IOCreatePlugInInterfaceForService(svc, kIOUSBDeviceUserClientTypeID,
+        kIOCFPlugInInterfaceID, &plugin, &score);
+    IOObjectRelease(svc);
+    IOUSBDeviceInterface **dev = NULL;
+    (*plugin)->QueryInterface(plugin,
+        CFUUIDGetUUIDBytes(kIOUSBDeviceInterfaceID), (LPVOID*)&dev);
+    (*plugin)->Release(plugin);
+    if (!dev) { if (error) *error = usbError(@"QueryInterface(DFU device)", -1); return NO; }
+
+    IOReturn rc = (*dev)->USBDeviceOpen(dev);
+    if (rc != kIOReturnSuccess) {
+        (*dev)->Release(dev);
+        if (error) *error = usbError(@"USBDeviceOpen(DFU device)", rc);
+        return NO;
+    }
+    IOUSBDevRequest req = {
+        .bmRequestType = 0xA1, .bRequest = DFU_GETSTATUS,
+        .wValue = 0, .wIndex = 0, .wLength = sizeof(DFUStatus),
+        .pData = out,
+    };
+    rc = (*dev)->DeviceRequest(dev, &req);
+    (*dev)->USBDeviceClose(dev);
+    (*dev)->Release(dev);
+    if (rc != kIOReturnSuccess) {
+        if (error) *error = usbError(@"DFU_GETSTATUS", rc);
+        return NO;
+    }
+    return YES;
+}

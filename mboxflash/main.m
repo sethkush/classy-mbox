@@ -47,19 +47,53 @@ static int probeBcdDevice(void) {
     return result;
 }
 
+// Return YES if a DFU-mode Mbox is present (VID 0xFFFF PID 0xFFFE
+// with bDeviceClass 0xFE). This is what the Mbox becomes after
+// booting with a front-panel source button held down.
+static BOOL probeDFUMode(void) {
+    CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
+    if (!match) return NO;
+    CFDictionarySetValue(match, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(0xFFFF));
+    CFDictionarySetValue(match, CFSTR(kUSBProductID), (__bridge CFNumberRef)@(0xFFFE));
+    io_iterator_t it = IO_OBJECT_NULL;
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return NO;
+    io_service_t svc = IOIteratorNext(it);
+    IOObjectRelease(it);
+    if (!svc) return NO;
+    CFNumberRef cls = (CFNumberRef)IORegistryEntrySearchCFProperty(svc,
+        kIOServicePlane, CFSTR("bDeviceClass"), NULL, kIORegistryIterateRecursively);
+    BOOL isDFU = NO;
+    if (cls) {
+        int v = 0;
+        CFNumberGetValue(cls, kCFNumberIntType, &v);
+        isDFU = (v == 0xFE);
+        CFRelease(cls);
+    }
+    IOObjectRelease(svc);
+    return isDFU;
+}
+
 static int cmd_probe(void) {
+    if (probeDFUMode()) {
+        printf("Mbox connected in DFU mode (VID 0xFFFF PID 0xFFFE, class 0xFE)\n");
+        printf("  Ready to accept DFU_DNLOAD transfers. Use --dfu-status to query state,\n");
+        printf("  or --flash PATH to write firmware.\n");
+        return 0;
+    }
     int bcd = probeBcdDevice();
     if (bcd < 0) {
-        fprintf(stderr, "no Mbox 1 found on USB bus (VID 0x0DBA PID 0x1000)\n");
+        fprintf(stderr, "no Mbox found (neither audio-mode 0x0DBA:0x1000 nor DFU-mode 0xFFFF:0xFFFE)\n");
         return 1;
     }
-    fprintf(stdout, "Mbox 1 connected, bcdDevice = 0x%04x (firmware ", bcd);
+    fprintf(stdout, "Mbox 1 connected in audio mode, bcdDevice = 0x%04x (firmware ", bcd);
     if      (bcd == 0x0022) fprintf(stdout, "v22 — OK, no flash needed)\n");
     else if (bcd == 0x0020) fprintf(stdout, "Rev 20 — BUGGY, should flash to v22)\n");
     else if (bcd == 0x0016 || bcd == 0x0018 || bcd == 0x0019)
         fprintf(stdout, "very old, %u.%u — should flash to at least Rev 20)\n",
             bcd >> 8, bcd & 0xff);
     else fprintf(stdout, "unknown 0.%u)\n", bcd);
+    printf("\nTo flash: hold a front-panel source button while plugging the Mbox in.\n");
+    printf("Device will re-enumerate in DFU mode (VID 0xFFFF PID 0xFFFE).\n");
     return 0;
 }
 
@@ -161,11 +195,26 @@ static int cmd_scan(const char *path) {
     return 0;
 }
 
+static int cmd_dfu_status(void) {
+    DFUStatus st = {0};
+    NSError *err = nil;
+    if (!DFU_QueryStatus(&st, &err)) die(@"DFU_GETSTATUS failed", err);
+    uint32_t pollTimeout = st.bwPollTimeout[0]
+                        | (st.bwPollTimeout[1] << 8)
+                        | (st.bwPollTimeout[2] << 16);
+    printf("DFU status:\n");
+    printf("  bStatus       = %s\n", DFU_StatusName(st.bStatus).UTF8String);
+    printf("  bwPollTimeout = %u ms\n", pollTimeout);
+    printf("  bState        = %s\n", DFU_StateName((DFUState)st.bState).UTF8String);
+    printf("  iString       = %u\n", st.iString);
+    return st.bStatus == 0 ? 0 : 1;
+}
+
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc < 2) {
             fprintf(stderr,
-                "usage: mboxflash --probe | --enter-dfu | --parse PATH | --scan PATH\n");
+                "usage: mboxflash --probe | --enter-dfu | --dfu-status | --parse PATH | --scan PATH\n");
             return 2;
         }
         NSString *cmd = @(argv[1]);
@@ -173,6 +222,7 @@ int main(int argc, const char *argv[]) {
         else if ([cmd isEqualToString:@"--enter-dfu"]) return cmd_enter_dfu();
         else if ([cmd isEqualToString:@"--parse"] && argc >= 3) return cmd_parse(argv[2]);
         else if ([cmd isEqualToString:@"--scan"]  && argc >= 3) return cmd_scan(argv[2]);
+        else if ([cmd isEqualToString:@"--dfu-status"]) return cmd_dfu_status();
         else {
             fprintf(stderr, "unknown command '%s'\n", argv[1]);
             return 2;

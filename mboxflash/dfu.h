@@ -54,6 +54,7 @@ BOOL DFU_Download(IOUSBInterfaceInterface **iface, uint16_t interfaceNumber,
                   NSError **error);
 BOOL DFU_GetStatus(IOUSBInterfaceInterface **iface, uint16_t interfaceNumber,
                    DFUStatus *out, NSError **error);
+BOOL DFU_QueryStatus(DFUStatus *out, NSError **error);
 NSString *DFU_StateName(DFUState s);
 NSString *DFU_StatusName(uint8_t bStatus);
 
