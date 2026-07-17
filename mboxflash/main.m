@@ -137,20 +137,27 @@ static int cmd_scan(const char *path) {
     NSData *blob = [NSData dataWithContentsOfFile:@(path) options:0 error:&err];
     if (!blob) die([NSString stringWithFormat:@"could not read %s", path], err);
 
-    printf("scanning %lu bytes for record-stream candidates (min run = 4)...\n\n",
+    printf("scanning %lu bytes for record-stream candidates (min run = 2)...\n\n",
            (unsigned long)blob.length);
     NSUInteger last_end = 0;
+    NSUInteger totalRecs = 0, totalBytes = 0, sectionCount = 0;
     for (NSUInteger off = 0; off + 16 <= blob.length; off += 4) {
         if (off < last_end) continue;  // don't re-report offsets we already covered
         NSUInteger n = MBoxPayload_ValidRunLength(blob, off);
-        if (n < 4) continue;
+        if (n < 2) continue;
         NSArray<MBoxPayloadRecord *> *recs = MBoxPayload_Parse(blob, off);
         printf("candidate @ 0x%05lx:\n", (unsigned long)off);
         printRecordSummary(recs);
         printf("\n");
         MBoxPayloadRecord *last = recs.lastObject;
         last_end = last.fileOffset + 16 + last.data.length;
+        sectionCount++;
+        totalRecs += recs.count;
+        for (MBoxPayloadRecord *rr in recs) totalBytes += rr.data.length;
     }
+    printf("summary: %lu sections, %lu records, %lu data bytes (%.1f KB)\n",
+           (unsigned long)sectionCount, (unsigned long)totalRecs,
+           (unsigned long)totalBytes, totalBytes/1024.0);
     return 0;
 }
 
