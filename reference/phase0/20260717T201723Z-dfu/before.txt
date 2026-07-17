@@ -1,0 +1,94 @@
++-o Mbox USB Audio Device copyright Digidesign 2001@00110000  <class IOUSBHostDevice, id 0x100018727, registered, matched, active, busy 0 (35 ms), retain 21>
+  | {
+  |   "sessionID" = 2100622885048
+  |   "USBSpeed" = 1
+  |   "UsbLinkSpeed" = 12000000
+  |   "idProduct" = 4096
+  |   "iManufacturer" = 1
+  |   "bDeviceClass" = 0
+  |   "IOPowerManagement" = {"PowerOverrideOn"=Yes,"DevicePowerState"=2,"CurrentPowerState"=2,"CapabilityFlags"=32768,"MaxPowerState"=2,"DriverPowerState"=0}
+  |   "bcdDevice" = 32
+  |   "bMaxPacketSize0" = 8
+  |   "iProduct" = 2
+  |   "iSerialNumber" = 0
+  |   "bNumConfigurations" = 1
+  |   "UsbDeviceSignature" = <ba0d00102000000000ff0000>
+  |   "USB Product Name" = "Mbox USB Audio Device copyright Digidesign 2001"
+  |   "locationID" = 1114112
+  |   "bDeviceSubClass" = 0
+  |   "bcdUSB" = 272
+  |   "USB Address" = 2
+  |   "kUSBCurrentConfiguration" = 1
+  |   "IOCFPlugInTypes" = {"9dc7b780-9ec0-11d4-a54f-000a27052861"="IOUSBHostFamily.kext/Contents/PlugIns/IOUSBLib.bundle"}
+  |   "UsbPowerSinkAllocation" = 480
+  |   "bDeviceProtocol" = 0
+  |   "USBPortType" = 5
+  |   "IOServiceDEXTEntitlements" = (("com.apple.developer.driverkit.transport.usb"))
+  |   "USB Vendor Name" = "Digidesign Inc"
+  |   "Device Speed" = 1
+  |   "idVendor" = 3514
+  |   "kUSBProductString" = "Mbox USB Audio Device copyright Digidesign 2001"
+  |   "kUSBAddress" = 2
+  |   "kUSBVendorString" = "Digidesign Inc"
+  | }
+  | 
+  +-o AppleUSBHostCompositeDevice  <class AppleUSBHostCompositeDevice, id 0x10001872c, !registered, !matched, active, busy 0, retain 4>
+  |   {
+  |     "IOProbeScore" = 50000
+  |     "CFBundleIdentifier" = "com.apple.driver.usb.AppleUSBHostCompositeDevice"
+  |     "IOProviderClass" = "IOUSBHostDevice"
+  |     "IOClass" = "AppleUSBHostCompositeDevice"
+  |     "IOPersonalityPublisher" = "com.apple.driver.usb.AppleUSBHostCompositeDevice"
+  |     "bDeviceSubClass" = 0
+  |     "CFBundleIdentifierKernel" = "com.apple.driver.usb.AppleUSBHostCompositeDevice"
+  |     "IOMatchedAtBoot" = Yes
+  |     "IOMatchCategory" = "IODefaultMatchCategory"
+  |     "IOPrimaryDriverTerminateOptions" = Yes
+  |     "bDeviceClass" = 0
+  |   }
+  |   
+  +-o IOUSBHostInterface@0  <class IOUSBHostInterface, id 0x10001872f, registered, matched, active, busy 0 (8 ms), retain 5>
+  |   {
+  |     "USBPortType" = 5
+  |     "IOCFPlugInTypes" = {"2d9786c6-9ef3-11d4-ad51-000a27052861"="IOUSBHostFamily.kext/Contents/PlugIns/IOUSBLib.bundle"}
+  |     "USB Vendor Name" = "Digidesign Inc"
+  |     "bcdDevice" = 32
+  |     "USBSpeed" = 1
+  |     "idProduct" = 4096
+  |     "IOServiceDEXTEntitlements" = (("com.apple.developer.driverkit.transport.usb"))
+  |     "bInterfaceSubClass" = 0
+  |     "bConfigurationValue" = 1
+  |     "locationID" = 1114112
+  |     "USB Product Name" = "Mbox USB Audio Device copyright Digidesign 2001"
+  |     "bInterfaceProtocol" = 0
+  |     "iInterface" = 0
+  |     "bAlternateSetting" = 0
+  |     "idVendor" = 3514
+  |     "bInterfaceNumber" = 0
+  |     "bInterfaceClass" = 255
+  |     "bNumEndpoints" = 0
+  |   }
+  |   
+  +-o IOUSBHostInterface@1  <class IOUSBHostInterface, id 0x100018730, registered, matched, active, busy 0 (7 ms), retain 5>
+      {
+        "USBPortType" = 5
+        "IOCFPlugInTypes" = {"2d9786c6-9ef3-11d4-ad51-000a27052861"="IOUSBHostFamily.kext/Contents/PlugIns/IOUSBLib.bundle"}
+        "USB Vendor Name" = "Digidesign Inc"
+        "bcdDevice" = 32
+        "USBSpeed" = 1
+        "idProduct" = 4096
+        "IOServiceDEXTEntitlements" = (("com.apple.developer.driverkit.transport.usb"))
+        "bInterfaceSubClass" = 0
+        "bConfigurationValue" = 1
+        "locationID" = 1114112
+        "USB Product Name" = "Mbox USB Audio Device copyright Digidesign 2001"
+        "bInterfaceProtocol" = 0
+        "iInterface" = 0
+        "bAlternateSetting" = 0
+        "idVendor" = 3514
+        "bInterfaceNumber" = 1
+        "bInterfaceClass" = 255
+        "bNumEndpoints" = 0
+      }
+      
+
