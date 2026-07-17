@@ -56,6 +56,16 @@ Confirmed from ALSA thread + upstream Linux driver + Zammit write-up:
 - **Front-panel monitoring mix knob:** analog on the hardware side per
   everything I can find — not exposed via USB. No driver work needed.
 - **MIDI:** Mbox 1 has none. Skip that phase entirely.
+- **Physical I/O on our unit (confirmed by inspection):**
+  - 2× XLR/TRS combo inputs (mic/line/instrument).
+  - 2× TRS inserts (pre-ADC analog — invisible to the driver).
+  - 2× TRS line outputs.
+  - 1× TRS headphone jack (mirrors the line output).
+  - S/PDIF I/O on RCA.
+  - Front-panel +48V phantom switch (analog — likely not
+    USB-visible; verify in Phase 0 whether the state is queryable
+    via a vendor control transfer).
+  - USB-B jack.
 
 ## 3. Linux driver analysis (`sound/usb/`, mainline since 3.19)
 
@@ -84,17 +94,35 @@ The Linux driver exposes them as ALSA mixer controls; we can wire them
 to CoreAudio `kAudioStreamPropertyPhysicalFormat` variants or expose
 them via a separate control socket / plug-in property. TBD in Phase 4.
 
-**Feedback mechanism:** the playback EP is `ISOC SYNC`, which under
-USB terminology means the sink accepts a fixed rate (nominal 48 kHz)
-without explicit or implicit feedback — the host just paces at
-`wMaxPacketSize` per ms. This is *much* simpler than UA-101's
-implicit-feedback dance. No rate feedback loop needed; we drive the
-device at exactly 48 samples/ms and let the CoreAudio clock domain
-resample as needed.
+**Feedback mechanism.** From the quirks-table entry (verified against
+`sound/usb/quirks-table.h:2239–2294`):
+- Playback EP `0x02` is `USB_ENDPOINT_SYNC_SYNC` — host paces at fixed
+  48 samples/ms (144 bytes @ S24_3BE stereo, plus framing).
+- Capture EP `0x81` is `USB_ENDPOINT_SYNC_ASYNC` — device clocks
+  itself, so incoming packet sizes vary around 48 samples.
 
-(That said — if we observe drift in practice we may need to synthesize
-a soft feedback signal from capture packet arrival times, same idea
-as UA-101 implicit feedback. Cross that bridge if it burns.)
+The mixed sync/async pair is essentially UA-101's implicit-feedback
+pattern: capture arrival rate is the ground truth for the device's
+clock; playback timing has to track it or the two directions drift
+apart. **So we do need a feedback loop after all** — mirror the
+UA-101 design where the daemon derives an effective sample rate from
+capture packet counts and uses it to pace playback (or, more simply,
+resamples playback into the capture-derived rate before writing to
+the wire). Detail out in Phase 2.
+
+**Two vendor-protocol gotchas** noted in the Linux source, worth
+recording now so we don't hit them cold:
+
+- `snd_mbox1_set_input_source()` comment
+  (`mixer_quirks.c:909–910`): "Setting the input source to S/PDIF
+  resets the clock source to S/PDIF." If we expose input-source and
+  clock-source as independent CoreAudio properties, we must re-issue
+  the clock-source control after any input-source change.
+- `snd_mbox1_clk_switch_update()` at line 964 has a bare
+  `FIXME: hardcoded sample rate` next to the `48000` literal. Even
+  the Linux author isn't sure 48k is the only rate the hardware
+  supports; the quirk just declares it that way. Not worth chasing
+  early, but keep it in mind if a user ever asks about 44.1.
 
 ## 4. macOS userspace USB strategy
 
@@ -195,12 +223,16 @@ loop, no asymmetric channel handling.
 - Verify format is S24_3BE 2ch by decoding to float and dumping a
   WAV — sine into ch 1 should look like a sine.
 
-### Phase 2: Playback (3–5 days)
-- Iso OUT URBs on EP 0x02 at exactly 48 samples/pkt.
-- Since sync-endpoint has no feedback, timing is trivial: fill each
-  URB with 48 samples of the current playback buffer, submit at 1 ms
-  intervals.
-- Loopback test: sine → EP 0x02, monitor with headphones.
+### Phase 2: Playback + implicit feedback (1–2 weeks)
+- Iso OUT URBs on EP 0x02 at nominal 48 samples/pkt.
+- Capture EP 0x81 is async — track packet-size deltas over a window
+  to derive the device's effective sample rate (mirrors UA-101's
+  implicit-feedback code in `libua101_core/ua101_stream.c`).
+- Feed that back into playback pacing so the two directions stay
+  locked. Simplest form: emit `48 ± δ` samples per playback URB
+  based on capture arrival rate.
+- Loopback test: sine → EP 0x02, monitor with headphones, verify
+  no drift over 10 min.
 
 ### Phase 3: shm IPC layer (2–3 days)
 - Port `libua101_shm` → `libmbox_shm`. Trivial rename + version bump.
@@ -259,7 +291,9 @@ Applied to Mbox from day one:
 - Upstream Linux driver:
   https://github.com/torvalds/linux/blob/master/sound/usb/mixer_quirks.c
   (search `snd_mbox1_`) and `sound/usb/quirks-table.h` (search
-  `0x0dba, 0x1000`).
+  `0x0dba, 0x1000`). Local copies of the relevant sections are in
+  `reference/mbox1_mixer_quirks.c.snippet` and
+  `reference/mbox1_quirks-table.h.snippet`.
 - Damien Zammit's write-up (mainline history, FW gotcha):
   https://www.zamaudio.com/?p=953
 - Original ALSA-devel descriptor dump + endpoint discussion:

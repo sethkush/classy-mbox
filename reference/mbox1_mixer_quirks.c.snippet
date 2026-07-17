@@ -1,0 +1,266 @@
+/* Digidesign Mbox 1 helper functions */
+
+static int snd_mbox1_is_spdif_synced(struct snd_usb_audio *chip)
+{
+	unsigned char buff[3];
+	int err;
+	int is_spdif_synced;
+
+	/* Read clock source */
+	err = snd_usb_ctl_msg(chip->dev,
+			      usb_rcvctrlpipe(chip->dev, 0), 0x81,
+			      USB_DIR_IN |
+			      USB_TYPE_CLASS |
+			      USB_RECIP_ENDPOINT, 0x100, 0x81, buff, 3);
+	if (err < 0)
+		return err;
+
+	/* spdif sync: buff is all zeroes */
+	is_spdif_synced = !(buff[0] | buff[1] | buff[2]);
+	return is_spdif_synced;
+}
+
+static int snd_mbox1_set_clk_source(struct snd_usb_audio *chip, int rate_or_zero)
+{
+	/* 2 possibilities:	Internal    -> expects sample rate
+	 *			S/PDIF sync -> expects rate = 0
+	 */
+	unsigned char buff[3];
+
+	buff[0] = (rate_or_zero >>  0) & 0xff;
+	buff[1] = (rate_or_zero >>  8) & 0xff;
+	buff[2] = (rate_or_zero >> 16) & 0xff;
+
+	/* Set clock source */
+	return snd_usb_ctl_msg(chip->dev,
+			       usb_sndctrlpipe(chip->dev, 0), 0x1,
+			       USB_TYPE_CLASS |
+			       USB_RECIP_ENDPOINT, 0x100, 0x81, buff, 3);
+}
+
+static int snd_mbox1_is_spdif_input(struct snd_usb_audio *chip)
+{
+	/* Hardware gives 2 possibilities:	ANALOG Source  -> 0x01
+	 *					S/PDIF Source  -> 0x02
+	 */
+	int err;
+	unsigned char source[1];
+
+	/* Read input source */
+	err = snd_usb_ctl_msg(chip->dev,
+			      usb_rcvctrlpipe(chip->dev, 0), 0x81,
+			      USB_DIR_IN |
+			      USB_TYPE_CLASS |
+			      USB_RECIP_INTERFACE, 0x00, 0x500, source, 1);
+	if (err < 0)
+		return err;
+
+	return (source[0] == 2);
+}
+
+static int snd_mbox1_set_input_source(struct snd_usb_audio *chip, int is_spdif)
+{
+	/* NB: Setting the input source to S/PDIF resets the clock source to S/PDIF
+	 * Hardware expects 2 possibilities:	ANALOG Source  -> 0x01
+	 *					S/PDIF Source  -> 0x02
+	 */
+	unsigned char buff[1];
+
+	buff[0] = (is_spdif & 1) + 1;
+
+	/* Set input source */
+	return snd_usb_ctl_msg(chip->dev,
+			       usb_sndctrlpipe(chip->dev, 0), 0x1,
+			       USB_TYPE_CLASS |
+			       USB_RECIP_INTERFACE, 0x00, 0x500, buff, 1);
+}
+
+/* Digidesign Mbox 1 clock source switch (internal/spdif) */
+
+static int snd_mbox1_clk_switch_get(struct snd_kcontrol *kctl,
+				    struct snd_ctl_elem_value *ucontrol)
+{
+	struct usb_mixer_elem_list *list = snd_kcontrol_chip(kctl);
+	struct snd_usb_audio *chip = list->mixer->chip;
+	int err;
+
+	CLASS(snd_usb_lock, pm)(chip);
+	if (pm.err < 0)
+		return pm.err;
+
+	err = snd_mbox1_is_spdif_synced(chip);
+	if (err < 0)
+		return err;
+
+	kctl->private_value = err;
+	ucontrol->value.enumerated.item[0] = kctl->private_value;
+	return 0;
+}
+
+static int snd_mbox1_clk_switch_update(struct usb_mixer_interface *mixer, int is_spdif_sync)
+{
+	struct snd_usb_audio *chip = mixer->chip;
+	int err;
+
+	CLASS(snd_usb_lock, pm)(chip);
+	if (pm.err < 0)
+		return pm.err;
+
+	err = snd_mbox1_is_spdif_input(chip);
+	if (err < 0)
+		return err;
+
+	err = snd_mbox1_is_spdif_synced(chip);
+	if (err < 0)
+		return err;
+
+	/* FIXME: hardcoded sample rate */
+	err = snd_mbox1_set_clk_source(chip, is_spdif_sync ? 0 : 48000);
+	if (err < 0)
+		return err;
+
+	return snd_mbox1_is_spdif_synced(chip);
+}
+
+static int snd_mbox1_clk_switch_put(struct snd_kcontrol *kctl,
+				    struct snd_ctl_elem_value *ucontrol)
+{
+	struct usb_mixer_elem_list *list = snd_kcontrol_chip(kctl);
+	struct usb_mixer_interface *mixer = list->mixer;
+	int err;
+	bool cur_val, new_val;
+
+	cur_val = kctl->private_value;
+	new_val = ucontrol->value.enumerated.item[0];
+	if (cur_val == new_val)
+		return 0;
+
+	kctl->private_value = new_val;
+	err = snd_mbox1_clk_switch_update(mixer, new_val);
+	return err < 0 ? err : 1;
+}
+
+static int snd_mbox1_clk_switch_info(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_info *uinfo)
+{
+	static const char *const texts[2] = {
+		"Internal",
+		"S/PDIF"
+	};
+
+	return snd_ctl_enum_info(uinfo, 1, ARRAY_SIZE(texts), texts);
+}
+
+static int snd_mbox1_clk_switch_resume(struct usb_mixer_elem_list *list)
+{
+	return snd_mbox1_clk_switch_update(list->mixer, list->kctl->private_value);
+}
+
+/* Digidesign Mbox 1 input source switch (analog/spdif) */
+
+static int snd_mbox1_src_switch_get(struct snd_kcontrol *kctl,
+				    struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.enumerated.item[0] = kctl->private_value;
+	return 0;
+}
+
+static int snd_mbox1_src_switch_update(struct usb_mixer_interface *mixer, int is_spdif_input)
+{
+	struct snd_usb_audio *chip = mixer->chip;
+	int err;
+
+	CLASS(snd_usb_lock, pm)(chip);
+	if (pm.err < 0)
+		return pm.err;
+
+	err = snd_mbox1_is_spdif_input(chip);
+	if (err < 0)
+		return err;
+
+	err = snd_mbox1_set_input_source(chip, is_spdif_input);
+	if (err < 0)
+		return err;
+
+	err = snd_mbox1_is_spdif_input(chip);
+	if (err < 0)
+		return err;
+
+	return snd_mbox1_is_spdif_synced(chip);
+}
+
+static int snd_mbox1_src_switch_put(struct snd_kcontrol *kctl,
+				    struct snd_ctl_elem_value *ucontrol)
+{
+	struct usb_mixer_elem_list *list = snd_kcontrol_chip(kctl);
+	struct usb_mixer_interface *mixer = list->mixer;
+	int err;
+	bool cur_val, new_val;
+
+	cur_val = kctl->private_value;
+	new_val = ucontrol->value.enumerated.item[0];
+	if (cur_val == new_val)
+		return 0;
+
+	kctl->private_value = new_val;
+	err = snd_mbox1_src_switch_update(mixer, new_val);
+	return err < 0 ? err : 1;
+}
+
+static int snd_mbox1_src_switch_info(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_info *uinfo)
+{
+	static const char *const texts[2] = {
+		"Analog",
+		"S/PDIF"
+	};
+
+	return snd_ctl_enum_info(uinfo, 1, ARRAY_SIZE(texts), texts);
+}
+
+static int snd_mbox1_src_switch_resume(struct usb_mixer_elem_list *list)
+{
+	return snd_mbox1_src_switch_update(list->mixer, list->kctl->private_value);
+}
+
+static const struct snd_kcontrol_new snd_mbox1_clk_switch = {
+	.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+	.name = "Clock Source",
+	.index = 0,
+	.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+	.info = snd_mbox1_clk_switch_info,
+	.get = snd_mbox1_clk_switch_get,
+	.put = snd_mbox1_clk_switch_put,
+	.private_value = 0
+};
+
+static const struct snd_kcontrol_new snd_mbox1_src_switch = {
+	.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+	.name = "Input Source",
+	.index = 1,
+	.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+	.info = snd_mbox1_src_switch_info,
+	.get = snd_mbox1_src_switch_get,
+	.put = snd_mbox1_src_switch_put,
+	.private_value = 0
+};
+
+static int snd_mbox1_controls_create(struct usb_mixer_interface *mixer)
+{
+	int err;
+
+	err = add_single_ctl_with_resume(mixer, 0,
+					 snd_mbox1_clk_switch_resume,
+					 &snd_mbox1_clk_switch, NULL);
+	if (err < 0)
+		return err;
+
+	return add_single_ctl_with_resume(mixer, 1,
+					  snd_mbox1_src_switch_resume,
+					  &snd_mbox1_src_switch, NULL);
+}
+
+/* Native Instruments device quirks */
+
+#define _MAKE_NI_CONTROL(bRequest, wIndex) ((bRequest) << 16 | (wIndex))
+
