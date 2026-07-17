@@ -3,9 +3,13 @@
 // Usage:
 //   mboxflash --probe              print connected Mbox's bcdDevice, exit
 //   mboxflash --enter-dfu          send just the custom detach request, exit
-//   mboxflash --parse PAYLOAD.bin  parse a payload blob and print record list
-//   mboxflash --flash PAYLOAD.bin  full flash cycle (not yet implemented — needs
-//                                   verification against a real DFU-mode device)
+//   mboxflash --parse PATH         parse a payload blob (autodetects the
+//                                   record-stream start offset)
+//   mboxflash --scan PATH          list all offsets with runs of >= 4 records
+//   mboxflash --flash PATH         full flash cycle (not yet implemented —
+//                                   needs verification against a real
+//                                   DFU-mode device to sort out the exact
+//                                   chunking rules)
 
 #import <Foundation/Foundation.h>
 #import <IOKit/IOKitLib.h>
@@ -20,7 +24,6 @@ static void die(NSString *msg, NSError *err) {
     exit(1);
 }
 
-// Match Mbox by VID/PID and return bcdDevice; -1 if not found.
 static int probeBcdDevice(void) {
     CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
     if (!match) return -1;
@@ -31,7 +34,6 @@ static int probeBcdDevice(void) {
     io_service_t svc = IOIteratorNext(it);
     IOObjectRelease(it);
     if (!svc) return -1;
-
     CFNumberRef bcd = (CFNumberRef)IORegistryEntrySearchCFProperty(svc,
         kIOServicePlane, CFSTR("bcdDevice"), NULL, kIORegistryIterateRecursively);
     int result = -1;
@@ -68,13 +70,34 @@ static int cmd_enter_dfu(void) {
         return 1;
     }
     NSError *err = nil;
-    if (!DFU_SendEnterDFURequest(0, &err)) {
-        die(@"enter-DFU request failed", err);
-    }
-    printf("enter-DFU request sent. Device should now disconnect and re-enumerate\n");
-    printf("in DFU mode. Wait a couple of seconds then check `system_profiler` /\n");
-    printf("`ioreg -p IOUSB` for what appears.\n");
+    if (!DFU_SendEnterDFURequest(0, &err)) die(@"enter-DFU request failed", err);
+    printf("enter-DFU request sent. Device should disconnect and re-enumerate\n");
+    printf("in DFU mode. Wait a second, then run:\n");
+    printf("    ioreg -p IOUSB -l | grep -B2 -A20 -i digidesign\n");
+    printf("to see what descriptors the device now advertises.\n");
     return 0;
+}
+
+// Print a run summary line for a parsed record list.
+static void printRecordSummary(NSArray<MBoxPayloadRecord *> *recs) {
+    if (!recs.count) { printf("(no records)\n"); return; }
+    NSUInteger totalBytes = 0;
+    NSMutableString *sizeHist = [NSMutableString string];
+    NSCountedSet *sizeSet = [NSCountedSet set];
+    for (MBoxPayloadRecord *r in recs) {
+        totalBytes += r.data.length;
+        [sizeSet addObject:@(r.data.length)];
+    }
+    NSArray *sortedSizes = [sizeSet.allObjects sortedArrayUsingSelector:@selector(compare:)];
+    for (NSNumber *sz in sortedSizes) {
+        [sizeHist appendFormat:@"  %lu×%lu", (unsigned long)[sizeSet countForObject:sz],
+                                              (unsigned long)sz.unsignedIntegerValue];
+    }
+    printf("  records=%lu  total-data=%lu bytes  size-histogram:%s\n",
+           (unsigned long)recs.count, (unsigned long)totalBytes, sizeHist.UTF8String);
+    NSUInteger last = recs.lastObject.fileOffset + 16 + recs.lastObject.data.length;
+    printf("  span: 0x%lx .. 0x%lx\n",
+           (unsigned long)recs.firstObject.fileOffset, (unsigned long)last);
 }
 
 static int cmd_parse(const char *path) {
@@ -82,23 +105,52 @@ static int cmd_parse(const char *path) {
     NSData *blob = [NSData dataWithContentsOfFile:@(path) options:0 error:&err];
     if (!blob) die([NSString stringWithFormat:@"could not read %s", path], err);
 
-    // Payload lives inside __data at offset ~0x3000 for the v22 blob we've
-    // captured. TODO: auto-locate by scanning for first valid record.
-    NSArray<MBoxPayloadRecord *> *recs = MBoxPayload_Parse(blob, 0x3000, &err);
-    if (!recs) die(@"parse failed", err);
+    NSUInteger startOff = 0, runLen = 0;
+    BOOL ok = MBoxPayload_Autodetect(blob, /*minRun=*/4, &startOff, &runLen);
+    if (!ok) {
+        printf("no plausible record stream found (max run: %lu records)\n",
+               (unsigned long)runLen);
+        return 1;
+    }
+    printf("autodetected start: 0x%lx (%lu records)\n\n",
+           (unsigned long)startOff, (unsigned long)runLen);
 
-    printf("parsed %lu records:\n", (unsigned long)recs.count);
-    NSUInteger totalData = 0;
+    NSArray<MBoxPayloadRecord *> *recs = MBoxPayload_Parse(blob, startOff);
     for (NSUInteger i = 0; i < recs.count; i++) {
         MBoxPayloadRecord *r = recs[i];
-        printf("  [%3lu] seq=%u  size=%4lu  header: ",
-               (unsigned long)i, r.sequenceNumber, (unsigned long)r.data.length);
+        printf("  [%3lu] @0x%05lx  size=%4lu  header:",
+               (unsigned long)i, (unsigned long)r.fileOffset,
+               (unsigned long)r.data.length);
         const uint8_t *h = r.header.bytes;
-        for (int j = 0; j < 12; j++) printf("%02x ", h[j]);
+        for (int j = 0; j < 12; j++) printf(" %02x", h[j]);
         printf("\n");
-        totalData += r.data.length;
     }
-    printf("total data: %lu bytes\n", (unsigned long)totalData);
+    printf("\n");
+    printRecordSummary(recs);
+    return 0;
+}
+
+// Show all offsets in the blob where a run of >= threshold records validates.
+// Useful for understanding whether there are multiple stream sections.
+static int cmd_scan(const char *path) {
+    NSError *err = nil;
+    NSData *blob = [NSData dataWithContentsOfFile:@(path) options:0 error:&err];
+    if (!blob) die([NSString stringWithFormat:@"could not read %s", path], err);
+
+    printf("scanning %lu bytes for record-stream candidates (min run = 4)...\n\n",
+           (unsigned long)blob.length);
+    NSUInteger last_end = 0;
+    for (NSUInteger off = 0; off + 16 <= blob.length; off += 4) {
+        if (off < last_end) continue;  // don't re-report offsets we already covered
+        NSUInteger n = MBoxPayload_ValidRunLength(blob, off);
+        if (n < 4) continue;
+        NSArray<MBoxPayloadRecord *> *recs = MBoxPayload_Parse(blob, off);
+        printf("candidate @ 0x%05lx:\n", (unsigned long)off);
+        printRecordSummary(recs);
+        printf("\n");
+        MBoxPayloadRecord *last = recs.lastObject;
+        last_end = last.fileOffset + 16 + last.data.length;
+    }
     return 0;
 }
 
@@ -106,13 +158,14 @@ int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc < 2) {
             fprintf(stderr,
-                "usage: mboxflash --probe | --enter-dfu | --parse PATH\n");
+                "usage: mboxflash --probe | --enter-dfu | --parse PATH | --scan PATH\n");
             return 2;
         }
         NSString *cmd = @(argv[1]);
         if      ([cmd isEqualToString:@"--probe"])     return cmd_probe();
         else if ([cmd isEqualToString:@"--enter-dfu"]) return cmd_enter_dfu();
         else if ([cmd isEqualToString:@"--parse"] && argc >= 3) return cmd_parse(argv[2]);
+        else if ([cmd isEqualToString:@"--scan"]  && argc >= 3) return cmd_scan(argv[2]);
         else {
             fprintf(stderr, "unknown command '%s'\n", argv[1]);
             return 2;
