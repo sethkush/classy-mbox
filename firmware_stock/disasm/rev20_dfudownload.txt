@@ -1,0 +1,51 @@
+# CDFUInterface::DFUDownload disassembly (PPC)
+
+Source: Mbox Updater OSX.rev20 @ VMA 0x3DF64
+
+            ;-- CDFUInterface::DFUDownload(unsigned char*, int, int):
+            ; CALL XREFS from CDFUInterface::DoThread() @ +0x6c(x), +0xb4(x), +0x110(x) ; sym.CDFUInterface::DoThread__
+┌ 164: method.CDFUInterface.DFUDownload_unsigned_char__int__int_ (int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg4, int32_t arg_28h, int32_t arg_2ch, int32_t arg_8h, int32_t arg_7ch, int32_t arg_80h, int32_t arg_84h);
+│ `- args(r3, r4, r5, r6, sp[0x8..0x2c]) vars(6:sp[0x18..0x20])
+│           0x0003df64      7c0802a6       mflr r0                     ; CDFUInterface::DFUDownload(unsigned char*, int, int)
+│           0x0003df68      93e1fffc       stw r31, -4(r1)
+│           0x0003df6c      90010008       stw r0, 8(r1)
+│           0x0003df70      9421ffa0       stwu r1, -0x60(r1)
+│           0x0003df74      7c7f1b78       mr r31, r3                  ; arg1
+│           0x0003df78      9081007c       stw r4, 0x7c(r1)            ; arg2
+│           0x0003df7c      90a10080       stw r5, 0x80(r1)            ; arg3
+│           0x0003df80      90c10084       stw r6, 0x84(r1)            ; arg4
+│           0x0003df84      38000021       li r0, 0x21
+│           0x0003df88      98010040       stb r0, 0x40(r1)
+│           0x0003df8c      38000001       li r0, 1
+│           0x0003df90      98010041       stb r0, 0x41(r1)
+│           0x0003df94      80010084       lwz r0, 0x84(r1)
+│           0x0003df98      5400043e       clrlwi r0, r0, 0x10
+│           0x0003df9c      b0010042       sth r0, 0x42(r1)
+│           0x0003dfa0      a01f002c       lhz r0, 0x2c(r31)
+│           0x0003dfa4      b0010044       sth r0, 0x44(r1)
+│           0x0003dfa8      80010080       lwz r0, 0x80(r1)
+│           0x0003dfac      5400043e       clrlwi r0, r0, 0x10
+│           0x0003dfb0      b0010046       sth r0, 0x46(r1)
+│           0x0003dfb4      8001007c       lwz r0, 0x7c(r1)
+│           0x0003dfb8      90010048       stw r0, 0x48(r1)
+│           0x0003dfbc      801f0028       lwz r0, 0x28(r31)
+│           0x0003dfc0      28000000       cmplwi r0, 0
+│       ┌─< 0x0003dfc4      41820028       beq 0x3dfec
+│       │   0x0003dfc8      807f0028       lwz r3, 0x28(r31)
+│       │   0x0003dfcc      38800000       li r4, 0
+│       │   0x0003dfd0      38a10040       addi r5, r1, 0x40
+│       │   0x0003dfd4      805f0028       lwz r2, 0x28(r31)
+│       │   0x0003dfd8      80420000       lwz r2, 0(r2)
+│       │   0x0003dfdc      81820060       lwz r12, 0x60(r2)
+│       │   0x0003dfe0      7d8903a6       mtctr r12
+│       │   0x0003dfe4      4e800421       bctrl
+│      ┌──< 0x0003dfe8      4800000c       b 0x3dff4
+│      ││   ; CODE XREF from CDFUInterface::DFUDownload(unsigned char*, int, int) @ 0x3dfc4(x)
+│      │└─> 0x0003dfec      3c60e000       lis r3, -str.rsions_A_HIToolbox
+│      │    0x0003dff0      386302c0       addi r3, r3, 0x2c0
+│      │    ; CODE XREF from CDFUInterface::DFUDownload(unsigned char*, int, int) @ 0x3dfe8(x)
+│      └──> 0x0003dff4      80010068       lwz r0, 0x68(r1)
+│           0x0003dff8      38210060       addi r1, r1, 0x60
+│           0x0003dffc      7c0803a6       mtlr r0
+│           0x0003e000      83e1fffc       lwz r31, -4(r1)
+└           0x0003e004      4e800020       blr

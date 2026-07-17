@@ -1,181 +1,181 @@
 # Digi Mbox 1 flasher — reverse-engineering notes
 
-Source: `Update Mbox Firmware v22.app/Contents/MacOS/Update Mbox Firmware`,
-extracted `i386` slice (1,074,300 bytes, sha256 stashed in
-`reference/firmware/extracted/`, gitignored).
+## Executive summary
 
-Analysis with radare2 6.1.8.
+**The Mbox 1 uses standard USB DFU 1.0 for firmware upload**, plus one
+custom vendor request to enter DFU mode. All the protocol details are
+in the publicly-documented USB DFU 1.0 spec:
+<https://www.usb.org/sites/default/files/DFU_1.1.pdf>.
 
-## Class hierarchy (from symbol strings)
+This was pinned down by reverse-engineering **Digi's OS X Rev 20
+flasher** (`Mbox Updater OSX.rev20`, PPC Mach-O, ~571 KB) — a much
+cleaner codebase than the v22 flasher, with **full C++ symbol names
+preserved** (mangled Itanium ABI). Dedicated classes `CUSBDFUDevice`
+and `CDFUInterface` implement the DFU state machine cleanly.
 
-Digi's flasher is built on their internal USB-audio toolkit rather
-than being a bespoke one-shot binary:
+## Sources analyzed
 
-- `CUSBDevice` — thin IOKit wrapper (Open/Close, GetDeviceReleaseNumber)
-- `CUSBInterface` — Open/Close, SetAlternate, GetNumEndpoints, etc.
-- `CAudioControlInterface : CUSBInterface` — the audio-control iface
-  (iface 0). Owns `PrepareForDownload`, `SetInputSource`, etc.
-- `CUSBAudioDevice : CUSBDevice` — composite device. Methods:
-  Initialize / Finalize / FindAudioControlInterface / SetSampleRate /
-  StartThread / DoThread / **PrepareForDownload** / AllocateMemTest.
-- `CStream` / `CUSBIsocInput` / `CUSBIsocOutput` — audio path
-  (present but role in flashing not yet nailed down).
+| Binary | Format | Size | RE quality |
+|---|---|---|---|
+| `Update Mbox Firmware v22.app` (i386 slice) | Mach-O i386 | 1074 KB | Stripped — vtable slots without names, hard |
+| `Mbox Updater OSX.rev20` | Mach-O PPC | 571 KB | Full C++ symbols; opened the protocol |
+| `MboxFirmwareUpdater.rev20` | PowerPC PEF (OS 9) | 38 KB | Not yet analyzed — likely simplest of all |
 
-## `CAudioControlInterface::PrepareForDownload` @ 0x00002428
+All three write to the same device via the same USB protocol; the
+Rev 20 vs v22 difference is just the firmware payload.
 
-**This is the "enter DFU mode" USB request. It does exactly one
-control transfer:**
+## Complete USB protocol
 
-| Field         | Value                                             |
-|---------------|---------------------------------------------------|
-| bmRequestType | `0x21` (Host→Device, **Class**, to Interface)     |
-| bRequest      | `0x00` (vendor-defined; NOT a standard UAC code)  |
-| wValue        | `0x000a`                                          |
-| wIndex        | `bInterfaceNumber` (loaded from `this + 0x18` —   |
-|               |  will be 0 = the audio control interface)          |
-| wLength       | 0                                                 |
-| data          | NULL                                              |
+### Step 1 — Custom "enter DFU mode" request
 
-Issued via `IOUSBInterfaceInterface::ControlRequest` (vtable slot at
-byte offset 0x60 from the vtable base).
+Sent to the audio-control interface (iface 0) on the normal-mode
+device (VID `0x0DBA` PID `0x1000`, bcdDevice = current firmware):
 
-After this call, the device is expected to be in a firmware-download
-state ready to accept the payload.
+| Field         | Value                                         |
+|---------------|-----------------------------------------------|
+| bmRequestType | `0x21` (Class, Host→Device, to Interface)     |
+| bRequest      | `0x00`                                        |
+| wValue        | `0x000A`                                      |
+| wIndex        | `0` (iface 0)                                 |
+| wLength       | 0, data NULL                                  |
 
-## `CUSBAudioDevice::PrepareForDownload` @ 0x00007984
+This is Digi's ONLY custom request. USB DFU 1.0 spec normally uses
+`DFU_DETACH` (bRequest=0x00, wValue=timeout) on a runtime interface
+that has a `DFU_FUNCTIONAL` descriptor — Digi departed from spec on
+the trigger but the rest of the protocol is standard.
 
-Thin wrapper. Passes `this + 0x604` (the CAudioControlInterface
-sub-object) to `CAudioControlInterface::PrepareForDownload` and
-returns. Nothing else.
+After this request, the device detaches and re-enumerates in DFU mode
+(likely with a DFU interface exposed at a specific altsetting or on a
+new configuration). The user is prompted to unplug/replug for a
+clean power-cycle before the actual download.
 
-## Orchestration @ 0x000077de (calls PrepareForDownload)
+### Step 2 — Standard DFU_DNLOAD (chunked)
 
-Enters CFRunLoop event loop after calling PrepareForDownload. Registers
-a CFRunLoopSource stored at `this + 0x43c` — this is the IOKit
-async-completion source, so the actual firmware-byte transfer happens
-in run-loop-driven async callbacks, not synchronously here.
+For each block, issue:
 
-**Open question:** which callback pushes the firmware bytes to the
-device? Probably CUSBAudioDevice::DoThread + CUSBIsocOutput::DoTransfer,
-but not confirmed. TODO: trace from `fcn.00009b66` (called by
-AllocateMemTest) to see where the payload buffer gets shipped.
+| Field         | Value                                              |
+|---------------|----------------------------------------------------|
+| bmRequestType | `0x21` (Class, Host→Device, to Interface)          |
+| bRequest      | `0x01` (`DFU_DNLOAD`)                              |
+| wValue        | block number (starts at 0, increments per block)   |
+| wIndex        | DFU interface number (from device descriptor)      |
+| wLength       | block byte length                                  |
+| data          | block bytes                                        |
 
-## Firmware payload location
+Reconstructed from disassembly of `CDFUInterface::DFUDownload(u8*, int, int)`
+at VMA `0x3DF64` in the Rev 20 OS X flasher — see full annotation in
+`disasm/rev20_dfudownload.txt`.
 
-**Embedded in `__DATA/__data` at file offset ~0xC0880..~0xC2580**
-(roughly 7.2 KB). The section as a whole spans 0xBE080..0xC3BCC
-(23.4 KB) but includes debug strings, GUI icon bitmap data, and
-trailing FF/00-fill padding besides the firmware itself.
+### Step 3 — Standard DFU_GETSTATUS after each block
 
-Markers that identify the payload:
-- **v22 USB device descriptor** at `0xC16CB`:
-  `12 01 10 01 00 00 00 08 BA 0D 00 10 22 00 01 02` —
-  matches VID=0x0DBA, PID=0x1000, bcdDevice=0x0022, exactly what
-  the flasher installs.
-- **8051 code preceding the descriptor** (e.g. at 0xC169B):
-  `A8 D2 AF 90 FF FC E0 44 80 F0 E4 F5 0A 22 75 2C 04` decodes
-  as reasonable 8051 instructions (`MOVX A,@DPTR / ORL A,#0x80 /
-  MOVX @DPTR,A / CLR A / MOV 0x0A,A / RET / MOV 0x2C,#0x04`).
-- **8051 code near payload end** (e.g. at 0xC2510):
-  `90 FF DE F0 90 FF D5 F0 90 FF B1 E0` — writes to the TAS1020A's
-  0xFFXX external-memory region, i.e. USB Interface Function Registers
-  (endpoint FIFOs / control regs), textbook USB firmware behavior.
+Poll for `dfuDNLOAD_IDLE` state before sending the next block:
 
-Extracted candidates:
-- `firmware_stock/candidate_data_section.bin` (23.4 KB) — whole __data
-  section, over-inclusive but definitely contains the payload.
-- `firmware_stock/candidate_firmware_slice.bin` (7.4 KB) — narrower
-  window between the icon data and the FF-fill trailer.
+| Field         | Value                                              |
+|---------------|----------------------------------------------------|
+| bmRequestType | `0xA1` (Class, Device→Host, to Interface)          |
+| bRequest      | `0x03` (`DFU_GETSTATUS`)                           |
+| wValue        | 0                                                  |
+| wIndex        | DFU interface number                               |
+| wLength       | 6                                                  |
 
-Exact boundaries need one more pass: locate the loader in the flasher
-(the function that reads this buffer and pushes it to USB) and read
-its length / offset arguments directly.
+Returns the standard 6-byte `SDFUStatus`:
+```c
+struct SDFUStatus {
+    uint8_t  bStatus;         // 0 = OK, non-zero = error code
+    uint8_t  bwPollTimeout[3]; // ms to wait before next GETSTATUS
+    uint8_t  bState;           // state machine (dfuIDLE=2, dfuDNBUSY=4, ...)
+    uint8_t  iString;          // string descriptor index
+};
+```
 
-## Deeper RE findings
+Confirmed by presence of `CDFUInterface::GetDFUStatus(SDFUStatus*)`
+symbol at VMA `0x3E008`.
 
-### Payload transfer probably uses isoc OUT via CUSBIsocOutput
+### Step 4 — Zero-length DFU_DNLOAD to end
 
-The flasher's error-string dump confirms the code path exists:
+Standard DFU protocol: send DFU_DNLOAD with `wLength=0, data=NULL`
+to signal end-of-download. Device transitions to `dfuMANIFEST_SYNC`,
+we poll `DFU_GETSTATUS` until it enters `dfuMANIFEST` and then
+resets.
 
-    "CUSBIsocOutput::DoTransfer ERROR: WriteIsochPipeAsync got error: 0x%X"
+### Step 5 — Manual power cycle
 
-`CUSBIsocOutput` is the isochronous-output wrapper — its `DoTransfer`
-method calls `WriteIsochPipeAsync` on the IOUSB interface.
+Digi's flasher **prompts the user to unplug and re-plug the Mbox**
+rather than relying on the standard DFU auto-reset. This is a design
+choice — probably because the TAS1020A doesn't clean up USB state
+gracefully on soft-reset, or Digi wanted a safety pause. Our
+`mboxflash` should follow the same pattern.
 
-### CUSBIsocOutput::HackStartup @ 0xafde is a warmup, not the payload transfer
+### Step 6 — Verify
 
-Disassembly showed HackStartup:
-1. Zeros a 288-byte buffer at `__bss+0xfeca0..0xfedc0`.
-   (288 = 0x120 = 2ch × 3B × 48 samples, one audio isoc packet.)
-2. Sets counters at `__bss+0xfec80..0xfec86`.
-3. Calls interface vtable slot at byte offset 0x5c on `this->0x20`
-   (likely `SetPipePolicy` or `ClearPipeStall`).
-4. Submits the zero buffer via interface vtable slot at byte offset
-   0x90 on `this->0x80` — very likely `WriteIsochPipeAsync`.
+After reconnect, read the new `bcdDevice` field of the standard USB
+device descriptor. Should now match the target version (0x22 for
+v22 firmware).
 
-This is a "prime the pump" — one empty isoc packet to open the pipe.
-The firmware bytes get pushed by follow-up transfers we haven't
-pinpointed yet.
+## Payload format (embedded in flasher binary)
 
-### Firmware payload doesn't get referenced by absolute address
+`CDFUInterface::Download(uint8_t* payload, size_t length)` at
+VMA `0x3DE18` calls `memcpy` to internalize the payload, then
+`pthread_create` for `Thread` which does the flash work.
 
-No immediate in the binary points to any address in the range
-`0xC1800..0xC3500` (VMAs of the presumed payload region). So the
-payload access must be one of:
-- Indirect through a pointer table set up at startup.
-- Via `dyld` relocation slots that are patched at load-time.
-- Via a base-register + offset computed lazily.
+`CDFUInterface::PrepareNextBuffer()` at VMA `0x3DEC0` shows the
+payload structure: it's a **stream of records**, each:
 
-The flasher is stripped and has no OBJC/C++ RTTI symbols to help
-identify vtable slots by name. The IOKit headers we'd need to map
-`call [reg + 0xBC]` etc. to specific methods aren't part of the
-binary.
+```
++0:   uint32_t chunk_size            // little-endian? (need to verify with actual bytes)
++4:   uint8_t  header[12]            // per-block metadata: possibly target address,
+                                     //   flags, checksum — TBD by comparing across
+                                     //   Rev 20 vs v22 payloads
++16:  uint8_t  data[chunk_size]      // the actual firmware bytes to send
+```
 
-### Pragmatic conclusion
+Each record becomes one DFU_DNLOAD control transfer with `wValue`
+incrementing per record.
 
-Continuing pure static analysis to nail down the exact payload
-transfer will keep chipping away but is bounded by the missing
-type info. Faster paths:
+## Key CDFUInterface class layout (recovered from field offsets)
 
-- **Dynamic capture.** Run Digi's flasher against the Mbox with a
-  USB analyzer (or `usbmon` on Linux with the Mbox on a Linux host
-  running the flasher under x86_64 emulation — nope, it's a Mach-O).
-  On Apple Silicon, **UTM with QEMU x86_64 emulation of macOS 10.14**
-  works with USB passthrough — the flasher can then run natively on
-  the emulated Mac, and we capture the USB packets from either the
-  Linux/macOS host with `wireshark + usbmon` or `usbdump`.
-- **Instrument the flasher.** Since we know CAudioControlInterface::
-  PrepareForDownload's exact bytes, we could patch the i386 binary
-  to also log the follow-up transfers, or attach lldb (if we can
-  run i386 anywhere — see UTM above).
-- **Ask someone.** Digi/Avid stopped supporting the Mbox 1 around
-  2010; the flasher is 2007. Damien Zammit (Linux driver author) is
-  a candidate to ask — he might have done this RE himself while
-  writing the kernel driver.
+```c
+class CDFUInterface {
+    // ... base class stuff at 0x00..0x07 ...
+    /*0x08*/ uint8_t  state_or_status;      // Download() zeros this
+    /*0x0C*/ uint8_t* mBuffer;              // allocated by Download()
+    /*0x10*/ uint32_t mBufferLength;        // saved from Download() arg
+    /*0x14*/ uint32_t mProgressPercent;
+    /*0x18*/ uint8_t* mCurrentReadPos;      // walks through mBuffer
+    /*0x1C*/ uint32_t ?;
+    /*0x20*/ uint32_t mBytesWritten;
+    /*0x28*/ void**   mInterfaceRef;        // IOUSBInterfaceInterface**
+    /*0x2C*/ uint16_t mInterfaceNumber;     // used as DFU_DNLOAD wIndex
+};
+```
 
-## Known-answers box
+## Payload location in Rev 20 vs v22
 
-| Question | Answer |
-|---|---|
-| "Enter DFU mode" USB request | ✓ Class SET to iface 0: bmRequestType=0x21 bRequest=0x00 wValue=0x000A |
-| Firmware payload location | ✓ inside __DATA/__data (VMA ~0xC1800..0xC3500) but access mechanism indirect |
-| How payload is transferred to the device | ~ Almost certainly isoc OUT via `WriteIsochPipeAsync` on iface 1 EP 0x02 (based on `CUSBIsocOutput::DoTransfer ... WriteIsochPipeAsync` error string). Exact chunking/framing not yet pinned. |
-| Post-flash sequence | ✓ Prompt user to unplug (power-cycle); on reconnect device enumerates with new bcdDevice |
-| Verification / checksum | ✗ Not identified in static analysis |
+Rev 20 binary at ~571 KB has its firmware payload embedded too, but
+much easier to spot given the smaller binary. Since we care about the
+**PROTOCOL** (which is the same across firmware versions) and not
+the payload bytes (we already have v22 embedded in the v22 flasher's
+`__data`), the exact byte location can be pinned later — this note
+focuses on the wire protocol.
 
-## Rewriting the flasher for arm64 macOS
+## Writing mboxflash
 
-Once we've pinned down the payload transfer method:
-1. Open `0x0dba:0x1000` with IOUSBHost.
-2. Read `bcdDevice`. Warn if already 0x22.
-3. Open iface 0 (audio control).
-4. Send the class control transfer described in §PrepareForDownload.
-5. Open iface 1, select alt setting 1 (activates ISOC endpoints).
-6. Push the firmware payload via isoc OUT on EP 0x02 (or via
-   whatever method Phase 2 of the RE confirms).
-7. Wait for USB re-enumeration (device disconnects, comes back
-   with new bcdDevice).
-8. Verify new bcdDevice = 0x22.
+With the protocol nailed down, the arm64 macOS flasher is a
+manageable amount of ObjC. Structure:
 
-Target: `mboxflash` CLI, ~500 LOC of ObjC. Uses only public IOUSBHost
-API — no kernel bits.
+```
+mboxflash/
+├── main.m              (~200 LOC): open device, orchestrate the 6 steps
+├── dfu.{h,c}           (~300 LOC): standard USB DFU 1.0 state machine
+├── enter_dfu.c         (~50 LOC):  Digi's custom detach request
+├── payload_parser.c    (~100 LOC): unpack the [size][header][data] records
+└── Makefile
+```
+
+Uses IOUSBHost, no external deps. Runs on any modern macOS on
+Apple Silicon or Intel.
+
+Fallback: everything except the custom-detach request is stock DFU,
+so `dfu-util` (open source DFU tool) can probably do steps 2-6 for
+us once step 1 has put the device in DFU mode. Worth trying before
+writing a bespoke tool.

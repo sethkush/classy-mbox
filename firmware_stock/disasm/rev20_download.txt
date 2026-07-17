@@ -1,0 +1,53 @@
+# CDFUInterface::Download disassembly (PPC)
+
+Source: Mbox Updater OSX.rev20 @ VMA 0x3DE18
+
+            ;-- CDFUInterface::Download(unsigned char*, unsigned long):
+            ; CALL XREF from CUSBDFUDevice::Download(unsigned char*, unsigned long) @ 0x3d9e0(x) ; method.CUSBDFUDevice.Download_unsigned_char__unsigned_long_
+┌ 168: method.CDFUInterface.Download_unsigned_char__unsigned_long_ (int32_t arg1, int32_t arg2, int32_t arg3, int32_t arg_8h);
+│ `- args(r3, r4, r5, sp[0x8..0x8])
+│           0x0003de18      7c0802a6       mflr r0                     ; CDFUInterface::Download(unsigned char*, unsigned long)
+│           0x0003de1c      bf61ffec       stmw r27, -0x14(r1)
+│           0x0003de20      90010008       stw r0, 8(r1)
+│           0x0003de24      9421ff90       stwu r1, -0x70(r1)
+│           0x0003de28      7c7e1b78       mr r30, r3                  ; arg1
+│           0x0003de2c      7c9b2378       mr r27, r4                  ; arg2
+│           0x0003de30      7cbc2b78       mr r28, r5                  ; arg3
+│       ┌─< 0x0003de34      429f0005       bdnzl 0x3de38
+│       │   ; CODE XREF from CDFUInterface::Download(unsigned char*, unsigned long) @ 0x3de34(x)
+│       └─> 0x0003de38      7fe802a6       mflr r31
+│           0x0003de3c      939e0010       stw r28, 0x10(r30)
+│           0x0003de40      7f83e378       mr r3, r28                  ; int32_t arg1
+│           0x0003de44      48014335       bl sym.operator_new___unsigned_long_ ; operator new[](unsigned long)
+│           0x0003de48      907e000c       stw r3, 0xc(r30)
+│           0x0003de4c      3ba00000       li r29, 0
+│       ┌─< 0x0003de50      48000014       b 0x3de64
+│       │   ; CODE XREF from CDFUInterface::Download(unsigned char*, unsigned long) @ 0x3de68(x)
+│      ┌──> 0x0003de54      7c1be8ae       lbzx r0, r27, r29
+│      ╎│   0x0003de58      805e000c       lwz r2, 0xc(r30)
+│      ╎│   0x0003de5c      7c02e9ae       stbx r0, r2, r29
+│      ╎│   0x0003de60      3bbd0001       addi r29, r29, 1
+│      ╎│   ; CODE XREF from CDFUInterface::Download(unsigned char*, unsigned long) @ 0x3de50(x)
+│      ╎└─> 0x0003de64      7c1de040       cmplw r29, r28
+│      └──< 0x0003de68      4180ffec       blt 0x3de54
+│           0x0003de6c      801e000c       lwz r0, 0xc(r30)
+│           0x0003de70      901e0018       stw r0, 0x18(r30)
+│           0x0003de74      38000000       li r0, 0
+│           0x0003de78      901e001c       stw r0, 0x1c(r30)
+│           0x0003de7c      38000000       li r0, 0
+│           0x0003de80      901e0020       stw r0, 0x20(r30)
+│           0x0003de84      38000000       li r0, 0
+│           0x0003de88      901e0014       stw r0, 0x14(r30)
+│           0x0003de8c      38000000       li r0, 0
+│           0x0003de90      981e0008       stb r0, 8(r30)
+│           0x0003de94      38610040       addi r3, r1, 0x40
+│           0x0003de98      38800000       li r4, 0
+│           0x0003de9c      3c5f0000       addis r2, r31, 0
+│           0x0003dea0      38a20264       addi r5, r2, 0x264
+│           0x0003dea4      7fc6f378       mr r6, r30
+│           0x0003dea8      4800d539       bl sym.imp.pthread_create
+│           0x0003deac      80010078       lwz r0, 0x78(r1)
+│           0x0003deb0      38210070       addi r1, r1, 0x70
+│           0x0003deb4      7c0803a6       mtlr r0
+│           0x0003deb8      bb61ffec       lmw r27, -0x14(r1)
+└           0x0003debc      4e800020       blr

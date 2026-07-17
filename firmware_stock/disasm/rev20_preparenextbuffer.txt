@@ -1,0 +1,52 @@
+# CDFUInterface::PrepareNextBuffer disassembly (PPC)
+
+Source: Mbox Updater OSX.rev20 @ VMA 0x3DEC0
+
+            ;-- CDFUInterface::PrepareNextBuffer():
+            ; CALL XREF from CDFUInterface::DoThread() @ +0x50(x) ; sym.CDFUInterface::DoThread__
+┌ 164: method.CDFUInterface.PrepareNextBuffer__ (signed int arg1, int32_t arg_8h);
+│ `- args(r3, sp[0x8..0x8])
+│           0x0003dec0      7c0802a6       mflr r0                     ; CDFUInterface::PrepareNextBuffer()
+│           0x0003dec4      bf61ffec       stmw r27, -0x14(r1)
+│           0x0003dec8      90010008       stw r0, 8(r1)
+│           0x0003decc      7c7e1b78       mr r30, r3                  ; arg1
+│       ┌─< 0x0003ded0      429f0005       bdnzl 0x3ded4
+│       │   ; CODE XREF from CDFUInterface::PrepareNextBuffer() @ 0x3ded0(x)
+│       └─> 0x0003ded4      7fe802a6       mflr r31
+│           0x0003ded8      83be0018       lwz r29, 0x18(r30)
+│           0x0003dedc      3bbd000c       addi r29, r29, 0xc
+│           0x0003dee0      805e0018       lwz r2, 0x18(r30)
+│           0x0003dee4      83620000       lwz r27, 0(r2)
+│           0x0003dee8      3b800000       li r28, 0
+│       ┌─< 0x0003deec      48000020       b 0x3df0c
+│       │   ; CODE XREF from CDFUInterface::PrepareNextBuffer() @ 0x3df1c(x)
+│      ┌──> 0x0003def0      887d0000       lbz r3, 0(r29)
+│      ╎│   0x0003def4      3bbd0001       addi r29, r29, 1
+│      ╎│   0x0003def8      7f800734       extsh r0, r28
+│      ╎│   0x0003defc      3c5f0003       addis r2, r31, 3
+│      ╎│   0x0003df00      3842ab94       addi r2, r2, -0x546c
+│      ╎│   0x0003df04      7c6201ae       stbx r3, r2, r0
+│      ╎│   0x0003df08      3b9c0001       addi r28, r28, 1
+│      ╎│   ; CODE XREF from CDFUInterface::PrepareNextBuffer() @ 0x3deec(x)
+│      ╎└─> 0x0003df0c      7f830734       extsh r3, r28
+│      ╎    0x0003df10      805e0018       lwz r2, 0x18(r30)
+│      ╎    0x0003df14      80020000       lwz r0, 0(r2)
+│      ╎    0x0003df18      7c030040       cmplw r3, r0                ; arg1
+│      └──< 0x0003df1c      4180ffd4       blt 0x3def0
+│           0x0003df20      807e0020       lwz r3, 0x20(r30)
+│           0x0003df24      805e0018       lwz r2, 0x18(r30)
+│           0x0003df28      80020000       lwz r0, 0(r2)
+│           0x0003df2c      7c030214       add r0, r3, r0
+│           0x0003df30      901e0020       stw r0, 0x20(r30)
+│           0x0003df34      93be0018       stw r29, 0x18(r30)
+│           0x0003df38      801e000c       lwz r0, 0xc(r30)
+│           0x0003df3c      7c00e850       subf r0, r0, r29
+│           0x0003df40      1c400064       mulli r2, r0, 0x64
+│           0x0003df44      801e0010       lwz r0, 0x10(r30)
+│           0x0003df48      7c0203d6       divw r0, r2, r0
+│           0x0003df4c      901e0014       stw r0, 0x14(r30)
+│           0x0003df50      7f63db78       mr r3, r27
+│           0x0003df54      80010008       lwz r0, 8(r1)
+│           0x0003df58      7c0803a6       mtlr r0
+│           0x0003df5c      bb61ffec       lmw r27, -0x14(r1)
+└           0x0003df60      4e800020       blr
