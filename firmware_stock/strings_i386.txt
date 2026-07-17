@@ -1,0 +1,251 @@
+u9sdt8f
+Cp=#NCIu8
+E=ucodt
+E=ucodt
+} ksau5
+E=domit>=manpuf
+E=domit
+} seyu;
+elestSw"
+elestaw'
+{DxlciuS
+E=gngbt3w
+=etfat*=ofebt#
+=srift)w
+= llatj= ynat=
+c=tsalt)=ddimu
+E=slcpt
+=tsiltH=llunt
+E=gngbt?w
+=etfat.=ofebt'
+u=nahmt
+=nahmt(=dinmt:
+E=domptlw>=mzsitcw'=blchtZ=lfsitS
+?=dnbpt3=xdip
+=zsrpt%w
+=manpt+=soppu
+E=soppt~w7=dnbp
+=gnist(=buodt!=etxet
+=srift-w
+= llatr= ynatD
+l=tsalt(=ddimu
+}twgbt*w
+}tnoctb
+E=   >tHw&=  =<t?=   =tk=   <t1
+=twgbt/w
+= tdltew<=buodt\w%=loobtr=pmoctL
+=etxet.=slaf
+#=rohst w
+__dyld_make_delayed_module_initializer_calls
+__dyld_mod_term_funcs
+/usr/lib/libSystem.B.dylib
+__cxa_atexit
+__cxa_finalize
+ControlsLib
+InterfaceLib
+CAudioControlInterface::PrepareForDownload
+CAudioControlInterface::CAudioControlInterface
+CAudioControlInterface::~CAudioControlInterface
+CAudioControlInterface::Finalize
+CAudioControlInterface::Finalize mInterfaceRef=0x%X
+CAudioControlInterface::Finalize USBInterfaceClose status=0x%X
+CAudioControlInterface::Finalize Release status=0x%X
+CAudioControlInterface::Initialize
+CAudioControlInterface::Initialize interfaceNum=%lu config=0x%X interfaceRef=0x%X deviceRef=0x%X
+CAudioControlInterface::Initialize IOCreatePlugInInterfaceForService err=0x%X
+CAudioControlInterface::Initialize IOCreatePlugInInterfaceForService failed: 0x%X
+CAudioControlInterface::Initialize QueryInterface err=0x%X
+CAudioControlInterface::Initialize QueryInterface failed: 0x%X
+CAudioControlInterface::Initialize USBInterfaceOpen err=0x%X
+CAudioControlInterface::Initialize USBInterfaceOpen failed: 0x%X
+CAudioControlInterface::WaitForCompletion
+CAudioControlInterface::IsInitialized
+CAudioControlInterface::DoDeviceRemoved
+CAudioControlInterface::SetControl
+CAudioControlInterface::SetInputSource
+CAudioControlInterface::SetInputSource status=0x%X
+CAudioControlInterface::GetInputSource
+CClock::GetNextTailSamples mTailIndex == mHeadIndex
+:Sample Rate Updated: %g
+CClock::Prime mPhaseIncrement=%ld
+/Library/Frameworks
+Digitrace.framework
+FormatDbgTrace
+MemDbgTrace
+OSErrToString
+DbgTraceStatePushAndSetFunc
+DbgTraceStateSetFunc
+DbgTraceStatePopFunc
+RegisterDbgTraceHandlerFunc
+TraceFacilityOn
+SetDigitraceClockCallback
+<unknown>
+CStream::Start ERROR: stream transfer pending (1)
+CStream::Start ERROR: stream transfer pending (2)
+CStream::Continue Transfer Underrun!
+CStream::GetCurrentFrame
+CStream::Stop
+CStream::AllTransfersCompleted
+CStream::Prime
+CStream::Deprime
+CStream::Acquire
+CStream::Deacquire
+CStream::SetBufferInfo
+CStream(0x%X)::SetBufferInfo len=%u format=0x%X bytes/sample=%u nchannels=%u
+CStream::SetStreamInfo
+CStream(0x%X)::SetStreamInfo format=0x%X bytes/sample=%u nchannels=%u
+CStream::SetStreamInfo
+CStream::ReadyForNextTransfer
+CStream::GetStartFrame
+CStream::ComputeStartFrame
+CStream::SetStartFrame
+CStream::SetClock
+CStream::SetSampleRate
+CStream::InitializeStartFrame
+CStream::GetBuffersOut
+CStream::GetNextBuffersOut
+CStream::GetSamplePosition
+CUSBAudioDevice::DellocateMemTest
+CUSBAudioDevice::Finalize
+CUSBAudioDevice::InitializeInterfaces
+CUSBAudioDevice::Initialize
+CUSBAudioDevice::Initialize ERROR: CUSBDevice::Initialize failed
+CUSBAudioDevice::Initialize ERROR: CreateInterfaceIterator failed: 0x%X
+CUSBAudioDevice::FindAudioControlInterface
+CUSBAudioDevice::GetNumStreamInterfaces
+CUSBAudioDevice::GetStreamInterfaceNum
+CUSBAudioDevice::FindAudioInterface
+CUSBAudioDevice::FindAudioInputInterface
+CUSBAudioDevice::FindAudioOutputInterface
+CUSBAudioDevice::SetSampleRate
+CUSBAudioDevice::GetSampleRate
+CUSBAudioDevice::StartThread
+CUSBAudioDevice::StopThread
+CUSBAudioDevice::DoThread
+CUSBAudioDevice::Thread
+CUSBAudioDevice::SetThreadPrority
+CUSBAudioDevice::PrepareForDownload
+CUSBAudioDevice::AllocateMemTest
+CUSBDevice::GetDeviceReleaseNumber
+CUSBDevice::GetDeviceReleaseNumber num=0x%X status=0x%X
+CUSBDevice::CUSBDevice
+CUSBDevice::~CUSBDevice
+CUSBDevice::Finalize
+CUSBDevice::Finalize USBDeviceClose status=0x%X
+CUSBDevice::Finalize Release status=0x%X
+CUSBDevice::Initialize
+CUSBDevice::Initialize IOCreatePlugInInterfaceForService err=0x%X
+CUSBDevice::Initialize IOCreatePlugInInterfaceForService failed: 0x%X
+CUSBDevice::Initialize QueryInterface err=0x%X
+CUSBDevice::Initialize QueryInterface failed: 0x%X
+CUSBDevice::Initialize USBDeviceOpen err=0x%X
+CUSBDevice::Initialize USBDeviceOpen failed: 0x%X
+CUSBDevice::DeviceAvailable
+CUSBInterface::LowLatencyDestroyBuffer
+CUSBInterface::LowLatencyDestroyBuffer LowLatencyDestroyBuffer status=0x%X
+CUSBInterface::CUSBInterface
+CUSBInterface::~CUSBInterface
+CUSBInterface::Finalize
+CUSBInterface::Finalize mInterfaceRef=0x%X
+CUSBInterface::Finalize USBInterfaceClose status=0x%X
+CUSBInterface::Finalize Release status=0x%X
+CUSBInterface::Initialize
+CUSBInterface::Initialize interfaceNum=%lu config=0x%X interfaceRef=0x%X
+CUSBInterface::Initialize IOCreatePlugInInterfaceForService err=0x%X
+CUSBInterface::Initialize IOCreatePlugInInterfaceForService failed, err=0x%X
+CUSBInterface::Initialize QueryInterface err=0x%X
+CUSBInterface::Initialize QueryInterface failed: 0x%X
+CUSBInterface::Initialize USBInterfaceOpen err=0x%X
+CUSBInterface::Initialize USBInterfaceOpen failed: 0x%X
+CUSBInterface::Initialize SetAlternateInterface failed, err=0x%X
+CUSBInterface::Initialize GetNumEndpoints failed, err=0x%X
+CUSBInterface::Initialize GetPipeProperties (pipe 1) err=0x%X
+CUSBInterface::Initialize GetPipeProperties (pipe 2) err=0x%X
+CUSBInterface::Initialize CreateInterfaceAsyncEventSource err=0x%X
+CUSBInterface::GetSampleRate
+CUSBInterface::SetControl
+CUSBInterface::SetSyncMode
+CUSBInterface::SetSyncMode mInterfaceRef=0x%X mSyncMode=%d mode=%d
+CUSBInterface::SetSyncMode ERROR: status=0x%X
+CUSBInterface::SetSampleRate
+CUSBInterface::SetSampleRate mInterfaceRef=0x%X samplerate=%ld
+CUSBInterface::SetSampleRate ERROR: status=0x%X
+CUSBInterface::GetStream
+CUSBInterface::GetInputStream
+CUSBInterface::GetOutputStream
+CUSBInterface::IsInitialized
+CUSBInterface::GetSamplePosition
+CUSBInterface::DoDeviceRemoved
+CUSBInterface::DoDeviceRemoved AbortPipe (mPipeRef) status=0x%X
+CUSBInterface::DoDeviceRemoved AbortPipe (mPipeRefs[0]) status=0x%X
+CUSBInterface::DoDeviceRemoved AbortPipe (mPipeRefs[1]) status=0x%X
+CUSBInterface::LowLatencyCreateBuffer
+CUSBInterface::LowLatencyCreateBuffer LowLatencyCreateBuffer status=0x%X
+CUSBIsocInput::PrepareForTransfer mInterfaceRef=0x%X mFrameCount == mNumFrames
+CUSBIsocInput::DoTransfer mInterfaceRef=0x%X ERROR: doing transfer after mStarted = false
+CUSBIsocInput::DoTransfer mInterfaceRef=0x%X ERROR from ReadIsochPipeAsync: 0x%X
+CUSBIsocInput::PostTransferProcessing mInterfaceRef=0x%X ERROR: TransferError
+CUSBIsocInput::PostTransferProcessing mInterfaceRef=0x%X ERROR: data overrun
+CUSBIsocInput::PostTransferProcessing mInterfaceRef=0x%X ERROR: negative tail length: %d
+CUSBIsocInput::PostTransferProcessing mInterfaceRef=0x%X ERROR: large tail length: %d
+CUSBIsocInput::TransferError mInterfaceRef=0x%X TransferError=0x%X 
+CUSBIsocInput::Prime
+CUSBIsocInput::CUSBIsocInput
+CUSBIsocInput::CUSBIsocInput mInterfaceRef=0x%X
+CUSBIsocInput::CUSBIsocInput mBuffer is NULL
+CUSBIsocInput::CUSBIsocInput mScatteredBuffer is NULL
+CUSBIsocInput::CUSBIsocInput mFrames is NULL
+CUSBIsocInput::~CUSBIsocInput
+CUSBIsocInput::Finalize
+CUSBIsocInput::Acquire
+CUSBIsocInput::Deacquire
+CUSBIsocInput::GetBuffer
+CUSBIsocOutput::PrepareForTransfer mInterfaceRef=0x%X mFrameCount == mNumFrames
+CUSBIsocOutput::PrepareForTransfer samplesThisFrame==0, mFrameCount=%lu
+CUSBIsocOutput::PrepareForTransfer samplesThisFrame==0, mFrameCount=0
+CUSBIsocOutput::DoTransfer ERROR: not started
+CUSBIsocOutput::DoTransfer ERROR: WriteIsochPipeAsync got error: 0x%X
+CUSBIsocOutput::TransferError Not Sent Error=0x%X
+CUSBIsocOutput::TransferError unflagged IsocOutput error = 0x%X
+CUSBIsocOutput::HackStartup
+CUSBIsocOutput::CUSBIsocOutput
+CUSBIsocOutput::Acquire
+CUSBIsocOutput::Deacquire
+CUSBIsocOutput::GetBuffer
+CUSBIsocTransfer::CopyPreviousTailToHead mInterfaceRef=0x%X mHeadStart > mBuffer, mHeadLength=%lu
+CUSBIsocTransfer::CopyTailToNextHead mInterfaceRef=0x%X mTailLength=%lu
+CUSBIsocTransfer::TransferError TransferError=0x%X
+CUSBStream::GetCurrentUSBFrame GetBusFrameNumber error=0x%X
+CUSBStream::Stop mInterfaceRef=0x%X Aborting pipe: %d 
+CUSBStream::Finalize
+.Exception caught in LApplication.
+Error Code: 
+.Exception caught in LApplication.
+Error Code: 
+KMbox not connected.  Please connect Mbox to this computer with a USB cable.
+!Click Start to download firmware.
+Your current Mbox firmware is newer than this version.  If you continue, the firmware will not be the most recent.  Click Start to downgrade firmware or Cancel to not download this firmware.
+Your current Mbox firmware is already the same as this version.  Click Start to download identical firmware or Cancel to not download this firmware.
+ Please disconnect Mbox from USB.
+Please reconnect Mbox to USB.
+!Click Start to download firmware.
+Downloading...
+An error occurred.
+Download complete.
+4Download complete.  Please disconnect Mbox from USB.
+Finished.
+Status Code = 
+wwwwwwffffffUUUUUUDDDDDD""""""
+System.framework
+Unrecognized Tag: 
+InitializeOSX: could not create master port, err = %08x
+IOUSBDevice
+idVendor
+idProduct
+IOUSBDevice
+IOServiceFirstMatch
+IOServiceTerminate
+""""""""
+InitializeOSX: could not create matching dictionary
+InitializeOSX: could not create CFNumberRef for vendor
+InitializeOSX: could not create CFNumberRef for product
