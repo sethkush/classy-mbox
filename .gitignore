@@ -10,3 +10,6 @@ compile_commands.json
 
 # Proprietary Digidesign firmware flasher (personal use only, not redistributable)
 reference/firmware/*.dmg
+
+# Extracted proprietary Digidesign flasher app (personal use only)
+reference/firmware/extracted/

@@ -1,9 +1,14 @@
-# Mbox 1 macOS Userspace Driver — Implementation Plan
+# Mbox 1 Reverse-Engineering + Custom UAC Firmware — Implementation Plan
 
-> Companion to the UA-101 project (`~/Desktop/UA101`). Same overall shape:
-> a userspace USB daemon feeds a HAL plug-in via POSIX shm, so the device
-> appears as a native CoreAudio device on Apple Silicon without a kext.
-> Target apps: Pro Tools (aspirational) and Logic Pro (primary).
+> **Endgame:** replace the Mbox 1's stock Digidesign firmware with a
+> class-compliant USB Audio Class firmware, so the device works on
+> every OS forever with no driver, no daemon, no HAL plug-in.
+>
+> **Reference point:** the UA-101 sister project (`~/Desktop/UA101`)
+> built a full userspace-driver stack (USB daemon + shm IPC + HAL
+> plug-in). Its architecture, shm layout, and Linux-mirror lessons
+> are still relevant IF we ever need to fall back to a driver-based
+> solution — e.g. as a lab tool while iterating on custom firmware.
 
 ## 0. Status
 
@@ -22,19 +27,33 @@
 
 ## 1. Executive summary
 
-Build a userspace macOS driver for the original Digidesign Mbox (Mbox 1,
-2002, USB 1.1) that:
+Turn the original Digidesign Mbox (Mbox 1, 2002, USB 1.1) into a
+class-compliant USB Audio Class device by replacing its firmware.
+Deliverables in order:
 
-1. Claims `0x0dba:0x1000` from anything else on the bus (nothing on
-   modern macOS binds it — it enumerates as a vendor-specific interface,
-   not class-compliant audio).
-2. Runs isochronous USB in/out from a userspace daemon (`mboxd`)
-   at a fixed **48 kHz, 24-bit, 2 in / 2 out** — the device is hardcoded
-   at this rate in the Linux driver and nobody has found otherwise.
-3. Exposes a native CoreAudio device via an `AudioServerPlugIn` HAL
-   plug-in loaded into `coreaudiod`, using shared memory + SPSC rings
-   for IPC (`libmbox_shm` — same protocol as `libua101_shm`).
-4. Provides stable 48 kHz stereo I/O suitable for tracking in Logic Pro.
+1. **Reverse-engineer Digi's stock flash protocol** enough to
+   reimplement it as a native arm64 macOS CLI (`mboxflash`) that
+   speaks IOUSBHost directly. This unblocks flashing on the user's
+   Apple Silicon audio machine (Digi's own flasher is i386 + PPC —
+   won't run on modern macOS).
+2. **Flash the stock v22 firmware** using `mboxflash` to confirm the
+   protocol is understood end-to-end AND fix the buggy Rev-20
+   firmware currently on the unit. Provides a safe recovery path
+   before we start iterating on custom firmware.
+3. **Reverse-engineer the stock v22 firmware image** (dumped from
+   EEPROM after flashing) to learn the board's TAS1020A pinout —
+   which GPIOs drive S/PDIF, which I²S port talks to which converter,
+   which pins read the front-panel switches, etc.
+4. **Write class-compliant firmware** for the TAS1020A that:
+   - Enumerates as a standard USB Audio Class 1.0 device (2ch in /
+     2ch out, 24-bit, 44.1 + 48 kHz).
+   - Uses correct explicit-feedback endpoint pattern.
+   - Optionally exposes S/PDIF I/O as additional channels or a
+     switchable input.
+   Starting point: TI's own TAS1020A UAC reference firmware (was
+   part of TI's evaluation kit for the chip).
+5. **Flash and validate** — should just work on macOS, Linux,
+   Windows, iOS, Android with no driver.
 
 ## 2. Background: Mbox 1 hardware overview
 
@@ -153,140 +172,150 @@ Same recommendations as UA-101 — reuse the analysis in
 
 ## 5. Architecture
 
-Single architecture, mirroring UA-101 Architecture B (HAL plug-in) —
-skipping the BlackHole prototype since we already validated that path
-on UA-101 and Mbox is proportionally cheaper (2ch, single fixed rate,
-symmetric channel counts). Feedback loop still required — see §3.
+There is no runtime architecture on the host — that's the whole point.
+Once the Mbox has UAC firmware:
 
 ```
-        USB bus
-           │
-     ┌─────┴──────┐
-     │   mboxd    │  (userspace daemon, IOUSBHost)
-     │ ┌────────┐ │
-     │ │libmbox_core│ ← isoc URBs, ring buffers, control xfers
-     │ └───┬────┘ │
-     │     │ shm  │
-     └─────┼──────┘
-           │
-     ┌─────┴──────┐
-     │Mbox.driver │  (HAL plug-in in coreaudiod)
-     │  ┌───────┐ │
-     │  │shm ring│  ← same layout as libua101_shm
-     │  └───┬───┘ │
-     └──────┼─────┘
-            │
-       CoreAudio HAL
-            │
-      Logic Pro
+   USB bus              OS's native USB Audio stack
+      │                 (CoreAudio / ALSA / WASAPI /
+      │                  UsbAudio DDK on Windows)
+   ┌──┴───┐                     │
+   │ Mbox │ ← UAC 1.0 →   ┌─────┴──────┐
+   │(TAS1020A│               │  Any DAW    │
+   │+ Cirrus)│               │(Logic/PT/…)│
+   └───────┘                └────────────┘
 ```
 
-Shared-memory protocol: copy `libua101_shm` verbatim, rename symbols.
-Mbox is symmetric 2/2, so the v2 `playback_channels` field is redundant
-but keep it for consistency with UA-101's layout.
+The tooling we build is entirely off the audio path:
+- `mboxflash` — arm64 macOS CLI to program the TAS1020A EEPROM.
+  Runs infrequently (only when updating firmware).
+- Firmware source tree — 8051 C, built with SDCC (open-source,
+  cross-platform) rather than Keil C51 (proprietary, Windows-only).
 
-## 6. Directory layout (mirrors UA-101)
+## 6. Directory layout
 
 ```
 mbox/
-├── plan.md                     ← this file
-├── libmbox_core/               ← USB + rings + stream state (C)
-│   ├── mbox.h
-│   ├── mbox_stream.c
-│   ├── mbox_ring.c
-│   └── mbox_shm.{h,c}
-├── mboxd/                      ← userspace daemon
-│   └── main.m
-├── mbox_plugin/                ← HAL plug-in
-│   ├── mbox_plugin.c
-│   └── Info.plist
+├── plan.md
+├── mboxflash/                  ← native arm64 macOS flasher
+│   ├── main.m                    (IOUSBHost)
+│   ├── protocol.{h,c}            (reimplements Digi's flash protocol)
+│   └── Makefile
+├── firmware_stock/             ← RE artifacts from Digi's v22 flasher
+│   ├── strings_i386.txt
+│   ├── protocol_notes.md         (bmRequestType/bRequest/wValue map)
+│   ├── flash_payload.bin         (extracted firmware blob when found)
+│   └── disasm/                   (radare2 project + annotations)
+├── firmware_stock_dumped/      ← EEPROM contents pulled from device
+│   ├── v22_dump.bin
+│   ├── disasm/                   (8051 disassembly + annotations)
+│   └── pinout.md                 (board wiring derived from firmware)
+├── firmware_uac/               ← our custom class-compliant firmware
+│   ├── src/                      (8051 C, SDCC toolchain)
+│   ├── descriptors.c             (UAC 1.0 device+config descriptors)
+│   ├── isoc.c                    (isochronous audio streaming)
+│   ├── i2s.c                     (I²S peripheral driver)
+│   ├── spdif.c                   (CS8427 control via I²C)
+│   └── Makefile
 ├── tools/
 │   ├── descriptor_dump.sh
-│   ├── measure_quality.sh
-│   └── test_routing.sh
-├── reference/
-│   ├── quirks-table.h.snippet  ← copy of the Mbox 1 quirk entry
-│   ├── mixer_quirks.c.snippet  ← copy of snd_mbox1_* helpers
-│   └── zammit_notes.md         ← distilled from the write-up
-└── Makefile
+│   └── (misc helpers)
+└── reference/
+    ├── firmware/                 (Digi flasher .dmg + Read Me — gitignored)
+    ├── phase0/                   (device descriptor dumps)
+    ├── mbox1_mixer_quirks.c.snippet
+    ├── mbox1_quirks-table.h.snippet
+    └── tas1020a/                 (TI datasheet, UAC reference, if we can find it)
 ```
 
 ## 7. Implementation phases
 
-Shorter than UA-101 across the board — no rate switching, no feedback
-loop, no asymmetric channel handling.
+### Phase 1: Reverse-engineer the stock flasher (in progress)
+- Extract i386 slice from `Update Mbox Firmware v22.app`.
+- Static analysis with radare2: locate `PrepareForDownload`, find
+  every `IOUSBDeviceInterface` control-transfer call site, note the
+  bmRequestType / bRequest / wValue / wIndex / payload pattern.
+- Locate the firmware payload in the binary — 32 KB or so of 8051
+  code destined for TAS1020A EEPROM. Not yet found in obvious
+  places; may be compressed or in a resource we haven't opened.
+- Deliverable: `firmware_stock/protocol_notes.md` fully specifying
+  the flash sequence, and `firmware_stock/flash_payload.bin`.
 
-### Phase 0: Reconnaissance and firmware check (1–2 days)
-- Full USB descriptor dump on macOS (`system_profiler SPUSBDataType`,
-  `ioreg -p IOUSB -l`).
-- Confirm VID/PID `0x0dba:0x1000` matches expectation.
-- Confirm endpoints 0x02 (OUT) + 0x81 (IN) exist with wMaxPacketSize
-  0x130 at iface 1 altsetting 1.
-- **Read firmware version via control transfer** — must be ≥ 0.22.
-  If lower, stop and upgrade first (proprietary tool on a Mac that
-  still has Rosetta / old OS, or the desolder trick — decide then).
-- Confirm nothing on macOS grabs the interface (probable, since
-  vendor-specific).
-- Save all dumps into `reference/phase0/`.
+### Phase 2: Native macOS flasher (1 week)
+- Write `mboxflash` in ObjC using IOUSBHost.
+- Implement the protocol from Phase 1's notes.
+- First run: flash the ORIGINAL Digi v22 payload back onto the
+  device (safest possible test — should end up in the same state).
+- Confirm `bcdDevice` reads 0x22 after re-enumeration.
 
-### Phase 1: IOUSBHost skeleton + capture (3–5 days)
-- Claim device, open iface 1 alt 1.
-- Fire the two control transfers to set clock=internal-48k and
-  input=analog.
-- Submit iso IN URBs on EP 0x81, dump raw payload.
-- Verify format is S24_3BE 2ch by decoding to float and dumping a
-  WAV — sine into ch 1 should look like a sine.
+### Phase 3: Fix this unit's firmware (1 day)
+- Run `mboxflash` on the actual Mbox with the Digi v22 payload.
+- Confirm playback is clean (no more Rev-20 white-noise bug).
+- From this point on, this Mbox can be used safely with the Linux
+  driver / any UAC-emulating tool, so the flasher is proven safe
+  even if the class-compliant firmware effort stalls.
 
-### Phase 2: Playback + implicit feedback (1–2 weeks)
-- Iso OUT URBs on EP 0x02 at nominal 48 samples/pkt.
-- Capture EP 0x81 is async — track packet-size deltas over a window
-  to derive the device's effective sample rate (mirrors UA-101's
-  implicit-feedback code in `libua101_core/ua101_stream.c`).
-- Feed that back into playback pacing so the two directions stay
-  locked. Simplest form: emit `48 ± δ` samples per playback URB
-  based on capture arrival rate.
-- Loopback test: sine → EP 0x02, monitor with headphones, verify
-  no drift over 10 min.
+### Phase 4: Reverse-engineer the stock firmware (2–4 weeks)
+- After flashing, dump the EEPROM contents back through `mboxflash`
+  read path (if the Digi protocol supports READ_EEPROM — some do).
+- If not, extract the payload from the flasher binary as canonical
+  reference — it's what got written.
+- Disassemble the 8051 image (SDCC comes with a disassembler;
+  IDA / Ghidra also handle 8051).
+- Reverse: USB descriptors, EP0 handlers, isoc audio path, I²S
+  configuration, CS8427 init, GPIO mapping to front-panel switches
+  and the S/PDIF chip.
+- Deliverable: `firmware_stock_dumped/pinout.md`.
 
-### Phase 3: shm IPC layer (2–3 days)
-- Port `libua101_shm` → `libmbox_shm`. Trivial rename + version bump.
-- Verify with a standalone reader/writer test (copy UA-101's).
+### Phase 5: Class-compliant firmware (4–8 weeks)
+- Start from TI's TAS1020A UAC reference (part of the eval kit,
+  should be recoverable from TI archives — may need another
+  research fork). Fallback: write from scratch using the TAS1020A
+  datasheet + open-source 8051 USB stacks.
+- Match the board pinout learned in Phase 4.
+- Enumerate as UAC 1.0: 2ch S24_3LE at 44.1 + 48 kHz.
+- Get through iterating without bricking — validate on the device,
+  fall back to Digi v22 via `mboxflash` if the custom firmware is
+  unbootable.
 
-### Phase 4: HAL plug-in (1 week)
-- Copy `ua101_plugin.c` → `mbox_plugin.c`, strip UA-101-isms:
-  - Asymmetric channel count logic → gone (fixed 2/2).
-  - Rate-switching / `RequestDeviceConfigurationChange` polling
-    machinery → gone (fixed 48 kHz).
-  - Anchor triple stays, IO callback stays.
-- Expose clock-source and input-source as CoreAudio properties (or
-  defer to a separate `mboxctl` CLI if the property model is painful).
-- Install to `/Library/Audio/Plug-Ins/HAL/`.
+### Phase 6 (optional): Feature parity + polish
+- S/PDIF I/O as switchable input source (mirror Linux quirk's
+  input-source concept, but exposed as a UAC selector unit).
+- Clock-source selector (internal vs. S/PDIF sync) as a UAC unit.
+- Support 44.1 kHz explicitly (Digi's firmware might only do 48).
+- Firmware version bumps signaled cleanly through bcdDevice.
 
-### Phase 5: Logic Pro first-light (2–3 days)
-- Round-trip test at 48 kHz.
-- THD/SNR measurement via `measure_quality.sh` (copy UA-101's).
-- Verify clock-source switch (Internal vs S/PDIF sync) works.
-- Verify input-source switch (Analog vs S/PDIF).
+## Bricking / recovery plan
 
-### Phase 6 (optional): polish
-- S/PDIF I/O routed as additional CoreAudio channels if the format
-  descriptor supports it (may already be included in the 2ch stream
-  when source=S/PDIF — need to check).
-- No MIDI phase (Mbox has none).
-- Pro Tools: modern PT probably ignores non-Avid devices, worth a
-  5-minute test but not a blocker.
+Every custom-firmware attempt risks writing an image that the
+TAS1020A can't boot from. Before flashing anything but Digi's
+signed v22 image, we need a recovery path:
+
+- **TAS1020A ISP mode.** The chip has a boot-loader mode entered
+  by pulling specific pins low at reset. If it's accessible on
+  the Mbox 1's board (traces to a header, or possible with a clip
+  probe), we can always reflash even from a completely bricked
+  state. TODO: locate on the PCB.
+- **Digi's original v22 payload** as the "known-safe" image.
+  Keep it around forever.
+- Iterate custom firmware in a dry-run mode first (compile,
+  simulate under uVision / SDCC's mcs51 sim) before ever flashing.
 
 ## 8. Lessons carried from UA-101
 
-Applied to Mbox from day one:
+Most of the UA-101 architecture is off the table (no driver). What
+DOES carry over:
 
-1. **Plug-in reads shm on Initialize** to learn actual format, even
-   though Mbox is fixed-rate. Habit worth keeping.
-2. **Direct callback I/O in the daemon, no bridge rings.** Mirror
-   the Linux-style design (see UA-101 `main.m` refactor).
-3. **`.gitignore` and Makefile from day one** — copy UA-101's.
-4. **Check firmware version in Phase 0** — a broken FW will look like
-   a driver bug and eat days.
+1. **Reference the Linux driver source seriously.** Even for the
+   custom-firmware effort, `sound/usb/mixer_quirks.c` documents
+   the four vendor control transfers Digi's stock firmware honors —
+   if we want ours to be a drop-in replacement for people already
+   running the Linux driver, ours should honor them too.
+2. **Verify firmware version before assuming anything works.**
+   Rev-20 vs v22 wasted half a day; TAS1020A firmware iterations
+   will be worse. Read `bcdDevice` at every step.
+3. **Save every reference artifact.** `reference/` structure paid
+   off on UA-101, keep the discipline here.
 
 ## 9. Open questions
 
