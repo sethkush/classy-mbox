@@ -61,12 +61,38 @@ Then clears `0x21.3 / 0x21.4` and re-arms EP0 IN status stage
 at `0x0006`. Main loop dispatches on `0x0A` and physically reconfigures
 the audio path.
 
-## I²C usage
+## I²C usage — TWO buses
+Rev 20 uses **two** independent I²C buses:
+
+### Bus 1: hardware I²C peripheral (0xFFC0-C3) → boot EEPROM only
 Every access to `I²CADR (0xFFC3)` writes `0xA0` = 7-bit address `0x50`
-(the boot EEPROM 24C64). **Rev 20 does NOT touch the CS8427 via I²C.**
-The S/PDIF chip is either strap-configured on the board or driven via a
-GPIO/mux + channel-status polling — need to confirm from the Mbox
-schematic (not yet located).
+= the boot EEPROM 24C64. Read/write helpers at `0x0C00` / `0x0CEF`.
+Used only for boot-time firmware load and mode-persistence.
+
+### Bus 2: bit-banged software I²C on P1.3 / P1.4 → CS8427
+**Discovered late** — this changes the earlier assumption that Rev 20
+doesn't touch the CS8427. The bit-banger lives at `0x0C57`:
+
+- **P1.3 (SFR 0x90 bit 3)** = SCL (clock line)
+- **P1.4 (SFR 0x90 bit 4)** = SDA (data line)
+- **RAM `0x25.7`** = idle/latch flag (probably /CS or START-condition flag)
+
+The routine sends **3 bytes per transaction**:
+1. `0x20` — the CS8427's 7-bit I²C write address `0b0010_000` shifted +
+   R/W=0. (CS8427 with AD0=0 uses addresses 0x20/0x21.)
+2. `RAM[0x33]` — the register subaddress (loaded from R7 at entry).
+3. `RAM[0x01]` — the data byte.
+
+Bit loop (per byte): rotates the byte MSB→LSB, sets P1.4 to the bit
+value, then pulses P1.3 high/low as the clock. Between-byte and
+start/stop delimiters use `lcall 0x0E62`, which is likely the port
+bit-bang timing helper.
+
+**This is the actual channel that programs the CS8427** — sample rate,
+input select (analog TX vs external S/PDIF RX), mute, channel-status
+bits. Every mode-change handler that calls `0x0728` will end up
+generating a series of these 3-byte SPI-like packets to reconfigure the
+CS8427 for the new sample rate / clock source.
 
 I²C primitives:
 - `0x0C00` — I²C **write** (device addr in R7, register in R3/RAM[5], value in R6).
@@ -176,7 +202,73 @@ step through with `pdf`).
 ## Physical hardware bindings still unknown
 - Which port pin drives the S/PDIF-vs-analog input mux?
 - Which pins read the front-panel source buttons + 48V switch?
-- **What `0x0728` (parameterized by R7) actually writes to XDATA/ports.**
-  This is the next-most-valuable trace.
-- Where the C-port (I²S) sample-rate registers get programmed
-  (`CPTCNF0..3 = 0xFFDB..0xFFDE`, `CPTBTRX/BTX = 0xFFD5/0xFFD6`).
+
+## `0x0728` (`ApplyAudioMode(mode)`) — hardware config engine
+Called by every mode-change path with `R7` set to a mode index.
+Body starts at ~`0x0738` (bytes 0x0720-0x072F appear to be inline data
+that r2 mis-decodes — the LCALL from mode handlers dispatches via the
+`jmp @a+dptr` at 0x0728 into the real body). Confirmed side-effects on
+XDATA:
+
+**Streaming-endpoint config** (audio EP3, both directions):
+- `IEPCNF3 (0xFF60) = 0xC5`   — enable IN EP3, IN-buffer valid
+- `IEPBBAX3 (0xFF63) = 0`     — zero buffer offset lo (reset)
+- `IEPBSIZ3 (0xFF67) = 0`     — reset byte-count
+- `OEPCNF3 (0xFF98) = 0xC5`   — enable OUT EP3, ISO
+- `OEPBBAX3 (0xFF9B) = 0`     — reset
+- `OEPBSIZ3 (0xFF9F) = 0`     — reset
+
+**C-port (I²S) / SOF-sync** (per-mode branches):
+- Mode-5 branch (0x07AB): clears `GLOBCTL.0 (0xFFB1 &= 0xFE)`, writes
+  `CPTCFG (0xFFD4) = 1`, re-enables `GLOBCTL.0 |= 1` → re-clocks C-port
+  under a new master ratio.
+- Common tail (0x07C5): `IEPBBAX2 (0xFFF6) = 0x10`, `DMACTL1 (0xFFE1) |=
+  0xC0` (enable DMA0/1 channels).
+
+**DMA channel setup** (per mode):
+- Mode 1 (44.1k?): `DMACTL1 (0xFFE1) = 0x0D`, tag `RAM[0x08]=1`,
+  I²C-persist target `(0x31, 0x32) = (0x04, 0x41)`.
+- Mode 2 (48k?): writes `0xFFE5 = 0x4B`, `0xFFE6 = 0x6A`, `0xFFE7 = 0x20`
+  (DMA source/dest ptrs) plus mirror `0xFFF7/8/9 = 0x4B/0x6A/0x20`
+  (second DMA channel), tag `RAM[0x08]=2`.
+- Mode 3 (S/PDIF slave?): just `lcall 0x0DEC` (probably kicks CS8427
+  channel-status polling), tag `RAM[0x08]=3`.
+- Mode 5: I²S clock re-init as above.
+
+**EEPROM persist** (common tail 0x07D7):
+`mov r5,0x32 ; mov r7,0x31 ; lcall 0x0C45` — writes the current mode
+descriptor (2 bytes) to EEPROM 0x50 register 0x31, so the box comes up
+in its last-used input/clock combination after a power-cycle. RAM 0x08
+holds the current mode index.
+
+## Reset / init block starting at `0x08DD`
+Called during boot before the main loop enters:
+- `GLOBCTL (0xFFFC) = 0`, `OEPCNF0-hi (0xFFB0) = 1` — USB glue.
+- **`P1 (SFR 0x90) = 0x00`**, **`P3 (SFR 0xB0) = 0xFF`** — port pin
+  boot state. **This is where the physical GPIO mapping lives.**
+  Whichever P1/P3 bits later get toggled by the mode 4/5 handlers
+  (input=analog vs S/PDIF) will name the mux GPIO.
+- `TMOD (0x89) = 0x11`, `TH0 (0x8C) = 0xCE` — Timer 0/1 mode 1, 8-bit
+  reload — this is the SOF/audio-tick timer.
+
+## Key insight for custom firmware
+**Rev 20 talks to the CS8427 via bit-banged I²C on P1.3/P1.4.**
+All *audio streaming* configuration happens via TAS1020A internal
+registers, and the S/PDIF chip is programmed alongside:
+- **Endpoints 3 IN + 3 OUT** (`0xFF60/0xFF98`) carry USB isochronous audio.
+- **DMA channels 0/1** (`0xFFE1-0xFFE7`) shuttle bytes between USB
+  buffers and the C-port.
+- **C-port** (`0xFFD4-0xFFDE`) is the I²S master, wired to the CS4272
+  (or similar) codec and the CS8427 S/PDIF transceiver in parallel.
+- The **analog-vs-S/PDIF input mux** must be a GPIO on P1 or P3 (not
+  yet identified — needs the mode-4 vs mode-5 handler diff).
+
+For a class-compliant replacement we can steal Rev 20's DMA + C-port
+settings verbatim (they're not vendor-specific — they're the TAS1020A
+UAC1 fast path). The only board-specific pieces we still need are:
+1. The two-or-three GPIO pins that select input source (P1/P3 bits).
+2. The front-panel button matrix (probably P1 inputs).
+3. The 48V phantom-power relay pin (if firmware-driven).
+
+The disassembly window we have (~4 KB) covers all of these — they just
+need targeted grep once we know which port bits Rev 20 flips.
