@@ -57,15 +57,20 @@ Confirmed from ALSA thread + upstream Linux driver + Zammit write-up:
   everything I can find — not exposed via USB. No driver work needed.
 - **MIDI:** Mbox 1 has none. Skip that phase entirely.
 - **Physical I/O on our unit (confirmed by inspection):**
-  - 2× XLR/TRS combo inputs (mic/line/instrument).
-  - 2× TRS inserts (pre-ADC analog — invisible to the driver).
-  - 2× TRS line outputs.
-  - 1× TRS headphone jack (mirrors the line output).
-  - S/PDIF I/O on RCA.
-  - Front-panel +48V phantom switch (analog — likely not
-    USB-visible; verify in Phase 0 whether the state is queryable
-    via a vendor control transfer).
-  - USB-B jack.
+  - Rear: 2× XLR/TRS combo inputs (mic/line/instrument), 2× TRS
+    inserts (pre-ADC analog, invisible to the driver), 2× TRS line
+    outputs, S/PDIF in/out on RCA, 1/4" TRS headphone jack, USB-B.
+  - Front: 3.5 mm headphone jack. Both headphone jacks mirror the
+    line output.
+- **Front-panel controls (all analog, none exposed on USB — no
+  driver-side work needed):**
+  - Per-channel source-type switch (mic / line / inst).
+  - Per-channel gain knob.
+  - Input↔playback mix knob (the monitoring blend).
+  - Headphone volume knob with a mono-sum switch.
+  - +48V phantom switch (also analog — but verify in Phase 0
+    whether its state happens to be queryable via a vendor
+    control transfer; would be useful to surface if so).
 
 ## 3. Linux driver analysis (`sound/usb/`, mainline since 3.19)
 
