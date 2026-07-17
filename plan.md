@@ -146,8 +146,8 @@ Same recommendations as UA-101 — reuse the analysis in
 
 Single architecture, mirroring UA-101 Architecture B (HAL plug-in) —
 skipping the BlackHole prototype since we already validated that path
-on UA-101 and Mbox is proportionally cheaper (2ch, single rate,
-symmetric, no feedback loop).
+on UA-101 and Mbox is proportionally cheaper (2ch, single fixed rate,
+symmetric channel counts). Feedback loop still required — see §3.
 
 ```
         USB bus
