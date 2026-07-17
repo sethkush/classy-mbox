@@ -144,10 +144,9 @@ BOOL DFU_SendEnterDFURequest(io_service_t unused, NSError **error) {
     return YES;
 }
 
-BOOL DFU_Download(IOUSBInterfaceInterface **iface, uint16_t interfaceNumber,
+BOOL DFU_Download(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                   uint16_t blockNum, const void *data, uint16_t length,
                   NSError **error) {
-    (void)interfaceNumber;
     IOUSBDevRequest req = {
         .bmRequestType = 0x21,
         .bRequest      = DFU_DNLOAD,
@@ -156,7 +155,7 @@ BOOL DFU_Download(IOUSBInterfaceInterface **iface, uint16_t interfaceNumber,
         .wLength       = length,
         .pData         = (void *)data,
     };
-    IOReturn rc = (*iface)->ControlRequest(iface, 0, &req);
+    IOReturn rc = (*dev)->DeviceRequest(dev, &req);
     if (rc != kIOReturnSuccess) {
         if (error) *error = usbError(
             [NSString stringWithFormat:@"DFU_DNLOAD block=%u len=%u", blockNum, length], rc);
@@ -165,7 +164,7 @@ BOOL DFU_Download(IOUSBInterfaceInterface **iface, uint16_t interfaceNumber,
     return YES;
 }
 
-BOOL DFU_GetStatus(IOUSBInterfaceInterface **iface, uint16_t interfaceNumber,
+BOOL DFU_GetStatus(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                    DFUStatus *out, NSError **error) {
     IOUSBDevRequest req = {
         .bmRequestType = 0xA1,
@@ -175,7 +174,7 @@ BOOL DFU_GetStatus(IOUSBInterfaceInterface **iface, uint16_t interfaceNumber,
         .wLength       = sizeof(DFUStatus),
         .pData         = out,
     };
-    IOReturn rc = (*iface)->ControlRequest(iface, 0, &req);
+    IOReturn rc = (*dev)->DeviceRequest(dev, &req);
     if (rc != kIOReturnSuccess) {
         if (error) *error = usbError(@"DFU_GETSTATUS", rc);
         return NO;
@@ -256,4 +255,41 @@ BOOL DFU_QueryStatus(DFUStatus *out, NSError **error) {
         return NO;
     }
     return YES;
+}
+
+BOOL DFU_WithOpenDevice(BOOL (^body)(IOUSBDeviceInterface **dev,
+                                     uint16_t interfaceNumber,
+                                     NSError **error),
+                        NSError **error) {
+    CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
+    if (!match) { if (error) *error = usbError(@"IOServiceMatching", -1); return NO; }
+    CFDictionarySetValue(match, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(0xFFFF));
+    CFDictionarySetValue(match, CFSTR(kUSBProductID), (__bridge CFNumberRef)@(0xFFFE));
+    io_iterator_t it = IO_OBJECT_NULL;
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return NO;
+    io_service_t svc = IOIteratorNext(it);
+    IOObjectRelease(it);
+    if (!svc) { if (error) *error = usbError(@"DFU-mode Mbox not found — hold source-button + replug", -1); return NO; }
+
+    IOCFPlugInInterface **plugin = NULL;
+    SInt32 score = 0;
+    IOCreatePlugInInterfaceForService(svc, kIOUSBDeviceUserClientTypeID,
+        kIOCFPlugInInterfaceID, &plugin, &score);
+    IOObjectRelease(svc);
+    if (!plugin) { if (error) *error = usbError(@"CreatePlugInInterface(DFU dev)", -1); return NO; }
+    IOUSBDeviceInterface **dev = NULL;
+    (*plugin)->QueryInterface(plugin,
+        CFUUIDGetUUIDBytes(kIOUSBDeviceInterfaceID), (LPVOID*)&dev);
+    (*plugin)->Release(plugin);
+    if (!dev) { if (error) *error = usbError(@"QueryInterface(DFU dev)", -1); return NO; }
+    IOReturn rc = (*dev)->USBDeviceOpen(dev);
+    if (rc != kIOReturnSuccess) {
+        (*dev)->Release(dev);
+        if (error) *error = usbError(@"USBDeviceOpen(DFU dev)", rc);
+        return NO;
+    }
+    BOOL ok = body(dev, 0, error);
+    (*dev)->USBDeviceClose(dev);
+    (*dev)->Release(dev);
+    return ok;
 }

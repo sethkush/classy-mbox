@@ -195,6 +195,149 @@ static int cmd_scan(const char *path) {
     return 0;
 }
 
+static NSArray<MBoxPayloadRecord *> *loadPayload(const char *path, NSError **err) {
+    NSData *blob = [NSData dataWithContentsOfFile:@(path) options:0 error:err];
+    if (!blob) return nil;
+    NSUInteger startOff = 0, runLen = 0;
+    if (!MBoxPayload_Autodetect(blob, 4, &startOff, &runLen)) {
+        if (err) *err = [NSError errorWithDomain:@"MBoxFlash" code:1 userInfo:@{
+            NSLocalizedDescriptionKey: @"no plausible payload record stream in file"}];
+        return nil;
+    }
+    // Collect ALL runs, not just the primary one, since real firmware has
+    // multiple sections separated by small gaps.
+    NSMutableArray<MBoxPayloadRecord *> *all = [NSMutableArray array];
+    NSUInteger last_end = 0;
+    for (NSUInteger off = 0; off + 16 <= blob.length; off += 4) {
+        if (off < last_end) continue;
+        NSUInteger n = MBoxPayload_ValidRunLength(blob, off);
+        if (n < 2) continue;
+        NSArray<MBoxPayloadRecord *> *recs = MBoxPayload_Parse(blob, off);
+        // Skip the false-positive section that lives inside the C++ debug-strings
+        // region (small records with weird sizes like 101, 115).
+        BOOL looks_bogus = NO;
+        for (MBoxPayloadRecord *r in recs) {
+            NSUInteger sz = r.data.length;
+            // real records are 32, 128, 288, 544, 992, 1760, 3104 — all round-ish
+            if (sz == 101 || sz == 115) { looks_bogus = YES; break; }
+        }
+        if (!looks_bogus) [all addObjectsFromArray:recs];
+        MBoxPayloadRecord *last = recs.lastObject;
+        last_end = last.fileOffset + 16 + last.data.length;
+    }
+    return all;
+}
+
+static int cmd_flash_check(const char *path) {
+    NSError *err = nil;
+    NSArray<MBoxPayloadRecord *> *recs = loadPayload(path, &err);
+    if (!recs) die(@"payload load failed", err);
+    NSUInteger totalBytes = 0;
+    for (MBoxPayloadRecord *r in recs) totalBytes += r.data.length;
+    printf("payload: %lu records, %lu bytes (%.1f KB)\n",
+           (unsigned long)recs.count, (unsigned long)totalBytes, totalBytes/1024.0);
+
+    __block BOOL ok = NO;
+    err = nil;
+    ok = DFU_WithOpenDevice(^BOOL(IOUSBDeviceInterface **dev, uint16_t ifaceNum, NSError **e) {
+        DFUStatus st = {0};
+        if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+        printf("device DFU state: %s / %s\n",
+               DFU_StateName((DFUState)st.bState).UTF8String,
+               DFU_StatusName(st.bStatus).UTF8String);
+        if (st.bState != DFU_dfuIDLE) {
+            if (e) *e = [NSError errorWithDomain:@"MBoxFlash" code:2 userInfo:@{
+                NSLocalizedDescriptionKey: @"device not in dfuIDLE — abort dry-run"}];
+            return NO;
+        }
+        printf("would send %lu DFU_DNLOAD transfers (block 0..%lu) + 1 zero-length end\n",
+               (unsigned long)recs.count, (unsigned long)recs.count-1);
+        return YES;
+    }, &err);
+    if (!ok) die(@"pre-flight check failed", err);
+    printf("dry-run OK. Re-run with --flash (no --check) to actually write.\n");
+    return 0;
+}
+
+static int cmd_flash(const char *path) {
+    NSError *err = nil;
+    NSArray<MBoxPayloadRecord *> *recs = loadPayload(path, &err);
+    if (!recs) die(@"payload load failed", err);
+    NSUInteger totalBytes = 0;
+    for (MBoxPayloadRecord *r in recs) totalBytes += r.data.length;
+
+    printf("=== ABOUT TO WRITE EEPROM ===\n");
+    printf("payload: %lu records, %lu bytes\n", (unsigned long)recs.count, (unsigned long)totalBytes);
+    printf("device: DFU-mode Mbox at 0xFFFF:0xFFFE\n");
+    printf("proceed? [type 'yes' to confirm]: ");
+    fflush(stdout);
+    char answer[16] = {0};
+    if (!fgets(answer, sizeof(answer), stdin) || strncmp(answer, "yes", 3) != 0) {
+        printf("aborted.\n");
+        return 1;
+    }
+
+    __block BOOL ok = NO;
+    err = nil;
+    ok = DFU_WithOpenDevice(^BOOL(IOUSBDeviceInterface **dev, uint16_t ifaceNum, NSError **e) {
+        DFUStatus st = {0};
+        if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+        if (st.bState != DFU_dfuIDLE) {
+            if (e) *e = [NSError errorWithDomain:@"MBoxFlash" code:2 userInfo:@{
+                NSLocalizedDescriptionKey: [NSString stringWithFormat:
+                    @"device is in %s, need dfuIDLE — is DFU trigger held?",
+                    DFU_StateName((DFUState)st.bState).UTF8String]}];
+            return NO;
+        }
+        for (NSUInteger i = 0; i < recs.count; i++) {
+            MBoxPayloadRecord *r = recs[i];
+            printf("  block %3lu/%lu  size=%4lu  ", (unsigned long)i,
+                   (unsigned long)recs.count-1, (unsigned long)r.data.length);
+            fflush(stdout);
+            if (!DFU_Download(dev, ifaceNum, (uint16_t)i,
+                              r.data.bytes, (uint16_t)r.data.length, e)) {
+                printf("FAILED\n"); return NO;
+            }
+            // Poll until dfuDNLOAD_IDLE
+            for (int poll = 0; poll < 100; poll++) {
+                if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+                if (st.bState == DFU_dfuDNLOAD_IDLE) break;
+                if (st.bState == DFU_dfuERROR) {
+                    printf("device entered dfuERROR: %s\n",
+                           DFU_StatusName(st.bStatus).UTF8String);
+                    return NO;
+                }
+                uint32_t poll_ms = st.bwPollTimeout[0]
+                                | (st.bwPollTimeout[1] << 8)
+                                | (st.bwPollTimeout[2] << 16);
+                usleep((poll_ms ? poll_ms : 5) * 1000);
+            }
+            printf("OK\n");
+        }
+        // Zero-length DFU_DNLOAD to signal end of download
+        printf("  zero-length end marker... ");
+        if (!DFU_Download(dev, ifaceNum, (uint16_t)recs.count, NULL, 0, e)) {
+            printf("FAILED\n"); return NO;
+        }
+        printf("OK\n");
+        // Poll for manifest phase
+        for (int poll = 0; poll < 100; poll++) {
+            if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+            if (st.bState == DFU_dfuMANIFEST || st.bState == DFU_dfuIDLE) break;
+            if (st.bState == DFU_dfuERROR) return NO;
+            usleep(20 * 1000);
+        }
+        printf("manifest complete. Final state: %s\n", DFU_StateName((DFUState)st.bState).UTF8String);
+        return YES;
+    }, &err);
+    if (!ok) die(@"flash failed", err);
+
+    printf("\n=== FLASH COMPLETE ===\n");
+    printf("Physically unplug the Mbox, wait 3 seconds, plug it back in NORMALLY\n");
+    printf("(without holding any button). Then run --probe to confirm bcdDevice = 0x0022.\n");
+    return 0;
+}
+
 static int cmd_dfu_status(void) {
     DFUStatus st = {0};
     NSError *err = nil;
@@ -214,7 +357,7 @@ int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc < 2) {
             fprintf(stderr,
-                "usage: mboxflash --probe | --enter-dfu | --dfu-status | --parse PATH | --scan PATH\n");
+                "usage: mboxflash --probe | --enter-dfu | --dfu-status | --parse PATH | --scan PATH\n        | --flash-check PATH | --flash PATH\n");
             return 2;
         }
         NSString *cmd = @(argv[1]);
@@ -223,6 +366,8 @@ int main(int argc, const char *argv[]) {
         else if ([cmd isEqualToString:@"--parse"] && argc >= 3) return cmd_parse(argv[2]);
         else if ([cmd isEqualToString:@"--scan"]  && argc >= 3) return cmd_scan(argv[2]);
         else if ([cmd isEqualToString:@"--dfu-status"]) return cmd_dfu_status();
+        else if ([cmd isEqualToString:@"--flash-check"] && argc >= 3) return cmd_flash_check(argv[2]);
+        else if ([cmd isEqualToString:@"--flash"]       && argc >= 3) return cmd_flash(argv[2]);
         else {
             fprintf(stderr, "unknown command '%s'\n", argv[1]);
             return 2;

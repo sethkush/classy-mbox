@@ -49,12 +49,21 @@ typedef struct __attribute__((packed)) {
 BOOL DFU_SendEnterDFURequest(io_service_t device, NSError **error);
 
 // Standard DFU requests, once the device has re-enumerated in DFU mode.
-BOOL DFU_Download(IOUSBInterfaceInterface **iface, uint16_t interfaceNumber,
+BOOL DFU_Download(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                   uint16_t blockNum, const void *data, uint16_t length,
                   NSError **error);
-BOOL DFU_GetStatus(IOUSBInterfaceInterface **iface, uint16_t interfaceNumber,
+BOOL DFU_GetStatus(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                    DFUStatus *out, NSError **error);
 BOOL DFU_QueryStatus(DFUStatus *out, NSError **error);
+
+// Open the DFU-mode Mbox, execute a callback with an open handle
+// suitable for DFU_Download / DFU_GetStatus calls. Cleanly closes on exit.
+// The callback returns YES to continue, NO to abort (and set *error).
+BOOL DFU_WithOpenDevice(BOOL (^body)(IOUSBDeviceInterface **dev,
+                                     uint16_t interfaceNumber,
+                                     NSError **error),
+                        NSError **error);
+
 NSString *DFU_StateName(DFUState s);
 NSString *DFU_StatusName(uint8_t bStatus);
 
