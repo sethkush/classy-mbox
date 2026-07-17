@@ -19,28 +19,45 @@ Source dumps in this directory:
   to issue `SetAlternate(1, 1)` in the daemon to activate the ISOC EPs.
 - **Bus-powered, 480 mA** — nothing unusual, standard USB bus power.
 
-## Concerning: firmware version
+## Firmware version — resolved (2026-07-16, deep dive)
 
-`bcdDevice = 0x0020`. BCD interpretation = version **0.20**.
+`bcdDevice = 0x0020` = **firmware Rev 20**. Confirmed by cross-check:
+Digidesign shipped exactly two field updaters, named "Mbox Firmware
+Updater Rev 20" and "Mbox Firmware Updater v22" — the numbers line
+up 1:1 with the BCD values `0x0020` and `0x0022`. Multiple Linux
+`lsusb -vv` dumps from other users' pre-flash Mboxes show the same
+`bcdDevice 0.20`. Zammit's own tutorial reads FW version directly
+from `bcdDevice`.
 
-Zammit's Linux write-up warns that Mbox 1 units shipped with firmware
-< 0.22 have a white-noise bug that a Windows/Mac-only upgrade tool
-(`MboxFirmware22_33860.dmg`) fixes.
+**Our unit is on the buggy revision.** The Rev-20 defect manifests
+as sporadic bursts of loud static during **playback** (loud enough
+that Zammit warns of speaker damage). No workaround by mode/rate
+selection — Rev 20 must be flashed to v22 before we can safely
+drive the outputs.
 
-**Caveat:** it's not proven that USB `bcdDevice` == Digi's firmware
-version. Two hypotheses to distinguish before panicking:
+**Capture likely unaffected** — every failure report describes
+playback. So Phase 1 (capture-only skeleton) can proceed safely
+without flashing, as long as we don't route audio out of the box.
 
-1. **`bcdDevice` IS the FW version.** Then this unit is on 0.20 and
-   will produce white noise once we start streaming. Fix requires
-   running Digi's flasher on an older macOS / Windows VM, or the
-   desolder-EEPROM approach.
-2. **`bcdDevice` is a fixed hardware revision, unrelated to FW.**
-   Then it's meaningless and streaming will just work.
+**No alternative FW probe.** The four vendor control transfers in
+Linux's `mixer_quirks.c` (`snd_mbox1_*`) are all class-standard
+GET/SET on clock and input selectors — none read the EEPROM.
 
-**Cheapest way to test:** proceed to Phase 1 (daemon skeleton + claim
-iface 1 alt 1 + submit ISOC IN), and listen to the captured audio.
-If it's white noise regardless of input, hypothesis 1 is confirmed.
-If we can pass a clean signal, hypothesis 2 is confirmed.
+**Flashing.** `MboxFirmware22_33860.dmg` is Mac-only, PPC+Intel
+universal Mach-O. Original Avid download links are dead. Mirrors to
+try (in order of likelihood):
+1. `web.archive.org` snapshots of
+   `archive.digidesign.com/download/mbox/` and
+   `secure.digidesign.com/services/avid/kb/downloads.cfm?digiArticleId=24602`.
+2. The DUC (Digidesign User Conference) forum archives.
+3. `macos9lives.com` thread 1946.
+4. `linuxmusicians.com` thread 11339 (may have a user-hosted mirror).
+5. Personal request on Reddit r/protools.
+
+Once flashed on an old Intel Mac (needs an OS that still runs
+Universal Mach-O — 10.14 Mojave was the last, so likely 10.13 High
+Sierra or earlier for stability), re-run `descriptor_dump.sh` and
+confirm `bcdDevice = 0x0022`.
 
 ## What's still unknown after Phase 0
 

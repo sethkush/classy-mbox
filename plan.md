@@ -12,9 +12,12 @@
 - **Hardware in hand:** Mbox 1, serial `RK10874600Q`.
 - **Phase 0 dump:** complete (2026-07-16). VID/PID confirmed
   `0x0dba:0x1000`, device unclaimed by any audio kext (only
-  `AppleUSBHostCompositeDevice` bound). One open question: `bcdDevice
-  = 0x0020` may indicate firmware 0.20 (below Zammit's 0.22 white-noise
-  threshold) — resolves the first time we stream. Full findings in
+  `AppleUSBHostCompositeDevice` bound). `bcdDevice = 0x0020` confirmed
+  to be firmware **Rev 20** — the buggy pre-v22 revision that
+  produces loud static during playback. **Blocker for Phase 2
+  onwards** unless we obtain `MboxFirmware22_33860.dmg` and flash on
+  an old Intel Mac. Phase 1 (capture skeleton) can proceed safely
+  since the bug appears playback-only. Full findings in
   `reference/phase0/20260717T041923Z/FINDINGS.md`.
 
 ## 1. Executive summary
