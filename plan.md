@@ -10,6 +10,12 @@
 - **Repo:** initialized 2026-07-16, `~/projects/mbox`.
 - **Reference research:** complete (2026-07-16). See §3, §10.
 - **Hardware in hand:** Mbox 1, serial `RK10874600Q`.
+- **Phase 0 dump:** complete (2026-07-16). VID/PID confirmed
+  `0x0dba:0x1000`, device unclaimed by any audio kext (only
+  `AppleUSBHostCompositeDevice` bound). One open question: `bcdDevice
+  = 0x0020` may indicate firmware 0.20 (below Zammit's 0.22 white-noise
+  threshold) — resolves the first time we stream. Full findings in
+  `reference/phase0/20260717T041923Z/FINDINGS.md`.
 
 ## 1. Executive summary
 
