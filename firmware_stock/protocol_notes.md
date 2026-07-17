@@ -91,15 +91,77 @@ Exact boundaries need one more pass: locate the loader in the flasher
 (the function that reads this buffer and pushes it to USB) and read
 its length / offset arguments directly.
 
+## Deeper RE findings
+
+### Payload transfer probably uses isoc OUT via CUSBIsocOutput
+
+The flasher's error-string dump confirms the code path exists:
+
+    "CUSBIsocOutput::DoTransfer ERROR: WriteIsochPipeAsync got error: 0x%X"
+
+`CUSBIsocOutput` is the isochronous-output wrapper — its `DoTransfer`
+method calls `WriteIsochPipeAsync` on the IOUSB interface.
+
+### CUSBIsocOutput::HackStartup @ 0xafde is a warmup, not the payload transfer
+
+Disassembly showed HackStartup:
+1. Zeros a 288-byte buffer at `__bss+0xfeca0..0xfedc0`.
+   (288 = 0x120 = 2ch × 3B × 48 samples, one audio isoc packet.)
+2. Sets counters at `__bss+0xfec80..0xfec86`.
+3. Calls interface vtable slot at byte offset 0x5c on `this->0x20`
+   (likely `SetPipePolicy` or `ClearPipeStall`).
+4. Submits the zero buffer via interface vtable slot at byte offset
+   0x90 on `this->0x80` — very likely `WriteIsochPipeAsync`.
+
+This is a "prime the pump" — one empty isoc packet to open the pipe.
+The firmware bytes get pushed by follow-up transfers we haven't
+pinpointed yet.
+
+### Firmware payload doesn't get referenced by absolute address
+
+No immediate in the binary points to any address in the range
+`0xC1800..0xC3500` (VMAs of the presumed payload region). So the
+payload access must be one of:
+- Indirect through a pointer table set up at startup.
+- Via `dyld` relocation slots that are patched at load-time.
+- Via a base-register + offset computed lazily.
+
+The flasher is stripped and has no OBJC/C++ RTTI symbols to help
+identify vtable slots by name. The IOKit headers we'd need to map
+`call [reg + 0xBC]` etc. to specific methods aren't part of the
+binary.
+
+### Pragmatic conclusion
+
+Continuing pure static analysis to nail down the exact payload
+transfer will keep chipping away but is bounded by the missing
+type info. Faster paths:
+
+- **Dynamic capture.** Run Digi's flasher against the Mbox with a
+  USB analyzer (or `usbmon` on Linux with the Mbox on a Linux host
+  running the flasher under x86_64 emulation — nope, it's a Mach-O).
+  On Apple Silicon, **UTM with QEMU x86_64 emulation of macOS 10.14**
+  works with USB passthrough — the flasher can then run natively on
+  the emulated Mac, and we capture the USB packets from either the
+  Linux/macOS host with `wireshark + usbmon` or `usbdump`.
+- **Instrument the flasher.** Since we know CAudioControlInterface::
+  PrepareForDownload's exact bytes, we could patch the i386 binary
+  to also log the follow-up transfers, or attach lldb (if we can
+  run i386 anywhere — see UTM above).
+- **Ask someone.** Digi/Avid stopped supporting the Mbox 1 around
+  2010; the flasher is 2007. Damien Zammit (Linux driver author) is
+  a candidate to ask — he might have done this RE himself while
+  writing the kernel driver.
+
 ## Known-answers box
 
 | Question | Answer |
 |---|---|
-| "Enter DFU mode" USB request | ✓ Class Set to iface 0, bRequest=0, wValue=0x0A |
-| Firmware payload location | ✓ __DATA/__data ~0xC0880..0xC2580 (approx) |
-| How payload is transferred to the device | ✗ Not yet — async CFRunLoop-driven, probably isoc OUT on iface 1 EP 0x02 |
-| Post-flash sequence | ✓ User prompted to unplug/replug — device re-enumerates with new bcdDevice |
-| Verification / checksum | ✗ Not yet identified |
+| "Enter DFU mode" USB request | ✓ Class SET to iface 0: bmRequestType=0x21 bRequest=0x00 wValue=0x000A |
+| Firmware payload location | ✓ inside __DATA/__data (VMA ~0xC1800..0xC3500) but access mechanism indirect |
+| How payload is transferred to the device | ~ Almost certainly isoc OUT via `WriteIsochPipeAsync` on iface 1 EP 0x02 (based on `CUSBIsocOutput::DoTransfer ... WriteIsochPipeAsync` error string). Exact chunking/framing not yet pinned. |
+| Post-flash sequence | ✓ Prompt user to unplug (power-cycle); on reconnect device enumerates with new bcdDevice |
+| Verification / checksum | ✗ Not identified in static analysis |
 
 ## Rewriting the flasher for arm64 macOS
 
