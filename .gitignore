@@ -1,0 +1,9 @@
+build/
+*.o
+*.a
+*.dylib
+*.dSYM/
+.DS_Store
+*.swp
+compile_commands.json
+.cache/
