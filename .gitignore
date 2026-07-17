@@ -13,3 +13,7 @@ reference/firmware/*.dmg
 
 # Extracted proprietary Digidesign flasher app (personal use only)
 reference/firmware/extracted/
+
+# Build artifacts
+mboxflash/mboxflash
+mboxflash/*.o
