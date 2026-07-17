@@ -112,120 +112,62 @@ static int cmd_enter_dfu(void) {
     return 0;
 }
 
-// Print a run summary line for a parsed record list.
-static void printRecordSummary(NSArray<MBoxPayloadRecord *> *recs) {
-    if (!recs.count) { printf("(no records)\n"); return; }
-    NSUInteger totalBytes = 0;
-    NSMutableString *sizeHist = [NSMutableString string];
-    NSCountedSet *sizeSet = [NSCountedSet set];
-    for (MBoxPayloadRecord *r in recs) {
-        totalBytes += r.data.length;
-        [sizeSet addObject:@(r.data.length)];
-    }
-    NSArray *sortedSizes = [sizeSet.allObjects sortedArrayUsingSelector:@selector(compare:)];
-    for (NSNumber *sz in sortedSizes) {
-        [sizeHist appendFormat:@"  %lu×%lu", (unsigned long)[sizeSet countForObject:sz],
-                                              (unsigned long)sz.unsignedIntegerValue];
-    }
-    printf("  records=%lu  total-data=%lu bytes  size-histogram:%s\n",
-           (unsigned long)recs.count, (unsigned long)totalBytes, sizeHist.UTF8String);
-    NSUInteger last = recs.lastObject.fileOffset + 16 + recs.lastObject.data.length;
-    printf("  span: 0x%lx .. 0x%lx\n",
-           (unsigned long)recs.firstObject.fileOffset, (unsigned long)last);
-}
-
 static int cmd_parse(const char *path) {
     NSError *err = nil;
     NSData *blob = [NSData dataWithContentsOfFile:@(path) options:0 error:&err];
     if (!blob) die([NSString stringWithFormat:@"could not read %s", path], err);
 
-    NSUInteger startOff = 0, runLen = 0;
-    BOOL ok = MBoxPayload_Autodetect(blob, /*minRun=*/4, &startOff, &runLen);
-    if (!ok) {
-        printf("no plausible record stream found (max run: %lu records)\n",
-               (unsigned long)runLen);
-        return 1;
-    }
-    printf("autodetected start: 0x%lx (%lu records)\n\n",
-           (unsigned long)startOff, (unsigned long)runLen);
+    NSUInteger startOff = 0;
+    BOOL found = MBoxPayload_Autodetect(blob, &startOff);
+    if (found)  printf("autodetected payload start at 0x%lx\n\n", (unsigned long)startOff);
+    else        { printf("no known Mbox 1 firmware signature found; parsing from 0x0\n\n"); startOff = 0; }
 
     NSArray<MBoxPayloadRecord *> *recs = MBoxPayload_Parse(blob, startOff);
+    NSUInteger realCount = 0, realBytes = 0, ffCount = 0;
+    uint32_t maxAddr = 0;
     for (NSUInteger i = 0; i < recs.count; i++) {
         MBoxPayloadRecord *r = recs[i];
-        printf("  [%3lu] @0x%05lx  size=%4lu  header:",
-               (unsigned long)i, (unsigned long)r.fileOffset,
-               (unsigned long)r.data.length);
-        const uint8_t *h = r.header.bytes;
-        for (int j = 0; j < 12; j++) printf(" %02x", h[j]);
-        printf("\n");
+        BOOL all_ff = YES;
+        const uint8_t *b = r.data.bytes;
+        for (uint32_t j = 0; j < r.length; j++) if (b[j] != 0xff) { all_ff = NO; break; }
+        if (all_ff) { ffCount++; continue; }
+        realCount++;
+        realBytes += r.length;
+        if (r.address + r.length > maxAddr) maxAddr = r.address + r.length;
+        if (realCount <= 8 || i >= recs.count - 4) {
+            printf("  [%3lu] @0x%05lx  addr=0x%04x  len=%3u  type=%u  data-start=",
+                   (unsigned long)i, (unsigned long)r.fileOffset,
+                   r.address, r.length, r.type);
+            for (uint32_t j = 0; j < 8 && j < r.length; j++) printf("%02x", b[j]);
+            printf("\n");
+        } else if (realCount == 9) {
+            printf("  ...\n");
+        }
     }
     printf("\n");
-    printRecordSummary(recs);
+    printf("%lu records total: %lu real (%lu bytes), %lu FF-fill\n",
+           (unsigned long)recs.count, (unsigned long)realCount,
+           (unsigned long)realBytes, (unsigned long)ffCount);
+    printf("EEPROM addressable range: 0x0000 .. 0x%04x\n", maxAddr);
     return 0;
 }
 
 // Show all offsets in the blob where a run of >= threshold records validates.
 // Useful for understanding whether there are multiple stream sections.
-static int cmd_scan(const char *path) {
-    NSError *err = nil;
-    NSData *blob = [NSData dataWithContentsOfFile:@(path) options:0 error:&err];
-    if (!blob) die([NSString stringWithFormat:@"could not read %s", path], err);
-
-    printf("scanning %lu bytes for record-stream candidates (min run = 2)...\n\n",
-           (unsigned long)blob.length);
-    NSUInteger last_end = 0;
-    NSUInteger totalRecs = 0, totalBytes = 0, sectionCount = 0;
-    for (NSUInteger off = 0; off + 16 <= blob.length; off += 4) {
-        if (off < last_end) continue;  // don't re-report offsets we already covered
-        NSUInteger n = MBoxPayload_ValidRunLength(blob, off);
-        if (n < 2) continue;
-        NSArray<MBoxPayloadRecord *> *recs = MBoxPayload_Parse(blob, off);
-        printf("candidate @ 0x%05lx:\n", (unsigned long)off);
-        printRecordSummary(recs);
-        printf("\n");
-        MBoxPayloadRecord *last = recs.lastObject;
-        last_end = last.fileOffset + 16 + last.data.length;
-        sectionCount++;
-        totalRecs += recs.count;
-        for (MBoxPayloadRecord *rr in recs) totalBytes += rr.data.length;
-    }
-    printf("summary: %lu sections, %lu records, %lu data bytes (%.1f KB)\n",
-           (unsigned long)sectionCount, (unsigned long)totalRecs,
-           (unsigned long)totalBytes, totalBytes/1024.0);
-    return 0;
-}
+// --scan is no longer meaningful with the correct record format: it either
+// finds the (one) record stream or it doesn't. Kept as a stub redirect.
+static int cmd_scan(const char *path) { return cmd_parse(path); }
 
 static NSArray<MBoxPayloadRecord *> *loadPayload(const char *path, NSError **err) {
     NSData *blob = [NSData dataWithContentsOfFile:@(path) options:0 error:err];
     if (!blob) return nil;
-    NSUInteger startOff = 0, runLen = 0;
-    if (!MBoxPayload_Autodetect(blob, 4, &startOff, &runLen)) {
-        if (err) *err = [NSError errorWithDomain:@"MBoxFlash" code:1 userInfo:@{
-            NSLocalizedDescriptionKey: @"no plausible payload record stream in file"}];
-        return nil;
+    NSUInteger startOff = 0;
+    if (!MBoxPayload_Autodetect(blob, &startOff)) {
+        // Fall back to parsing from offset 0 — file is presumed to be raw
+        // record stream (like our extracted rev20_flasher_payload.bin).
+        startOff = 0;
     }
-    // Collect ALL runs, not just the primary one, since real firmware has
-    // multiple sections separated by small gaps.
-    NSMutableArray<MBoxPayloadRecord *> *all = [NSMutableArray array];
-    NSUInteger last_end = 0;
-    for (NSUInteger off = 0; off + 16 <= blob.length; off += 4) {
-        if (off < last_end) continue;
-        NSUInteger n = MBoxPayload_ValidRunLength(blob, off);
-        if (n < 2) continue;
-        NSArray<MBoxPayloadRecord *> *recs = MBoxPayload_Parse(blob, off);
-        // Skip the false-positive section that lives inside the C++ debug-strings
-        // region (small records with weird sizes like 101, 115).
-        BOOL looks_bogus = NO;
-        for (MBoxPayloadRecord *r in recs) {
-            NSUInteger sz = r.data.length;
-            // real records are 32, 128, 288, 544, 992, 1760, 3104 — all round-ish
-            if (sz == 101 || sz == 115) { looks_bogus = YES; break; }
-        }
-        if (!looks_bogus) [all addObjectsFromArray:recs];
-        MBoxPayloadRecord *last = recs.lastObject;
-        last_end = last.fileOffset + 16 + last.data.length;
-    }
-    return all;
+    return MBoxPayload_Parse(blob, startOff);
 }
 
 static int cmd_flash_check(const char *path) {

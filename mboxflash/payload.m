@@ -3,30 +3,27 @@
 @implementation MBoxPayloadRecord
 @end
 
-// Read record at `off`. Return the record and how many bytes it consumed
-// via `outConsumed`. Returns nil if it doesn't parse.
 static MBoxPayloadRecord *readOne(NSData *blob, NSUInteger off,
                                   NSUInteger *outConsumed) {
-    const uint8_t *bytes = blob.bytes;
+    const uint8_t *b = blob.bytes;
     NSUInteger len = blob.length;
-    if (off + 16 > len) return nil;
-
-    uint32_t size = (uint32_t)bytes[off]
-                 | ((uint32_t)bytes[off+1] << 8)
-                 | ((uint32_t)bytes[off+2] << 16)
-                 | ((uint32_t)bytes[off+3] << 24);
-    if (size == 0 || size > MBOX_PAYLOAD_MAX_RECORD_DATA) return nil;
-    if (off + 16 + size > len) return nil;
-
+    if (off + 12 > len) return nil;
+    uint32_t rec_len  = ((uint32_t)b[off+0] << 24) | ((uint32_t)b[off+1] << 16)
+                       | ((uint32_t)b[off+2] << 8)  |  (uint32_t)b[off+3];
+    uint32_t rec_addr = ((uint32_t)b[off+4] << 24) | ((uint32_t)b[off+5] << 16)
+                       | ((uint32_t)b[off+6] << 8)  |  (uint32_t)b[off+7];
+    uint32_t rec_type = ((uint32_t)b[off+8] << 24) | ((uint32_t)b[off+9] << 16)
+                       | ((uint32_t)b[off+10] << 8) |  (uint32_t)b[off+11];
+    if (rec_len == 0 || rec_len > MBOX_PAYLOAD_RECORD_MAX) return nil;
+    if (rec_type > 5) return nil;
+    if (off + 12 + rec_len > len) return nil;
     MBoxPayloadRecord *r = [MBoxPayloadRecord new];
-    r.fileOffset     = off;
-    r.header         = [NSData dataWithBytes:bytes + off + 4 length:12];
-    r.sequenceNumber = (uint32_t)bytes[off+4]
-                    | ((uint32_t)bytes[off+5] << 8)
-                    | ((uint32_t)bytes[off+6] << 16)
-                    | ((uint32_t)bytes[off+7] << 24);
-    r.data = [NSData dataWithBytes:bytes + off + 16 length:size];
-    if (outConsumed) *outConsumed = 16 + size;
+    r.fileOffset = off;
+    r.length     = rec_len;
+    r.address    = rec_addr;
+    r.type       = rec_type;
+    r.data       = [NSData dataWithBytes:b + off + 12 length:rec_len];
+    if (outConsumed) *outConsumed = 12 + rec_len;
     return r;
 }
 
@@ -40,44 +37,31 @@ NSArray<MBoxPayloadRecord *> *MBoxPayload_Parse(NSData *blob,
         if (!r) break;
         [out addObject:r];
         off += consumed;
+        if (r.type == 1) break;  // EOF record
     }
     return out;
 }
 
-NSUInteger MBoxPayload_ValidRunLength(NSData *blob, NSUInteger startOffset) {
-    NSUInteger n = 0;
-    NSUInteger off = startOffset;
-    for (;;) {
-        NSUInteger consumed = 0;
-        MBoxPayloadRecord *r = readOne(blob, off, &consumed);
-        if (!r) break;
-        n++;
-        off += consumed;
-    }
-    return n;
-}
-
-BOOL MBoxPayload_Autodetect(NSData *blob, NSUInteger minRun,
-                            NSUInteger *outStartOffset,
-                            NSUInteger *outRunLength) {
-    NSUInteger bestOff = 0;
-    NSUInteger bestRun = 0;
-    // Scan word-aligned offsets (payload records use a uint32 length prefix,
-    // so alignment matters). Try 4-byte stride first for speed; fall back
-    // to byte-stride if that yields nothing.
-    for (NSUInteger off = 0; off + 16 <= blob.length; off += 4) {
-        NSUInteger n = MBoxPayload_ValidRunLength(blob, off);
-        if (n > bestRun) { bestRun = n; bestOff = off; }
-    }
-    if (bestRun < minRun) {
-        // Retry with byte-stride
-        for (NSUInteger off = 0; off + 16 <= blob.length; off++) {
-            if (off % 4 == 0) continue;  // already tried
-            NSUInteger n = MBoxPayload_ValidRunLength(blob, off);
-            if (n > bestRun) { bestRun = n; bestOff = off; }
+BOOL MBoxPayload_Autodetect(NSData *blob, NSUInteger *outStartOffset) {
+    // First-record signature for any Mbox 1 firmware:
+    //   len = 0x00000020 BE (32), addr = 0, type = 0,
+    //   then data starts with 60 12 12 34 0d ba (TAS1020A/Mbox header + Digi VID).
+    static const uint8_t sig[] = {
+        0x00, 0x00, 0x00, 0x20,     // length 32 BE
+        0x00, 0x00, 0x00, 0x00,     // addr 0
+        0x00, 0x00, 0x00, 0x00,     // type 0
+        0x60, 0x12, 0x12, 0x34,     // start of TAS1020A firmware
+        0x0d, 0xba,                 // Digi VID
+    };
+    NSUInteger sig_len = sizeof(sig);
+    const uint8_t *b = blob.bytes;
+    NSUInteger n = blob.length;
+    if (n < sig_len) return NO;
+    for (NSUInteger i = 0; i + sig_len <= n; i++) {
+        if (memcmp(b + i, sig, sig_len) == 0) {
+            if (outStartOffset) *outStartOffset = i;
+            return YES;
         }
     }
-    if (outStartOffset) *outStartOffset = bestOff;
-    if (outRunLength)   *outRunLength   = bestRun;
-    return bestRun >= minRun;
+    return NO;
 }
