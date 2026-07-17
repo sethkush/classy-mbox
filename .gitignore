@@ -7,3 +7,6 @@ build/
 *.swp
 compile_commands.json
 .cache/
+
+# Proprietary Digidesign firmware flasher (personal use only, not redistributable)
+reference/firmware/*.dmg
