@@ -329,7 +329,7 @@ For a class-compliant replacement we can steal Rev 20's DMA + C-port
 settings verbatim (they're not vendor-specific — they're the TAS1020A
 UAC1 fast path).
 
-**Full P1 pin map (confirmed):**
+**Full P1 pin map (fully decoded ✅):**
 | Pin  | Function                                       |
 |------|------------------------------------------------|
 | P1.0 | Codec SDIN (bit-banged)                        |
@@ -337,14 +337,79 @@ UAC1 fast path).
 | P1.2 | Codec SCLK (bit-banged)                        |
 | P1.3 | CS8427 SCL (bit-banged I²C)                    |
 | P1.4 | CS8427 SDA (bit-banged I²C)                    |
-| P1.5 | toggled at 0x0F3C/F3F (unknown — LED? relay?)  |
-| P1.6 | toggled at 0x0F4E/F51 + 0x0F22 (unknown)       |
-| P1.7 | toggled at 0x0F34/F39 (unknown)                |
+| P1.5 | Input-mux shift-register SCLK                  |
+| P1.6 | Input-mux shift-register latch                 |
+| P1.7 | Input-mux shift-register data                  |
 
-**Still unknown:**
-1. What P1.5, P1.6, P1.7 do (LEDs, 48V relay, or other).
-2. Front-panel button matrix (probably P3 inputs — read only, we've only
-   seen P3 written to, not read).
+Rev 20 uses **FOUR** serial buses in total:
+1. Hardware I²C (0xFFC0-C3) → boot EEPROM at 0x50
+2. Bit-banged I²C on P1.3/P1.4 → CS8427 (chip addr 0x20)
+3. Bit-banged 16-bit serial on P1.0/P1.1/P1.2 → audio codec
+4. Bit-banged 8-bit serial on P1.5/P1.6/P1.7 → **input mux shift
+   register** (probably a 74HC595 driving the mic/line/inst relays)
+
+**`fcn.0x0F0C` = mux-shift-register write** (9 callers). Shifts
+`RAM[0x22]` MSB-first onto P1.7 (data) with P1.5 (clock) rising edges,
+then pulses P1.6 (latch). Called from every mode handler that changes
+the analog signal path.
+
+**RAM[0x22] bitfield format** (deduced from `fcn.0x0E27` and `fcn.0x0E9D`
+state updaters):
+
+| Bit | Meaning                                       |
+|-----|-----------------------------------------------|
+| 0-2 | Channel 1 source select (mic / line / inst)   |
+| 3-5 | Channel 2 source select (mic / line / inst)   |
+| 6   | Analog-vs-S/PDIF input mux                    |
+| 7   | (unused? — possibly 48V phantom or mono)      |
+
+Three-state cycling per channel (bits 0-2 or 3-5):
+- Mic:  `1 0 1` (0x22.0=1, .1=0, .2=1)
+- Line: `1 1 0` (0x22.0=1, .1=1, .2=0)
+- Inst: `0 1 1` (0x22.0=0, .1=1, .2=1)
+
+## Front-panel button poller `fcn.0x0ED5` ✅
+Called from the main-loop init tail at `0x0ADF`. Reads **P3 (SFR 0xB0)**
+into `r5`, compares against previous state saved in `RAM[0x20]`, and on
+per-bit change:
+
+| P3 bit | Handler called | Purpose                                    |
+|--------|---------------|--------------------------------------------|
+| P3.3   | `fcn.0x0E27`  | Channel-1 source cycle (bits 0x22.0/1/2)   |
+| P3.4   | `fcn.0x0E9D`  | Channel-2 source cycle (bits 0x22.3/4/5)   |
+| P3.5   | `fcn.0x1028`  | Third button (probably input mux swap)     |
+
+Physical binding: **P3.3 = channel-1 source button**, **P3.4 = channel-2
+source button**, **P3.5 = third front-panel button**. Every press cycles
+the corresponding state through mic → line → inst, then triggers a
+codec resend via `fcn.0x0E62` and mux-shift-register update via
+`fcn.0x0F0C`.
+
+## Sample-rate DMA config `fcn.0x0DEC` ✅
+Called from mode handlers to program TAS1020A DMA channels for a specific
+sample rate. Writes six XDATA registers:
+- `0xFFE5 = 0x61`, `0xFFE6 = 0xA8`, `0xFFE7 = 0x0F` (DMA ch 0: playback)
+- `0xFFF7 = 0x61`, `0xFFF8 = 0xA8`, `0xFFF9 = 0x0F` (DMA ch 2: capture)
+
+These are DMA source/destination byte-count triplets. Same values in
+both channels because both directions of the audio stream use the same
+sample rate.
+
+## Codec state model
+Codec is written via `fcn.0x0E62` which shifts two bytes MSB-first onto
+P1.0 (data) / P1.2 (clock) with a final P1.1 (latch) pulse:
+
+- **Byte 1** = `RAM[0x23]` — mostly bookkeeping bits set by fcn.0x0393
+  (the mode-transition prep). Bits `0x23.0/1/2/3/4/6` seen manipulated.
+- **Byte 2** = `RAM[0x25]` — session/state flags: `0x25.0..0x25.3` set
+  by source-cycle handlers, `0x25.4` = analog vs S/PDIF, `0x25.5` set
+  during mode transitions, `0x25.6` = "in setup", `0x25.7` = "packet
+  boundary" (used as start/stop condition by both bit-bangers).
+
+The 16-bit codec write pattern matches the **Cirrus CS4272** style
+control-port protocol.
+
+## Still unknown
 
 ## CS8427 boot sequence — DECODED ✅
 `fcn.0x080B` runs the full CS8427 chip initialization at boot. Between
