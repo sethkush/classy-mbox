@@ -255,12 +255,15 @@ void usb_init(void)
     OEPBBAX0 = EP_BBAX(EP0_OUT_BUF_ADDR);
     OEPBSIZ0 = EP_BSIZE(EP0_MAX_PACKET);
 
-    /* Enable EP0. IEPCNF0/OEPCNF0 bit 7 = ENABLE. Rev 20 uses 0xFA
-     * (enable + STALL-clear + ISO-off + data-toggle bits). */
+    /* Enable EP0. Rev 20's reset init (rev20_flat.asm @ 0x099e/0x09a7)
+     * writes 0x84 to IEPCNF0 (0xFFA8) and OEPCNF0 (0xFF68) — bit 7 =
+     * USBIE (enable) + bit 2 (interrupt-on-transaction). Earlier drafts
+     * of this file wrote 0xFA which was a guess; 0x84 is what the
+     * shipping vendor firmware uses. */
     IEPBCTX0 = 0;
     OEPBCTX0 = 0;
-    IEPCNF0  = 0xFA;
-    OEPCNF0  = 0xFA;
+    IEPCNF0  = 0x84;
+    OEPCNF0  = 0x84;
 
     /* Streaming endpoints stay dormant until SET_INTERFACE(alt=1). */
     IEPCNF1 = 0;

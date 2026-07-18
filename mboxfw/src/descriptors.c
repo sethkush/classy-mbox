@@ -70,8 +70,9 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     /* ---- Class-specific AC interface header (10 bytes with 2 AS IF refs) ---- */
     10, USB_DT_CS_INTERFACE, UAC_AC_HEADER,
     0x00, 0x01,             /* bcdADC = 1.0 */
-    (9 + 12 + 12 + 9 + 9) & 0xFF,   /* wTotalLength of class-spec AC block */
-    ((9 + 12 + 12 + 9 + 9) >> 8) & 0xFF,
+    (10 + 12 + 12 + 9 + 9) & 0xFF,   /* wTotalLength of class-spec AC block
+                                       * (header 10 + IT + IT + OT + OT) */
+    ((10 + 12 + 12 + 9 + 9) >> 8) & 0xFF,
     2,                      /* bInCollection = 2 streaming interfaces */
     1,                      /* baInterfaceNr(0) = AS-playback */
     2,                      /* baInterfaceNr(1) = AS-capture */

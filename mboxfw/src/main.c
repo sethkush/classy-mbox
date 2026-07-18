@@ -8,17 +8,18 @@
 
 #include "regs.h"
 #include "cs8427.h"
+#include "codec.h"
 #include "buttons.h"
 
 extern void hw_init(void);
-extern void usb_init(void);          /* TODO: descriptors.c */
-extern void usb_service(void);       /* TODO: descriptors.c */
+extern void usb_init(void);
+extern void usb_service(void);
 
 void main(void)
 {
     hw_init();
     cs8427_boot_init();
-    /* TODO: codec_init() once the codec chip is confirmed */
+    codec_init();           /* Rev 20 flow: lcall 0x08cb, lcall 0x0970 */
     usb_init();
 
     EA = 1;   /* enable interrupts (Timer 0 + INT0) */

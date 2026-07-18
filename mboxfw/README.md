@@ -14,6 +14,7 @@ clean.
 |-----------------------|-----------------------------------------------------|
 | `hw_init.c`           | 8051 SFRs, C-port, DMA — verbatim port of Rev 20's `fcn.0x08CB` |
 | `cs8427.c`            | Bit-banged I²C + 10-register boot sequence          |
+| `codec.c`             | Codec/mux state init — port of Rev 20 `fcn.0x0970`  |
 | `mux.c`               | 74HC595 input-mux shift register                    |
 | `buttons.c`           | P3.3 / P3.4 source cycle + P3.5 phantom toggle      |
 | `descriptors.c`       | Full UAC1 descriptor bundle (2ch × 24-bit × 44.1/48) |
@@ -31,12 +32,26 @@ clean.
 4. Pressing the front-panel source buttons cycles the mux state.
 5. Pressing the 48V button toggles phantom power.
 
+## Pre-flash verification
+
+Two host-side checks catch the highest-frequency bug classes without
+touching hardware:
+
+```
+tools/sim_smoke.sh                # ucSim/s51 boot smoke — proves the init
+                                  # sequence reaches the main loop with no
+                                  # trap or infinite loop
+python3 tools/verify_descriptors.py   # walks the compiled UAC1 descriptor
+                                      # bundle: bLength / wTotalLength /
+                                      # cross-refs / channel & subframe sanity
+```
+
 ## Realistic risks on first flash (ordered)
 
 | Risk | Likely cause | Where to look |
 |------|--------------|---------------|
-| Won't enumerate | EP0 buffer address (0xFA10) or IEPCNF0 flag byte (0xFA) wrong for this specific TAS1020A variant | Watch `usb_service()`, verify with a USB analyser |
-| Enumerates but silence | Codec (CS4272?) not initialised — Rev 20 has separate codec init we still need to port from `fcn.0x0E62` callers | Add `codec_init()` before `usb_init()` in `main()` |
+| Won't enumerate | EP0 buffer address (0xFA10) wrong for this TAS1020A variant | Watch `usb_service()`, verify with a USB analyser. IEPCNF0/OEPCNF0 = 0x84 (matches Rev 20 disasm @ 0x099e/0x09a7). |
+| Enumerates but distorted | codec state adjuster (`fcn.0x0E62` — 16-bit shift + latch on P1.1) not yet ported. `codec_init()` clears the state RAM and kicks the mux but skips the final shift. | Port `cs_state_adjust()` from `fcn.0x0E62` body |
 | Audio distorted at 44.1 kHz | `streaming_set_rate(44100)` currently uses the 48 kHz DMA values | Capture Rev 20's mode-1 branch of `fcn.0x0728` |
 | Random weirdness | Interrupt vectors — we're currently polling, not using ISRs | Rev 20's ISRs at 0x03 (INT0) and 0x0B (Timer 0); we skip both |
 
