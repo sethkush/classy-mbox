@@ -86,6 +86,25 @@ static void reply_zero_length(void)
     IEPBCTX0 = 0;
 }
 
+/* Push up to EP0_MAX_PACKET bytes from g_ep0_reply_src into the EP0 IN
+ * buffer at 0xFA10, arm IEPBCTX0 with the byte count, and advance the
+ * cursor. Called first by stage_reply() and then by usb_service() on
+ * each IEP0-done interrupt until g_ep0_reply_remaining hits zero. */
+static void push_reply_chunk(void)
+{
+    __xdata unsigned char *dst = (__xdata unsigned char *)EP0_IN_BUF_ADDR;
+    unsigned char n = (g_ep0_reply_remaining > EP0_MAX_PACKET)
+                          ? EP0_MAX_PACKET
+                          : (unsigned char)g_ep0_reply_remaining;
+    unsigned char i;
+    for (i = 0; i < n; i++) {
+        dst[i] = g_ep0_reply_src[i];
+    }
+    g_ep0_reply_src       += n;
+    g_ep0_reply_remaining -= n;
+    IEPBCTX0 = n;   /* hand the packet to the hardware */
+}
+
 static void stage_reply(__code const unsigned char *src, unsigned int len)
 {
     /* Cap reply length to what the host actually asked for. */
@@ -93,8 +112,7 @@ static void stage_reply(__code const unsigned char *src, unsigned int len)
     if (len > wLen) len = wLen;
     g_ep0_reply_src = src;
     g_ep0_reply_remaining = len;
-    /* First chunk fires immediately; usb_service() drives the rest. */
-    /* TODO: byte-by-byte copy into EP0 IN buffer at 0xFA10 goes here. */
+    push_reply_chunk();   /* first chunk fires immediately */
 }
 
 
@@ -227,31 +245,73 @@ static void handle_setup(void)
 
 void usb_init(void)
 {
-    /* Reset EP0 config. Rev 20 writes 0xFA to IEPCNF0 (bit 7 = valid,
-     * bit 5 = data-toggle-init, bits 3-0 = max-packet-size lo nibble
-     * for 8-byte MPS). Our custom firmware follows the same convention. */
-    IEPCNF0    = 0xFA;
-    IEPBCTX0   = 0;
-    OEPCNF0    = 0xFA;
-    OEPBCTX0   = 0;
+    /* Point EP0 IN / OUT at their packet buffers in the shared window. */
+    IEPBBAX0 = EP_BBAX(EP0_IN_BUF_ADDR);
+    IEPBSIZ0 = EP_BSIZE(EP0_MAX_PACKET);
+    OEPBBAX0 = EP_BBAX(EP0_OUT_BUF_ADDR);
+    OEPBSIZ0 = EP_BSIZE(EP0_MAX_PACKET);
+
+    /* Enable EP0. IEPCNF0/OEPCNF0 bit 7 = ENABLE. Rev 20 uses 0xFA
+     * (enable + STALL-clear + ISO-off + data-toggle bits). */
+    IEPBCTX0 = 0;
+    OEPBCTX0 = 0;
+    IEPCNF0  = 0xFA;
+    OEPCNF0  = 0xFA;
 
     /* Streaming endpoints stay dormant until SET_INTERFACE(alt=1). */
-    IEPCNF1    = 0;
-    OEPCNF2    = 0;
+    IEPCNF1 = 0;
+    OEPCNF2 = 0;
+
+    /* Reset USB function address (host will re-assign via SET_ADDRESS). */
+    USBFADR = 0;
+
+    /* Unmask all interrupts we care about. Bit map follows TI's USBIMSK
+     * conventions: EP0 setup/rx/tx + reset + suspend/resume. */
+    USBIMSK = 0xFF;
 
     g_configured   = 0;
     g_alt_playback = 0;
     g_alt_capture  = 0;
+    g_ep0_reply_remaining = 0;
 }
 
 void usb_service(void)
 {
-    /* Poll for SETUP-received flag. On TAS1020A, that's a bit in a status
-     * register (Rev 20 tests 0x24.0 in RAM which mirrors the hardware bit).
-     * Full plumbing pending — for now this is where handle_setup() will
-     * fire once we've located the exact status bit + interrupt path. */
-    /* TODO: check EP0 setup interrupt flag, then: handle_setup(); */
-    (void)handle_setup;
-    (void)g_ep0_reply_src;
-    (void)g_ep0_reply_remaining;
+    unsigned char vec = VECINT;
+
+    switch (vec) {
+        case VEC_SETUP:
+            handle_setup();
+            /* Firmware-initiated ACK of the SETUP by clearing VECINT. */
+            VECINT = 0;
+            break;
+
+        case VEC_IEP0:
+            /* Previous IN packet ACKed; push next chunk if any. */
+            if (g_ep0_reply_remaining) {
+                push_reply_chunk();
+            } else {
+                /* End of data phase — arm zero-length OUT status stage. */
+                OEPBCTX0 = 0;
+            }
+            VECINT = 0;
+            break;
+
+        case VEC_OEP0:
+            /* Host sent data (or status stage). Nothing to do for the
+             * requests we handle so far — just acknowledge. */
+            VECINT = 0;
+            break;
+
+        case VEC_RSTR:
+            /* Bus reset — re-init endpoints, clear address. */
+            usb_init();
+            VECINT = 0;
+            break;
+
+        case VEC_NONE:
+        default:
+            /* No pending interrupt (or one we don't care about yet). */
+            break;
+    }
 }

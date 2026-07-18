@@ -13,11 +13,24 @@
 /* USB endpoint 0 config */
 #define IEPCNF0     XDATA(0xFF68)
 #define IEPBBAX0    XDATA(0xFF69)
+#define IEPBSIZ0    XDATA(0xFF6A)
 #define IEPBCTX0    XDATA(0xFF6B)
 #define OEPCNF0     XDATA(0xFFA8)
 #define OEPBBAX0    XDATA(0xFFA9)
+#define OEPBSIZ0    XDATA(0xFFAA)
 #define OEPBCTX0    XDATA(0xFFAB)
 #define OEPCNF0_HI  XDATA(0xFFB0)
+
+/* EP0 packet buffers — placed manually in TAS1020A shared-mem window
+ * starting at 0xF800. Matches Rev 20's convention (IN=0xFA10, OUT=0xFA18). */
+#define EP0_IN_BUF_ADDR    0xFA10
+#define EP0_OUT_BUF_ADDR   0xFA18
+#define EP0_MAX_PACKET     8
+
+/* Audio streaming buffers — larger, further into the shared window. */
+#define EP1_IN_BUF_ADDR    0xFB00   /* capture buffer  (device → host) */
+#define EP2_OUT_BUF_ADDR   0xFC00   /* playback buffer (host → device) */
+#define EP_AUDIO_BUF_SIZE  0x0100   /* 256 bytes rounded down from 294 */
 
 /* USB audio streaming endpoints — Rev 20 uses EP1 IN + EP2 OUT.
  * (Per TI Reg_stc1.h: IEPCNF1=0xFF60, OEPCNF2=0xFF98. Earlier RE notes
@@ -42,9 +55,32 @@
 #define SETPACK_WLEN_L XDATA(0xFF2E)
 #define SETPACK_WLEN_H XDATA(0xFF2F)
 
-/* Global control */
+/* Global control + USB engine registers */
 #define GLOBCTL     XDATA(0xFFB1)
 #define GLOBCTL2    XDATA(0xFFFC)
+#define VECINT      XDATA(0xFFB2)   /* vectored interrupt source */
+#define IEPINT      XDATA(0xFFB3)
+#define OEPINT      XDATA(0xFFB4)
+#define USBIMSK     XDATA(0xFFFD)
+#define USBSTA      XDATA(0xFFFE)
+#define USBFADR     XDATA(0xFFFF)
+
+/* VECINT interrupt-source codes (TI Reg_stc1.h) */
+#define VEC_OEP0    0x00
+#define VEC_IEP0    0x08
+#define VEC_IEP1    0x09
+#define VEC_OEP2    0x02
+#define VEC_SETUP   0x12
+#define VEC_SOF     0x14
+#define VEC_RESR    0x15
+#define VEC_SUSR    0x16
+#define VEC_RSTR    0x17
+#define VEC_NONE    0x24
+
+/* EP buffer base for IEPBBAXn/OEPBBAXn is (addr - 0xF800) >> 3. */
+#define STC_BUFFER_BASE  0xF800
+#define EP_BBAX(addr)    (unsigned char)(((addr) - STC_BUFFER_BASE) >> 3)
+#define EP_BSIZE(bytes)  (unsigned char)((bytes) >> 3)
 
 /* Hardware I²C peripheral (used only for boot EEPROM at addr 0x50) */
 #define I2CSTA      XDATA(0xFFC0)
