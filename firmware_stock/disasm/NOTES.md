@@ -409,7 +409,39 @@ P1.0 (data) / P1.2 (clock) with a final P1.1 (latch) pulse:
 The 16-bit codec write pattern matches the **Cirrus CS4272** style
 control-port protocol.
 
-## Still unknown
+## Readiness checklist for writing custom class-compliant firmware
+
+**✅ Everything on the hardware side needed to boot the board:**
+- USB endpoints: EP0 (control, standard USB) + EP3 IN/OUT (audio ISO)
+- USB registers to program: IEPCNF3=0xFF60, OEPCNF3=0xFF98 (both = 0xC5)
+- DMA channels: 0 and 2, programmed via 0xFFE1-0xFFE7 and 0xFFF7-0xFFF9
+- C-port I²S: 0xFFD4-0xFFDE (`fcn.0x0728` mode-5 branch)
+- CS8427 boot sequence: 10 register writes at `fcn.0x080B`
+- CS8427 write protocol: bit-banged I²C on P1.3/P1.4, 3-byte packets
+- Codec write protocol: bit-banged serial on P1.0/P1.1/P1.2, 16 bits
+- Mux write protocol: bit-banged 74HC595-style on P1.5/P1.6/P1.7, 8 bits
+- Button poller: reads P3.3/P3.4/P3.5 (source-cycle + phantom toggle)
+
+**✅ Everything on the USB side that a class-compliant device needs:**
+- Standard USB Audio Class 1 descriptors (from TI reference, adjusted
+  for 2ch × 24-bit × 44.1/48 kHz).
+- No vendor-specific class requests needed — class compliance means
+  the driver stack handles everything through the standard UAC control
+  interface (SET_CUR / GET_CUR on Feature Units / Selector Units).
+
+**🟡 Refinements before v1:**
+1. Enumerate exact codec register bits in RAM[0x23]/[0x25]. Not blocking
+   — we can start by dumping Digi's boot state verbatim.
+2. Identify P3.5 button semantics precisely (`fcn.0x1028` toggles bit
+   `0x23.6` which affects mux-latch style — likely **48V phantom power
+   toggle**). Confirmed with front-panel layout (user has a "48V switch").
+
+**Physical port summary:**
+- **P1**: 4 bit-banged serial buses (audio codec, CS8427, mux shift reg).
+- **P3**: 3 button inputs (P3.3, P3.4, P3.5) — source cycle + 48V toggle.
+- **Hardware I²C (0xFFC0-C3)**: EEPROM only (for mode-persist).
+
+## Still unknown (non-blocking)
 
 ## CS8427 boot sequence — DECODED ✅
 `fcn.0x080B` runs the full CS8427 chip initialization at boot. Between
