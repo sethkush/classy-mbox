@@ -69,6 +69,27 @@ Every access to `I²CADR (0xFFC3)` writes `0xA0` = 7-bit address `0x50`
 = the boot EEPROM 24C64. Read/write helpers at `0x0C00` / `0x0CEF`.
 Used only for boot-time firmware load and mode-persistence.
 
+### Bus 3: bit-banged serial on P1.0 / P1.1 / P1.2 → audio codec
+Second bit-banger at `0x0E74`. Same rotate-and-clock pattern, but on
+different pins:
+
+- **P1.0 (SFR 0x90 bit 0)** = data (SDIN)
+- **P1.2 (SFR 0x90 bit 2)** = clock (SCLK)
+- **P1.1 (SFR 0x90 bit 1)** = latch pulse at end of transaction
+
+Sends **2 bytes per transaction** (16 bits): first byte from `RAM[0x23]`,
+second byte from `RAM[0x25]`. Loops through 8 bits per byte, then
+pulses P1.1 as the latch/CS strobe.
+
+Two-byte 16-bit control-word format matches the **Cirrus CS4272 (or
+similar) audio codec** control register format. The codec's serial
+control register write is: `1 R/W A6..A0 D7..D0` — 16 bits total.
+
+The "prep bits" that get loaded into `RAM[0x22]` at `0x0EAF` (setting
+`0x22.3/0x22.4/0x22.5` for one path, clearing them for the other, plus
+propagating `0x25.4` into `0x22.6`) are the codec-register payload
+bits — sample-rate, mute, input-select, etc.
+
 ### Bus 2: bit-banged software I²C on P1.3 / P1.4 → CS8427
 **Discovered late** — this changes the earlier assumption that Rev 20
 doesn't touch the CS8427. The bit-banger lives at `0x0C57`:
@@ -265,10 +286,23 @@ registers, and the S/PDIF chip is programmed alongside:
 
 For a class-compliant replacement we can steal Rev 20's DMA + C-port
 settings verbatim (they're not vendor-specific — they're the TAS1020A
-UAC1 fast path). The only board-specific pieces we still need are:
-1. The two-or-three GPIO pins that select input source (P1/P3 bits).
-2. The front-panel button matrix (probably P1 inputs).
-3. The 48V phantom-power relay pin (if firmware-driven).
+UAC1 fast path).
 
-The disassembly window we have (~4 KB) covers all of these — they just
-need targeted grep once we know which port bits Rev 20 flips.
+**Full P1 pin map (confirmed):**
+| Pin  | Function                                       |
+|------|------------------------------------------------|
+| P1.0 | Codec SDIN (bit-banged)                        |
+| P1.1 | Codec latch/CS strobe                          |
+| P1.2 | Codec SCLK (bit-banged)                        |
+| P1.3 | CS8427 SCL (bit-banged I²C)                    |
+| P1.4 | CS8427 SDA (bit-banged I²C)                    |
+| P1.5 | toggled at 0x0F3C/F3F (unknown — LED? relay?)  |
+| P1.6 | toggled at 0x0F4E/F51 + 0x0F22 (unknown)       |
+| P1.7 | toggled at 0x0F34/F39 (unknown)                |
+
+**Still unknown:**
+1. What P1.5, P1.6, P1.7 do (LEDs, 48V relay, or other).
+2. Front-panel button matrix (probably P3 inputs — read only, we've only
+   seen P3 written to, not read).
+3. Which specific CS8427/codec register-value pairs constitute Digi's
+   boot sequence (needs cross-refs on 0x0C57 / 0x0E74 callers).
