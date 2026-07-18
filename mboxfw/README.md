@@ -6,15 +6,58 @@ Rev 20 / v22 firmware.
 
 ## Status
 
-**Skeleton builds.** ~721 bytes of code out of the 8 KB EEPROM budget.
-Hardware init, CS8427 boot sequence, 74HC595 input-mux driver, and
-button poller are ported verbatim from the Rev 20 disassembly.
+**Full skeleton builds — 1888 bytes of code (~23% of the 8 KB EEPROM
+budget).** Every major module is in place and every SDCC compile is
+clean.
 
-**Not yet:**
-- USB descriptor set (UAC1 for 2 ch × 24 bit × 44.1/48 kHz)
-- EP0 setup handling (standard UAC1 control interface)
-- EP3 audio isochronous streaming
-- Codec (CS4272-like) register programming
+| Module                | What it does                                        |
+|-----------------------|-----------------------------------------------------|
+| `hw_init.c`           | 8051 SFRs, C-port, DMA — verbatim port of Rev 20's `fcn.0x08CB` |
+| `cs8427.c`            | Bit-banged I²C + 10-register boot sequence          |
+| `mux.c`               | 74HC595 input-mux shift register                    |
+| `buttons.c`           | P3.3 / P3.4 source cycle + P3.5 phantom toggle      |
+| `descriptors.c`       | Full UAC1 descriptor bundle (2ch × 24-bit × 44.1/48) |
+| `usb.c`               | EP0 SETUP dispatcher, VECINT poll, descriptor push  |
+| `streaming.c`         | EP1 IN + EP2 OUT activation on SET_INTERFACE        |
+| `main.c`              | Reset entry + main loop                             |
+
+## What should happen when flashed
+
+1. TAS1020A boot ROM loads our firmware from EEPROM.
+2. `main()` runs `hw_init()` → `cs8427_boot_init()` → `usb_init()`.
+3. USB enumerates as VID:PID `0x0DBA:0x1000` with two AudioStreaming
+   interfaces + one AudioControl interface. macOS should recognise it
+   as a class-compliant audio device with no vendor driver.
+4. Pressing the front-panel source buttons cycles the mux state.
+5. Pressing the 48V button toggles phantom power.
+
+## Realistic risks on first flash (ordered)
+
+| Risk | Likely cause | Where to look |
+|------|--------------|---------------|
+| Won't enumerate | EP0 buffer address (0xFA10) or IEPCNF0 flag byte (0xFA) wrong for this specific TAS1020A variant | Watch `usb_service()`, verify with a USB analyser |
+| Enumerates but silence | Codec (CS4272?) not initialised — Rev 20 has separate codec init we still need to port from `fcn.0x0E62` callers | Add `codec_init()` before `usb_init()` in `main()` |
+| Audio distorted at 44.1 kHz | `streaming_set_rate(44100)` currently uses the 48 kHz DMA values | Capture Rev 20's mode-1 branch of `fcn.0x0728` |
+| Random weirdness | Interrupt vectors — we're currently polling, not using ISRs | Rev 20's ISRs at 0x03 (INT0) and 0x0B (Timer 0); we skip both |
+
+## Build
+
+```
+brew install sdcc          # SDCC 4.6+ (mcs51 target)
+make                       # → build/mboxfw.ihx + build/mboxfw_flasher.bin
+```
+
+## Flash (untested end-to-end)
+
+```
+# 1. Put the Mbox into DFU mode: hold front-panel source button
+#    while plugging the USB cable in
+# 2. Verify with:
+../mboxflash/mboxflash --probe
+# 3. Push the firmware:
+../mboxflash/mboxflash --flash mboxfw/build/mboxfw_flasher.bin
+# 4. Power-cycle the Mbox
+```
 
 ## Build
 
