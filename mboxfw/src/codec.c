@@ -27,8 +27,38 @@
 #include "codec.h"
 
 /* Rev 20 RAM[0x22] is g_mux_state (mux.c); RAM[0x23].6 is g_phantom_48v.
- * RAM[0x25] is codec state we don't propagate anywhere yet. */
+ * RAM[0x25] is the codec-state byte read by codec_state_adjust(). */
 static __data unsigned char g_codec_state_25;
+
+/*
+ * Port of Rev 20 fcn.0x0E62 (entry mid-function at rev20_flat.asm:1885).
+ *
+ * NOT a codec bit-serial write — that lives at fcn.0x0E74 (P1.0 data,
+ * P1.2 clock, 8+8 bit shift with P1.1 latch). fcn.0x0E62 is a pure
+ * state-machine adjuster: it forces RAM[0x22] bit 2, then computes
+ * RAM[0x22] bit 6 from RAM[0x25] bits 4 and 5.
+ *
+ * The tail logic at 0x0E64..0x0E73 collapses to:
+ *   bit 22.6 = (bit 25.4 == 0) && (bit 25.5 == 0)
+ * i.e. only both-clear leaves the mux P1.6 line asserted.
+ */
+static void codec_state_adjust(void)
+{
+    g_mux_state |= (unsigned char)0x04;              /* setb 0x22.2 */
+
+    if (g_codec_state_25 & 0x10) {                   /* 0x25.4 */
+        g_mux_state &= (unsigned char)~0x40;         /* clr 0x22.6 */
+    } else {
+        g_mux_state |= (unsigned char)0x40;          /* setb 0x22.6 */
+    }
+    if (g_codec_state_25 & 0x20) {                   /* 0x25.5 */
+        g_mux_state &= (unsigned char)~0x40;         /* clr 0x22.6 */
+    }
+    /* Rev 20's fcn.0x0970 does NOT re-push the mux after the adjuster —
+     * the newly-set bits 22.2 / 22.6 stay latched in RAM until the next
+     * mux_write triggered by a control-change event. Preserve that
+     * behavior: no mux_write here. */
+}
 
 void codec_init(void)
 {
@@ -40,10 +70,8 @@ void codec_init(void)
     /* fcn.0x0970 next: lcall 0x0F0C — kick the mux to publish RAM[0x22]. */
     mux_write(g_mux_state);
 
-    /* fcn.0x0970 tail: clear codec-state byte and re-invoke the state
-     * adjuster (fcn.0x0E62). We don't have the adjuster ported yet;
-     * clearing to zero + one mux kick matches the "everything idle"
-     * baseline that Rev 20 lands on for the first bus-reset. */
+    /* fcn.0x0970 tail: clear the codec-state byte, then run the state
+     * adjuster (Rev 20 does lcall 0x0E62 here). */
     g_codec_state_25 = 0;
-    /* TODO: cs_state_adjust();  // port of fcn.0x0E62 (16-bit shift + latch) */
+    codec_state_adjust();
 }

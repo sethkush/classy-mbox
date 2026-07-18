@@ -52,7 +52,7 @@ python3 tools/verify_descriptors.py   # walks the compiled UAC1 descriptor
 |------|--------------|---------------|
 | Won't enumerate | EP0 buffer address (0xFA10) wrong for this TAS1020A variant | Watch `usb_service()`, verify with a USB analyser. IEPCNF0/OEPCNF0 = 0x84 (matches Rev 20 disasm @ 0x099e/0x09a7). |
 | Enumerates but distorted | codec state adjuster (`fcn.0x0E62` — 16-bit shift + latch on P1.1) not yet ported. `codec_init()` clears the state RAM and kicks the mux but skips the final shift. | Port `cs_state_adjust()` from `fcn.0x0E62` body |
-| Audio distorted at 44.1 kHz | `streaming_set_rate(44100)` currently uses the 48 kHz DMA values | Capture Rev 20's mode-1 branch of `fcn.0x0728` |
+| Audio pitched wrong at 44.1 kHz | `dma_program_44k1()` uses Rev 20 mode-2 constants (0x20_4B_6A) — confirmed identical in v22 too, but "mode 2 = 44.1 kHz" is inferred, not fully traced | If pitched wrong, swap the two DMASRC value sets in `streaming.c` — that's the fastest falsification |
 | Random weirdness | Interrupt vectors — we're currently polling, not using ISRs | Rev 20's ISRs at 0x03 (INT0) and 0x0B (Timer 0); we skip both |
 
 ## Build

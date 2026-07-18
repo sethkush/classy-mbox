@@ -22,7 +22,25 @@
 /* Currently-active sample rate — mirrors g_sample_rate in usb.c. */
 static __data unsigned long stream_rate = 48000UL;
 
-/* Rev 20's fcn.0x0DEC values (48 kHz path). */
+/*
+ * DMA source constants decoded from Rev 20's fcn.0x0728 mode-dispatch
+ * (rev20_flat.asm around 0x074d..0x079c) plus its 48 kHz tail at
+ * 0x0DFE..0x0E28. Two distinct value sets are written to DMASRC0 and
+ * DMASRC2 depending on which mode the clock-source switcher enters:
+ *
+ *   mode 3 tail (fcn.0x0DEC / 0x0DFE): DMASRC = 0x0F_A861
+ *   mode 2       (fcn.0x0728 @ 0x075f): DMASRC = 0x20_4B6A
+ *
+ * The mapping of Rev 20's internal "mode" number → sample rate is:
+ *   RAM[0x0A] = 7  →  44.1 kHz internal (see NOTES.md class-SET handler)
+ *   RAM[0x0A] = 8  →  48   kHz internal
+ * The full dispatch chain from RAM[0x0A] → fcn.0x0728 is deep enough that
+ * we're taking it on the balance of evidence rather than fully traced:
+ * the 48 kHz path (mode 3 tail) has been sanity-checked against my
+ * earlier RE, so 44.1 kHz is the other one (mode 2's 0x20_4B6A). If audio
+ * comes out pitched WRONG at 44.1 on first flash, swap the two calls
+ * below — that's the fastest way to falsify the assumption.
+ */
 static void dma_program_48k(void)
 {
     DMASRC0_L = 0x61;
@@ -33,13 +51,14 @@ static void dma_program_48k(void)
     DMASRC2_H = 0x0F;
 }
 
-/* TODO: capture Rev 20's 44.1 kHz DMA values (they live in the mode-1
- * branch of fcn.0x0728, not fcn.0x0DEC). For now, mirror the 48k path
- * and rely on the CS8427 clock to divide down — audio will be slightly
- * wrong until we plug the real numbers in. */
 static void dma_program_44k1(void)
 {
-    dma_program_48k();
+    DMASRC0_L = 0x6A;
+    DMASRC0_M = 0x4B;
+    DMASRC0_H = 0x20;
+    DMASRC2_L = 0x6A;
+    DMASRC2_M = 0x4B;
+    DMASRC2_H = 0x20;
 }
 
 void streaming_set_rate(unsigned long hz)
