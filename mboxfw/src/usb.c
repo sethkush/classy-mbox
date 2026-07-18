@@ -19,6 +19,7 @@
 
 #include "regs.h"
 #include "usb.h"
+#include "streaming.h"
 
 /* Descriptor tables from descriptors.c */
 extern const __code unsigned char AppDevDesc[];
@@ -159,10 +160,10 @@ static void handle_set_interface(void)
 
     if (iface == 1) {
         g_alt_playback = alt;
-        /* TODO: (de)activate OEPCNF2 based on alt. */
+        streaming_playback_enable(alt != 0);
     } else if (iface == 2) {
         g_alt_capture = alt;
-        /* TODO: (de)activate IEPCNF1 based on alt. */
+        streaming_capture_enable(alt != 0);
     }
     reply_zero_length();
 }
@@ -191,8 +192,11 @@ static void handle_class_endpoint_request(void)
     }
     if (bReq == UAC_SET_CUR) {
         /* Host sending 3-byte sample rate. Read from EP0 OUT buffer. */
-        /* TODO: pull 3 bytes from 0xFA18, compose into g_sample_rate,
-         *       then reconfigure the C-port + CS8427 clock. */
+        __xdata unsigned char *src = (__xdata unsigned char *)EP0_OUT_BUF_ADDR;
+        g_sample_rate = (unsigned long)src[0]
+                      | ((unsigned long)src[1] << 8)
+                      | ((unsigned long)src[2] << 16);
+        streaming_set_rate(g_sample_rate);
         reply_zero_length();
     } else if (bReq == UAC_GET_CUR) {
         /* Reply with current sample rate as 3-byte LE. */
@@ -306,6 +310,11 @@ void usb_service(void)
         case VEC_RSTR:
             /* Bus reset — re-init endpoints, clear address. */
             usb_init();
+            VECINT = 0;
+            break;
+
+        case VEC_SOF:
+            streaming_sof();
             VECINT = 0;
             break;
 

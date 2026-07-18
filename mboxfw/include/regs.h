@@ -38,12 +38,22 @@
  *  in the disasm is EP1-IN / EP2-OUT. Linux quirks wIndex=0x81 = EP1 IN
  *  confirms this.)
  */
+/* Per TI Reg_stc1.h the streaming-EP register layout is:
+ *   IEPCNFn = 0xFF68 - n*8      → IEPCNF1 = 0xFF60
+ *   IEPBBAXn = IEPCNFn + 1
+ *   IEPBSIZn = IEPCNFn + 2
+ *   IEPBCTXn = IEPCNFn + 3
+ *   OEPCNFn = 0xFFA8 - n*8      → OEPCNF2 = 0xFF98
+ */
 #define IEPCNF1     XDATA(0xFF60)   /* audio capture (device → host) */
-#define IEPBBAX1    XDATA(0xFF63)
-#define IEPBSIZ1    XDATA(0xFF67)
+#define IEPBBAX1    XDATA(0xFF61)
+#define IEPBSIZ1    XDATA(0xFF62)
+#define IEPBCTX1    XDATA(0xFF63)
+
 #define OEPCNF2     XDATA(0xFF98)   /* audio playback (host → device) */
-#define OEPBBAX2    XDATA(0xFF9B)
-#define OEPBSIZ2    XDATA(0xFF9F)
+#define OEPBBAX2    XDATA(0xFF99)
+#define OEPBSIZ2    XDATA(0xFF9A)
+#define OEPBCTX2    XDATA(0xFF9B)
 
 /* USB setup-packet block (SETPACK, 8 bytes at 0xFF28-0xFF2F) */
 #define SETPACK_BMREQ  XDATA(0xFF28)
