@@ -345,5 +345,37 @@ UAC1 fast path).
 1. What P1.5, P1.6, P1.7 do (LEDs, 48V relay, or other).
 2. Front-panel button matrix (probably P3 inputs — read only, we've only
    seen P3 written to, not read).
-3. Which specific CS8427/codec register-value pairs constitute Digi's
-   boot sequence (needs cross-refs on 0x0C57 / 0x0E74 callers).
+
+## CS8427 boot sequence — DECODED ✅
+`fcn.0x080B` runs the full CS8427 chip initialization at boot. Between
+each phase it inserts a ~256-cycle `djnz` delay (needed for the CS8427
+to internally settle after each register write). The sequence:
+
+| # | Reg  | Value | Purpose (per Cirrus CS8427 datasheet)          |
+|---|------|-------|------------------------------------------------|
+| 1 | 0x04 | 0x00  | Clock Source Ctrl — reset (RUN=0)              |
+| 2 | 0x13 | 0x10  | Channel Status Byte format                     |
+| 3 | 0x04 | 0x00  | Clock Source Ctrl — still reset (re-armed)     |
+| 4 | 0x04 | 0x40  | Clock Source Ctrl — RUN=1, clock enabled       |
+| 5 | 0x01 | 0x01  | Chip Control 2                                 |
+| 6 | 0x02 | 0x20  | Data Flow Control                              |
+| 7 | 0x03 | 0x0C  | Clock Source Control 3                         |
+| 8 | 0x05 | 0x05  | Serial Audio Input Format                      |
+| 9 | 0x06 | 0x05  | Serial Audio Output Format                     |
+| 10| 0x11 | 0xFF  | Interrupt Mask (enable all)                    |
+
+**Calling convention for `fcn.0x0C45` (CS8427 write):** R7 = register
+subaddress, R5 = value byte. Wire packet = 3 bytes over the bit-banged
+I²C: `[0x20 (chip addr write)] [R7] [R5]`.
+
+**Wrapper functions above `fcn.0x0C45`:**
+- `fcn.0x0568` — pair-write (0x04=0x41, 0x12=0x00) — clock-source and
+  audio-format setup for mode switching.
+- `fcn.0x0582` — pair-write ([caller-reg]=[caller-val], 0x24=0x80) —
+  parameterized register + channel-status byte-0 update.
+- `fcn.0x08A6` — write CS8427[0x04] = 0x00 (reset clock control).
+- `fcn.0x08B3` — write CS8427[RAM 0x2E] = 0x05 (used for regs 0x05/0x06).
+- `fcn.0x08BD` — pass-through write (R7/R5 already set by caller).
+- `fcn.0x08C4` — pass-through write (R7/R5 already set by caller).
+
+This is enough to write the CS8427 side of custom firmware verbatim.
