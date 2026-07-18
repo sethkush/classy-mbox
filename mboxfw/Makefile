@@ -14,8 +14,12 @@ LDFLAGS = -mmcs51 --model-small --code-size 0x1F00 --xram-size 0x1000
 SRCS = src/main.c src/hw_init.c src/mux.c src/cs8427.c src/buttons.c src/usb.c src/descriptors.c
 RELS = $(SRCS:src/%.c=$(BUILD)/%.rel)
 
-.PHONY: all clean
-all: $(BUILD)/$(TARGET).ihx
+.PHONY: all clean flasher
+all: $(BUILD)/$(TARGET).ihx $(BUILD)/$(TARGET)_flasher.bin
+flasher: $(BUILD)/$(TARGET)_flasher.bin
+
+$(BUILD)/$(TARGET)_flasher.bin: $(BUILD)/$(TARGET).ihx
+	python3 ../tools/wrap_hex.py $< -o $@
 
 $(BUILD)/%.rel: src/%.c | $(BUILD)
 	$(CC) -c $(CFLAGS) -o $@ $<
