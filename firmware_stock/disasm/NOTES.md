@@ -61,24 +61,45 @@ Then clears `0x21.3 / 0x21.4` and re-arms EP0 IN status stage
 at `0x0006`. Main loop dispatches on `0x0A` and physically reconfigures
 the audio path.
 
-## ⚠️ Confidence note on the bit-banged buses
-The routines at `0x0C57` and `0x0E74` have **zero direct call sites**
-in the disassembly (`grep -nE "lcall 0x0c57|lcall 0x0e74"` returns
-nothing). Three possible interpretations, in order of likelihood:
+## Bit-banged buses — verified via r2 auto-analysis ✅
+Original flat disasm suggested entry points at `0x0C57` and `0x0E74`.
+Interactive r2 (`r2 -a 8051 -b 8 -m 0 -c aaa`) shows those addresses
+are **inside larger functions** — the actual entry points are:
 
-1. **r2 alignment error** in the 0x0C4B-0x0CA5 and 0x0E74-0x0EAE
-   regions. The 8051 has variable-length instructions; a single mis-decoded
-   byte earlier makes everything after look like a valid but wrong
-   routine. This is the leading theory.
-2. Reached via a computed jump (`jmp @a+dptr`) whose table lives
-   outside what I've scanned.
-3. Dead code left in the ROM.
+- **`fcn.0x0C45`** — CS8427 bit-banged I²C write. **13 call sites.**
+- **`fcn.0x0E62`** — codec bit-banged serial write + state
+  propagation. **17 call sites.**
 
-The P1-bit toggling patterns ARE real (they show up in valid, called
-routines around 0x0E80-0x0F51), but they may be part of a **single
-unified handshake sequence** rather than two independent bit-bangers.
-**Do NOT trust the "P1 pin map" table below as final until re-verified
-in an interactive r2 session with proper function-boundary hints.**
+The P1-bit toggles previously identified are real, live within those
+functions:
+
+- **fcn.0x0C45 body** (CS8427 I²C):
+  - `0x0C66: orl 0x90, #0x10` — P1.4 = 1 (SDA hi)
+  - `0x0C6B: anl 0x90, #0xEF` — P1.4 = 0 (SDA lo)
+  - `0x0C6E: orl 0x90, #0x08` — P1.3 = 1 (SCL hi)
+  - `0x0C71: anl 0x90, #0xF7` — P1.3 = 0 (SCL lo)
+
+- **fcn.0x0E62 body** (codec serial):
+  - `0x0E7A: orl 0x90, #0x01` — P1.0 = 1 (data hi)
+  - `0x0E7F: anl 0x90, #0xFE` — P1.0 = 0 (data lo)
+  - `0x0E82: orl 0x90, #0x04` — P1.2 = 1 (clock hi)
+  - `0x0E85: anl 0x90, #0xFB` — P1.2 = 0 (clock lo)
+  - `0x0EA8: orl 0x90, #0x02` — P1.1 = 1 (latch strobe)
+  - `0x0EAB: anl 0x90, #0xFD` — P1.1 = 0 (latch release)
+
+The two "3-byte SPI-like" and "2-byte 16-bit" formats described below
+still hold — those decoded from bit-loop counter and phase-machine
+logic, and the r2 XREF graph confirms the surrounding bookkeeping.
+
+### r2 command to reproduce
+```
+r2 -a 8051 -b 8 -m 0 firmware_stock/rev20_firmware_code.bin
+> aaa
+> afl        # list all discovered functions
+> s 0x0c45 ; pdf   # CS8427 bit-banger
+> s 0x0e62 ; pdf   # codec bit-banger + state prep
+> axt 0x0c45 ; axt 0x0e62   # list callers
+```
 
 ## I²C usage — hardware peripheral confirmed, others suspect
 Rev 20 uses **at least one** confirmed I²C bus, and probably others

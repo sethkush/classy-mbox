@@ -1,0 +1,148 @@
+=== fcn.0x0c45 ===
+            ; XREFS: CALL 0x000004db  CALL 0x0000050c  CALL 0x00000572  
+            ; XREFS: CODE 0x0000057f  CALL 0x00000586  CODE 0x00000593  
+            ; XREFS: CALL 0x000007c9  CALL 0x00000889  CALL 0x000008a2  
+            ; XREFS: CODE 0x000008b0  CODE 0x000008ba  CODE 0x000008c1  
+            ; XREFS: CODE 0x000008c8  
+┌ 78: fcn.00000c45 ();
+│           0x00000c45      8f33           mov 0x33, r7                ; [0x33:1]=224
+│           0x00000c47      a905           mov r1, 0x05                ; [0x5:1]=172
+│           0x00000c49      7c08           mov r4, #0x08
+│           0x00000c4b      7b20           mov r3, #0x20
+│           0x00000c4d      7a01           mov r2, #0x01
+│           0x00000c4f      c22f           clr 0x25.7                  ; [0x25:1]=15
+│           0x00000c51      120e62         lcall fcn.00000e62
+│           ; CODE XREFS from fcn.00000c45 @ 0xc75(x), 0xc80(x), 0xc8b(x)
+│     ┌┌┌─> 0x00000c54      ec             mov a, r4
+│    ┌────< 0x00000c55      6020           jz 0x0c77
+│    │╎╎╎   0x00000c57      7801           mov r0, #0x01
+│    │╎╎╎   0x00000c59      af03           mov r7, 0x03                ; [0x3:1]=2
+│    │╎╎╎   0x00000c5b      ef             mov a, r7
+│    │╎╎╎   0x00000c5c      08             inc r0
+│   ┌─────< 0x00000c5d      8001           sjmp 0x0c60
+│   ││╎╎╎   ; CODE XREF from fcn.00000c45 @ 0xc60(x)
+│  ┌──────> 0x00000c5f      23             rl a
+│  │││╎╎╎   ; CODE XREF from fcn.00000c45 @ 0xc5d(x)
+│  └└─────> 0x00000c60      d8fd           djnz r0, 0x0c5f
+│    │╎╎╎   0x00000c62      fb             mov r3, a
+│   ┌─────< 0x00000c63      30e005         jnb 0xe0.0, 0x0c6b          ; [0xe0:1]=128
+│   ││╎╎╎   0x00000c66      439010         orl 0x90, #0x10             ; [0x90:1]=96
+│  ┌──────< 0x00000c69      8003           sjmp 0x0c6e
+│  │││╎╎╎   ; CODE XREF from fcn.00000c45 @ 0xc63(x)
+│  │└─────> 0x00000c6b      5390ef         anl 0x90, #0xef             ; [0x90:1]=96
+│  │ │╎╎╎   ; CODE XREF from fcn.00000c45 @ 0xc69(x)
+│  └──────> 0x00000c6e      439008         orl 0x90, #0x08             ; [0x90:1]=96
+│    │╎╎╎   0x00000c71      5390f7         anl 0x90, #0xf7             ; [0x90:1]=96
+│    │╎╎╎   0x00000c74      1c             dec r4
+│    │└───< 0x00000c75      80dd           sjmp 0x0c54
+│    │ ╎╎   ; CODE XREF from fcn.00000c45 @ 0xc55(x)
+│    └┌───< 0x00000c77      ba0108         cjne r2, #0x01, 0x0c82
+│     │╎╎   0x00000c7a      7a02           mov r2, #0x02
+│     │╎╎   0x00000c7c      ab33           mov r3, 0x33                ; [0x33:1]=224
+│     │╎╎   0x00000c7e      7c08           mov r4, #0x08
+│     │└──< 0x00000c80      80d2           sjmp 0x0c54
+│     │ ╎   ; CODE XREF from fcn.00000c45 @ 0xc77(x)
+│     └┌──< 0x00000c82      ba0208         cjne r2, #0x02, 0x0c8d
+│      │╎   0x00000c85      7a03           mov r2, #0x03
+│      │╎   0x00000c87      ab01           mov r3, 0x01                ; [0x1:1]=10
+│      │╎   0x00000c89      7c08           mov r4, #0x08
+│      │└─< 0x00000c8b      80c7           sjmp 0x0c54
+│      │    ; CODE XREF from fcn.00000c45 @ 0xc82(x)
+│      └──> 0x00000c8d      d22f           setb 0x25.7                 ; [0x25:1]=15
+│           0x00000c8f      120e62         lcall fcn.00000e62
+└           0x00000c92      22             ret
+=== fcn.0x0e62 ===
+            ; XREFS: CALL 0x0000037d  CALL 0x000003af  CALL 0x00000458  
+            ; XREFS: CALL 0x0000046a  CALL 0x00000538  CALL 0x00000733  
+            ; XREFS: CALL 0x000007bc  CALL 0x000007f2  CALL 0x00000818  
+            ; XREFS: CALL 0x00000835  CALL 0x00000842  CALL 0x0000084d  
+            ; XREFS: CALL 0x00000852  CALL 0x0000096c  CALL 0x00000ae9  
+            ; XREFS: CALL 0x00000c51  CALL 0x00000c8f  
+┌ 59: fcn.00000e62 ();
+│           0x00000e62      7e08           mov r6, #0x08
+│           0x00000e64      ad23           mov r5, 0x23                ; [0x23:1]=2
+│           0x00000e66      d230           setb 0x26.0                 ; [0x26:1]=18
+│           ; CODE XREFS from fcn.00000e62 @ 0xe89(x), 0xe94(x)
+│      ┌┌─> 0x00000e68      ee             mov a, r6
+│     ┌───< 0x00000e69      6020           jz 0x0e8b
+│     │╎╎   0x00000e6b      7801           mov r0, #0x01
+│     │╎╎   0x00000e6d      af05           mov r7, 0x05                ; [0x5:1]=172
+│     │╎╎   0x00000e6f      ef             mov a, r7
+│     │╎╎   0x00000e70      08             inc r0
+│    ┌────< 0x00000e71      8001           sjmp 0x0e74
+│    ││╎╎   ; CODE XREF from fcn.00000e62 @ 0xe74(x)
+│   ┌─────> 0x00000e73      23             rl a
+│   │││╎╎   ; CODE XREF from fcn.00000e62 @ 0xe71(x)
+│   └└────> 0x00000e74      d8fd           djnz r0, 0x0e73
+│     │╎╎   0x00000e76      fd             mov r5, a
+│    ┌────< 0x00000e77      30e005         jnb 0xe0.0, 0x0e7f          ; [0xe0:1]=128
+│    ││╎╎   0x00000e7a      439001         orl 0x90, #0x01             ; [0x90:1]=96
+│   ┌─────< 0x00000e7d      8003           sjmp 0x0e82
+│   │││╎╎   ; CODE XREF from fcn.00000e62 @ 0xe77(x)
+│   │└────> 0x00000e7f      5390fe         anl 0x90, #0xfe             ; [0x90:1]=96
+│   │ │╎╎   ; CODE XREF from fcn.00000e62 @ 0xe7d(x)
+│   └─────> 0x00000e82      439004         orl 0x90, #0x04             ; [0x90:1]=96
+│     │╎╎   0x00000e85      5390fb         anl 0x90, #0xfb             ; [0x90:1]=96
+│     │╎╎   0x00000e88      1e             dec r6
+│     │└──< 0x00000e89      80dd           sjmp 0x0e68
+│     │ ╎   ; CODE XREF from fcn.00000e62 @ 0xe69(x)
+│     └┌──< 0x00000e8b      303008         jnb 0x26.0, 0x0e96          ; [0x26:1]=18
+│      │╎   0x00000e8e      c230           clr 0x26.0                  ; [0x26:1]=18
+│      │╎   0x00000e90      ad25           mov r5, 0x25                ; [0x25:1]=15
+│      │╎   0x00000e92      7e08           mov r6, #0x08
+│      │└─< 0x00000e94      80d2           sjmp 0x0e68
+│      │    ; CODE XREF from fcn.00000e62 @ 0xe8b(x)
+│      └──> 0x00000e96      439002         orl 0x90, #0x02             ; [0x90:1]=96
+│           0x00000e99      5390fd         anl 0x90, #0xfd             ; [0x90:1]=96
+└           0x00000e9c      22             ret
+=== fcn.0x0466 ===
+=== fcn.0x0478 ===
+=== fcn.0x0300 ===
+=== fcn.0x0d6b ===
+            ; CALL XREF from fcn.00000110 @ +0xdb(x)
+┌ 65: fcn.00000d6b ();
+│           0x00000d6b      90ff2f         mov dptr, #0xff2f           ; [0xff2f:1]=255
+│           0x00000d6e      e0             movx a, @dptr
+│           0x00000d6f      ff             mov r7, a
+│           0x00000d70      e50b           mov a, 0x0b                 ; [0xb:1]=2
+│           0x00000d72      d3             setb c
+│           0x00000d73      9f             subb a, r7
+│       ┌─< 0x00000d74      500f           jnc 0x0d85
+│       │   0x00000d76      e0             movx a, @dptr
+│      ┌──< 0x00000d77      b50b17         cjne a, 0x0b, 0x0d91        ; [0xb:1]=2
+│      ││   0x00000d7a      90ff2e         mov dptr, #0xff2e           ; [0xff2e:1]=255
+│      ││   0x00000d7d      e0             movx a, @dptr
+│      ││   0x00000d7e      ff             mov r7, a
+│      ││   0x00000d7f      e509           mov a, 0x09                 ; [0x9:1]=34
+│      ││   0x00000d81      d3             setb c
+│      ││   0x00000d82      9f             subb a, r7
+│     ┌───< 0x00000d83      400c           jc 0x0d91
+│     │││   ; CODE XREF from fcn.00000d6b @ 0xd74(x)
+│     ││└─> 0x00000d85      90ff2e         mov dptr, #0xff2e           ; [0xff2e:1]=255
+│     ││    0x00000d88      e0             movx a, @dptr
+│     ││    0x00000d89      f509           mov 0x09, a                 ; [0x9:1]=34
+│     ││    0x00000d8b      a3             inc dptr
+│     ││    0x00000d8c      e0             movx a, @dptr
+│     ││    0x00000d8d      f50b           mov 0x0b, a                 ; [0xb:1]=2
+│     ││    0x00000d8f      c20d           clr 0x21.5                  ; [0x21:1]=34
+│     ││    ; CODE XREFS from fcn.00000d6b @ 0xd77(x), 0xd83(x)
+│     └└──> 0x00000d91      90ff2e         mov dptr, #0xff2e           ; [0xff2e:1]=255
+│           0x00000d94      e0             movx a, @dptr
+│           0x00000d95      ff             mov r7, a
+│           0x00000d96      e509           mov a, 0x09                 ; [0x9:1]=34
+│           0x00000d98      c3             clr c
+│           0x00000d99      9f             subb a, r7
+│       ┌─< 0x00000d9a      400d           jc 0x0da9
+│       │   0x00000d9c      e0             movx a, @dptr
+│      ┌──< 0x00000d9d      b5090b         cjne a, 0x09, 0x0dab        ; [0x9:1]=34
+│      ││   0x00000da0      a3             inc dptr
+│      ││   0x00000da1      e0             movx a, @dptr
+│      ││   0x00000da2      ff             mov r7, a
+│      ││   0x00000da3      e50b           mov a, 0x0b                 ; [0xb:1]=2
+│      ││   0x00000da5      c3             clr c
+│      ││   0x00000da6      9f             subb a, r7
+│     ┌───< 0x00000da7      5002           jnc 0x0dab
+│     │││   ; CODE XREF from fcn.00000d6b @ 0xd9a(x)
+│     ││└─> 0x00000da9      d20d           setb 0x21.5                 ; [0x21:1]=34
+│     ││    ; CODE XREFS from fcn.00000d6b @ 0xd9d(x), 0xda7(x)
+└     └└──> 0x00000dab      22             ret
