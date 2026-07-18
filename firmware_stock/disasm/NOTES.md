@@ -61,8 +61,28 @@ Then clears `0x21.3 / 0x21.4` and re-arms EP0 IN status stage
 at `0x0006`. Main loop dispatches on `0x0A` and physically reconfigures
 the audio path.
 
-## I²C usage — TWO buses
-Rev 20 uses **two** independent I²C buses:
+## ⚠️ Confidence note on the bit-banged buses
+The routines at `0x0C57` and `0x0E74` have **zero direct call sites**
+in the disassembly (`grep -nE "lcall 0x0c57|lcall 0x0e74"` returns
+nothing). Three possible interpretations, in order of likelihood:
+
+1. **r2 alignment error** in the 0x0C4B-0x0CA5 and 0x0E74-0x0EAE
+   regions. The 8051 has variable-length instructions; a single mis-decoded
+   byte earlier makes everything after look like a valid but wrong
+   routine. This is the leading theory.
+2. Reached via a computed jump (`jmp @a+dptr`) whose table lives
+   outside what I've scanned.
+3. Dead code left in the ROM.
+
+The P1-bit toggling patterns ARE real (they show up in valid, called
+routines around 0x0E80-0x0F51), but they may be part of a **single
+unified handshake sequence** rather than two independent bit-bangers.
+**Do NOT trust the "P1 pin map" table below as final until re-verified
+in an interactive r2 session with proper function-boundary hints.**
+
+## I²C usage — hardware peripheral confirmed, others suspect
+Rev 20 uses **at least one** confirmed I²C bus, and probably others
+via bit-banged P1:
 
 ### Bus 1: hardware I²C peripheral (0xFFC0-C3) → boot EEPROM only
 Every access to `I²CADR (0xFFC3)` writes `0xA0` = 7-bit address `0x50`
