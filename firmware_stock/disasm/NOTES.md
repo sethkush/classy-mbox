@@ -303,15 +303,66 @@ descriptor (2 bytes) to EEPROM 0x50 register 0x31, so the box comes up
 in its last-used input/clock combination after a power-cycle. RAM 0x08
 holds the current mode index.
 
-## Reset / init block starting at `0x08DD`
-Called during boot before the main loop enters:
-- `GLOBCTL (0xFFFC) = 0`, `OEPCNF0-hi (0xFFB0) = 1` — USB glue.
-- **`P1 (SFR 0x90) = 0x00`**, **`P3 (SFR 0xB0) = 0xFF`** — port pin
-  boot state. **This is where the physical GPIO mapping lives.**
-  Whichever P1/P3 bits later get toggled by the mode 4/5 handlers
-  (input=analog vs S/PDIF) will name the mux GPIO.
-- `TMOD (0x89) = 0x11`, `TH0 (0x8C) = 0xCE` — Timer 0/1 mode 1, 8-bit
-  reload — this is the SOF/audio-tick timer.
+## Master boot init `fcn.0x08CB` — full XDATA/SFR trace ✅
+Called from reset flow (fcn.0x00000000 @ 0x0AAD) and mode transitions.
+This is the **single reference for what our custom firmware needs to
+write at boot**:
+
+**SFR writes (8051 core registers):**
+| Reg   | Val    | Meaning                                        |
+|-------|--------|------------------------------------------------|
+| 0x8C  | 0xCE   | TH0 — Timer 0 reload high (SOF-tick timer)     |
+| 0x8A  | 0x00   | TL0 — Timer 0 low                              |
+| 0x8D  | 0x00   | TH1 — Timer 1 high                             |
+| 0x8B  | 0x00   | TL1 — Timer 1 low                              |
+| 0x89  | 0x11   | TMOD — both timers 16-bit mode 1               |
+| 0x88  | 0x00   | TCON — timer control cleared                   |
+| 0xA8  | 0x03   | IE — EX0=1, ET0=1 (INT0 + Timer 0 IRQ)         |
+| 0xB8  | 0x00   | IP — all interrupts normal priority            |
+| 0x90  | 0x00   | P1 — all pins low (idle state)                 |
+| 0xB0  | 0xFF   | P3 — all pins high (button inputs w/ pull-up)  |
+
+**XDATA writes (TAS1020A UIFR registers):**
+| Addr   | Val   | Purpose                                        |
+|--------|-------|------------------------------------------------|
+| 0xFFFC | 0x00  | GLOBCTL — disable USB during init              |
+| 0xFFB0 | 0x01  | OEPCNF0 upper byte                             |
+| 0xFFE0 | 0x0D  | DMACTL0 — DMA channel 0 control                |
+| 0xFFDF | 0xE5  | DMA channel 0 config                           |
+| 0xFFDE | 0xAC  | CPTCNF3 — C-port config 3                      |
+| 0xFFDD | 0x03  | CPTCNF2 — C-port config 2                      |
+| 0xFFDC | 0x50  | CPTCNF1 — C-port config 1                      |
+| 0xFFD6 | 0x25  | CPTBRTX — C-port bit rate TX                   |
+| 0xFFD5 | 0xAC  | CPTBRRX — C-port bit rate RX                   |
+| 0xFFD4 | 0x03  | CPTCTL — C-port control                        |
+| 0xFFB1 | \|=1  | GLOBCTL — enable USB (last, after all init)    |
+
+**RAM state init (after XDATA):**
+- `RAM[0x08] = 0x03` — initial mode index (S/PDIF slave probably)
+- `RAM[0x22] = 0x00` — mux state = all off initially
+- `RAM[0x23].6 = 1` — 48V initially off (bit toggle-target)
+- Pushes RAM[0x22]=0 to mux via `fcn.0x0F0C`
+- ~4000-cycle delay (RAM[0x2E]/[0x2F] loop up to 0x0F00)
+- `RAM[0x22] = 0xFF` masked: clear bits 0, 3, and `0x23.6`
+- Pushes updated RAM[0x22] to mux — this is the **power-on default**:
+  all mux switches ON except source-select bit 0 (channels 1 and 2)
+  and 48V toggle cleared
+
+## Reset flow (from `fcn.0x00000000`, 259 bytes)
+Reset vector at 0x0000 → `LJMP 0x0A09` (main init entry).
+
+1. `0x0A09`: Clear IRAM 0..0x7F, set `SP = 0x33`.
+2. `0x0A50-0x0A95`: MOVC-driven descriptor copy from ROM into XDATA
+   (USB descriptor tables + EP config).
+3. `0x0AAD`: `lcall fcn.0x08CB` — master hardware init (above).
+4. `0x0ADF`: `lcall fcn.0x0ED5` — initial button-state snapshot.
+5. `0x0AE5`: Enter main loop:
+   ```
+   while(1) {
+       if (RAM[0x24].0) handle_ep0();   // USB event
+       if (RAM[0x0A])   dispatch(RAM[0x0A]);  // action pending
+   }
+   ```
 
 ## Key insight for custom firmware
 **Rev 20 talks to the CS8427 via bit-banged I²C on P1.3/P1.4.**
