@@ -81,12 +81,19 @@ void streaming_capture_enable(unsigned char on)
 }
 
 /* SOF-tick service — called from usb_service() when VEC_SOF fires.
- * At Full Speed there's one SOF per ms, matching one iso packet per EP. */
+ *
+ * Deliberately a no-op. Rev 20's Timer 0 ISR at 0x101E turned out to be
+ * a 9-byte "just set a pending flag" stub (`clr EA; setb 0x24.0; reload
+ * TH0; setb EA; reti`). The actual audio buffer shuttling is done in
+ * hardware by the TAS1020A's DMA engine, which autoruns between the C-port
+ * (I²S) and USB packet memory once endpoints are enabled. Our polling
+ * usb_service() loop is the direct equivalent of Rev 20's "check pending
+ * flag" idiom — no per-SOF work needed.
+ *
+ * If we later add async endpoint feedback or drift correction (both
+ * useful upgrades over Digi's adaptive-sync design), that logic lands
+ * here.
+ */
 void streaming_sof(void)
 {
-    /* TODO: swap DMA source/dest between the two halves of a double
-     * buffer so the DMA engine always has one full buffer to work on
-     * while USB fills / drains the other. This is where the actual
-     * audio glue lives — Rev 20 handles it inside its Timer 0 ISR
-     * (fcn.0x101E, which we haven't fully mapped yet). */
 }

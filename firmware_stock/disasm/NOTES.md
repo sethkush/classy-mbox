@@ -353,6 +353,19 @@ write at boot**:
   all mux switches ON except source-select bit 0 (channels 1 and 2)
   and 48V toggle cleared
 
+## Timer 0 ISR `fcn.0x101E` — trivial ✅
+Only 9 bytes:
+```
+clr EA           ; disable interrupts
+setb 0x24.0      ; set "service pending" flag
+mov TH0, #0xCE   ; reload timer for next ~1 kHz tick
+setb EA
+reti
+```
+Purely a wakeup for the main loop's `jb 0x24.0, ...` check at 0x0AE5.
+Zero audio-path logic — DMA autoruns in hardware. This is why our
+custom firmware's `streaming_sof()` is deliberately empty.
+
 ## Reset flow (from `fcn.0x00000000`, 259 bytes)
 Reset vector at 0x0000 → `LJMP 0x0A09` (main init entry).
 
