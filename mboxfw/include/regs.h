@@ -19,13 +19,18 @@
 #define OEPBCTX0    XDATA(0xFFAB)
 #define OEPCNF0_HI  XDATA(0xFFB0)
 
-/* USB endpoint 3 config (audio streaming) */
-#define IEPCNF3     XDATA(0xFF60)
-#define IEPBBAX3    XDATA(0xFF63)
-#define IEPBSIZ3    XDATA(0xFF67)
-#define OEPCNF3     XDATA(0xFF98)
-#define OEPBBAX3    XDATA(0xFF9B)
-#define OEPBSIZ3    XDATA(0xFF9F)
+/* USB audio streaming endpoints — Rev 20 uses EP1 IN + EP2 OUT.
+ * (Per TI Reg_stc1.h: IEPCNF1=0xFF60, OEPCNF2=0xFF98. Earlier RE notes
+ *  called these "EP3" — that was wrong; every occurrence of 0xFF60/0xFF98
+ *  in the disasm is EP1-IN / EP2-OUT. Linux quirks wIndex=0x81 = EP1 IN
+ *  confirms this.)
+ */
+#define IEPCNF1     XDATA(0xFF60)   /* audio capture (device → host) */
+#define IEPBBAX1    XDATA(0xFF63)
+#define IEPBSIZ1    XDATA(0xFF67)
+#define OEPCNF2     XDATA(0xFF98)   /* audio playback (host → device) */
+#define OEPBBAX2    XDATA(0xFF9B)
+#define OEPBSIZ2    XDATA(0xFF9F)
 
 /* USB setup-packet block (SETPACK, 8 bytes at 0xFF28-0xFF2F) */
 #define SETPACK_BMREQ  XDATA(0xFF28)

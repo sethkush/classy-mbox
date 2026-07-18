@@ -272,11 +272,16 @@ that r2 mis-decodes — the LCALL from mode handlers dispatches via the
 `jmp @a+dptr` at 0x0728 into the real body). Confirmed side-effects on
 XDATA:
 
-**Streaming-endpoint config** (audio EP3, both directions):
-- `IEPCNF3 (0xFF60) = 0xC5`   — enable IN EP3, IN-buffer valid
+**Streaming-endpoint config** (audio, asymmetric EP layout):
+- `IEPCNF1 (0xFF60) = 0xC5`   — enable IN EP1, IN-buffer valid (capture)
 - `IEPBBAX3 (0xFF63) = 0`     — zero buffer offset lo (reset)
 - `IEPBSIZ3 (0xFF67) = 0`     — reset byte-count
-- `OEPCNF3 (0xFF98) = 0xC5`   — enable OUT EP3, ISO
+- `OEPCNF2 (0xFF98) = 0xC5`   — enable OUT EP2, ISO (playback)
+
+**Correction from earlier notes:** the streaming endpoints are EP1 IN
+(0xFF60 = IEPCNF1 per TI Reg_stc1.h) and EP2 OUT (0xFF98 = OEPCNF2),
+not "EP3". Confirmed by Linux quirks using `wIndex=0x81 = EP1 IN` on
+its clock-source class request.
 - `OEPBBAX3 (0xFF9B) = 0`     — reset
 - `OEPBSIZ3 (0xFF9F) = 0`     — reset
 
@@ -463,8 +468,8 @@ control-port protocol.
 ## Readiness checklist for writing custom class-compliant firmware
 
 **✅ Everything on the hardware side needed to boot the board:**
-- USB endpoints: EP0 (control, standard USB) + EP3 IN/OUT (audio ISO)
-- USB registers to program: IEPCNF3=0xFF60, OEPCNF3=0xFF98 (both = 0xC5)
+- USB endpoints: EP0 (control) + EP1 IN (capture) + EP2 OUT (playback)
+- USB registers to program: IEPCNF1=0xFF60, OEPCNF2=0xFF98 (both = 0xC5)
 - DMA channels: 0 and 2, programmed via 0xFFE1-0xFFE7 and 0xFFF7-0xFFF9
 - C-port I²S: 0xFFD4-0xFFDE (`fcn.0x0728` mode-5 branch)
 - CS8427 boot sequence: 10 register writes at `fcn.0x080B`
