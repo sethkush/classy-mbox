@@ -552,9 +552,33 @@ state-machine — forces 22.1, 22.2 high, then computes 22.6 as:
 ```
 22.6 = !25.4 && !25.5   (only both-clear leaves the mux LED asserted)
 ```
-Followed by `fcn.0x0E74` (16-bit codec shift) in every real caller. In
-init, only the adjuster runs — no shift, so the codec chip sees its
-first control word only after the first source or phantom event.
+Ends with `ret` at 0x0E73. Does NOT fall through to `fcn.0x0E74`.
+
+### `fcn.0x0E74` is dead code in Rev 20
+A byte-level scan across every call/jump opcode variant (lcall / acall
+page-0..7 / ajmp page-0..7) finds **zero** references to `0x0E74` in
+the Rev 20 firmware image. The 16-bit codec bit-serial writer at that
+address is compiled in but never invoked.
+
+Interpretation: **the codec chip in the Mbox 1 does NOT use a
+bit-banged serial control port.** It's autoconfigured from the I²S
+clock signals the CS8427 (or the TAS1020A's C-port) drives directly.
+Digi likely intended a Cirrus-style SPI-configured codec early in
+development, then swapped to a self-configuring part and left the dead
+routine in ROM.
+
+Implications for mboxfw:
+- The `codec_commit()` function is safe but effectively a no-op on the
+  wire — it sets RAM state and pulses P1.0/P1.1/P1.2, but no hardware
+  is listening to those pins for control-word data. Keeping it means
+  we're byte-identical to Rev 20's *intended* behavior even if Rev 20
+  never exercises it in practice.
+- Setting RAM[0x23] bits 0-4 or RAM[0x25] bits 4-7 has NO effect on
+  the audio chain. The mux (RAM[0x22]) is what actually affects the
+  input path, and that IS shipped out via `fcn.0x0F0C`.
+- "Enumerates but audio distorted" risk should be re-attributed away
+  from the codec shift and toward: mux state, CS8427 boot sequence,
+  DMASRC constants, or I²S clock timing from the C-port.
 
 ## Readiness checklist for writing custom class-compliant firmware
 

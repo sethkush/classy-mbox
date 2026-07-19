@@ -92,6 +92,15 @@ static void codec_shift_byte(unsigned char b)
  * Rev 20 uses RAM[0x26].0 as a "which byte am I on?" flag inside a
  * single loop; the C version below just calls codec_shift_byte twice —
  * same emitted signal, half the register plumbing.
+ *
+ * Caveat: byte-level scanning of Rev 20 finds ZERO callers of the
+ * matching routine at 0x0E74 (see NOTES.md § "fcn.0x0E74 is dead
+ * code"). The codec chip is autoconfigured from its I²S clock signals
+ * and the P1.0/P1.1/P1.2 shift never actually reaches control-word
+ * logic on real hardware. We keep this call anyway to mirror Rev 20's
+ * intended-but-unused behavior — cost is a few dozen cycles per state
+ * change and it means future codec revisions that DO listen to the
+ * shift-in port will just work.
  */
 void codec_commit(void)
 {
