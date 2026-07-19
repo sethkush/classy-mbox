@@ -384,7 +384,8 @@ static int cmd_flash(const char *path) {
 
     printf("\n=== FLASH COMPLETE ===\n");
     printf("Physically unplug the Mbox, wait 3 seconds, plug it back in NORMALLY\n");
-    printf("(without holding any button). Then run --probe to confirm bcdDevice = 0x0022.\n");
+    printf("(without holding any button), then run --probe to confirm bcdDevice.\n");
+    printf("Expected values: 0x0020 = Rev 20, 0x0022 = v22, other = custom.\n");
     return 0;
 }
 
