@@ -9,15 +9,26 @@ TI record format (per record):
     u32 type_BE     (0 = data, 1 = EOF)
     length bytes of data
 
-Layout of a complete EEPROM image (matches Rev 20 / v22):
-    Record 0: EEPROM header (18 bytes at addr 0)
-    Record 1..N: firmware code, up to 32 bytes each
-    Final record: EOF marker (length=0, type=1)
+Layout of a complete EEPROM image (matches Rev 20 stock byte-for-byte):
+    Records 0..N: 32-byte page-aligned chunks starting at address 0.
+                  The 18-byte EEPROM header occupies the first 18 bytes
+                  of record 0; code fills the remaining 14 bytes and
+                  continues into subsequent records.
+    (No explicit EOF marker — Rev 20 stock ends on the last data record
+     and mboxflash's parser stops when it can't read another 12-byte
+     record header.)
 
 The 18-byte EEPROM header is the TAS1020A boot-ROM's expected preamble.
 See firmware_stock/disasm/NOTES.md "EEPROM_HEADER_STRUCT" for the field
 map. This script assembles it from the raw firmware size + a fixed
 template so we don't have to hand-edit binary blobs.
+
+Autodetect signature checked by mboxflash (payload.m:MBoxPayload_Autodetect):
+    00 00 00 20   len = 32 BE
+    00 00 00 00   addr = 0
+    00 00 00 00   type = 0
+    60 12 12 34   header chksum=0x60, size=0x12, sig=0x12 0x34
+    0d ba         Digi VID
 """
 
 import argparse
@@ -101,7 +112,13 @@ def build_eeprom_header(payload_size: int,
         0x00,        # rPageSize
         payload_size,
     )
-    chksum = (-sum(body)) & 0xFF
+    # chksum byte = additive (NOT complemented) sum of the remaining 17
+    # bytes, mod 256. Verified against stock rev20_flasher_payload.bin:
+    # its header is 60 12 12 34 0d ba 10 01 01 01 04 fa 02 20 01 00 1f ee
+    # and sum(bytes[1:]) & 0xFF = 0x60 = the stored chksum. TI's docs
+    # describe a "complemented" chksum but the flasher payload uses raw
+    # additive — matches what the TAS1020A boot ROM actually verifies.
+    chksum = sum(body) & 0xFF
     return bytes([chksum]) + body
 
 
@@ -109,24 +126,22 @@ def build_eeprom_header(payload_size: int,
 
 def emit_records(header: bytes,
                  code: bytes,
-                 chunk: int = 32) -> bytes:
+                 page: int = 32) -> bytes:
     """
-    Emit the full stream:
-        record 0: header @ addr 0
-        record 1..N: code in `chunk`-byte pieces starting at addr len(header)
-        final: EOF marker
+    Emit stock-compatible records: the whole image (header ++ code) is
+    split into page-sized chunks starting at address 0. Each chunk becomes
+    one type-0 record. There is no explicit EOF; mboxflash's parser stops
+    when it runs out of bytes (matches rev20_flasher_payload.bin exactly).
     """
+    image = bytearray(header + code)
+    # Page-align by padding trailing bytes with 0xFF (matches erased EEPROM).
+    pad = (-len(image)) & (page - 1)
+    image += b"\xff" * pad
+
     out = bytearray()
-
-    def rec(addr: int, rtype: int, data: bytes) -> bytes:
-        return struct.pack(">III", len(data), addr, rtype) + data
-
-    out += rec(0, 0, header)
-    off = len(header)
-    for i in range(0, len(code), chunk):
-        piece = code[i:i + chunk]
-        out += rec(off + i, 0, piece)
-    out += rec(0, 1, b"")   # EOF
+    for addr in range(0, len(image), page):
+        piece = bytes(image[addr:addr + page])
+        out += struct.pack(">III", len(piece), addr, 0) + piece
     return bytes(out)
 
 
@@ -143,20 +158,29 @@ def main() -> int:
     args = ap.parse_args()
 
     code = parse_ihx(args.ihx.read_text())
-    # Pad code to page-boundary — the TAS1020A EEPROM programmer expects
-    # writes aligned to wPageSize (32).
-    pad = (-len(code)) & 31
-    code += b"\xff" * pad
 
+    # payloadSize in the EEPROM header names the code-only size (matches
+    # stock rev20: header field = 0x1FEE = 8174, and its code image is
+    # exactly 8174 bytes). Emit_records() pages the whole (header+code)
+    # blob afterwards.
     header = build_eeprom_header(len(code),
                                  vid=args.vid, pid=args.pid,
                                  max_power_mA=args.max_power_mA)
     stream = emit_records(header, code)
     args.out.write_bytes(stream)
 
+    # Sanity: assert the first 18 bytes of the stream's record-0 data
+    # match mboxflash's autodetect signature. If this ever trips we've
+    # broken the wire format.
+    sig = b"\x00\x00\x00\x20\x00\x00\x00\x00\x00\x00\x00\x00"  # len32 addr0 type0
+    assert stream[:12] == sig, "record 0 does not match len=32/addr=0/type=0 signature"
+    assert stream[12] == (sum(header[1:]) & 0xFF), "header chksum mismatch"
+    assert stream[13] == 18 and stream[14:16] == b"\x12\x34", "header sig mismatch"
+    assert stream[16:18] == b"\x0d\xba", "VID field not 0x0DBA"
+
     print(f"code       : {len(code):>5} bytes ({len(code)/1024:.1f} KB)")
     print(f"header     : {len(header):>5} bytes")
-    print(f"records    : {len(stream):>5} bytes total")
+    print(f"records    : {len(stream)//44:>5} × 44B = {len(stream)} bytes total")
     return 0
 
 

@@ -465,18 +465,71 @@ both channels because both directions of the audio stream use the same
 sample rate.
 
 ## Codec state model
-Codec is written via `fcn.0x0E62` which shifts two bytes MSB-first onto
-P1.0 (data) / P1.2 (clock) with a final P1.1 (latch) pulse:
-
-- **Byte 1** = `RAM[0x23]` — mostly bookkeeping bits set by fcn.0x0393
-  (the mode-transition prep). Bits `0x23.0/1/2/3/4/6` seen manipulated.
-- **Byte 2** = `RAM[0x25]` — session/state flags: `0x25.0..0x25.3` set
-  by source-cycle handlers, `0x25.4` = analog vs S/PDIF, `0x25.5` set
-  during mode transitions, `0x25.6` = "in setup", `0x25.7` = "packet
-  boundary" (used as start/stop condition by both bit-bangers).
+The codec + input-mux + 48 V-phantom state is held in three IRAM bytes
+(0x22, 0x23, 0x25). Two of them (0x23 and 0x25) are shifted out to the
+audio codec chip as a 16-bit MSB-first control word by `fcn.0x0E74`
+(P1.0 = SDIN, P1.2 = SCLK, P1.1 = LATCH). The third (0x22) is shifted
+out to the 74HC595 input mux by `fcn.0x0F0C` (P1.7/P1.5/P1.6).
 
 The 16-bit codec write pattern matches the **Cirrus CS4272** style
 control-port protocol.
+
+### RAM[0x22] — mux byte (74HC595 payload)
+| Bit | Meaning                                                       |
+|-----|---------------------------------------------------------------|
+| 0   | Ch 1 source-select bit 0 (see 3-bit encoding below)           |
+| 1   | Ch 1 source-select bit 1 — forced to 1 by state adjuster @ 0x0E60 |
+| 2   | Ch 1 source-select bit 2 — forced to 1 by state adjuster @ 0x0E62 |
+| 3   | Ch 2 source-select bit 0 (see 3-bit encoding below)           |
+| 4   | Ch 2 source-select bit 1 (set/cleared by fcn.0x0E9D branches)  |
+| 5   | Ch 2 source-select bit 2 (set/cleared by fcn.0x0E9D branches)  |
+| 6   | Mux mode / LED — derived by adjuster from RAM[0x25].4 & .5     |
+| 7   | Serial data payload during shift (transient)                   |
+
+Source-select 3-bit codes (per bit-triples above), from
+fcn.0x0EAF/fcn.0x0E27/fcn.0x0E9D branches:
+- **Mic**  = `1 0 1`   (adjuster starts here on both channels)
+- **Line** = `1 1 0`
+- **Inst** = `0 1 1`
+
+### RAM[0x23] — codec control-word MSB (shifted first)
+Manipulated by `fcn.0x0393` (mode-transition prep) and toggled by
+`fcn.0x1028` (P3.5 button = phantom power).
+
+| Bit | Meaning                                                       |
+|-----|---------------------------------------------------------------|
+| 6   | 48 V phantom-power enable (also branches mux latch behavior)  |
+| 0/1/2/3/4 | Set/cleared by fcn.0x0393; roles undecoded — likely codec attenuator or format bits per CS4272 datasheet mapping. Safe default is 0 for first flash. |
+
+### RAM[0x25] — codec control-word LSB + FSM flags
+| Bit | Meaning                                                       |
+|-----|---------------------------------------------------------------|
+| 0   | Cleared by mode-transition path @ 0x0E5A — role undecoded      |
+| 1   | Source-cycle FSM bit 0 (see 3-state encoding below)            |
+| 2   | Cleared by mode-transition path @ 0x0E5C — role undecoded      |
+| 3   | Source-cycle FSM bit 1                                          |
+| 4   | Current source = S/PDIF (vs analog); read by state adjuster    |
+| 5   | Mode transition in progress; read by state adjuster            |
+| 6   | "In setup" (used by both bit-banger start/stop conditions)     |
+| 7   | Packet-boundary toggle (used as I²C phase indicator)           |
+
+Source-cycle FSM (bits 25.1 and 25.3) — decoded from fcn.0x0EAF:
+- **State A** (mic-side):  25.1 = 1, 25.3 = 1
+- **State B** (line-side): 25.1 = 1, 25.3 = 0
+- **State C** (inst-side): 25.1 = 0, 25.3 = 0
+The transitions are cyclic: A → B → C → A on each button press. The
+mux bits (22.3/4/5 for ch 2, mirrored for ch 1) are set from these FSM
+bits by the same handler.
+
+### State-adjuster (`fcn.0x0E62`) side effects
+Runs after every source/mode change AND from `codec_init()`. Pure
+state-machine — forces 22.1, 22.2 high, then computes 22.6 as:
+```
+22.6 = !25.4 && !25.5   (only both-clear leaves the mux LED asserted)
+```
+Followed by `fcn.0x0E74` (16-bit codec shift) in every real caller. In
+init, only the adjuster runs — no shift, so the codec chip sees its
+first control word only after the first source or phantom event.
 
 ## Readiness checklist for writing custom class-compliant firmware
 

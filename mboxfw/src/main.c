@@ -15,6 +15,19 @@ extern void hw_init(void);
 extern void usb_init(void);
 extern void usb_service(void);
 
+/*
+ * ISR forward declarations. SDCC's vector-table emitter runs in the
+ * compilation unit that owns crt0 (main.c here) and only lays down a
+ * jump at 0x0003/0x000B/etc when it sees the matching __interrupt(N)
+ * declaration in the same TU. The bodies live in isr.c — these
+ * declarations exist purely to plant the vector jumps.
+ * (Without them: the linker leaves the vector bytes as 0xFF/random, so
+ *  the first INT0/Timer0 firing jumps into the middle of some function
+ *  and crashes the CPU.)
+ */
+void isr_int0(void)    __interrupt(0);
+void isr_timer0(void)  __interrupt(1);
+
 void main(void)
 {
     hw_init();

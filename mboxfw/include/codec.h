@@ -14,4 +14,24 @@
  */
 void codec_init(void);
 
+/*
+ * codec_commit() — run the state adjuster (fcn.0x0E62) then shift the
+ * updated {high, low} codec bytes out to the codec via P1.0/P1.2 with
+ * a P1.1 latch strobe. Ports fcn.0x0E74. Call after every state change
+ * (mux update, phantom-power toggle, source cycle) to make the change
+ * visible on the audio codec chip.
+ *
+ * The two bytes shifted are:
+ *   high byte = g_codec_state_23 (mirrors Rev 20 RAM[0x23], control-word MSB)
+ *   low byte  = g_codec_state_25 (mirrors Rev 20 RAM[0x25], control-word LSB)
+ *
+ * MSB-first, so bit 23.7 goes out first, bit 25.0 last.
+ */
+void codec_commit(void);
+
+/* codec state bytes — externally visible so button/control handlers can
+ * poke the individual bits before calling codec_commit(). */
+extern __data unsigned char g_codec_state_23;
+extern __data unsigned char g_codec_state_25;
+
 #endif

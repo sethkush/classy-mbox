@@ -11,9 +11,7 @@
 #include "regs.h"
 #include "buttons.h"
 #include "mux.h"
-
-extern __data unsigned char g_mux_state;
-extern __bit g_phantom_48v;
+#include "codec.h"
 
 /* Rev 20 stores the previous button-state snapshot in RAM[0x20]. */
 static __data unsigned char prev_p3 = 0xFF;
@@ -40,17 +38,22 @@ void buttons_poll(void)
     unsigned char changed = now ^ prev_p3;
     unsigned char pressed_low = changed & ~now;   /* falling edges only */
 
+    /* codec_commit() runs the state adjuster, re-writes the mux, and
+     * shifts the resulting 16-bit codec control word — so any state
+     * bit we flip (mux or codec_state_23/25) gets published to hardware
+     * in one call. Matches Rev 20's control-change idiom which routes
+     * through fcn.0x0E62 → fcn.0x0E74. */
     if (pressed_low & P3_BTN_CH1_MASK) {
         g_mux_state = cycle_source(g_mux_state, 0);
-        mux_write(g_mux_state);
+        codec_commit();
     }
     if (pressed_low & P3_BTN_CH2_MASK) {
         g_mux_state = cycle_source(g_mux_state, 3);
-        mux_write(g_mux_state);
+        codec_commit();
     }
     if (pressed_low & P3_BTN_48V_MASK) {
         g_phantom_48v = !g_phantom_48v;
-        mux_write(g_mux_state);
+        codec_commit();
     }
 
     prev_p3 = now;

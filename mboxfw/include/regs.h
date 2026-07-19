@@ -22,9 +22,13 @@
 #define OEPCNF0_HI  XDATA(0xFFB0)
 
 /* EP0 packet buffers — placed manually in TAS1020A shared-mem window
- * starting at 0xF800. Matches Rev 20's convention (IN=0xFA10, OUT=0xFA18). */
-#define EP0_IN_BUF_ADDR    0xFA10
-#define EP0_OUT_BUF_ADDR   0xFA18
+ * starting at 0xF800. Rev 20's fcn.0x0982 disasm (rev20_flat.asm:1202-1220)
+ * shows OEPBBAX0=0x42 written first, then IEPBBAX0 via `inc a` (0x43).
+ * Encoded as base_addr/8: 0x42*8 = 0xFA10 (OUT), 0x43*8 = 0xFA18 (IN).
+ * (Earlier drafts had these swapped; symptomatic bug was that EP0 IN
+ *  packets would land where the host wrote OUT, corrupting SETUP data.) */
+#define EP0_OUT_BUF_ADDR   0xFA10
+#define EP0_IN_BUF_ADDR    0xFA18
 #define EP0_MAX_PACKET     8
 
 /* Audio streaming buffers — larger, further into the shared window. */

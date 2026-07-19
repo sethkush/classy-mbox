@@ -43,25 +43,34 @@ NSArray<MBoxPayloadRecord *> *MBoxPayload_Parse(NSData *blob,
 }
 
 BOOL MBoxPayload_Autodetect(NSData *blob, NSUInteger *outStartOffset) {
-    // First-record signature for any Mbox 1 firmware:
+    // First-record signature for any Mbox 1 firmware. Structure:
     //   len = 0x00000020 BE (32), addr = 0, type = 0,
-    //   then data starts with 60 12 12 34 0d ba (TAS1020A/Mbox header + Digi VID).
-    static const uint8_t sig[] = {
+    //   [chksum byte — payload-size-dependent, so wildcarded],
+    //   headerSize = 0x12, sig bytes = 0x12 0x34, VID = 0x0dba.
+    // The chksum byte was originally pinned to 0x60 (stock rev20's value
+    // for payloadSize=8174), which made autodetect reject any custom
+    // firmware with a different payload size — e.g. mboxfw's ~2 KB build.
+    // Wildcarding it is safe: 0x12 0x12 0x34 (header size + Mbox sig) plus
+    // the Digi VID is more than unique enough to autodetect against junk.
+    static const uint8_t prefix[] = {
         0x00, 0x00, 0x00, 0x20,     // length 32 BE
         0x00, 0x00, 0x00, 0x00,     // addr 0
         0x00, 0x00, 0x00, 0x00,     // type 0
-        0x60, 0x12, 0x12, 0x34,     // start of TAS1020A firmware
+    };
+    static const uint8_t tail[] = {
+        0x12, 0x12, 0x34,           // headerSize + signature bytes
         0x0d, 0xba,                 // Digi VID
     };
-    NSUInteger sig_len = sizeof(sig);
+    NSUInteger sig_len = sizeof(prefix) + 1 + sizeof(tail);
     const uint8_t *b = blob.bytes;
     NSUInteger n = blob.length;
     if (n < sig_len) return NO;
     for (NSUInteger i = 0; i + sig_len <= n; i++) {
-        if (memcmp(b + i, sig, sig_len) == 0) {
-            if (outStartOffset) *outStartOffset = i;
-            return YES;
-        }
+        if (memcmp(b + i, prefix, sizeof(prefix)) != 0) continue;
+        // b + i + sizeof(prefix) is the chksum byte — accept any value.
+        if (memcmp(b + i + sizeof(prefix) + 1, tail, sizeof(tail)) != 0) continue;
+        if (outStartOffset) *outStartOffset = i;
+        return YES;
     }
     return NO;
 }
