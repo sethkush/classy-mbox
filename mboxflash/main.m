@@ -438,11 +438,56 @@ static int cmd_dump(const char *outPath) {
     if (!ok) die(@"dump failed", err);
 
     NSData *out = [acc copy];
-    if (![out writeToFile:@(outPath) atomically:YES]) {
+    if (out.length < 18) {
+        fprintf(stderr, "dump too short (%lu B) — not a valid EEPROM image\n",
+                (unsigned long)out.length);
+        return 1;
+    }
+
+    // TAS1020A DFU_UPLOAD returns 0x00 for the header chksum byte
+    // (empirically observed — the boot ROM appears to mask off byte 0
+    // of the image on upload as a soft anti-tamper). Rewriting it in
+    // place from sum(bytes[1:18]) & 0xFF makes the dump match what's
+    // actually programmed in EEPROM and lets --validate + --flash both
+    // accept the file directly.
+    NSMutableData *fixed = [out mutableCopy];
+    uint8_t *fb = (uint8_t *)fixed.mutableBytes;
+    uint16_t sum = 0;
+    for (int k = 1; k < 18; k++) sum += fb[k];
+    uint8_t expectedChk = sum & 0xFF;
+    if (fb[0] != expectedChk) {
+        printf("  header chksum: dump had 0x%02X, recomputed to 0x%02X\n",
+               fb[0], expectedChk);
+        fb[0] = expectedChk;
+    }
+
+    // Re-wrap the 8 KB image into the 32-byte page-aligned record
+    // stream that --flash consumes. Matches wrap_hex.py exactly.
+    NSUInteger pad = (32 - (fixed.length & 31)) & 31;
+    if (pad) {
+        [fixed increaseLengthBy:pad];
+        memset((uint8_t *)fixed.mutableBytes + fixed.length - pad, 0xFF, pad);
+    }
+    NSMutableData *wrapped = [NSMutableData data];
+    const uint8_t *ib = fixed.bytes;
+    for (NSUInteger a = 0; a < fixed.length; a += 32) {
+        uint8_t hdr[12] = {
+            0, 0, 0, 32,               // length BE
+            (uint8_t)(a >> 24), (uint8_t)(a >> 16),
+            (uint8_t)(a >> 8),  (uint8_t)a,   // addr BE
+            0, 0, 0, 0,                // type = data
+        };
+        [wrapped appendBytes:hdr length:12];
+        [wrapped appendBytes:ib + a length:32];
+    }
+
+    if (![wrapped writeToFile:@(outPath) atomically:YES]) {
         fprintf(stderr, "failed to write %s\n", outPath);
         return 1;
     }
-    printf("\nsaved %lu bytes to %s\n", (unsigned long)out.length, outPath);
+    printf("\nsaved %lu bytes to %s (%lu-record TI format, directly flashable)\n",
+           (unsigned long)wrapped.length, outPath,
+           (unsigned long)wrapped.length / 44);
     printf("To restore this dump: mboxflash --flash %s\n", outPath);
     return 0;
 }
