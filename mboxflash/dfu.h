@@ -52,6 +52,13 @@ BOOL DFU_SendEnterDFURequest(io_service_t device, NSError **error);
 BOOL DFU_Download(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                   uint16_t blockNum, const void *data, uint16_t length,
                   NSError **error);
+// DFU_Upload: read one block back from device memory. `length` is the
+// max bytes to accept; `*outLength` receives the actual returned size
+// (a short/zero read signals end-of-image per DFU 1.0 §6.2). `data`
+// must point to a buffer of at least `length` bytes.
+BOOL DFU_Upload(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
+                uint16_t blockNum, void *data, uint16_t length,
+                uint16_t *outLength, NSError **error);
 BOOL DFU_GetStatus(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                    DFUStatus *out, NSError **error);
 BOOL DFU_QueryStatus(DFUStatus *out, NSError **error);

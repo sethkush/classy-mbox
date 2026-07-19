@@ -18,6 +18,7 @@
 #include "regs.h"
 #include "usb.h"
 #include "streaming.h"
+#include "codec.h"
 
 /* Currently-active sample rate — mirrors g_sample_rate in usb.c. */
 static __data unsigned long stream_rate = 48000UL;
@@ -66,9 +67,22 @@ void streaming_set_rate(unsigned long hz)
     stream_rate = hz;
     if (hz == 44100UL) {
         dma_program_44k1();
+        /* Rev 20's fcn.0x0728 44.1 kHz branch clears RAM[0x23].2 and .3
+         * (rev20_flat.asm:940-941 @ 0x0741). These bits are the codec's
+         * per-rate config nibble — leaving them wrong when the host
+         * SET_CURs 44.1 kHz produces silent or wrong-pitched output. */
+        g_codec_state_23 &= (unsigned char)~0x0C;
     } else {
         dma_program_48k();
+        /* 48 kHz branch @ 0x0800 sets both bits (rev20_flat.asm:1030-1031). */
+        g_codec_state_23 |= (unsigned char)0x0C;
     }
+    /* Shift the updated control word to the codec chip so the change
+     * actually takes effect. Rev 20's mode-switch flow calls the
+     * adjuster + shift after each per-mode bit tweak; codec_commit()
+     * bundles both. */
+    codec_commit();
+
     /* Sample-rate change usually also implies a CS8427 clock-source
      * update. Wire that through fcn.0x080B-style register writes once
      * the codec side is refined. TODO: cs8427_set_rate(hz); */

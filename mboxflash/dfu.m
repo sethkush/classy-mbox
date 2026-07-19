@@ -164,6 +164,27 @@ BOOL DFU_Download(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
     return YES;
 }
 
+BOOL DFU_Upload(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
+                uint16_t blockNum, void *data, uint16_t length,
+                uint16_t *outLength, NSError **error) {
+    IOUSBDevRequest req = {
+        .bmRequestType = 0xA1,   // Class, D→H, to Interface
+        .bRequest      = DFU_UPLOAD,
+        .wValue        = blockNum,
+        .wIndex        = interfaceNumber,
+        .wLength       = length,
+        .pData         = data,
+    };
+    IOReturn rc = (*dev)->DeviceRequest(dev, &req);
+    if (rc != kIOReturnSuccess) {
+        if (error) *error = usbError(
+            [NSString stringWithFormat:@"DFU_UPLOAD block=%u len=%u", blockNum, length], rc);
+        return NO;
+    }
+    if (outLength) *outLength = req.wLenDone;
+    return YES;
+}
+
 BOOL DFU_GetStatus(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                    DFUStatus *out, NSError **error) {
     IOUSBDevRequest req = {

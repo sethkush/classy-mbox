@@ -6,9 +6,9 @@ Rev 20 / v22 firmware.
 
 ## Status
 
-**Full skeleton builds — 2053 bytes of code (~25% of the 8 KB EEPROM
+**Full skeleton builds — 2064 bytes of code (~25% of the 8 KB EEPROM
 budget).** Every major module is in place, every SDCC compile is
-clean, and all three pre-flash checks pass.
+clean, and all four pre-flash checks pass.
 
 | Module                | What it does                                        |
 |-----------------------|-----------------------------------------------------|
@@ -49,6 +49,32 @@ python3 tools/verify_usb_init.py      # confirms the enumeration-critical
                                       # SFR writes (EP0 buffer addrs, CNF
                                       # bytes) appear in the compiled image
                                       # with the exact values Rev 20 uses
+mboxflash --validate FILE             # static wire-format check on the
+                                      # wrapped .bin: record alignment,
+                                      # header chksum, VID/PID, size limits
+```
+
+## Flash-morning safety net
+
+Before running `--flash`, dump the current EEPROM so a bad flash is
+recoverable:
+
+```
+# Enter DFU, then dump:
+mboxflash --enter-dfu
+# (wait for the device to re-enumerate as 0xFFFF:0xFFFE)
+mboxflash --dump backups/rev20-$(date +%s).bin
+# If mboxfw is broken, restore with:
+mboxflash --flash backups/rev20-YYYYMMDD-HHMMSS.bin
+```
+
+If enumeration fails after flashing, capture and diff the USB traffic
+against a known-good UAC1 device to see which SETUP is going wrong:
+
+```
+sudo tools/capture_enum.sh baseline 8   # capture a working UAC1 device
+sudo tools/capture_enum.sh mboxfw   8   # then the Mbox after flashing
+diff -u captures/baseline-*.setup.txt captures/mboxfw-*.setup.txt
 ```
 
 ## Realistic risks on first flash (ordered)

@@ -521,6 +521,31 @@ The transitions are cyclic: A → B → C → A on each button press. The
 mux bits (22.3/4/5 for ch 2, mirrored for ch 1) are set from these FSM
 bits by the same handler.
 
+### RAM[0x23] bit setters — cross-referenced
+
+Every `setb`/`clr` on a RAM[0x23] bit in Rev 20 lives in exactly one of
+two families:
+
+| Bit | Setter site                             | Meaning                       |
+|-----|-----------------------------------------|-------------------------------|
+| 0   | `setb` only @ 0x07CA (fcn.0x0728 branch) | Codec config bit (mode-A)     |
+| 1   | `setb` only @ 0x07CC (fcn.0x0728 branch) | Codec config bit (mode-A)     |
+| 2   | `setb` @ 0x0800/0x0843, `clr` @ 0x0741   | 48 kHz = 1, 44.1 kHz = 0      |
+| 3   | `setb` @ 0x0802/0x0845, `clr` @ 0x0743   | 48 kHz = 1, 44.1 kHz = 0      |
+| 4   | `setb` @ 0x0852 (post-DMA init)          | Set once after codec settles  |
+| 6   | 48 V phantom power (fcn.0x1028)          | Front-panel button-toggled    |
+
+The "mode-transition prep" routine at fcn.0x0393 does NOT set the
+23.0-4 bits itself — it only clears 23.6 (phantom) and delegates the
+per-rate codec config to `fcn.0x0728` (ApplyAudioMode), which is what
+actually populates 23.2/.3 for 48 kHz and clears them for 44.1 kHz.
+
+The mboxfw port mirrors this: `streaming_set_rate()` sets/clears bits
+2 and 3 of `g_codec_state_23` according to the target rate and calls
+`codec_commit()`. Bits 0/1 (mode-A codec config) and 4 (post-settle
+bit) are currently left at zero — first-flash will tell us whether
+that's audible.
+
 ### State-adjuster (`fcn.0x0E62`) side effects
 Runs after every source/mode change AND from `codec_init()`. Pure
 state-machine — forces 22.1, 22.2 high, then computes 22.6 as:

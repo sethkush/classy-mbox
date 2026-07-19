@@ -152,6 +152,114 @@ static int cmd_parse(const char *path) {
     return 0;
 }
 
+// Static (no-device-needed) validation of a wrapped firmware image.
+// Complements the pre-flash workflow: catches file-format bugs (wrong
+// chksum, misaligned records, oversize payload) before you touch the
+// hardware. Independent of --flash-check which needs a DFU device.
+//
+// Checks:
+//   1. autodetect signature at offset 0
+//   2. every record: length=32, type=0, address = i*32, contiguous
+//   3. header self-consistency: sig bytes, VID, chksum, payloadSize
+//   4. code + header + trailing FF-fill ≤ 8 KB (TAS1020A EEPROM budget)
+static int cmd_validate(const char *path) {
+    NSError *err = nil;
+    NSData *blob = [NSData dataWithContentsOfFile:@(path) options:0 error:&err];
+    if (!blob) die([NSString stringWithFormat:@"could not read %s", path], err);
+
+    NSUInteger startOff = 0;
+    if (!MBoxPayload_Autodetect(blob, &startOff)) {
+        fprintf(stderr, "FAIL: autodetect signature not found — file is not a"
+                        " wrapped Mbox firmware\n");
+        return 1;
+    }
+    if (startOff != 0) {
+        fprintf(stderr, "WARN: autodetect matched at offset 0x%lx (expected 0)\n",
+                (unsigned long)startOff);
+    }
+    printf("  autodetect signature   OK  (offset %lu)\n", (unsigned long)startOff);
+
+    NSArray<MBoxPayloadRecord *> *recs = MBoxPayload_Parse(blob, startOff);
+    if (recs.count == 0) {
+        fprintf(stderr, "FAIL: parser returned zero records\n");
+        return 1;
+    }
+    int fails = 0;
+    NSUInteger expectAddr = 0;
+    for (NSUInteger i = 0; i < recs.count; i++) {
+        MBoxPayloadRecord *r = recs[i];
+        if (r.length != 32) {
+            fprintf(stderr, "FAIL: record %lu has length %u (expected 32)\n",
+                    (unsigned long)i, r.length);
+            fails++;
+        }
+        if (r.type != 0) {
+            fprintf(stderr, "FAIL: record %lu has type %u (expected 0)\n",
+                    (unsigned long)i, r.type);
+            fails++;
+        }
+        if (r.address != expectAddr) {
+            fprintf(stderr, "FAIL: record %lu addr=0x%04x (expected 0x%04lx)\n",
+                    (unsigned long)i, r.address, (unsigned long)expectAddr);
+            fails++;
+        }
+        expectAddr += r.length;
+    }
+    if (fails == 0) {
+        printf("  %lu records × 32B contiguous  OK  (0x0000..0x%04lX)\n",
+               (unsigned long)recs.count, (unsigned long)expectAddr - 1);
+    }
+
+    // Header validation — first 18 bytes of record 0's data.
+    const uint8_t *h = recs[0].data.bytes;
+    uint16_t sum = 0;
+    for (int k = 1; k < 18; k++) sum += h[k];
+    uint8_t expectedChk = sum & 0xFF;
+    if (h[0] != expectedChk) {
+        fprintf(stderr, "FAIL: header chksum=0x%02X, computed=0x%02X\n",
+                h[0], expectedChk);
+        fails++;
+    } else {
+        printf("  header chksum          OK  (0x%02X)\n", h[0]);
+    }
+    if (h[1] != 18)     { fprintf(stderr, "FAIL: headerSize=%u (expected 18)\n", h[1]); fails++; }
+    if (h[2] != 0x12 || h[3] != 0x34) {
+        fprintf(stderr, "FAIL: sig bytes = 0x%02X 0x%02X (expected 0x12 0x34)\n", h[2], h[3]);
+        fails++;
+    }
+    uint16_t vid = (h[4] << 8) | h[5];
+    uint16_t pid = (h[6] << 8) | h[7];
+    if (vid != 0x0DBA) { fprintf(stderr, "FAIL: VID=0x%04X (expected 0x0DBA)\n", vid); fails++; }
+    if (pid != 0x1000 && pid != 0x1001) {
+        fprintf(stderr, "FAIL: PID=0x%04X (expected 0x1000 or 0x1001)\n", pid);
+        fails++;
+    } else {
+        printf("  VID:PID                OK  (0x%04X:0x%04X — %s)\n",
+               vid, pid, pid == 0x1001 ? "flasher/DFU" : "audio-mode");
+    }
+    uint16_t payloadSize = (h[16] << 8) | h[17];
+    NSUInteger totalImage = recs.count * 32;   // header + code + trailing FF
+    if (18 + payloadSize > totalImage) {
+        fprintf(stderr, "FAIL: header says payload=%u B but image only has %lu B after"
+                        " the 18-B header\n", payloadSize, (unsigned long)totalImage - 18);
+        fails++;
+    } else if (18 + payloadSize > 8192) {
+        fprintf(stderr, "FAIL: payload+header = %u B exceeds 8 KB EEPROM budget\n",
+                18 + payloadSize);
+        fails++;
+    } else {
+        printf("  payload size           OK  (%u B code, %lu B total image incl. header + FF-fill)\n",
+               payloadSize, (unsigned long)totalImage);
+    }
+
+    if (fails) {
+        printf("\nFAIL: %d validation issue(s) in %s\n", fails, path);
+        return 1;
+    }
+    printf("\nPASS: %s is a valid Mbox 1 firmware image\n", path);
+    return 0;
+}
+
 // Show all offsets in the blob where a run of >= threshold records validates.
 // Useful for understanding whether there are multiple stream sections.
 // --scan is no longer meaningful with the correct record format: it either
@@ -280,6 +388,65 @@ static int cmd_flash(const char *path) {
     return 0;
 }
 
+// Read the entire EEPROM back via DFU_UPLOAD so the current firmware
+// can be restored if a bad flash bricks enumeration.
+//
+// DFU 1.0 §6.2: repeatedly issue UPLOAD with block N = 0, 1, 2, ...
+// The device returns up to wTransferSize bytes per block. A short (or
+// zero-length) return signals end-of-image. We stitch the blocks back
+// together in file order and write out the raw byte stream.
+static int cmd_dump(const char *outPath) {
+    NSError *err = nil;
+    NSMutableData *acc = [NSMutableData data];
+
+    // DFU_UPLOAD block size — TAS1020A boot ROM's practical ceiling is
+    // 64 bytes per transfer; we ask for that and accept whatever we get.
+    #define BLOCK_SIZE 64
+
+    __block BOOL ok = NO;
+    ok = DFU_WithOpenDevice(^BOOL(IOUSBDeviceInterface **dev, uint16_t ifaceNum, NSError **e) {
+        DFUStatus st = {0};
+        if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+        printf("device DFU state: %s / %s\n",
+               DFU_StateName((DFUState)st.bState).UTF8String,
+               DFU_StatusName(st.bStatus).UTF8String);
+        if (st.bState != DFU_dfuIDLE) {
+            if (e) *e = [NSError errorWithDomain:@"MBoxFlash" code:3 userInfo:@{
+                NSLocalizedDescriptionKey: @"device not in dfuIDLE — hold DFU trigger and re-plug"}];
+            return NO;
+        }
+        uint8_t buf[BLOCK_SIZE];
+        for (uint16_t block = 0; block < 8192; block++) {   // hard cap: 8192 * 64 = 512 KB, safety net
+            uint16_t got = 0;
+            if (!DFU_Upload(dev, ifaceNum, block, buf, BLOCK_SIZE, &got, e)) return NO;
+            if (got == 0) {
+                printf("  block %u  got 0 bytes → end of image\n", block);
+                break;
+            }
+            [acc appendBytes:buf length:got];
+            if ((block % 16) == 0) {
+                printf("  block %3u  got %3u bytes  total %lu\n",
+                       block, got, (unsigned long)acc.length);
+            }
+            if (got < BLOCK_SIZE) {
+                printf("  block %u  short read (%u B) → end of image\n", block, got);
+                break;
+            }
+        }
+        return YES;
+    }, &err);
+    if (!ok) die(@"dump failed", err);
+
+    NSData *out = [acc copy];
+    if (![out writeToFile:@(outPath) atomically:YES]) {
+        fprintf(stderr, "failed to write %s\n", outPath);
+        return 1;
+    }
+    printf("\nsaved %lu bytes to %s\n", (unsigned long)out.length, outPath);
+    printf("To restore this dump: mboxflash --flash %s\n", outPath);
+    return 0;
+}
+
 static int cmd_dfu_status(void) {
     DFUStatus st = {0};
     NSError *err = nil;
@@ -299,7 +466,8 @@ int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc < 2) {
             fprintf(stderr,
-                "usage: mboxflash --probe | --enter-dfu | --dfu-status | --parse PATH | --scan PATH\n        | --flash-check PATH | --flash PATH\n");
+                "usage: mboxflash --probe | --enter-dfu | --dfu-status | --parse PATH | --scan PATH\n"
+                "        | --flash-check PATH | --flash PATH | --dump PATH | --validate PATH\n");
             return 2;
         }
         NSString *cmd = @(argv[1]);
@@ -310,6 +478,8 @@ int main(int argc, const char *argv[]) {
         else if ([cmd isEqualToString:@"--dfu-status"]) return cmd_dfu_status();
         else if ([cmd isEqualToString:@"--flash-check"] && argc >= 3) return cmd_flash_check(argv[2]);
         else if ([cmd isEqualToString:@"--flash"]       && argc >= 3) return cmd_flash(argv[2]);
+        else if ([cmd isEqualToString:@"--dump"]        && argc >= 3) return cmd_dump(argv[2]);
+        else if ([cmd isEqualToString:@"--validate"]    && argc >= 3) return cmd_validate(argv[2]);
         else {
             fprintf(stderr, "unknown command '%s'\n", argv[1]);
             return 2;
