@@ -34,12 +34,21 @@ static __data unsigned char g_alt_playback = 0;   /* alt setting on interface 1 
 static __data unsigned char g_alt_capture  = 0;   /* alt setting on interface 2 */
 static __data unsigned long g_sample_rate  = 48000UL;   /* 24-bit BE on the wire */
 
+/* Pending USB device address, deferred until the SET_ADDRESS status
+ * stage has actually been ACKed by the host. Writing USBFADR too early
+ * makes the ACK go out at the new address and the host rejects it —
+ * enumeration then wedges after SET_ADDRESS with the device visible at
+ * VID only, no PID/bcdDevice (empirically bricked mboxfw v1 the same
+ * way on 2026-07-18). 0xFF = no pending assignment. */
+static __data unsigned char g_pending_address = 0xFF;
+
 /* EP0 IN reply staging.
  * Rev 20's EP0 IN buffer sits at 0xFA10; we mirror that here. On a real
  * transfer larger than the 8-byte EP0 MaxPacketSize we'll need to chunk
  * across multiple SETUP→IN cycles — tracked with these pointers. */
 static __code const unsigned char *g_ep0_reply_src = 0;
 static __data unsigned int          g_ep0_reply_remaining = 0;
+
 
 /* --- SETPACK access helpers (matches Rev 20 setup dispatcher @ 0x0026) --- */
 #define bmReq   SETPACK_BMREQ
@@ -85,6 +94,26 @@ static void reply_zero_length(void)
 {
     /* Zero-length IN packet acknowledges an OUT-only request (SET_CONFIG etc.) */
     IEPBCTX0 = 0;
+}
+
+/* Stage a small (up to EP0_MAX_PACKET bytes) reply from RAM directly
+ * into the EP0 IN buffer. Used for one-shot generated replies —
+ * GET_INTERFACE returning the current alt setting, UAC_GET_CUR
+ * returning the sample-rate triple. Callers with larger or __code-
+ * resident payloads should use stage_reply() instead. */
+static void stage_immediate(const unsigned char *bytes, unsigned char len)
+{
+    __xdata unsigned char *dst = (__xdata unsigned char *)EP0_IN_BUF_ADDR;
+    unsigned char n = (len > EP0_MAX_PACKET) ? EP0_MAX_PACKET : len;
+    unsigned char i;
+    /* Cap to what the host asked for (wLength) — never send more. */
+    unsigned int wLen = ((unsigned int)wLenH << 8) | wLenL;
+    if (n > wLen) n = (unsigned char)wLen;
+    for (i = 0; i < n; i++) {
+        dst[i] = bytes[i];
+    }
+    g_ep0_reply_remaining = 0;   /* single packet, no continuation */
+    IEPBCTX0 = n;
 }
 
 /* Push up to EP0_MAX_PACKET bytes from g_ep0_reply_src into the EP0 IN
@@ -171,13 +200,59 @@ static void handle_set_interface(void)
 static void handle_get_interface(void)
 {
     unsigned char iface = wIndexL;
-    static __data unsigned char alt_reply;
+    unsigned char alt_reply;
 
     if (iface == 1)      alt_reply = g_alt_playback;
     else if (iface == 2) alt_reply = g_alt_capture;
     else                 alt_reply = 0;
-    /* Single-byte reply. TODO: stage into EP0 IN buffer. */
-    (void)alt_reply;
+    stage_immediate(&alt_reply, 1);
+}
+
+
+/* --- Digi custom class request (enter-DFU) --- */
+/*
+ * Rev 20 responds to  bmReqType=0x21 bReq=0x00 wValue=0x000A wLength=0
+ * (host→device / class / interface, sent to interface 0). This is the
+ * "software DFU trigger" — how mboxflash --enter-dfu asks a running
+ * device to reset back into boot-ROM DFU mode so it can be reflashed.
+ *
+ * Getting this right is a HARD requirement for mboxfw v1: without it,
+ * a soft-brick can only be recovered by physically opening the Mbox
+ * and shorting the EEPROM's SDA line to GND during power-up (learned
+ * the hard way on 2026-07-18). Any firmware that ships without it is
+ * a one-way ticket.
+ *
+ * Approach in this version: acknowledge the request with a zero-length
+ * IN status, then jump to the reset vector. On many TAS1020A designs
+ * the warm-reset path re-checks the boot mode; if it doesn't, this at
+ * least gets the CPU into a known state instead of a hung handler.
+ *
+ * TRUE bulletproof recovery requires invalidating the EEPROM header
+ * signature bytes (offset 2-3, value 0x12 0x34) via the hardware-I²C
+ * peripheral at 0xFFC0-0xFFC3 before the reset — the boot ROM sees a
+ * bad signature and drops to its own DFU mode (0xFFFF:0xFFFE). That's
+ * a follow-up TODO — it needs I²C-EEPROM-write code we don't have yet
+ * and I don't want to add un-testable code paths without hardware access.
+ * Once added, a successful flash restores the signature bytes.
+ */
+static void handle_digi_enter_dfu(void)
+{
+    reply_zero_length();
+    /* Give the status stage a chance to complete on the wire before we
+     * yank the CPU out from under it. Polling loop; ~a few dozen
+     * milliseconds at 12 MHz — enough for one USB frame. */
+    {
+        unsigned int i;
+        for (i = 0; i < 0xC000; i++) { }
+    }
+    /* TODO: invalidate EEPROM header signature via hardware I²C at
+     * 0xFFC0-0xFFC3 (write 0x00 to EEPROM offset 0x0002) — the boot
+     * ROM's post-reset signature check then fails and lands us in
+     * bulletproof DFU (0xFFFF:0xFFFE) instead of re-loading mboxfw. */
+    /* Warm reset via reset vector. On its own this only re-runs the
+     * boot ROM's EEPROM load — mboxfw runs again — so it's a stub
+     * until the EEPROM-invalidation TODO above lands. */
+    __asm__("ljmp 0");
 }
 
 
@@ -199,13 +274,12 @@ static void handle_class_endpoint_request(void)
         streaming_set_rate(g_sample_rate);
         reply_zero_length();
     } else if (bReq == UAC_GET_CUR) {
-        /* Reply with current sample rate as 3-byte LE. */
-        static __data unsigned char rate_bytes[3];
+        /* Reply with current sample rate as 3-byte LE (UAC1 §5.2.2.1.1). */
+        unsigned char rate_bytes[3];
         rate_bytes[0] = g_sample_rate & 0xFF;
         rate_bytes[1] = (g_sample_rate >> 8) & 0xFF;
         rate_bytes[2] = (g_sample_rate >> 16) & 0xFF;
-        /* TODO: stage into EP0 IN buffer. */
-        (void)rate_bytes;
+        stage_immediate(rate_bytes, 3);
     } else {
         reply_stall();
     }
@@ -226,7 +300,14 @@ static void handle_setup(void)
             case REQ_SET_CONFIG:       handle_set_configuration(); break;
             case REQ_SET_INTERFACE:    handle_set_interface();     break;
             case REQ_GET_INTERFACE:    handle_get_interface();     break;
-            case REQ_SET_ADDRESS:      reply_zero_length();        break;
+            case REQ_SET_ADDRESS:
+                /* USB 2.0 §9.4.6: the new address takes effect only after
+                 * the STATUS stage (zero-length IN packet) completes. Stage
+                 * that reply here and defer the USBFADR write to the
+                 * VEC_IEP0 completion in usb_service() below. */
+                g_pending_address = wValueL;
+                reply_zero_length();
+                break;
             default:                   reply_stall();              break;
         }
     } else if (reqtype == 0x20) {
@@ -234,8 +315,15 @@ static void handle_setup(void)
         if (recip == 0x02) {          /* endpoint recipient */
             handle_class_endpoint_request();
         } else if (recip == 0x01) {   /* interface recipient */
-            /* TODO: feature-unit volume/mute if we add them */
-            reply_stall();
+            /* Digi custom enter-DFU: bReq=0x00, wValue=0x000A on iface 0.
+             * Match Rev 20's mboxflash --enter-dfu path exactly. */
+            if (bReq == 0x00 && wValueL == 0x0A && wValueH == 0x00
+                             && wIndexL == 0x00 && wIndexH == 0x00) {
+                handle_digi_enter_dfu();
+            } else {
+                /* TODO: feature-unit volume/mute if we add them */
+                reply_stall();
+            }
         } else {
             reply_stall();
         }
@@ -300,6 +388,15 @@ void usb_service(void)
             } else {
                 /* End of data phase — arm zero-length OUT status stage. */
                 OEPBCTX0 = 0;
+                /* USB 2.0 §9.4.6: a pending SET_ADDRESS takes effect
+                 * only AFTER its zero-length IN status stage completes.
+                 * VEC_IEP0 firing with no remaining reply means the
+                 * host ACKed the status packet — safe to latch USBFADR
+                 * now, so the next transaction lands at the new addr. */
+                if (g_pending_address != 0xFF) {
+                    USBFADR = g_pending_address;
+                    g_pending_address = 0xFF;
+                }
             }
             VECINT = 0;
             break;

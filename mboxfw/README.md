@@ -35,7 +35,7 @@ clean, and all four pre-flash checks pass.
 
 ## Pre-flash verification
 
-Three host-side checks catch the highest-frequency bug classes without
+Six host-side checks catch the highest-frequency bug classes without
 touching hardware:
 
 ```
@@ -49,10 +49,22 @@ python3 tools/verify_usb_init.py      # confirms the enumeration-critical
                                       # SFR writes (EP0 buffer addrs, CNF
                                       # bytes) appear in the compiled image
                                       # with the exact values Rev 20 uses
+python3 tools/verify_cs8427.py        # confirms the 10-register CS8427 boot
+                                      # sequence appears in the image
+python3 tools/verify_setup_paths.py   # confirms USBFADR is written from the
+                                      # deferred-address slot (SET_ADDRESS
+                                      # actually lands), Digi's enter-DFU
+                                      # class request is recognised, and
+                                      # reply_zero_length is present
 mboxflash --validate FILE             # static wire-format check on the
                                       # wrapped .bin: record alignment,
                                       # header chksum, VID/PID, size limits
 ```
+
+**Never flash without all six green.** verify_setup_paths.py in
+particular guards against the exact class of enumeration bug that
+soft-bricked the device on 2026-07-18 (SET_ADDRESS ACKed but USBFADR
+never written).
 
 ## Flash-morning safety net
 
