@@ -38,11 +38,14 @@ echo "=== GATE RUN ==="
 # Gates that apply to the compiled mboxfw image (not the flasher bin).
 # preflight is called on a wrapped .bin, but the gates run against the
 # build artifacts that produced it. We assume the working tree matches.
+check "SDCC version matches pin"            bash    tools/check_sdcc_version.sh
+check "code size within budget"             python3 tools/check_code_size.py
 check "sim_smoke (main loop + CONN + canaries)" bash tools/sim_smoke.sh
 check "verify_descriptors"        python3 tools/verify_descriptors.py
 check "verify_usb_init"           python3 tools/verify_usb_init.py
 check "verify_cs8427"             python3 tools/verify_cs8427.py
 check "verify_setup_paths"        python3 tools/verify_setup_paths.py
+check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
 check "wrap_hex golden regression"          python3 tools/test_wrap_hex_golden.py
 check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py
 check "Rev-20 SFR diff justified"           python3 tools/diff_vs_rev20.py

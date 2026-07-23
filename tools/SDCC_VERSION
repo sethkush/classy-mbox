@@ -1,0 +1,9 @@
+# Pinned SDCC version. Every audited/baselined byte in the mboxfw
+# manifest (tools/sfr_writes.allowed) was produced by exactly this
+# SDCC build. A different SDCC may emit different instruction
+# sequences for the same C source — including different dpl walk
+# patterns — which would invalidate the audit and the golden
+# regression.
+#
+# `sdcc --version` first line must contain this string.
+4.6.0
