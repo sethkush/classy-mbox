@@ -395,9 +395,16 @@ void usb_init(void)
     /* Reset USB function address (host will re-assign via SET_ADDRESS). */
     USBFADR = 0;
 
-    /* Unmask all interrupts we care about. Bit map follows TI's USBIMSK
-     * conventions: EP0 setup/rx/tx + reset + suspend/resume. */
-    USBIMSK = 0xFF;
+    /* Unmask USB interrupt sources. TI's engUsbInit uses 0xE5:
+     *   bit 0 (0x01) STPOW  — setup overwrite
+     *   bit 2 (0x04) SETUP  — SETUP packet received
+     *   bit 5 (0x20) SUSR   — suspend
+     *   bit 6 (0x40) RESR   — resume
+     *   bit 7 (0x80) RSTR   — bus reset
+     * Earlier drafts wrote 0xFF (all bits including IEP/OEP done) as an
+     * assignment; that also clobbered whatever boot ROM had set. RMW to
+     * be safe. Reference: TI UsbEng.c::engUsbInit line ~647.  */
+    USBIMSK |= 0xE5;
 
     g_configured   = 0;
     g_alt_playback = 0;

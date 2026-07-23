@@ -31,9 +31,18 @@ void hw_init(void)
     P1   = 0x00;   /* all P1 pins low */
     P3   = 0xFF;   /* all P3 pins high (button inputs pull-up) */
 
-    /* -------- TAS1020A UIFR init (order matters) -------- */
-    USBCTL   = 0x00;    /* detach from bus during init (CONN=0, FEN=0) */
-    MEMCFG   = 0x01;    /* set SDW — code fetches route to RAM copy */
+    /* -------- TAS1020A UIFR init (order matters) --------
+     *
+     * DO NOT touch USBCTL here. Boot ROM's UtilResetCPU handoff and our
+     * usb_init() (called BEFORE hw_init in main.c) both configure
+     * USBCTL — clobbering it with `=` in the middle of boot leaves the
+     * host un-attached and any hang below unreachable via DFU. If we
+     * ever want to reset USB state, use RMW (& ~bits / |= bits), never
+     * a raw assignment. See task #48. */
+    MEMCFG  |= 0x01;    /* set SDW — code fetches route to RAM copy.
+                         * RMW because boot ROM's UtilResetCPU already
+                         * did MEMCFG |= SDW_BIT; we're just being
+                         * idempotent. Reference: TI Utils.c UtilResetCPU. */
     DMACTL0   = 0x0D;
     CPTCNF4   = 0xE5;
     CPTCNF3   = 0xAC;

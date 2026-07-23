@@ -64,10 +64,21 @@ void main(void)
 {
     check_boot_dfu_button();
 
+    /* NEVER-BRICK GUARANTEE (task #47):
+     * Bring the USB engine up BEFORE any of the audio-hardware init.
+     * usb_init() ends with `USBCTL |= CONN`, which attaches the device
+     * to the bus. From this point onward the host can enumerate us and
+     * we can respond to the Digi DFU class request in handle_setup —
+     * so even if any of hw_init / cs8427_boot_init / codec_init hangs
+     * indefinitely, `mboxflash --enter-dfu` still recovers us.
+     *
+     * Prior ordering (usb_init LAST) meant a single hang in cs8427 or
+     * codec bricked the device silently (2026-07-22 flash #2). */
+    usb_init();
+
     hw_init();
     cs8427_boot_init();
     codec_init();           /* Rev 20 flow: lcall 0x08cb, lcall 0x0970 */
-    usb_init();
 
     EA = 1;   /* enable interrupts (Timer 0 + INT0) */
 
