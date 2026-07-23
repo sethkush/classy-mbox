@@ -46,10 +46,16 @@ fi
 # the bus, not just that the code path returned. Assignment-vs-OR bugs
 # (like 2026-07-22 flash #2 where `USBCTL = 0xC0` clobbered SDW) would
 # have shown up here as a missing or wrong-value read.
-out=$(timeout 20 s51 -q \
-    -e "run 0 $LOOP_ENTRY" \
-    -e "dx 0xfffc 0xfffc" \
-    -e "q" "$IHX" 2>&1 || true)
+# s51's -e commands seem to execute BEFORE `run` returns — dx probes
+# the initial memory state instead of post-run. Feed commands via a
+# scripted config file so they execute in order. break/g/dx/q semantics
+# guarantee the memory reads happen after the sim halts at LOOP_ENTRY.
+# s51's -e flag executes commands NON-blocking against the simulator
+# thread — dx reads run BEFORE the run command finishes. Feeding
+# commands via stdin (one per line) gives sequential execution: run
+# blocks until the breakpoint hits, THEN dx reads the post-run memory.
+out=$(printf 'run 0 %s\ndx 0xfffc 0xfffc\ndx 0xfa00 0xfa05\nq\n' "$LOOP_ENTRY" \
+      | timeout 20 s51 -q "$IHX" 2>&1 || true)
 
 # `Stop at 0xNNNN: (104) Breakpoint` is the success-reaching-main line.
 loop_norm=$(printf "0x%06x" $((LOOP_ENTRY)))
@@ -78,6 +84,37 @@ if (( (usbctl_int & 0x80) == 0 )); then
     exit 1
 fi
 
+# Read phase canaries at 0xFA00..0xFA05. `dx 0xfa00 0xfa05` prints
+# a single line like: "0xfa00 a1 a2 a3 a4 a5 a6 ......"
+canary_line=$(echo "$out" | grep -iE "^0xfa00")
+if [[ -z "$canary_line" ]]; then
+    echo "SMOKE FAIL: could not read canary bytes at 0xFA00" >&2
+    echo "$out" | tail -20 >&2
+    exit 1
+fi
+# Expected canary values (must match mboxfw/src/main.c CANARY_*).
+# Kept as positional indexes because macOS ships bash 3.2 (no assoc arrays).
+EXPECT=(a1 a2 a3 a4 a5 a6)
+PHASE_NAMES=(main usb_init hw_init cs8427_init codec_init main_loop_entry)
+# canary_line looks like "0xfa00 a1 a2 a3 a4 a5 a6 ......"
+read -r _addr b0 b1 b2 b3 b4 b5 _rest <<< "$canary_line"
+got=("$b0" "$b1" "$b2" "$b3" "$b4" "$b5")
+missed_phase=""
+for i in 0 1 2 3 4 5; do
+    if [[ "${got[$i]}" != "${EXPECT[$i]}" ]]; then
+        missed_phase="${PHASE_NAMES[$i]}"
+        break
+    fi
+done
+if [[ -n "$missed_phase" ]]; then
+    echo "SMOKE FAIL: canary for phase '$missed_phase' not set." >&2
+    echo "  expected canary bytes: a1 a2 a3 a4 a5 a6" >&2
+    echo "  got:                   ${got[*]}" >&2
+    echo "  → firmware hung during or before '$missed_phase'" >&2
+    exit 1
+fi
+
 ticks=$(echo "$out" | grep -oE "stepped [0-9]+ ticks" | tail -1)
-echo "SMOKE PASS: reached main loop @ $LOOP_ENTRY, USBCTL=0x$usbctl (CONN set) ($ticks)"
+echo "SMOKE PASS: reached main loop @ $LOOP_ENTRY, USBCTL=0x$usbctl (CONN set),"
+echo "            all 6 phase canaries set (main → usb → hw → cs8427 → codec → loop)"
 exit 0

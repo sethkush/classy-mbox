@@ -60,9 +60,29 @@ static void check_boot_dfu_button(void)
 void isr_int0(void)    __interrupt(0);
 void isr_timer0(void)  __interrupt(1);
 
+/* Phase-completion canaries — written at each boundary so sim_smoke
+ * (and any future runtime verifier that can peek shared RAM) can prove
+ * exactly which init phases ran. Different values per phase means we
+ * can distinguish "hung in cs8427" from "hung in codec" from "hung in
+ * usb_init" without a scope. Canary window is 0xFA00..0xFA03 in the
+ * TAS1020A shared-memory area — sits BELOW our EP0 buffers (0xFA10)
+ * so it can't collide with USB packet memory. NOVEL — reason: new
+ * addresses under 0xFA10 aren't used by TI's engUsbInit or Rev 20's
+ * boot init; verified by grepping both. */
+#define CANARY_BASE     0xFA00
+#define CANARY(n, v)    (*(volatile __xdata unsigned char *)(CANARY_BASE + (n))) = (v)
+#define CANARY_MAIN     0xA1   /* main() entered */
+#define CANARY_USB      0xA2   /* usb_init returned */
+#define CANARY_HW       0xA3   /* hw_init returned */
+#define CANARY_CS8427   0xA4   /* cs8427_boot_init returned */
+#define CANARY_CODEC    0xA5   /* codec_init returned */
+#define CANARY_LOOP     0xA6   /* about to enter main polling loop */
+
 void main(void)
 {
     check_boot_dfu_button();
+
+    CANARY(0, CANARY_MAIN);
 
     /* NEVER-BRICK GUARANTEE (task #47):
      * Bring the USB engine up BEFORE any of the audio-hardware init.
@@ -75,12 +95,23 @@ void main(void)
      * Prior ordering (usb_init LAST) meant a single hang in cs8427 or
      * codec bricked the device silently (2026-07-22 flash #2). */
     usb_init();
+    CANARY(1, CANARY_USB);
 
     hw_init();
+    CANARY(2, CANARY_HW);
+
     cs8427_boot_init();
+    CANARY(3, CANARY_CS8427);
+
     codec_init();           /* Rev 20 flow: lcall 0x08cb, lcall 0x0970 */
+    /* CANARY_CODEC written into slot 2 to overwrite HW canary — once
+     * we've reached here, all four phases before EA=1 are done. Reading
+     * XDATA[0xFA02] on a stuck device tells you exactly which init
+     * blew up: 0 = pre-hw, 0xA3 = hw done / cs8427 stuck, etc. */
+    CANARY(4, CANARY_CODEC);
 
     EA = 1;   /* enable interrupts (Timer 0 + INT0) */
+    CANARY(5, CANARY_LOOP);
 
     for (;;) {
         usb_service();
