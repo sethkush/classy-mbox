@@ -10,21 +10,36 @@
 /* SDCC's xdata addressing sugar. */
 #define XDATA(addr)  (*(volatile __xdata unsigned char *)(addr))
 
-/* Hardware I²C peripheral (0xFFC0-0xFFC3). Rev 20 uses it for the
- * boot-time EEPROM read; mboxfw uses it only for the enter-DFU
- * signature-invalidation path (see eeprom.c).
- *   0xFFC0 = ctrl/status
- *     bit 0 = "last byte / generate STOP" (set before writing final byte)
- *     bit 1 = start read
- *     bit 3 = TX done / write completed
- *     bit 7 = RX ready / read byte available
- *   0xFFC1 = TX data
- *   0xFFC2 = RX data
- *   0xFFC3 = slave address (0xA0 = EEPROM write, 0xA1 = EEPROM read) */
-#define I2C_CTRL    XDATA(0xFFC0)
+/* Hardware I²C peripheral (0xFFC0-0xFFC3). Bit definitions verified
+ * against TI's `reference/tas1020a/ti_uac_reference/ROM/I2c.h`:
+ *   0xFFC0 = I2CSTA — control/status
+ *     bit 0 (0x01) = STOP_WRITE (STOP flag for writes)
+ *     bit 1 (0x02) = STOP_READ (STOP flag for reads)
+ *     bit 3 (0x08) = XMIT_DATA_EMPTY (TX register empty / write done)
+ *     bit 5 (0x20) = ERROR (NACK or bus fault — MUST be checked)
+ *     bit 7 (0x80) = RCV_DATA_FULL (RX register full / read data ready)
+ *     CLEAR_ALL = 0x54 — mask used to clear STOP/ERROR/done flags between
+ *                        transactions while preserving cfg bits (freq/int)
+ *   0xFFC1 = I2CDATO (TX data)
+ *   0xFFC2 = I2CDATI (RX data)
+ *   0xFFC3 = I2CADR (slave addr: 0xA0 write, 0xA1 read for EEPROM@0x50)
+ *
+ * Earlier drafts of this driver conflated bit 0 (STOP_WRITE) with
+ * bit 1 (STOP_READ) and never checked ERROR, causing eeprom_read_byte
+ * to hang and eeprom_smoke_test to silently fail (both software
+ * recovery paths dead). Fixed 2026-07-22 after audit against TI I2c.c. */
+#define I2C_STA     XDATA(0xFFC0)
 #define I2C_TX      XDATA(0xFFC1)
 #define I2C_RX      XDATA(0xFFC2)
 #define I2C_SADDR   XDATA(0xFFC3)
+
+/* TI I2c.h bit constants (bit 0..7 in I2CSTA). */
+#define I2C_STOP_WRITE       0x01
+#define I2C_STOP_READ        0x02
+#define I2C_XMIT_DATA_EMPTY  0x08
+#define I2C_ERROR            0x20
+#define I2C_RCV_DATA_FULL    0x80
+#define I2C_CLEAR_ALL        0x54
 
 /* USB endpoint 0 config */
 #define IEPCNF0     XDATA(0xFF68)
@@ -35,7 +50,6 @@
 #define OEPBBAX0    XDATA(0xFFA9)
 #define OEPBSIZ0    XDATA(0xFFAA)
 #define OEPBCTX0    XDATA(0xFFAB)
-#define OEPCNF0_HI  XDATA(0xFFB0)
 
 /* EP0 packet buffers — placed manually in TAS1020A shared-mem window
  * starting at 0xF800. Rev 20's fcn.0x0982 disasm (rev20_flat.asm:1202-1220)
@@ -85,15 +99,31 @@
 #define SETPACK_WLEN_L XDATA(0xFF2E)
 #define SETPACK_WLEN_H XDATA(0xFF2F)
 
-/* Global control + USB engine registers */
+/* Global control + USB engine registers.
+ * Per TI Reg_stc1.h:
+ *   0xFFB0 = MEMCFG (memory config — SDW bit swaps ROM/RAM)
+ *   0xFFB1 = GLOBCTL (global control — 24 MHz bit, SOF INT enable, ...)
+ *   0xFFFC = USBCTL  (bit 7=CONN pull-up, bit 6=FEN, bit 0=SDW confirm)
+ * Earlier drafts called 0xFFFC "GLOBCTL2" — that was wrong; it's USBCTL.
+ * Earlier drafts called 0xFFB0 "OEPCNF0_HI" — also wrong; it's MEMCFG.
+ * Both names carry values that happen to match Rev 20's boot sequence,
+ * so behavior is unchanged, but the names are corrected for future
+ * clarity. */
+#define MEMCFG      XDATA(0xFFB0)
 #define GLOBCTL     XDATA(0xFFB1)
-#define GLOBCTL2    XDATA(0xFFFC)
 #define VECINT      XDATA(0xFFB2)   /* vectored interrupt source */
 #define IEPINT      XDATA(0xFFB3)
 #define OEPINT      XDATA(0xFFB4)
+#define USBCTL      XDATA(0xFFFC)   /* CONN + FEN + SDW */
 #define USBIMSK     XDATA(0xFFFD)
 #define USBSTA      XDATA(0xFFFE)
 #define USBFADR     XDATA(0xFFFF)
+
+/* USBCTL bits (TI Reg_stc1.h). CONN + FEN = 0xC0 is what engUsbInit
+ * writes at the end to attach to the bus. */
+#define USBCTL_CONN 0x80
+#define USBCTL_FEN  0x40
+#define USBCTL_SDW  0x01
 
 /* VECINT interrupt-source codes (TI Reg_stc1.h) */
 #define VEC_OEP0    0x00
@@ -112,11 +142,7 @@
 #define EP_BBAX(addr)    (unsigned char)(((addr) - STC_BUFFER_BASE) >> 3)
 #define EP_BSIZE(bytes)  (unsigned char)((bytes) >> 3)
 
-/* Hardware I²C peripheral (used only for boot EEPROM at addr 0x50) */
-#define I2CSTA      XDATA(0xFFC0)
-#define I2CDAO      XDATA(0xFFC1)
-#define I2CDAI      XDATA(0xFFC2)
-#define I2CADR      XDATA(0xFFC3)
+/* (I²C peripheral aliases defined above with correct bit map) */
 
 /* C-port (I²S master to codec and CS8427) */
 #define CPTCTL      XDATA(0xFFD4)

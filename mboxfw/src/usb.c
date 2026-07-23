@@ -379,7 +379,11 @@ void usb_init(void)
      * USBIE (enable) + bit 2 (interrupt-on-transaction). Earlier drafts
      * of this file wrote 0xFA which was a guess; 0x84 is what the
      * shipping vendor firmware uses. */
-    IEPBCTX0 = 0;
+    /* IEPBCTX0 top bit is the NAK flag. TI's engUsbInit starts EP0 IN
+     * in NAK state (0x80) so the first IN token doesn't ship a spurious
+     * zero-length packet before we have data to send. Ours previously
+     * set 0 → could confuse strict hosts. */
+    IEPBCTX0 = 0x80;
     OEPBCTX0 = 0;
     IEPCNF0  = 0x84;
     OEPCNF0  = 0x84;
@@ -399,6 +403,12 @@ void usb_init(void)
     g_alt_playback = 0;
     g_alt_capture  = 0;
     g_ep0_reply_remaining = 0;
+
+    /* LAST: attach to the bus. USBCTL bit 7 = CONN (enable D+ pull-up
+     * so host detects device), bit 6 = FEN (enable function endpoint
+     * engine). Nothing enumerates until this write lands. TI's
+     * engUsbInit ends with exactly this write. */
+    USBCTL = USBCTL_CONN | USBCTL_FEN;
 }
 
 void usb_service(void)

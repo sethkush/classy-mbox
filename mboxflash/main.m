@@ -198,8 +198,21 @@ static int cmd_validate(const char *path) {
     NSUInteger expectAddr = 0;
     for (NSUInteger i = 0; i < recs.count; i++) {
         MBoxPayloadRecord *r = recs[i];
-        if (r.length != 32) {
-            fprintf(stderr, "FAIL: record %lu has length %u (expected 32)\n",
+        // Every record except possibly the last must be exactly one
+        // EEPROM page (32 bytes). The final record is allowed to be
+        // short so the total exactly equals header+payloadSize — that's
+        // what the TAS1020A boot ROM's dfuDnloadData expects, per
+        // UsbDfu.c:966 (dataRemain check). Padding past payloadSize
+        // triggers errFILE and bricks the flash (observed 2026-07-22).
+        BOOL isLast = (i == recs.count - 1);
+        if (r.length != 32 && !isLast) {
+            fprintf(stderr, "FAIL: record %lu has length %u (expected 32,"
+                            " only last record may be shorter)\n",
+                    (unsigned long)i, r.length);
+            fails++;
+        }
+        if (r.length == 0 || r.length > 32) {
+            fprintf(stderr, "FAIL: record %lu has length %u (must be 1..32)\n",
                     (unsigned long)i, r.length);
             fails++;
         }
@@ -216,7 +229,7 @@ static int cmd_validate(const char *path) {
         expectAddr += r.length;
     }
     if (fails == 0) {
-        printf("  %lu records × 32B contiguous  OK  (0x0000..0x%04lX)\n",
+        printf("  %lu records (last may be short) contiguous  OK  (0x0000..0x%04lX)\n",
                (unsigned long)recs.count, (unsigned long)expectAddr - 1);
     }
 
@@ -380,12 +393,25 @@ static int cmd_flash(const char *path) {
             printf("FAILED\n"); return NO;
         }
         printf("OK\n");
-        // Poll for manifest phase
+        // Poll through the manifest phase. Per DFU 1.0 §7.1.7 the state
+        // sequence after the zero-length terminator is:
+        //   dfuDNLOAD_IDLE → dfuMANIFEST_SYNC → dfuMANIFEST →
+        //     (bitManifestationTolerant=0 → dfuMANIFEST_WAIT_RESET)
+        //     (bitManifestationTolerant=1 → dfuIDLE)
+        // Exit on any state that means "committed" and honor bwPollTimeout.
         for (int poll = 0; poll < 100; poll++) {
             if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
-            if (st.bState == DFU_dfuMANIFEST || st.bState == DFU_dfuIDLE) break;
-            if (st.bState == DFU_dfuERROR) return NO;
-            usleep(20 * 1000);
+            if (st.bState == DFU_dfuMANIFEST_WAIT_RESET ||
+                st.bState == DFU_dfuIDLE) break;
+            if (st.bState == DFU_dfuERROR) {
+                printf("device entered dfuERROR during manifest: %s\n",
+                       DFU_StatusName(st.bStatus).UTF8String);
+                return NO;
+            }
+            uint32_t poll_ms = st.bwPollTimeout[0]
+                            | (st.bwPollTimeout[1] << 8)
+                            | (st.bwPollTimeout[2] << 16);
+            usleep((poll_ms ? poll_ms : 20) * 1000);
         }
         printf("manifest complete. Final state: %s\n", DFU_StateName((DFUState)st.bState).UTF8String);
         return YES;

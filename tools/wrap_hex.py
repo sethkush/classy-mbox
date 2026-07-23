@@ -124,31 +124,42 @@ def build_eeprom_header(payload_size: int,
 
 # ---- TI record stream ------------------------------------------------ #
 
-EEPROM_SIZE = 8192   # TAS1020A boot ROM programs the full 8 KB per download.
+EEPROM_SIZE = 8192   # 24C64 physical capacity — used as a bounds check only.
 
 
 def emit_records(header: bytes,
                  code: bytes,
                  page: int = 32) -> bytes:
     """
-    Emit stock-compatible records: the whole image (header ++ code) is
-    split into page-sized chunks starting at address 0. Each chunk becomes
-    one type-0 record. There is no explicit EOF; mboxflash's parser stops
-    when it runs out of bytes (matches rev20_flasher_payload.bin exactly).
+    Emit stock-compatible records: header + code split into page-sized
+    chunks starting at address 0. Each chunk becomes one type-0 record.
+    The final record may be shorter than `page` (that is legal — record
+    format encodes each record's length explicitly).
 
-    Pads to the FULL EEPROM_SIZE (not just page-aligned): the TAS1020A
-    boot ROM won't transition dfuDNLOAD_IDLE → dfuMANIFEST until it has
-    received the whole 8 KB. An unpadded short image leaves the device
-    stuck in DFU on the next power cycle, treating the flash as
-    incomplete (empirically observed 2026-07-18).
+    **DO NOT pad past `header + code`.** The TAS1020A boot ROM's DFU
+    download handler (`dfuDnloadData` in TI's UsbDfu.c) tracks
+    `dataRemain = payloadSize` from the header, decrementing it per
+    block. When `dataRemain` reaches 0, it commits final metadata
+    (chksum, restores dataType from EEPROM_APPCODE_UPDATING back to
+    EEPROM_APPCODE_TYPE, rewrites payloadSize) — this is what marks the
+    flash "successful" from the boot ROM's perspective.
+
+    If any extra byte arrives AFTER dataRemain==0, dfuDnloadData sets
+    `status = DFU_STATUS_errFILE, loadStatus = DFU_LOAD_ERROR` and
+    RETURNS WITHOUT committing. dataType stays at EEPROM_APPCODE_UPDATING
+    (0x03), and on next boot the boot ROM refuses to load the app,
+    dropping into DFU mode (0x0DBA:0x1001 for us).
+
+    Rev 20's payload is exactly 8174 bytes, which with an 18-byte header
+    = 8192 = full EEPROM. That's why padding to 8192 masked this bug
+    when the only firmware we restored was Rev 20. mboxfw (2890 bytes)
+    tripped over it on the first flash 2026-07-22. Confirmed by reading
+    `reference/tas1020a/ti_uac_reference/ROM/UsbDfu.c` after the fact.
     """
     image = bytearray(header + code)
     if len(image) > EEPROM_SIZE:
-        raise ValueError(f"image {len(image)} bytes exceeds EEPROM budget"
-                         f" {EEPROM_SIZE}")
-    # Fill the rest with 0xFF (matches erased-EEPROM state) so the boot
-    # ROM sees a complete 8 KB stream and can commit.
-    image += b"\xff" * (EEPROM_SIZE - len(image))
+        raise ValueError(f"image {len(image)} bytes exceeds EEPROM"
+                         f" capacity {EEPROM_SIZE}")
 
     out = bytearray()
     for addr in range(0, len(image), page):

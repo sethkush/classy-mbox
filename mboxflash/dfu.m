@@ -252,12 +252,28 @@ NSString *DFU_StatusName(uint8_t s) {
 BOOL DFU_QueryStatus(DFUStatus *out, NSError **error) {
     CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
     if (!match) { if (error) *error = usbError(@"IOServiceMatching", -1); return NO; }
-    CFDictionarySetValue(match, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(0xFFFF));
-    CFDictionarySetValue(match, CFSTR(kUSBProductID), (__bridge CFNumberRef)@(0xFFFE));
+    // Try bulletproof-DFU first (0xFFFF:0xFFFE), then TAS1020A app-DFU
+    // fallback (0x0DBA:0x1001) — the boot ROM enters app-DFU when the
+    // EEPROM header signature is valid but dataType != APPCODE_TYPE
+    // (e.g., a failed flash left dataType stuck at APPCODE_UPDATING).
+    // Both accept standard DFU class requests at interface 0.
     io_iterator_t it = IO_OBJECT_NULL;
-    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return NO;
-    io_service_t svc = IOIteratorNext(it);
-    IOObjectRelease(it);
+    io_service_t svc = IO_OBJECT_NULL;
+    for (int attempt = 0; attempt < 2 && svc == IO_OBJECT_NULL; attempt++) {
+        CFMutableDictionaryRef m = IOServiceMatching(kIOUSBDeviceClassName);
+        if (!m) continue;
+        uint16_t vid = attempt == 0 ? 0xFFFF : 0x0DBA;
+        uint16_t pid = attempt == 0 ? 0xFFFE : 0x1001;
+        CFDictionarySetValue(m, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(vid));
+        CFDictionarySetValue(m, CFSTR(kUSBProductID), (__bridge CFNumberRef)@(pid));
+        if (IOServiceGetMatchingServices(kIOMainPortDefault, m, &it) != KERN_SUCCESS) continue;
+        svc = IOIteratorNext(it);
+        IOObjectRelease(it);
+    }
+    // The outer function still references `match` for its cleanup path
+    // in the original, but the loop above supersedes it — just drop the
+    // dangling reference.
+    (void)match;
     if (!svc) { if (error) *error = usbError(@"DFU-mode Mbox not found", -1); return NO; }
 
     IOCFPlugInInterface **plugin = NULL;
@@ -298,12 +314,28 @@ BOOL DFU_WithOpenDevice(BOOL (^body)(IOUSBDeviceInterface **dev,
                         NSError **error) {
     CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
     if (!match) { if (error) *error = usbError(@"IOServiceMatching", -1); return NO; }
-    CFDictionarySetValue(match, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(0xFFFF));
-    CFDictionarySetValue(match, CFSTR(kUSBProductID), (__bridge CFNumberRef)@(0xFFFE));
+    // Try bulletproof-DFU first (0xFFFF:0xFFFE), then TAS1020A app-DFU
+    // fallback (0x0DBA:0x1001) — the boot ROM enters app-DFU when the
+    // EEPROM header signature is valid but dataType != APPCODE_TYPE
+    // (e.g., a failed flash left dataType stuck at APPCODE_UPDATING).
+    // Both accept standard DFU class requests at interface 0.
     io_iterator_t it = IO_OBJECT_NULL;
-    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return NO;
-    io_service_t svc = IOIteratorNext(it);
-    IOObjectRelease(it);
+    io_service_t svc = IO_OBJECT_NULL;
+    for (int attempt = 0; attempt < 2 && svc == IO_OBJECT_NULL; attempt++) {
+        CFMutableDictionaryRef m = IOServiceMatching(kIOUSBDeviceClassName);
+        if (!m) continue;
+        uint16_t vid = attempt == 0 ? 0xFFFF : 0x0DBA;
+        uint16_t pid = attempt == 0 ? 0xFFFE : 0x1001;
+        CFDictionarySetValue(m, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(vid));
+        CFDictionarySetValue(m, CFSTR(kUSBProductID), (__bridge CFNumberRef)@(pid));
+        if (IOServiceGetMatchingServices(kIOMainPortDefault, m, &it) != KERN_SUCCESS) continue;
+        svc = IOIteratorNext(it);
+        IOObjectRelease(it);
+    }
+    // The outer function still references `match` for its cleanup path
+    // in the original, but the loop above supersedes it — just drop the
+    // dangling reference.
+    (void)match;
     if (!svc) { if (error) *error = usbError(@"DFU-mode Mbox not found — hold source-button + replug", -1); return NO; }
 
     IOCFPlugInInterface **plugin = NULL;

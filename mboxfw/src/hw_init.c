@@ -32,8 +32,8 @@ void hw_init(void)
     P3   = 0xFF;   /* all P3 pins high (button inputs pull-up) */
 
     /* -------- TAS1020A UIFR init (order matters) -------- */
-    GLOBCTL2  = 0x00;   /* disable USB during init */
-    OEPCNF0_HI = 0x01;
+    USBCTL   = 0x00;    /* detach from bus during init (CONN=0, FEN=0) */
+    MEMCFG   = 0x01;    /* set SDW — code fetches route to RAM copy */
     DMACTL0   = 0x0D;
     CPTCNF4   = 0xE5;
     CPTCNF3   = 0xAC;
