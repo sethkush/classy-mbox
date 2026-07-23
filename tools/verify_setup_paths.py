@@ -130,6 +130,30 @@ def check_digi_dfu_recognition(image: bytes) -> bool:
         i = j + 1
 
 
+def check_boot_dfu_button_wired(build_dir: Path) -> bool:
+    """
+    check_boot_dfu_button() must exist AND be called from main() — that's
+    the second software recovery path (holding source-1 during boot triggers
+    EEPROM signature invalidation before any USB code runs). It's the
+    hardware escape hatch when enumeration itself is dead. Losing this
+    silently would mean a soft-brick could only be recovered by opening
+    the box and shorting the EEPROM SDA line.
+
+    Look in main.rst for the call site — SDCC emits `lcall _check_boot_dfu_button`
+    (case-sensitive symbol name in the assembly listing).
+    """
+    main_rst = build_dir / "main.rst"
+    if not main_rst.exists():
+        return False
+    text = main_rst.read_text(errors="ignore")
+    # The function must be defined AND called somewhere in main.rst
+    # (main.c defines it static so both sites are in the same TU).
+    has_def  = "_check_boot_dfu_button:" in text
+    has_call = "lcall\t_check_boot_dfu_button" in text or \
+               "lcall _check_boot_dfu_button" in text
+    return has_def and has_call
+
+
 def check_reply_zero_length_present(image: bytes) -> bool:
     """
     reply_zero_length() is just `mov dptr, #0xff6b; clr a; movx @dptr, a`
@@ -178,6 +202,10 @@ def main() -> int:
          lambda: check_reply_zero_length_present(image),
          "SET_CONFIGURATION / SET_INTERFACE / SET_ADDRESS status stages "
          "never send zero-length IN → host times out enumeration"),
+        ("boot-time DFU button check wired into main()",
+         lambda: check_boot_dfu_button_wired(ihx_path.parent),
+         "Second software recovery path missing — a broken USB stack "
+         "would leave physical EEPROM SDA short as the only option"),
     ]
 
     fails = []
