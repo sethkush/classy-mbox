@@ -161,3 +161,168 @@ task #67 follow-up, NOT by this fork):
   the full mboxfw flash (not safety-net), dump the TAS1020A datasheet
   packet-memory map or empirically probe by writing/reading each of the
   used buffer regions in the safety-net firmware first.
+
+## Bulk resolution — 2026-07-23 post-DMA-patch pass
+
+Sweep of the 57 diffs remaining after commit 8b873d7 (DMA arm patch).
+Grouped by SFR function.
+
+### ⚠ BLOCKER — must fix before flashing audio-capable mboxfw
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xff62 / 0xff9a | CHANGED (buffer size) | **MUST_ADD (SIZE FIX)** | mboxfw's `EP_AUDIO_BUF_SIZE = 0x100` (256 B) is SMALLER than one 48 kHz stereo 24-bit USB frame (288 B). Rev 20 boot init @ 0x09BD writes `OEPBSIZ2 = 0x50` and immediately reuses `a = 0x50` at 0x09C3 for `IEPBSIZ1` — both audio EPs get **640-byte** buffers. **Patch:** bump `EP_AUDIO_BUF_SIZE` in `mboxfw/include/regs.h` from `0x100` to `0x140` (320 B, first 8-byte multiple over 288) at minimum; match Rev 20's `0x280` (640 B) for headroom. Without this, every 48 kHz playback packet gets truncated → audible clicks / dropouts. |
+
+### EP double-buffer Y-bank writes (Rev 20 uses, mboxfw doesn't)
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xff67 | REV20_ONLY runtime | **SAFE_OMIT** | `IEPDCNTY1` — EP1 IN Y-buffer data count. TAS1020A supports X/Y double-buffering; mboxfw is X-only. Losing Y = potentially more USB jitter at high load, not incorrect audio. Add later if latency requires. |
+| 0xff6f | REV20_ONLY runtime | **SAFE_OMIT** | `IEPDCNTY0` — EP0 IN Y-buffer. EP0 doesn't need double-buffer for control transfers. |
+| 0xff9f | REV20_ONLY runtime | **SAFE_OMIT** | `OEPDCNTY2` — EP2 OUT Y-buffer for playback. Same as 0xff67. |
+| 0xffaf | REV20_ONLY runtime | **SAFE_OMIT** | `OEPDCNTY0` — EP0 OUT Y-buffer. Same rationale. |
+
+### EP1 IN (capture) config — same net state, different write patterns
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xff60 | CHANGED_REV runtime | **FALSE_POSITIVE** | `IEPCNF1` — Rev 20 runtime-computes 0xC5, mboxfw assigns 0xC5 in `streaming_set_rate` (task-#71 patch). Same terminal value. |
+| 0xff61 | CHANGED_REV assign 0x94 | **SAFE** (already in table) | Different buffer layout, self-consistent. See earlier row. |
+| 0xff63 | CHANGED_REV runtime | **FALSE_POSITIVE** | `IEPDCNTX1` — Rev 20 runtime writes 0. mboxfw explicitly assigns 0 in `streaming_set_rate` common tail. Same behavior. |
+
+### EP0 IN (control) config — Rev 20 does per-transaction bit toggles
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xff68 | CHANGED_REV and_not 0xf7 / or 0x08 / or 0x20 / runtime | **SAFE_OMIT** | `IEPCNF0` — Rev 20 toggles NAK / interrupt bits per transaction. mboxfw uses a simpler EP0 dispatch that sets `0x84` once and does `& 0xD7` on stall. Both handle enumeration cleanly. Reference: `rev20_std_requests.md`. |
+| 0xff69 | CHANGED_REV runtime | **FALSE_POSITIVE** | `IEPBBAX0` — Rev 20 runtime, mboxfw assigns 0x43 (EP0 IN buffer @ 0xFA18). Same terminal address. |
+| 0xff6a | CHANGED_REV runtime | **FALSE_POSITIVE** | `IEPBSIZ0` — Rev 20 runtime, mboxfw assigns 0x01 (8-byte EP0). Same terminal size. |
+| 0xff6b | CHANGED_REV and_not 0x7f + assigns 0x01/02/03/80 + rmw | **SAFE_OMIT** | `IEPDCNTX0` — Rev 20 writes byte counts per IN packet (0x01/02/03 = 1/2/3-byte class-request replies) and toggles NAK. mboxfw's `push_reply_chunk` handles this via runtime `IEPBCTX0 = n`. Same functional outcome, different code paths. |
+
+### EP2 OUT (playback) + EP0 OUT config
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xff98 | CHANGED_MBOX assign 0x00 | **FALSE_POSITIVE** | `OEPCNF2` — mboxfw dormant-writes 0 in `usb_init`, sets 0xC5 in stream arm. Rev 20 also ends at 0xC5. |
+| 0xff99 | CHANGED_REV assign 0x44 | **SAFE** | `OEPBBAX2` — Rev 20 buffer @ 0xFA20. mboxfw @ 0xFC00. Different layouts, both valid per TI Mmap.h. |
+| 0xff9b | CHANGED_REV runtime | **FALSE_POSITIVE** | `OEPDCNTX2` — same reset-on-stream-arm pattern as 0xff63. |
+| 0xffa8 | CHANGED_REV and_not 0xf7 + assign 0x84 + runtime | **SAFE_OMIT** | `OEPCNF0` — mirror of 0xff68 (EP0 OUT vs IN). Same rationale. |
+| 0xffaa | CHANGED_REV runtime | **FALSE_POSITIVE** | `OEPBSIZ0` — 8-byte EP0, same terminal value. |
+| 0xffab | CHANGED_REV runtime | **FALSE_POSITIVE** | `OEPDCNTX0` — mirror of 0xff6b. |
+
+### Global control registers
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xffb0 | CHANGED_REV runtime | **FALSE_POSITIVE** | `MEMCFG` — Rev 20 runtime writes SDW-related; mboxfw `\|= 0x01`. Same terminal SDW state. |
+| 0xffb1 | CHANGED_REV and_not 0xfe + assign 0x06 | **SAFE_OMIT** | `GLOBCTL` — Rev 20 disasm shows `anl a, #0xfe; ...; orl a, #0x01` (clear-then-set bit-0 dance during mode switches). mboxfw does `\|= 0x01` once at boot. `assign 0x06` is a scanner artifact — no `mov a, #0x06; movx @dptr, a` to 0xffb1 exists in rev20_flat.asm; the 0x06 is a nearby `mov 0x06, a` direct-memory write. Setting bit 0 once is sufficient. |
+| 0xffb2 | CHANGED_REV rmw + runtime | **FALSE_POSITIVE** | `VECINT` — both firmwares write 0 to ack after service. Scanner tags one side as assign and the other as runtime. |
+
+### I²C peripheral (EEPROM driver)
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xffc0 | CHANGED_MBOX and_not 0x54 / CHANGED_REV and_not 0xfc | **SAFE_MBOXFW_ONLY** | `I2CSTA` — mboxfw's `& I2C_CLEAR_ALL (0x54)` is the byte-for-byte port from TI `I2c.h::CLEAR_ALL`. Rev 20's `& 0xFC` clears only STOP bits. Our mask is a superset — matches TI reference. |
+| 0xffc1 | CHANGED_MBOX assign 0xff / CHANGED_REV assign 0x00 | **FALSE_POSITIVE (dummy byte)** | `I2CDATO` — dummy byte to fire an I²C read. TI reference and mboxfw use 0xFF (TI `I2c.c:102`). Rev 20's 0x00 assigns are from other code paths (byte-clear before real data write). |
+| 0xffc3 | CHANGED_MBOX assign 0xa1 / CHANGED_REV runtime | **FALSE_POSITIVE** | `I2CADR` — 0xA1 = EEPROM read address. Rev 20 runtime-computes; mboxfw hardcodes. Same target device. |
+
+### C-port
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xffd4 | CHANGED_REV assign 0x01 / CHANGED_MBOX assign 0x03 | **SAFE_OMIT** | Per TI Reg_stc1.h this is `CPTRXCNF4`; per Rev-20-empirical usage (NOTES §"Master boot init") it's `CPTCTL` and the correct boot value is 0x03. mboxfw matches Rev 20's boot value 0x03. The Rev 20 `assign 0x01` is from a runtime mode-switch path we don't perform. |
+| 0xffd5 | CHANGED_REV runtime | **FALSE_POSITIVE** | `CPTBRRX` — Rev 20 runtime writes 0xAC; mboxfw assigns 0xAC in hw_init. Same terminal value. |
+
+### DMA registers (Rev-20-empirical block)
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xffe2 | CHANGED_MBOX assign 0x00 | **JUSTIFIED** | Rev-20-empirical `DMACTL2` halt at start of `streaming_set_rate` (task #71 patch). Rev 20 does the same halt via `fcn.0x0E18`. |
+| 0xfff9 | CHANGED_MBOX assign 0x20 | **FALSE_POSITIVE** | `ACG2FRQ0` (TI) / `DMASRC2_H` (Rev-20-empirical). 0x20 matches Rev 20's mode-2 (48 kHz) branch @ 0x077B. Scanner classification asymmetry. |
+
+### USB engine control
+
+| Addr | Category | Verdict | Reason |
+|------|----------|---------|--------|
+| 0xfffc | CHANGED_REV and_not 0x7f / or 0x80 / or 0xc0 | **SAFE_OMIT** | `USBCTL` — Rev 20 does aggressive USBCTL manipulation during runtime mode switches. mboxfw does `\|= 0x80` (CONN) at boot only. Rev 20's runtime dance is for a re-enumeration pattern we don't perform. |
+| 0xfffd | CHANGED_REV assign 0x00/0x9f/0xff / CHANGED_MBOX or 0xe5 | **SAFE_OMIT** | `USBIMSK` — Rev 20 dynamically enables/disables interrupt sources per mode. mboxfw uses polling + wake-event mask (0xE5 per TI `engUsbInit`) once. Same wake coverage. |
+| 0xffff | CHANGED_REV assign 0x00 | **FALSE_POSITIVE** | `USBFADR` — Rev 20 clears to 0 on bus reset (its VEC_RSTR handler). mboxfw does the same in `usb_init` / VEC_RSTR path. |
+
+## Bulk-resolution summary
+
+- **1 blocker**: `EP_AUDIO_BUF_SIZE` too small (256 B < 288 B min for 48 kHz stereo 24-bit). Fix in `mboxfw/include/regs.h` before any audio-active flash.
+- **4 SAFE_OMIT** (double-buffer Y bank writes) — potential latency improvement for v2, not required.
+- **7 SAFE_OMIT** (Rev 20 does finer-grained per-transaction / per-mode toggles that mboxfw replaces with simpler static setup + polling) — no correctness impact.
+- **1 SAFE_MBOXFW_ONLY** (I²C CLEAR_ALL mask — mboxfw stricter, matches TI reference).
+- **Rest FALSE_POSITIVE or already JUSTIFIED** — scanner artifacts or same-terminal-state via different code paths.
+
+Zero additional silent-brick risks beyond the buffer-size blocker.
+
+## Bulk resolution rows (one per (addr,pattern,imm) tuple)
+
+Individual rows for the parser. Reasoning summarized in the grouped
+sections above.
+
+| Addr | Pattern | Imm | Source | Reason |
+|------|---------|-----|--------|--------|
+| 0xff62 | assign | 0x20 | streaming.c | ⚠ BLOCKER — EP_AUDIO_BUF_SIZE=0x100 (→BSIZ=0x20=256B) is smaller than one 48kHz stereo 24-bit USB frame (288B). Rev 20 uses OEPBSIZ2=IEPBSIZ1=0x50 (640B). Bump to ≥0x28 (320B). See "BLOCKER" note above. |
+| 0xff62 | runtime | - | streaming.c | dormant/reset write, matches Rev 20 stream (dis)arm pattern. |
+| 0xff67 | runtime | - | rev20 | SAFE_OMIT — IEPDCNTY1 (EP1 IN Y-buffer). mboxfw is X-buffer-only. |
+| 0xff6f | runtime | - | rev20 | SAFE_OMIT — IEPDCNTY0 (EP0 IN Y-buffer). Same rationale. |
+| 0xff9a | assign | 0x20 | streaming.c | ⚠ BLOCKER — see 0xff62. Same buffer-size undersize applies to OEPBSIZ2 (playback). |
+| 0xff9a | runtime | - | streaming.c | dormant/reset write, matches Rev 20 pattern. |
+| 0xff9f | runtime | - | rev20 | SAFE_OMIT — OEPDCNTY2 (EP2 OUT Y-buffer). mboxfw is X-only. |
+| 0xffaf | runtime | - | rev20 | SAFE_OMIT — OEPDCNTY0 (EP0 OUT Y-buffer). Same. |
+| 0xff60 | runtime | - | rev20 | FALSE_POSITIVE — IEPCNF1, Rev 20 runtime-computes 0xC5, mboxfw assigns 0xC5. Same terminal. |
+| 0xff61 | assign | 0x94 | rev20 | SAFE — different EP1 buffer layout (Rev 20 @0xFCA0, mboxfw @0xFB00), self-consistent per TI Mmap.h. |
+| 0xff63 | runtime | - | rev20 | FALSE_POSITIVE — IEPDCNTX1, both zero on stream (dis)arm. |
+| 0xff68 | and_not | 0xf7 | rev20 | SAFE_OMIT — IEPCNF0 fine-grained bit toggle in Rev 20 per-transaction dispatch. mboxfw uses simpler once-set + stall pattern. |
+| 0xff68 | assign | 0x84 | mboxfw | JUSTIFIED — matches TI engUsbInit IEPCNF0=0x84 boot value (Rev 20 arrives at same via runtime OR sequence). |
+| 0xff68 | or | 0x08 | rev20 | SAFE_OMIT — same as 0xff68/and_not/0xf7. |
+| 0xff68 | or | 0x20 | rev20 | SAFE_OMIT — same. |
+| 0xff68 | runtime | - | rev20 | FALSE_POSITIVE — companion runtime write to the bit-toggle sequence. |
+| 0xff69 | assign | 0x43 | mboxfw | JUSTIFIED — EP0 IN buffer @ 0xFA18 = (0x43<<3)+0xF800. Rev 20 runtime-computes same address via TI engUsbInit macro. |
+| 0xff69 | runtime | - | rev20 | FALSE_POSITIVE — Rev 20 side of the same buffer-addr write. |
+| 0xff6a | assign | 0x01 | mboxfw | JUSTIFIED — EP0 max-packet 8 bytes → BSIZ = 0x01. Matches TI engUsbInit. |
+| 0xff6a | runtime | - | rev20 | FALSE_POSITIVE — Rev 20 side of same. |
+| 0xff6b | and_not | 0x7f | rev20 | SAFE_OMIT — Rev 20 clears NAK bit per packet. mboxfw sets NAK once (0x80) and lets HW manage. |
+| 0xff6b | assign | 0x01 | rev20 | SAFE_OMIT — Rev 20 sets IN packet count 1 byte for a class-request reply. mboxfw uses runtime IEPBCTX0 = n via push_reply_chunk. |
+| 0xff6b | assign | 0x02 | rev20 | SAFE_OMIT — same, 2-byte reply. |
+| 0xff6b | assign | 0x03 | rev20 | SAFE_OMIT — same, 3-byte reply. |
+| 0xff6b | assign | 0x80 | rev20 | SAFE_OMIT — Rev 20 NAK-bit set per packet. |
+| 0xff6b | rmw | - | rev20 | FALSE_POSITIVE — companion RMW to the NAK toggles. |
+| 0xff98 | assign | 0x00 | mboxfw | JUSTIFIED — OEPCNF2 dormant at usb_init (streaming disabled). Set to 0xC5 in stream arm, matches Rev 20 terminal state. |
+| 0xff99 | assign | 0x44 | rev20 | SAFE — different EP2 OUT buffer layout (Rev 20 @0xFA20, mboxfw @0xFC00). |
+| 0xff9b | runtime | - | rev20 | FALSE_POSITIVE — OEPDCNTX2 reset on stream (dis)arm, both firmwares do it. |
+| 0xffa8 | and_not | 0xf7 | rev20 | SAFE_OMIT — mirror of 0xff68 for OEPCNF0. |
+| 0xffa8 | assign | 0x84 | rev20 | FALSE_POSITIVE — Rev 20 arrives at OEPCNF0=0x84 via runtime OR; mboxfw assigns directly. Same terminal. |
+| 0xffa8 | runtime | - | mboxfw | FALSE_POSITIVE — mboxfw runtime path (`& 0xD7` in reply_stall). Rev 20 does similar bit-clear. |
+| 0xffaa | assign | 0x01 | mboxfw | JUSTIFIED — mirror of 0xff6a, EP0 OUT 8-byte size. |
+| 0xffaa | runtime | - | rev20 | FALSE_POSITIVE — Rev 20 side. |
+| 0xffab | runtime | - | rev20 | FALSE_POSITIVE — mirror of 0xff6b, OEPDCNTX0. |
+| 0xffb0 | or | 0x01 | mboxfw | JUSTIFIED — MEMCFG SDW idempotent set (boot ROM already set it). Cite: TI Utils.c UtilResetCPU. |
+| 0xffb0 | runtime | - | rev20 | FALSE_POSITIVE — Rev 20 arrives at same SDW state via runtime write. |
+| 0xffb1 | and_not | 0xfe | rev20 | SAFE_OMIT — GLOBCTL clear-bit-0 dance in Rev 20 mode-switch paths. mboxfw only sets (|= 0x01) — sufficient since USB-enable bit stays high. |
+| 0xffb1 | assign | 0x06 | rev20 | FALSE_POSITIVE — no `mov a,#0x06; movx @dptr,a` to 0xffb1 exists in rev20_flat.asm. Scanner artifact from a nearby `mov 0x06, a` direct-memory write. |
+| 0xffb2 | rmw | - | rev20 | FALSE_POSITIVE — VECINT ack pattern (read+write 0). mboxfw does the same. |
+| 0xffb2 | runtime | - | rev20 | FALSE_POSITIVE — same. |
+| 0xffc0 | and_not | 0x54 | mboxfw | JUSTIFIED — I²C CLEAR_ALL mask per TI I2c.h. Stricter than Rev 20's 0xFC. Superset behavior. |
+| 0xffc0 | and_not | 0xfc | rev20 | SAFE — Rev 20 clears only STOP bits; mboxfw's stricter TI-referenced 0x54 mask is a superset. |
+| 0xffc1 | assign | 0x00 | rev20 | FALSE_POSITIVE — Rev 20 writes 0 in code paths that aren't the dummy-read trigger. |
+| 0xffc1 | assign | 0xff | mboxfw | JUSTIFIED — dummy trigger byte for I²C read per TI I2c.c:102. |
+| 0xffc3 | assign | 0xa1 | mboxfw | JUSTIFIED — EEPROM 7-bit address 0x50 shifted + R/W=1 read. Rev 20 runtime-computes same value. |
+| 0xffc3 | runtime | - | rev20 | FALSE_POSITIVE — Rev 20 side of same. |
+| 0xffd4 | assign | 0x01 | rev20 | SAFE_OMIT — CPTCTL runtime mode-switch value. mboxfw uses boot value 0x03 (matches Rev 20 boot init per NOTES §"Master boot init"). |
+| 0xffd4 | assign | 0x03 | mboxfw | JUSTIFIED — CPTCTL boot value matches Rev 20 fcn.0x08CB per NOTES. |
+| 0xffd5 | runtime | - | rev20 | FALSE_POSITIVE — CPTBRRX 0xAC, both firmwares write same terminal value. |
+| 0xffe2 | assign | 0x00 | mboxfw | JUSTIFIED — Rev-20-empirical DMACTL2 halt at start of streaming_set_rate (task #71 patch). Rev 20 does same via fcn.0x0E18. |
+| 0xfff9 | assign | 0x20 | mboxfw | FALSE_POSITIVE — DMASRC2_H mode-2 value 0x20 matches Rev 20 fcn.0x0728 @ 0x077B. Scanner classification asymmetry. |
+| 0xfffc | and_not | 0x7f | rev20 | SAFE_OMIT — USBCTL bit-manipulation in Rev 20 mode-switch (bus-reset simulation on rate change). mboxfw doesn't do runtime re-enum. |
+| 0xfffc | or | 0x80 | rev20 | FALSE_POSITIVE — Rev 20 runtime USBCTL |= CONN. mboxfw does same at end of usb_init. |
+| 0xfffc | or | 0xc0 | rev20 | SAFE_OMIT — Rev 20 sets CONN+FEN together in a runtime path. mboxfw sets only CONN (Rev 20 also does |= 0x80 boot-time via 0x0ADE-0x0AE4). |
+| 0xfffd | assign | 0x00 | rev20 | SAFE_OMIT — USBIMSK disable-all path (Rev 20 uses during mode switches). |
+| 0xfffd | assign | 0x9f | rev20 | SAFE_OMIT — USBIMSK per-mode mask in Rev 20. mboxfw uses fixed 0xE5 (TI reference). |
+| 0xfffd | assign | 0xff | rev20 | SAFE_OMIT — USBIMSK enable-all. Superset of mboxfw's 0xE5. |
+| 0xfffd | or | 0xe5 | mboxfw | JUSTIFIED — TI engUsbInit UsbEng.c line 647 uses exactly 0xE5. |
+| 0xffff | assign | 0x00 | rev20 | FALSE_POSITIVE — USBFADR clear on bus reset. mboxfw does same in VEC_RSTR / usb_init. |
+| 0xff9a | assign | 0x50 | rev20 | ⚠ BLOCKER-REV20-SIDE — Rev 20 boot init @ 0x09BD writes OEPBSIZ2=0x50 (640B buffer). mboxfw's 0x20 (256B) is undersize for 48kHz. See BLOCKER note. |
