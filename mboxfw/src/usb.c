@@ -277,13 +277,23 @@ static void handle_class_endpoint_request(void)
         return;
     }
     if (bReq == UAC_SET_CUR) {
-        /* Host sending 3-byte sample rate. Read from EP0 OUT buffer. */
+        /* Host sending 3-byte sample rate as 24-bit LE (UAC1 §5.2.2.1.1).
+         * Rev 20 cheats by reading only src[0] — works for 44100/48000
+         * because their low bytes (0x44/0x80) are unique, but silently
+         * accepts nonsense like 300 kHz. We parse the full 24-bit value
+         * and STALL anything not in our supported rate list so the host
+         * gets an unambiguous "no" rather than a broken pipe. */
         __xdata unsigned char *src = (__xdata unsigned char *)EP0_OUT_BUF_ADDR;
-        g_sample_rate = (unsigned long)src[0]
-                      | ((unsigned long)src[1] << 8)
-                      | ((unsigned long)src[2] << 16);
-        streaming_set_rate(g_sample_rate);
-        reply_zero_length();
+        unsigned long rate = (unsigned long)src[0]
+                           | ((unsigned long)src[1] << 8)
+                           | ((unsigned long)src[2] << 16);
+        if (rate == 44100UL || rate == 48000UL) {
+            g_sample_rate = rate;
+            streaming_set_rate(rate);
+            reply_zero_length();
+        } else {
+            reply_stall();
+        }
     } else if (bReq == UAC_GET_CUR) {
         /* Reply with current sample rate as 3-byte LE (UAC1 §5.2.2.1.1). */
         unsigned char rate_bytes[3];
@@ -319,7 +329,17 @@ static void handle_setup(void)
                 g_pending_address = wValueL;
                 reply_zero_length();
                 break;
-            default:                   reply_stall();              break;
+            default:
+                /* Delegate the long tail of standard requests (GET_STATUS,
+                 * CLEAR_FEATURE, SET_FEATURE, GET_CONFIG, SYNCH_FRAME, ...)
+                 * to the TAS1020A boot ROM's standard-request handler at
+                 * 0x2F00. Rev 20 relies on the same fallback (its 0x0118
+                 * shim ends in `ljmp 0x2f00`), so anything the boot ROM
+                 * can do for Digi it can do for us. Using lcall (not ljmp)
+                 * so the boot ROM's terminating RET returns cleanly into
+                 * our function epilogue instead of unwinding our stack. */
+                __asm__("lcall #0x2f00");
+                break;
         }
     } else if (reqtype == 0x20) {
         /* Class request — recipient determines handler */
