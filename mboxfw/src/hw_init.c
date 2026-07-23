@@ -53,6 +53,29 @@ void hw_init(void)
     CPTCTL    = 0x03;
     GLOBCTL  |= 0x01;   /* enable USB last */
 
+    /* -------- DMA channel 0 + 1 boot init --------
+     *
+     * These are the TI-defined DMACTL0/1 + transfer-size registers at
+     * 0xFFE8-0xFFF0, NOT the Rev-20-empirical DMACTL0/1/2 aliases at
+     * 0xFFE0-0xFFE2. Rev 20 configures both address blocks; earlier
+     * mboxfw drafts only knew about the Rev-20-empirical aliases and
+     * dropped the TI-block writes, which meant the underlying DMA
+     * channels were never armed — enumeration succeeded but no audio
+     * bytes actually flowed to the codec.
+     *
+     * Rev 20 fcn.0x08CB boot init writes these during hw setup. Values
+     * come from rev20_flat.asm boot-block plus RE cross-checks in
+     * firmware_stock/disasm/rev20_audio_dispatch.md §3 ("three DMA
+     * channels are configured, not two") and rev20_dynamic_reconfig.md
+     * §3 "Common streaming tail". Names cited by address per the
+     * regs.h naming caveat (Rev-20 vs TI Reg_stc1.h disagree). */
+    XDATA(0xFFE8) = 0x02;   /* TI DMACTL0 base — Rev 20 fcn.0x08CB */
+    XDATA(0xFFE9) = 0x80;   /* TI DMATSH0 — same */
+    XDATA(0xFFEA) = 0x03;   /* TI DMATSL0 — same */
+    XDATA(0xFFEE) = 0x09;   /* TI DMACTL1 base — Rev 20 fcn.0x08CB */
+    XDATA(0xFFEF) = 0x80;   /* TI DMATSH1 — same */
+    XDATA(0xFFF0) = 0x03;   /* TI DMATSL1 — same */
+
     /* -------- Initial mux state -------- */
     g_mux_state  = 0x00;
     g_phantom_48v = 1;      /* Rev 20 sets 0x23.6 = 1 initially */

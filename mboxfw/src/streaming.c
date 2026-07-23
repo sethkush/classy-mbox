@@ -65,27 +65,59 @@ static void dma_program_44k1(void)
 void streaming_set_rate(unsigned long hz)
 {
     stream_rate = hz;
-    if (hz == 44100UL) {
-        dma_program_44k1();
-        /* Rev 20's fcn.0x0728 44.1 kHz branch clears RAM[0x23].2 and .3
-         * (rev20_flat.asm:940-941 @ 0x0741). These bits are the codec's
-         * per-rate config nibble — leaving them wrong when the host
-         * SET_CURs 44.1 kHz produces silent or wrong-pitched output. */
-        g_codec_state_23 &= (unsigned char)~0x0C;
-    } else {
-        dma_program_48k();
-        /* 48 kHz branch @ 0x0800 sets both bits (rev20_flat.asm:1030-1031). */
-        g_codec_state_23 |= (unsigned char)0x0C;
-    }
-    /* Shift the updated control word to the codec chip so the change
-     * actually takes effect. Rev 20's mode-switch flow calls the
-     * adjuster + shift after each per-mode bit tweak; codec_commit()
-     * bundles both. */
-    codec_commit();
 
-    /* Sample-rate change usually also implies a CS8427 clock-source
-     * update. Wire that through fcn.0x080B-style register writes once
-     * the codec side is refined. TODO: cs8427_set_rate(hz); */
+    /* Prelude — halt capture DMA before reconfiguring.
+     * Rev 20 fcn.0x0728 @ 0x0738 (rev20_dynamic_reconfig.md §2
+     * "prelude" line `DMACTL2 = 0`). */
+    XDATA(0xFFE2) = 0x00;                 /* Rev-20 DMACTL2 halt */
+
+    if (hz == 48000UL) {
+        /* mode 2 — 48 kHz internal. All 6 writes: Rev 20 fcn.0x0728
+         * @ 0x0771 mode-2 branch. See rev20_dynamic_reconfig.md §3. */
+        DMASRC0_L = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0771 */
+        DMASRC0_M = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0773 */
+        DMASRC0_H = 0x20;  /* Rev 20 fcn.0x0728 @ 0x0775 */
+        DMASRC2_L = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 */
+        DMASRC2_M = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0779 */
+        DMASRC2_H = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077B */
+
+        g_codec_state_23 |= (unsigned char)0x0C;   /* 48 kHz codec bits */
+    } else {
+        /* mode 1 — 44.1 kHz internal.
+         * Rev 20 (rev20_flat.asm 0x075F) does NOT write DMASRC0/2 here;
+         * it writes only DMACTL1 = 0x0D and relies on the power-on
+         * DMASRC defaults (which happen to be the 44.1 constants).
+         * Cite: rev20_dynamic_reconfig.md §3 row "44.1k mode 1"
+         * ("mode 1 does NOT write DMASRC").
+         * Rev 20 fcn.0x0728 @ 0x075F writes 0x0D to Rev-20-empirical
+         * DMACTL1. */
+        XDATA(0xFFE1) = 0x0D;             /* Rev-20 DMACTL1 mode-1 */
+
+        g_codec_state_23 &= (unsigned char)~0x0C;  /* 44.1 kHz codec bits */
+    }
+
+    /* Common tail — same for both rates.
+     * Cite: rev20_dynamic_reconfig.md §3 "Common streaming tail"
+     * (rev20_flat.asm 0x07C5-0x0803). Bullets:
+     *   1. ACG2DCTL seed for second clock generator
+     *   2. Zero EP BCTX/BSIZ (Rev 20 clears these on stream re-arm)
+     *   3. Enable both streaming EPs (0xC5 = enable + ISO + buffer valid)
+     *   4. Arm DMA channels 0+1 via DMACTL1 |= 0xC0 (bit 6 + bit 7) */
+    XDATA(0xFFF6) = 0x10;   /* TI ACG2DCTL — Rev 20 fcn.0x0728 @ 0x07C5 */
+    IEPBCTX1 = 0;           /* Rev 20 fcn.0x0728 tail — clear stream EPs */
+    IEPBSIZ1 = 0;           /* Rev 20 fcn.0x0728 tail */
+    OEPBCTX2 = 0;           /* Rev 20 fcn.0x0728 tail */
+    OEPBSIZ2 = 0;           /* Rev 20 fcn.0x0728 tail */
+    IEPCNF1  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07EA — enable EP1 IN */
+    OEPCNF2  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07F0 — enable EP2 OUT */
+    XDATA(0xFFE1) |= 0xC0;  /* Rev 20 fcn.0x0728 @ 0x07E0 — arm DMA 0+1 */
+
+    /* Codec-side state commit. On real silicon fcn.0x0E74 is dead
+     * code (codec self-configures from I²S clocks — see NOTES.md),
+     * so this is effectively a no-op, but we keep it to match Rev 20
+     * behaviour byte-for-byte in case a future codec revision does
+     * listen to the shift-in port. */
+    codec_commit();
 }
 
 void streaming_playback_enable(unsigned char on)
