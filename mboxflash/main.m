@@ -25,13 +25,23 @@ static void die(NSString *msg, NSError *err) {
 }
 
 static int probeBcdDevice(void) {
+    // IOKit matching with only VendorID silently returns 0 hits; iterate all
+    // IOUSBDevice services and filter on idVendor. Accepts any Digi PID —
+    // 0x1000 audio, 0x1001 boot-loaded/half-brick.
     CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
     if (!match) return -1;
-    CFDictionarySetValue(match, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(0x0DBA));
-    // Accept any Digi PID — 0x1000 audio, 0x1001 boot-loaded/half-brick.
     io_iterator_t it = IO_OBJECT_NULL;
     if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return -1;
-    io_service_t svc = IOIteratorNext(it);
+    io_service_t svc = IO_OBJECT_NULL;
+    io_service_t cand;
+    while ((cand = IOIteratorNext(it))) {
+        CFNumberRef vid = (CFNumberRef)IORegistryEntrySearchCFProperty(cand,
+            kIOServicePlane, CFSTR("idVendor"), NULL, kIORegistryIterateRecursively);
+        int v = 0;
+        if (vid) { CFNumberGetValue(vid, kCFNumberIntType, &v); CFRelease(vid); }
+        if (v == 0x0DBA) { svc = cand; break; }
+        IOObjectRelease(cand);
+    }
     IOObjectRelease(it);
     if (!svc) return -1;
     CFNumberRef bcd = (CFNumberRef)IORegistryEntrySearchCFProperty(svc,

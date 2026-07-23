@@ -14,13 +14,25 @@ static NSError *usbError(NSString *op, IOReturn rc) {
 // that's currently on the bus — 0x1000 is Rev 20 / v22 audio mode, 0x1001
 // is what a half-brick or a boot-ROM-loaded firmware advertises before
 // re-enumerating. Both are worth trying enter-DFU against.
+//
+// NB: IOKit device-matching with only a VendorID key silently returns 0
+// hits — matching wants VID+PID together — so we iterate all IOUSBDevice
+// services and filter on idVendor in code.
 static IOUSBDeviceInterface **openMboxDevice(NSError **error) {
     CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
     if (!match) { if (error) *error = usbError(@"IOServiceMatching", -1); return NULL; }
-    CFDictionarySetValue(match, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(0x0DBA));
     io_iterator_t it = IO_OBJECT_NULL;
     if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return NULL;
-    io_service_t svc = IOIteratorNext(it);
+    io_service_t svc = IO_OBJECT_NULL;
+    io_service_t cand;
+    while ((cand = IOIteratorNext(it))) {
+        CFNumberRef vid = (CFNumberRef)IORegistryEntrySearchCFProperty(cand,
+            kIOServicePlane, CFSTR("idVendor"), NULL, kIORegistryIterateRecursively);
+        int v = 0;
+        if (vid) { CFNumberGetValue(vid, kCFNumberIntType, &v); CFRelease(vid); }
+        if (v == 0x0DBA) { svc = cand; break; }
+        IOObjectRelease(cand);
+    }
     IOObjectRelease(it);
     if (!svc) return NULL;
 
