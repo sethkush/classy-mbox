@@ -10,6 +10,22 @@
 /* SDCC's xdata addressing sugar. */
 #define XDATA(addr)  (*(volatile __xdata unsigned char *)(addr))
 
+/* Hardware I²C peripheral (0xFFC0-0xFFC3). Rev 20 uses it for the
+ * boot-time EEPROM read; mboxfw uses it only for the enter-DFU
+ * signature-invalidation path (see eeprom.c).
+ *   0xFFC0 = ctrl/status
+ *     bit 0 = "last byte / generate STOP" (set before writing final byte)
+ *     bit 1 = start read
+ *     bit 3 = TX done / write completed
+ *     bit 7 = RX ready / read byte available
+ *   0xFFC1 = TX data
+ *   0xFFC2 = RX data
+ *   0xFFC3 = slave address (0xA0 = EEPROM write, 0xA1 = EEPROM read) */
+#define I2C_CTRL    XDATA(0xFFC0)
+#define I2C_TX      XDATA(0xFFC1)
+#define I2C_RX      XDATA(0xFFC2)
+#define I2C_SADDR   XDATA(0xFFC3)
+
 /* USB endpoint 0 config */
 #define IEPCNF0     XDATA(0xFF68)
 #define IEPBBAX0    XDATA(0xFF69)

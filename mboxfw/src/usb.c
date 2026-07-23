@@ -20,6 +20,7 @@
 #include "regs.h"
 #include "usb.h"
 #include "streaming.h"
+#include "eeprom.h"
 
 /* Descriptor tables from descriptors.c */
 extern const __code unsigned char AppDevDesc[];
@@ -245,13 +246,23 @@ static void handle_digi_enter_dfu(void)
         unsigned int i;
         for (i = 0; i < 0xC000; i++) { }
     }
-    /* TODO: invalidate EEPROM header signature via hardware I²C at
-     * 0xFFC0-0xFFC3 (write 0x00 to EEPROM offset 0x0002) — the boot
-     * ROM's post-reset signature check then fails and lands us in
-     * bulletproof DFU (0xFFFF:0xFFFE) instead of re-loading mboxfw. */
-    /* Warm reset via reset vector. On its own this only re-runs the
-     * boot ROM's EEPROM load — mboxfw runs again — so it's a stub
-     * until the EEPROM-invalidation TODO above lands. */
+
+    /* Bulletproof-recovery path — invalidate the EEPROM header signature
+     * so the boot ROM drops to DFU (0xFFFF:0xFFFE) on the next power-on
+     * instead of re-loading mboxfw. Uses a scratch-byte round-trip as a
+     * failsafe: if the I²C driver is broken (couldn't test the code
+     * pre-flash), we do NOT touch the signature — we just warm-reset,
+     * which lands us right back at mboxfw. That's the same state as
+     * before the DFU request, so we're never worse off than the "no
+     * bulletproof recovery" firmware. */
+    if (eeprom_smoke_test()) {
+        (void)eeprom_invalidate_signature();
+    }
+    /* Whether or not we invalidated, jump to the reset vector. If we
+     * did, next boot lands in bulletproof DFU. If we didn't (smoke
+     * test failed), we're back running mboxfw and the user has to
+     * fall back to the physical SDA-short recovery — same as the
+     * pre-failsafe world. */
     __asm__("ljmp 0");
 }
 
