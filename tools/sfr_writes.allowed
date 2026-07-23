@@ -13,7 +13,7 @@
 0xff60  assign    0x00    # streaming,usb
 0xff60  assign    0xc5    # streaming
 0xff61  assign    0x60    # streaming
-0xff62  assign    0x20    # streaming
+0xff62  assign    0x40    # streaming
 0xff62  runtime   -       # streaming
 0xff63  assign    0x00    # streaming
 0xff68  and_not   0xd7    # usb
@@ -25,8 +25,8 @@
 0xff98  assign    0x00    # streaming
 0xff98  assign    0xc5    # streaming
 0xff98  runtime   -       # streaming,usb
-0xff99  assign    0x80    # streaming
-0xff9a  assign    0x20    # streaming
+0xff99  assign    0xa0    # streaming
+0xff9a  assign    0x40    # streaming
 0xff9a  runtime   -       # streaming
 0xff9b  assign    0x00    # streaming
 0xff9b  runtime   -       # streaming

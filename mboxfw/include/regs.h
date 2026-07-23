@@ -62,9 +62,30 @@
 #define EP0_MAX_PACKET     8
 
 /* Audio streaming buffers — larger, further into the shared window. */
+/* Audio streaming buffers in TAS1020A shared memory.
+ *
+ * Sizing constraint (48 kHz stereo 24-bit): 2ch × 3B × 48 samples/frame
+ * = 288 B/frame. A buffer smaller than one frame silently truncates
+ * every USB packet — the previous 256 B (0x100) size did exactly that
+ * for 48 kHz and would have shipped garbled audio despite otherwise-
+ * correct enumeration (found by tools/diff_vs_rev20.py bulk resolution
+ * 2026-07-23). Rev 20 uses 640 B (0x280) — 2.2× a 48 kHz frame, room
+ * for jitter + high-water headroom.
+ *
+ * We use 512 B (0x200) to fit both buffers below the 0xFF00 SFR
+ * boundary while keeping ≥ 1.7× 48 kHz frame headroom:
+ *   EP0 IN/OUT   : 0xFA10-0xFA1F (16 B, unchanged)
+ *   EP1 IN       : 0xFB00-0xFCFF (512 B, capture)
+ *   EP2 OUT      : 0xFD00-0xFEFF (512 B, playback)
+ *   free tail    : 0xFF00-0xFF27 (SFRs start at 0xFF28)
+ * All non-overlapping, all below the SFR window.
+ *
+ * If we ever add 88.2/96 kHz support, revisit: 96 kHz needs 576 B/frame
+ * → 512 B truncates. Bump both to 0x300 and move EP2 to 0xFE00 (then
+ * EP1 free-tail collision at 0xFE00 forces reworking EP1 too). */
 #define EP1_IN_BUF_ADDR    0xFB00   /* capture buffer  (device → host) */
-#define EP2_OUT_BUF_ADDR   0xFC00   /* playback buffer (host → device) */
-#define EP_AUDIO_BUF_SIZE  0x0100   /* 256 bytes rounded down from 294 */
+#define EP2_OUT_BUF_ADDR   0xFD00   /* playback buffer (host → device) */
+#define EP_AUDIO_BUF_SIZE  0x0200   /* 512 B — ≥ 288 B (48 kHz frame) + slack */
 
 /* USB audio streaming endpoints — Rev 20 uses EP1 IN + EP2 OUT.
  * (Per TI Reg_stc1.h: IEPCNF1=0xFF60, OEPCNF2=0xFF98. Earlier RE notes
