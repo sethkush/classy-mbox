@@ -404,11 +404,15 @@ void usb_init(void)
     g_alt_capture  = 0;
     g_ep0_reply_remaining = 0;
 
-    /* LAST: attach to the bus. USBCTL bit 7 = CONN (enable D+ pull-up
-     * so host detects device), bit 6 = FEN (enable function endpoint
-     * engine). Nothing enumerates until this write lands. TI's
-     * engUsbInit ends with exactly this write. */
-    USBCTL = USBCTL_CONN | USBCTL_FEN;
+    /* LAST: attach to the bus. Rev 20's disasm at 0x0ADE-0x0AE4 does
+     * `USBCTL |= 0x80` — READ-MODIFY-WRITE just the CONN bit, preserving
+     * whatever else the boot ROM had set (SDW confirm, FEN if pre-set).
+     * TI's engUsbInit writes 0xC0 (CONN|FEN) as a plain assignment, but
+     * that assumes engUsbInit ran from a clean cold-boot state. In our
+     * case the boot ROM has been driving USB during download; clobbering
+     * FEN/SDW with `=` bricks the handoff. Earlier drafts wrote `=0xC0`
+     * and left the device fully silent on USB after boot. Match Rev 20. */
+    USBCTL |= USBCTL_CONN;
 }
 
 void usb_service(void)
