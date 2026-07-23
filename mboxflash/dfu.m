@@ -10,12 +10,14 @@ static NSError *usbError(NSString *op, IOReturn rc) {
     }];
 }
 
-// Find & open the Mbox runtime device (VID 0x0DBA PID 0x1000).
+// Find & open the Mbox runtime device (VID 0x0DBA). Accepts any Digi PID
+// that's currently on the bus — 0x1000 is Rev 20 / v22 audio mode, 0x1001
+// is what a half-brick or a boot-ROM-loaded firmware advertises before
+// re-enumerating. Both are worth trying enter-DFU against.
 static IOUSBDeviceInterface **openMboxDevice(NSError **error) {
     CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
     if (!match) { if (error) *error = usbError(@"IOServiceMatching", -1); return NULL; }
     CFDictionarySetValue(match, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(0x0DBA));
-    CFDictionarySetValue(match, CFSTR(kUSBProductID), (__bridge CFNumberRef)@(0x1000));
     io_iterator_t it = IO_OBJECT_NULL;
     if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return NULL;
     io_service_t svc = IOIteratorNext(it);

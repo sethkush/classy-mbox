@@ -28,7 +28,7 @@ static int probeBcdDevice(void) {
     CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
     if (!match) return -1;
     CFDictionarySetValue(match, CFSTR(kUSBVendorID),  (__bridge CFNumberRef)@(0x0DBA));
-    CFDictionarySetValue(match, CFSTR(kUSBProductID), (__bridge CFNumberRef)@(0x1000));
+    // Accept any Digi PID — 0x1000 audio, 0x1001 boot-loaded/half-brick.
     io_iterator_t it = IO_OBJECT_NULL;
     if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return -1;
     io_service_t svc = IOIteratorNext(it);
@@ -98,11 +98,11 @@ static int cmd_probe(void) {
 }
 
 static int cmd_enter_dfu(void) {
-    int bcd = probeBcdDevice();
-    if (bcd < 0) {
-        fprintf(stderr, "no Mbox 1 found — plug it in and retry\n");
-        return 1;
-    }
+    // Skip the bcdDevice probe — a half-enumerated device (mboxfw stuck
+    // mid-SETUP, boot ROM waiting on descriptors, etc.) may not expose
+    // bcdDevice, but we can still try to open it by VID + send the class
+    // request. If it's completely absent we'll fail loudly in openMboxDevice.
+    (void)probeBcdDevice;
     NSError *err = nil;
     if (!DFU_SendEnterDFURequest(0, &err)) die(@"enter-DFU request failed", err);
     printf("enter-DFU request sent. Device should disconnect and re-enumerate\n");

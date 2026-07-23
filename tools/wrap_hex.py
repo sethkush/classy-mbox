@@ -124,6 +124,9 @@ def build_eeprom_header(payload_size: int,
 
 # ---- TI record stream ------------------------------------------------ #
 
+EEPROM_SIZE = 8192   # TAS1020A boot ROM programs the full 8 KB per download.
+
+
 def emit_records(header: bytes,
                  code: bytes,
                  page: int = 32) -> bytes:
@@ -132,11 +135,20 @@ def emit_records(header: bytes,
     split into page-sized chunks starting at address 0. Each chunk becomes
     one type-0 record. There is no explicit EOF; mboxflash's parser stops
     when it runs out of bytes (matches rev20_flasher_payload.bin exactly).
+
+    Pads to the FULL EEPROM_SIZE (not just page-aligned): the TAS1020A
+    boot ROM won't transition dfuDNLOAD_IDLE → dfuMANIFEST until it has
+    received the whole 8 KB. An unpadded short image leaves the device
+    stuck in DFU on the next power cycle, treating the flash as
+    incomplete (empirically observed 2026-07-18).
     """
     image = bytearray(header + code)
-    # Page-align by padding trailing bytes with 0xFF (matches erased EEPROM).
-    pad = (-len(image)) & (page - 1)
-    image += b"\xff" * pad
+    if len(image) > EEPROM_SIZE:
+        raise ValueError(f"image {len(image)} bytes exceeds EEPROM budget"
+                         f" {EEPROM_SIZE}")
+    # Fill the rest with 0xFF (matches erased-EEPROM state) so the boot
+    # ROM sees a complete 8 KB stream and can commit.
+    image += b"\xff" * (EEPROM_SIZE - len(image))
 
     out = bytearray()
     for addr in range(0, len(image), page):
