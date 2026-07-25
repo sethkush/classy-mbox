@@ -47,3 +47,21 @@ void isr_timer0(void) __interrupt(1)
     TL0 = 0x00;
     g_timer0_ticks++;
 }
+
+/* Defensive RETI stubs for the four remaining 8051 interrupt vectors.
+ * IE currently only enables EX0+ET0 (0x03), so nothing in this firmware
+ * fires INT1/Timer1/UART/Timer2 — but SDCC only plants a vector-table
+ * LJMP for vectors that have a matching __interrupt(N) declaration.
+ * Without these stubs, the vector bytes at 0x0013/0x001B/0x0023/0x002B
+ * are 0xFF gaps that fall through into the next code block; if any
+ * future change unmasks one of these sources without also adding a
+ * handler, the CPU vectors into random code and crashes.
+ *
+ * Both Rev 20 and Rev 22 defend against this — Rev 20 via LJMP-to-shared-
+ * RETI-trampoline, Rev 22 via inlined RETI at each vector. safety_net
+ * has these same 4 stubs at safety_net/src/main.c near the ISR block.
+ * Fork audit 2026-07-24 flagged their absence in mboxfw. */
+void isr_int1  (void) __interrupt(2) { }
+void isr_timer1(void) __interrupt(3) { }
+void isr_uart  (void) __interrupt(4) { }
+void isr_timer2(void) __interrupt(5) { }

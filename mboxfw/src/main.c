@@ -62,6 +62,16 @@ static void check_boot_dfu_button(void)
  */
 void isr_int0(void)    __interrupt(0);
 void isr_timer0(void)  __interrupt(1);
+/* Forward decls for the 4 defensive RETI stubs in isr.c. SDCC only
+ * plants vector-table LJMPs for __interrupt(N) declarations visible in
+ * the compilation unit that owns crt0 (this one) — a body in isr.c
+ * alone is not enough; the vector at 0x0013/0x001B/0x0023/0x002B stays
+ * a 0xFF gap. Both Rev 20 and Rev 22 defend against these vectors.
+ * Fork audit 2026-07-24. */
+void isr_int1  (void)  __interrupt(2);
+void isr_timer1(void)  __interrupt(3);
+void isr_uart  (void)  __interrupt(4);
+void isr_timer2(void)  __interrupt(5);
 
 /* Phase-completion canaries — written at each boundary so sim_smoke
  * (and any future runtime verifier that can peek shared RAM) can prove
