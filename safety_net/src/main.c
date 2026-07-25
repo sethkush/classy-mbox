@@ -220,11 +220,30 @@ static void handle_dfu_trigger(void)
     /* Delay for the status-stage to complete on the wire. */
     { unsigned int i; for (i = 0; i < 0xC000; i++) { } }
     /* Best-effort invalidate: write 0x00 over signature bytes at
-     * EEPROM offset 2 and 3. If either write fails, we still ljmp 0
-     * — same state as before, no worse. */
+     * EEPROM offset 2 and 3. If either write fails, we still enter
+     * boot ROM — same state as before, no worse. */
     (void)eeprom_wr(0x00, 0x02, 0x00);
     (void)eeprom_wr(0x00, 0x03, 0x00);
-    __asm__("ljmp 0");
+    /* Re-enter boot ROM to make the invalidated signature take effect
+     * NOW, not on next power cycle. Clear SDW (MEMCFG bit 0) to unmap
+     * app RAM from 0x0000, then jump to boot ROM at 0x8000. This is
+     * exactly TI Utils.SRC UtilResetBootCPU (lines 119-160): the same
+     * routine boot ROM itself uses to reset into DFU. With SDW=0 the
+     * 8051 sees boot ROM at 0x0000-0x7FFF and app-RAM disappears;
+     * jumping to 0x8000 lands in the ROM's boot entry. Boot ROM then
+     * checks EEPROM signature at 0x02/0x03, sees the 0x00 bytes we
+     * just wrote, and enters DFU mode.
+     *
+     * Without this, `ljmp 0` with SDW=1 restarts safety_net (we jump
+     * back into our own reset vector in RAM) — the invalidated
+     * signature is only checked on next physical power cycle, so the
+     * DFU trigger becomes a "please unplug the device" instruction.
+     * Fork audit 2026-07-24. */
+    __asm__("mov  dptr,#0xFFB0");   /* MEMCFG */
+    __asm__("movx a,@dptr");
+    __asm__("anl  a,#0xFE");         /* clear SDW bit 0 */
+    __asm__("movx @dptr,a");
+    __asm__("ljmp 0x8000");
 }
 
 static void handle_setup(void)

@@ -378,10 +378,26 @@ static int cmd_flash(const char *path) {
             printf("  block %3lu/%lu  size=%4lu  ", (unsigned long)i,
                    (unsigned long)recs.count-1, (unsigned long)r.data.length);
             fflush(stdout);
-            if (!DFU_Download(dev, ifaceNum, (uint16_t)i,
-                              r.data.bytes, (uint16_t)r.data.length, e)) {
-                printf("FAILED\n"); return NO;
+            // Per-block transport-retry (scope 1 of the retry design). Only
+            // safe for transport-layer failures: the block was never
+            // accepted by boot ROM, so re-sending is idempotent. dfuERROR
+            // (whole-flash restart) is out of scope pending UsbDfu.c
+            // dataRemain-reset verification — see follow-up task.
+            BOOL block_ok = NO;
+            for (int attempt = 0; attempt < 3; attempt++) {
+                NSError *attempt_err = nil;
+                if (DFU_Download(dev, ifaceNum, (uint16_t)i,
+                                 r.data.bytes, (uint16_t)r.data.length,
+                                 &attempt_err)) {
+                    block_ok = YES;
+                    break;
+                }
+                printf("transport retry %d/3 ", attempt + 1);
+                fflush(stdout);
+                usleep(100 * 1000);
+                if (attempt == 2 && e) *e = attempt_err;
             }
+            if (!block_ok) { printf("FAILED\n"); return NO; }
             // Poll until dfuDNLOAD_IDLE
             for (int poll = 0; poll < 100; poll++) {
                 if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
