@@ -498,6 +498,69 @@ static int cmd_flash(const char *path) {
         }
         printf("manifest complete. Final state: %s\n", DFU_StateName((DFUState)st.bState).UTF8String);
 
+        // Post-flash readback verify. DFU 1.1 §6.2: DFU_UPLOAD is legal
+        // from dfuIDLE. After manifest, boot ROM is in dfuIDLE (or
+        // WAIT_RESET which is functionally close) — read each block back,
+        // compare against what we wrote. Catches silent EEPROM
+        // programming failures that would otherwise only surface as a
+        // brick on next power cycle. Fork audit 2026-07-24 (task #117).
+        //
+        // If the state isn't dfuIDLE (some boot-ROM manifest paths land
+        // in WAIT_RESET), issue DFU_ABORT to force back to idle. If that
+        // fails, skip verify and warn — better to complete-with-warning
+        // than to hang, since manifest already committed.
+        if (st.bState != DFU_dfuIDLE) {
+            printf("post-manifest state is %s; issuing DFU_ABORT to reach"
+                   " dfuIDLE for readback verify...\n",
+                   DFU_StateName((DFUState)st.bState).UTF8String);
+            NSError *abort_err = nil;
+            if (!DFU_Abort(dev, ifaceNum, &abort_err)) {
+                printf("  DFU_ABORT failed (%s) — skipping readback verify\n",
+                       abort_err.localizedDescription.UTF8String);
+                goto skip_verify;
+            }
+            for (int p = 0; p < 20; p++) {
+                if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
+                if (st.bState == DFU_dfuIDLE) break;
+                usleep(50 * 1000);
+            }
+            if (st.bState != DFU_dfuIDLE) {
+                printf("  did not reach dfuIDLE after ABORT — skipping"
+                       " readback verify\n");
+                goto skip_verify;
+            }
+        }
+        printf("=== POST-FLASH READBACK VERIFY ===\n");
+        NSUInteger mismatches = 0;
+        for (NSUInteger i = 0; i < recs.count; i++) {
+            MBoxPayloadRecord *r = recs[i];
+            uint8_t rb[64] = {0};
+            uint16_t got = 0;
+            if (!DFU_Upload(dev, ifaceNum, (uint16_t)i, rb,
+                            (uint16_t)r.data.length, &got, e)) {
+                fprintf(stderr, "  block %lu: DFU_UPLOAD failed\n",
+                        (unsigned long)i);
+                return NO;
+            }
+            if (got != r.data.length ||
+                memcmp(rb, r.data.bytes, r.data.length) != 0) {
+                fprintf(stderr, "  block %lu MISMATCH: wrote %u bytes,"
+                        " read %u bytes\n",
+                        (unsigned long)i, (unsigned)r.data.length, got);
+                mismatches++;
+            }
+        }
+        if (mismatches) {
+            fprintf(stderr, "\nFAIL: %lu block(s) failed post-flash readback"
+                    " verify — device may be bricked. Do not power-cycle;"
+                    " retry --flash immediately.\n",
+                    (unsigned long)mismatches);
+            return NO;
+        }
+        printf("verify OK: all %lu blocks readback-match\n",
+               (unsigned long)recs.count);
+    skip_verify:;
+
         // Boot ROM's DFU descriptor has bitManifestationTolerant=1 (UsbDfu.c:113).
         // With ManTol=1, host is NOT required to issue USB bus reset after
         // manifest. But the boot ROM's dfuSetup while-loop ONLY exits when
