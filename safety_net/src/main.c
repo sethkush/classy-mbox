@@ -402,28 +402,33 @@ static void usb_service(void)
         case VEC_RSTR:
             /* USB bus reset. Per TAS1020B datasheet §6.5.1.4, bus reset
              * CLEARS FEN. Init only set CONT (`USBCTL |= 0x80`) to
-             * trigger host detection; the actual UBM-respond-to-USB
-             * enable happens HERE. Without setting FEN in this handler
-             * the UBM ignores every EP0 transaction after the first
-             * reset — device stays silent on the bus.
+             * trigger host detection; setting bit 6 here re-enables
+             * UBM response after every reset.
              *
              * Also re-init EP0 config bytes: bus reset clears their
-             * state. Match Rev 20's VEC_RSTR handler at 0x0F55-0x0F80
-             * exactly: re-write EP0 CNFs, clear USBFADR, USBCTL |= 0xC0
-             * (both CONT and FEN), USBIMSK = 0x9F (adds IEP0 mask bit
-             * that init's 0xE5 doesn't have).
+             * state. TI UsbEng.c:614/626 IEPCNF0=OEPCNF0=0x84. USBCTL
+             * bit 7 = D+ pullup (CONN), bit 6 = FA (function-address-
+             * enable per TI UsbEng.c:647 comment); the 0xC0 value is
+             * TI-verbatim.
              *
-             * This was the actual root cause of "safety_net runs but
-             * doesn't enumerate" — pre-2026-07-23 fixes were all
-             * downstream of a UBM that never woke up. */
+             * NOTE 2026-07-25: previous version wrote USBIMSK = 0x9F
+             * here based on a fabricated citation. TI has NO USBIMSK
+             * write with value 0x9F anywhere in ROM sources. 0x9F
+             * DROPS bits 5 and 6, which are STPRW/STPOW (the SETUP
+             * interrupt bits per TI UsbEng.c:640 comment). Setting
+             * USBIMSK=0x9F after a bus reset silences the SETUP
+             * interrupt — host's first post-reset GET_DESCRIPTOR
+             * never fires the ISR → device NAKs forever → looks
+             * silent on the bus. This is the second load-bearing
+             * fabrication (alongside GLOBCTL |= 0x01 = CPTEN, also
+             * fabricated) that caused the byte-verified flash to
+             * silent-fail on real HW. USBIMSK retains its value
+             * across USB bus reset per datasheet — no rewrite
+             * needed here. Leaving USBIMSK at its init value 0xE5. */
             OEPCNF0 = 0x84;
             IEPCNF0 = 0x84;
             USBFADR = 0;
             USBCTL |= 0xC0;
-            /* Rev 20 fcn.0x0F55 VEC_RSTR handler promotes USBIMSK to
-             * 0x9F (adds IEP0 bit) after bus reset — cold init used
-             * 0xE5. Match that pattern. */
-            USBIMSK = 0x9F;
 
             pending_addr = 0xFF;
             desc_left = 0;
@@ -465,16 +470,25 @@ void main(void)
      * carve-out), a direct write is correct here. */
     USBCTL = 0;
 
-    /* Enable USB via GLOBCTL bit 0. Rev 20 rev20_flat.asm 0x100F does
-     * `orl a, #0x01` on GLOBCTL, matching mboxfw/src/hw_init.c:54's
-     * `GLOBCTL |= 0x01` ("enable USB last"). Boot ROM (RomBoot.c:33)
-     * has already assigned GLOBCTL = 0x04 for 12MHz clock and LPWR; bit
-     * 0 is the USB-enable bit set by app code. RMW because other bits
-     * (2 = clock select, 6/7 = ROM modes) belong to the boot ROM.
-     * (Earlier fork report claimed `|= 0x04` at TI Device.c:75 — that
-     * citation was fabricated; no GLOBCTL write exists in TI
-     * Application anywhere. Rev 20 asm is the authoritative source.) */
-    GLOBCTL |= 0x01;
+    /* DO NOT touch GLOBCTL. Every prior fork audit that claimed
+     * "GLOBCTL |= 0x01 = enable USB" was FABRICATED. Verified against
+     * TI RomBoot.c line 33 (2026-07-25):
+     *     GLOBCTL = 0x04;  // 12Mclk, Ext int off, LPWR on, CODEC is off
+     * Bit 2 = LPWR = USB power (already ON from boot ROM).
+     * Bit 0 = CPTEN = codec port enable — NOT USB.
+     * Datasheet §6.5.7.4: "codec port interface configuration registers
+     * must be fully programmed before CPTEN is set". safety_net has no
+     * codec — enabling CPTEN with codec regs at reset state creates
+     * electrical bus contention on the codec pins that can perturb the
+     * USB power domain via cross-coupling. This is the runtime bug
+     * that made the byte-verified flash silent on real HW while sim
+     * (which doesn't model codec/USB coupling) said everything worked.
+     *
+     * Rev 20 does `GLOBCTL |= 0x01` too — but ONLY AFTER programming
+     * CPTCNF/CPTBRRX/CPTBRTX to configure the codec port first (see
+     * rev20_flat.asm 0x08e2..0x0946). safety_net has no codec setup, so
+     * we must skip this write entirely. Boot ROM's GLOBCTL=0x04 (LPWR
+     * on, CPTEN off) is already correct for USB-only operation. */
 
     /* MEMCFG SDW confirm — boot ROM already set it, be idempotent. */
     MEMCFG |= 0x01;

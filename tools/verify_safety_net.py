@@ -193,8 +193,14 @@ def check_present(image: bytes, sfr: int) -> bool:
 CHECKS = [
     ("assign", 0xFFFC, 0x00,
         "USBCTL = 0 disconnect at top of main (Rev 20 0x08E5)"),
-    ("rmw_or", 0xFFB1, 0x01,
-        "GLOBCTL |= 0x01 USB-enable bit (Rev 20 0x100F)"),
+    # GLOBCTL bit 0 is CPTEN (codec port enable), NOT USB enable —
+    # verified against TI RomBoot.c line 33 "GLOBCTL = 0x04; // 12Mclk,
+    # Ext int off, LPWR on, CODEC is off" (2026-07-25). safety_net has
+    # no codec, must NOT set CPTEN. Boot ROM's GLOBCTL=0x04 already has
+    # LPWR (bit 2 = USB power) on. Deliberately no GLOBCTL write from
+    # safety_net now — this is the fix for the silent-USB-on-cold-boot
+    # bug where CPTEN with unconfigured codec regs perturbed the USB
+    # power domain via cross-coupling.
     ("rmw_or", 0xFFB0, 0x01,
         "MEMCFG |= 0x01 SDW confirm (idempotent, boot-ROM set)"),
     ("assign", 0xFF69, 0x43,
