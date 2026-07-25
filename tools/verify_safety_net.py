@@ -222,7 +222,8 @@ CHECKS = [
     ("assign", 0xFFFF, 0x00,
         "USBFADR = 0 (initial address)"),
     ("assign", 0xFFFD, 0xE5,
-        "USBIMSK = 0xE5 (TI UsbEng.c:640, Rev 20 0x091A)"),
+        "USBIMSK = 0xE5 (TI UsbEng.c:640; Rev 20 uses 0x9F, safety_net "
+        "deliberately diverges — STPOW-driven SETUP dispatch)"),
     ("bit_clr", 0x88, None,
         "IT0 = 0 level-triggered INT0 (TI UsbEng.c:644)"),
     ("bit_set", 0xA8, None,

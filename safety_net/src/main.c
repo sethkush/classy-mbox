@@ -411,20 +411,17 @@ static void usb_service(void)
              * enable per TI UsbEng.c:647 comment); the 0xC0 value is
              * TI-verbatim.
              *
-             * NOTE 2026-07-25: previous version wrote USBIMSK = 0x9F
-             * here based on a fabricated citation. TI has NO USBIMSK
-             * write with value 0x9F anywhere in ROM sources. 0x9F
-             * DROPS bits 5 and 6, which are STPRW/STPOW (the SETUP
-             * interrupt bits per TI UsbEng.c:640 comment). Setting
-             * USBIMSK=0x9F after a bus reset silences the SETUP
-             * interrupt — host's first post-reset GET_DESCRIPTOR
-             * never fires the ISR → device NAKs forever → looks
-             * silent on the bus. This is the second load-bearing
-             * fabrication (alongside GLOBCTL |= 0x01 = CPTEN, also
-             * fabricated) that caused the byte-verified flash to
-             * silent-fail on real HW. USBIMSK retains its value
-             * across USB bus reset per datasheet — no rewrite
-             * needed here. Leaving USBIMSK at its init value 0xE5. */
+             * NOTE 2026-07-25 (corrected): earlier revs wrote
+             * USBIMSK = 0x9F here (matching Rev 20's RSTR handler at
+             * rev20_flat.asm 0x0F7E). Removed after datasheet §6.5.1.3
+             * verification: USBIMSK is NOT cleared by bus reset, so
+             * the rewrite is redundant either way. Both 0xE5 and 0x9F
+             * enable SETUP (bit 2) + STPOW (bit 0). Earlier claim that
+             * bits 5/6 were STPRW/STPOW was wrong — bit 5=SUSR, bit
+             * 6=RESR per datasheet. safety_net uses 0xE5 (SUSR+RESR
+             * on for suspend/resume) instead of Rev 20's 0x9F
+             * (SOF+PSOF on for streaming). Divergence is deliberate
+             * and neutral for enumeration. */
             OEPCNF0 = 0x84;
             IEPCNF0 = 0x84;
             USBFADR = 0;
@@ -517,16 +514,22 @@ void main(void)
      * line 635; Rev 20 rev20_flat.asm 0x0910. */
     USBFADR  = 0;
 
-    /* USBIMSK = 0xE5. Bits: STPOW|STPRW|SETUP|SOF|SUSR|RESR|RSTR.
-     * IEP0 (bit 3) is deliberately NOT unmasked — the USB engine
-     * routes EP0 IN completion through the SETUP→TxDone chain
-     * internally and we service continuation on the next SETUP or by
-     * the engine re-firing. Sources agree on 0xE5:
-     *   - TI reference UsbEng.c:640 engUsbInit final USBIMSK write
-     *   - Rev 20 rev20_flat.asm 0x0917 master-init write
-     *   - tools/rev20_diff_justifications.md row 326
-     * A prior fix to 0x9F on 2026-07-23 was based on an unverified
-     * theory; reverted. */
+    /* USBIMSK = 0xE5 = RSTR|SUSR|RESR|SETUP|STPOW (bits 7,6,5,2,0
+     * per TAS1020B datasheet §6.5.1.3). Matches TI UsbEng.c:640
+     * engUsbInit ("Enable Reset, Resume, Suspend, SETUP and STPOW").
+     *
+     * IEP0/OEP0 endpoint completion interrupts do NOT route through
+     * USBIMSK — no such bits exist here (bit 3 is PSOF, bit 1 is
+     * reserved). EP0 completions dispatch via IEPINT/OEPINT
+     * registers gated by the UBME bit in IEPCNF0/OEPCNF0. We set
+     * those to 0x84 above (UBME=1), so VEC_IEP0 fires on EP0 IN
+     * completion — which is what our SET_ADDRESS deferred-write
+     * path in VEC_IEP0 relies on. Datasheet §6.5.7.2.
+     *
+     * Rev 20 uses 0x9F (RSTR|SOF|PSOF|SETUP|reserved|STPOW) at
+     * rev20_flat.asm 0x09FE — deliberately different: they need SOF
+     * for streaming, we need SUSR/RESR for suspend/resume. Both
+     * enable SETUP+STPOW so enumeration works either way. */
     USBIMSK = 0xE5;
 
     /* Level-triggered INT0. TI reference UsbEng.c:645 `IT0 = 0`. Edge-
