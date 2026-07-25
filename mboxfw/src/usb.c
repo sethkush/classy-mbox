@@ -258,12 +258,13 @@ static void handle_digi_enter_dfu(void)
     if (eeprom_smoke_test()) {
         (void)eeprom_invalidate_signature();
     }
-    /* Whether or not we invalidated, jump to the reset vector. If we
-     * did, next boot lands in bulletproof DFU. If we didn't (smoke
-     * test failed), we're back running mboxfw and the user has to
-     * fall back to the physical SDA-short recovery — same as the
-     * pre-failsafe world. */
-    __asm__("ljmp 0");
+    /* Whether or not we invalidated, re-enter boot ROM. Plain `ljmp 0`
+     * with SDW=1 restarts mboxfw (RAM at 0x0000) — the invalidated
+     * signature would only take effect on next power cycle, and any
+     * USB interrupt firing after signature-invalidation would race the
+     * jump. RESET_TO_BOOT_ROM masks INT0, flips SDW, and jumps into
+     * boot ROM at 0x8000. See regs.h. */
+    RESET_TO_BOOT_ROM();
 }
 
 

@@ -43,7 +43,10 @@ static void check_boot_dfu_button(void)
         if (eeprom_smoke_test()) {
             (void)eeprom_invalidate_signature();
         }
-        __asm__("ljmp 0");
+        /* Re-enter boot ROM immediately. Plain `ljmp 0` with SDW=1
+         * restarts mboxfw (RAM at 0x0000) — the invalidated signature
+         * would only take effect on next power cycle. See regs.h. */
+        RESET_TO_BOOT_ROM();
     }
 }
 

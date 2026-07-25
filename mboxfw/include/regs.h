@@ -202,4 +202,38 @@
 #define P3_BTN_CH2_MASK   0x10   /* P3.4 = channel-2 source cycle button */
 #define P3_BTN_48V_MASK   0x20   /* P3.5 = phantom power toggle */
 
+/*
+ * RESET_TO_BOOT_ROM — enter the boot ROM immediately, not on next power
+ * cycle. Byte-for-byte match to TI Utils.SRC UtilResetBootCPU (lines
+ * 119-160): mask INT0, USBCTL SDW-confirm ON, flip MEMCFG.SDW off,
+ * USBCTL SDW-confirm OFF, ljmp 0x8000.
+ *
+ * The `clr ea` is load-bearing: without it, any USB interrupt firing
+ * between the SDW-clearing `movx @dptr,a` and the `ljmp` vectors to
+ * 0x0003 with the memory map already flipped — CPU sees boot ROM
+ * bytes at 0x0003 instead of our ISR and jumps into undefined code.
+ *
+ * A plain `ljmp 0` with SDW=1 restarts app code (we jump back into our
+ * own reset vector in RAM). Signature-invalidation would then take
+ * effect only on next physical power cycle — turning any "trigger DFU"
+ * path into a "please unplug" instruction. Fork audit 2026-07-24.
+ *
+ * Never returns. */
+#define RESET_TO_BOOT_ROM() do { \
+    __asm__("clr  ea");                                     \
+    __asm__("mov  dptr,#0xFFFC");                           \
+    __asm__("movx a,@dptr");                                \
+    __asm__("orl  a,#0x01");                                \
+    __asm__("movx @dptr,a");                                \
+    __asm__("mov  dptr,#0xFFB0");                           \
+    __asm__("movx a,@dptr");                                \
+    __asm__("anl  a,#0xFE");                                \
+    __asm__("movx @dptr,a");                                \
+    __asm__("mov  dptr,#0xFFFC");                           \
+    __asm__("movx a,@dptr");                                \
+    __asm__("anl  a,#0xFE");                                \
+    __asm__("movx @dptr,a");                                \
+    __asm__("ljmp 0x8000");                                 \
+} while (0)
+
 #endif /* MBOXFW_REGS_H */
