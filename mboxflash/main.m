@@ -333,6 +333,17 @@ static int cmd_flash_check(const char *path) {
 }
 
 static int cmd_flash(const char *path) {
+    // Wrapper validation runs implicitly before every flash — same checks
+    // as `--validate`. Prevents a wrap_hex.py regression (bad header
+    // chksum, wrong VID/PID, non-contiguous records, oversize payload)
+    // from silently bricking the EEPROM. Fork audit 2026-07-24.
+    printf("=== PRE-FLASH VALIDATION ===\n");
+    if (cmd_validate(path) != 0) {
+        fprintf(stderr, "\nABORT: image failed validation, refusing to flash\n");
+        return 1;
+    }
+    printf("\n");
+
     NSError *err = nil;
     NSArray<MBoxPayloadRecord *> *recs = loadPayload(path, &err);
     if (!recs) die(@"payload load failed", err);
@@ -408,20 +419,43 @@ static int cmd_flash(const char *path) {
                        DFU_StatusName(st.bStatus).UTF8String);
                 return NO;
             }
+            // TAS1020A boot ROM returns bwPollTimeout = 0x200000 (35 min!)
+            // during dfuMANIFEST for TARGET_EEPROM — an obviously bogus
+            // value that would hang the tool for over half an hour.
+            // Cap at 200 ms; the manifest phase for EEPROM target is
+            // essentially a state-transition formality since the final
+            // metadata writes (chksum, dataType, payloadSize) already
+            // committed during dfuDnloadData when dataRemain hit 0
+            // (UsbDfu.c:1004-1014). Interrupting the sleep and re-polling
+            // lets us catch the transition to WAIT_RESET/IDLE promptly.
             uint32_t poll_ms = st.bwPollTimeout[0]
                             | (st.bwPollTimeout[1] << 8)
                             | (st.bwPollTimeout[2] << 16);
-            usleep((poll_ms ? poll_ms : 20) * 1000);
+            if (poll_ms == 0 || poll_ms > 200) poll_ms = 200;
+            usleep(poll_ms * 1000);
         }
         printf("manifest complete. Final state: %s\n", DFU_StateName((DFUState)st.bState).UTF8String);
+
+        // Boot ROM's DFU descriptor has bitManifestationTolerant=1 (UsbDfu.c:113).
+        // With ManTol=1, host is NOT required to issue USB bus reset after
+        // manifest. But the boot ROM's dfuSetup while-loop ONLY exits when
+        // RSTR_INT fires — see UsbDfu.c:697-704, RomBoot.c dfuSetup call sites.
+        // Without a bus reset, boot ROM sits in DFU indefinitely and the
+        // newly-flashed app never runs. Force the reset here — it lets the
+        // manifest-tolerant path actually finish and switches to the app.
+        printf("issuing USB bus reset to trigger app switch...\n");
+        IOReturn rrc = (*dev)->USBDeviceReEnumerate(dev, 0);
+        if (rrc != kIOReturnSuccess) {
+            printf("  (ReEnumerate returned 0x%08x — non-fatal; a physical unplug will also work)\n", rrc);
+        }
         return YES;
     }, &err);
     if (!ok) die(@"flash failed", err);
 
     printf("\n=== FLASH COMPLETE ===\n");
-    printf("Physically unplug the Mbox, wait 3 seconds, plug it back in NORMALLY\n");
-    printf("(without holding any button), then run --probe to confirm bcdDevice.\n");
-    printf("Expected values: 0x0020 = Rev 20, 0x0022 = v22, other = custom.\n");
+    printf("The bus reset above should have triggered the boot ROM to hand off\n");
+    printf("to the newly-flashed app. Run --probe to see current VID/PID.\n");
+    printf("If it's still bulletproof (0xFFFF:0xFFFE), physically unplug/replug.\n");
     return 0;
 }
 
@@ -529,6 +563,86 @@ static int cmd_dump(const char *outPath) {
     return 0;
 }
 
+// Read the DFU functional descriptor (embedded in the config descriptor)
+// and report bitCanUpload / bitCanDnload / bitManifestationTolerant / bitWillDetach.
+//
+// Why: TAS1020A boot ROM at UsbDfu.c:246-247 strips DFU_UPLOAD_CAP_BIT from
+// the descriptor when target == DFU_TARGET_RAM (bulletproof, entered via
+// dataType==UNEXIST or dataType==DEVICE_TYPE). It leaves the bit SET for
+// TARGET_EEPROM (app-DFU, entered via any other dataType including INVALID).
+// Both states show as VID/PID 0xFFFF:0xFFFE from outside (INVALID doesn't
+// trigger the descriptor override at UsbDfu.c:213-219). Only bitCanUpload
+// distinguishes them, and that distinction is critical: UNEXIST means the
+// ROM's I2C read failed → no WORD_ACCESS_MODE flag → subsequent writes go
+// byte-mode to a chip that requires word-mode → header lands at wrong
+// EEPROM offset → we're bricked in a self-sustaining loop that no amount
+// of re-flashing will fix. INVALID means writes will actually persist.
+static int cmd_dfu_desc(void) {
+    NSError *err = nil;
+    __block int rv = 0;
+    __block BOOL ok = NO;
+    ok = DFU_WithOpenDevice(^BOOL(IOUSBDeviceInterface **dev, uint16_t ifaceNum, NSError **e) {
+        (void)ifaceNum;
+        // Ask for the first config descriptor.
+        IOUSBConfigurationDescriptorPtr cfg = NULL;
+        IOReturn rc = (*dev)->GetConfigurationDescriptorPtr(dev, 0, &cfg);
+        if (rc != kIOReturnSuccess || cfg == NULL) {
+            if (e) *e = [NSError errorWithDomain:@"MBoxFlash" code:rc userInfo:@{
+                NSLocalizedDescriptionKey: [NSString stringWithFormat:
+                    @"GetConfigurationDescriptorPtr rc=0x%08x", rc]}];
+            return NO;
+        }
+        uint16_t totalLen = USBToHostWord(cfg->wTotalLength);
+        const uint8_t *p = (const uint8_t *)cfg;
+        const uint8_t *end = p + totalLen;
+        printf("Config descriptor is %u bytes total.\n", totalLen);
+        // Walk the descriptor chain looking for a DFU functional descriptor
+        // (bDescriptorType = 0x21). It's 7 bytes in DFU 1.0 or 9 bytes in
+        // DFU 1.1 (adds wDetachTimeout and wTransferSize... actually those
+        // are in both, so 9 bytes total).
+        while (p + 2 <= end) {
+            uint8_t bLength = p[0];
+            uint8_t bDescriptorType = p[1];
+            if (bLength < 2 || p + bLength > end) break;
+            printf("  desc type 0x%02x len %u\n", bDescriptorType, bLength);
+            if (bDescriptorType == 0x21 && bLength >= 3) {
+                uint8_t bmAttributes = p[2];
+                printf("\nDFU Functional Descriptor found:\n");
+                printf("  bmAttributes = 0x%02x\n", bmAttributes);
+                printf("    bitWillDetach            (0x08) = %s\n", (bmAttributes & 0x08) ? "YES" : "no");
+                printf("    bitManifestationTolerant (0x04) = %s\n", (bmAttributes & 0x04) ? "YES" : "no");
+                printf("    bitCanUpload             (0x02) = %s\n", (bmAttributes & 0x02) ? "YES" : "no");
+                printf("    bitCanDnload             (0x01) = %s\n", (bmAttributes & 0x01) ? "YES" : "no");
+                printf("\nInterpretation:\n");
+                if (bmAttributes & 0x02) {
+                    printf("  Upload capability is SET.\n");
+                    printf("  → boot ROM did NOT enter TARGET_RAM (which would strip this bit).\n");
+                    printf("  → we are in TARGET_EEPROM mode: EEPROM state is INVALID (bad chksum/sig)\n");
+                    printf("    but I2C word-access is established. A normal --flash will actually\n");
+                    printf("    persist code to EEPROM. Recovery: flash safety_net_flasher.bin.\n");
+                } else {
+                    printf("  Upload capability is CLEAR.\n");
+                    printf("  → boot ROM entered TARGET_RAM (bulletproof).\n");
+                    printf("  → EEPROM state is UNEXIST: I2C read of signature NACK'd at boot,\n");
+                    printf("    so ROM never set WORD_ACCESS_MODE flag. Subsequent writes will\n");
+                    printf("    go BYTE-mode to a chip that requires WORD-mode addressing → they\n");
+                    printf("    ACK but land at wrong offsets. Flashing more will NOT help.\n");
+                    printf("    Only way out is another cold boot where the I2C read happens to\n");
+                    printf("    succeed (chip behavior may vary across power cycles).\n");
+                    rv = 1;
+                }
+                return YES;
+            }
+            p += bLength;
+        }
+        printf("no DFU functional descriptor (0x21) found in config descriptor\n");
+        rv = 2;
+        return YES;
+    }, &err);
+    if (!ok) die(@"open device failed", err);
+    return rv;
+}
+
 static int cmd_dfu_status(void) {
     DFUStatus st = {0};
     NSError *err = nil;
@@ -553,7 +667,17 @@ int main(int argc, const char *argv[]) {
             return 2;
         }
         NSString *cmd = @(argv[1]);
-        if      ([cmd isEqualToString:@"--probe"])     return cmd_probe();
+        if      ([cmd isEqualToString:@"--dfu-desc"])  return cmd_dfu_desc();
+        else if ([cmd isEqualToString:@"--dfu-abort"]) {
+            NSError *err = nil;
+            BOOL ok = DFU_WithOpenDevice(^BOOL(IOUSBDeviceInterface **dev, uint16_t ifn, NSError **e) {
+                return DFU_Abort(dev, ifn, e);
+            }, &err);
+            if (!ok) die(@"DFU_ABORT failed", err);
+            printf("DFU_ABORT sent.\n");
+            return cmd_dfu_status();
+        }
+        else if ([cmd isEqualToString:@"--probe"])     return cmd_probe();
         else if ([cmd isEqualToString:@"--enter-dfu"]) return cmd_enter_dfu();
         else if ([cmd isEqualToString:@"--parse"] && argc >= 3) return cmd_parse(argv[2]);
         else if ([cmd isEqualToString:@"--scan"]  && argc >= 3) return cmd_scan(argv[2]);

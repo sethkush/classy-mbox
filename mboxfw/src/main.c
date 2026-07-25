@@ -80,6 +80,16 @@ void isr_timer0(void)  __interrupt(1);
 
 void main(void)
 {
+    /* DISCONNECT FIRST — defensive against boot-ROM-leftover USBCTL state.
+     * Boot ROM's UsbDfu.c:699 zeroes USBCTL after DFU manifest, and cold
+     * boot leaves USBCTL at hardware reset (0) — so on the expected paths
+     * this is a no-op. Any deviation (e.g. boot ROM took a code path we
+     * haven't audited that leaves USBCTL != 0) would race host enumeration
+     * of boot ROM against our own attach. Rev 20 explicitly does this at
+     * disasm 0x08E5 in its master init. Intentional assignment to
+     * boot-ROM-owned SFR — POLICY §2 carve-out A. */
+    USBCTL = 0;
+
     check_boot_dfu_button();
 
     CANARY(0, CANARY_MAIN);

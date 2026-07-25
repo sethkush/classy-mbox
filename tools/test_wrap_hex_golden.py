@@ -48,8 +48,41 @@ def main() -> int:
     got = emit_records(header, code)
 
     if got == expected:
+        # Rev 20 alone can't catch pad-to-8192 regression: its payload
+        # of 8174 bytes + 18-byte header = 8192 exactly, so a buggy
+        # `pad up to 8192` produces the same output as `no pad`.
+        # Cross-check with a small synthetic payload where any padding
+        # WOULD show up as trailing 0xFF bytes.
+        small_code = bytes(range(100))     # 100 bytes, deterministic
+        small_hdr  = build_eeprom_header(len(small_code),
+                                         vid=0x0DBA,
+                                         pid=0x1001,
+                                         max_power_mA=500)
+        small_out  = emit_records(small_hdr, small_code)
+        # Expected size: header (18) + code (100) = 118 bytes of data,
+        # emitted in records (record framing adds bytes but wrap_hex
+        # emits exactly `header + code`, no padding). Reject any
+        # output that's suspiciously close to a full EEPROM (>= 4 KB
+        # or ends with a long 0xFF run beyond the code length).
+        if len(small_out) >= 4096:
+            print(f"GOLDEN FAIL: 100-byte payload wrapped to {len(small_out)}"
+                  f" bytes — wrap_hex is padding output.", file=sys.stderr)
+            return 1
+        # A trailing run of 0xFF longer than 32 bytes past the payload
+        # end indicates padding (record framing itself never emits >32
+        # contiguous 0xFF unless the payload had them).
+        trailing_ff = 0
+        for b in reversed(small_out):
+            if b == 0xFF: trailing_ff += 1
+            else: break
+        if trailing_ff > 32:
+            print(f"GOLDEN FAIL: 100-byte payload output ends with"
+                  f" {trailing_ff} trailing 0xFF bytes — padding regression.",
+                  file=sys.stderr)
+            return 1
         print(f"GOLDEN PASS: wrap_hex(rev20_firmware_code)"
-              f" == rev20_flasher_payload ({len(got)} bytes)")
+              f" == rev20_flasher_payload ({len(got)} bytes);"
+              f" 100-byte payload wraps to {len(small_out)} bytes (no pad)")
         return 0
 
     # Drift — narrow down where.

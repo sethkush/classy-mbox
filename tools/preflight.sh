@@ -25,32 +25,49 @@ check() {
     printf "  %-45s " "$name"
     if "$@" >/dev/null 2>&1; then
         printf "%sPASS%s\n" "$GREEN" "$NORMAL"
-        ((pass++))
+        pass=$((pass+1))
     else
         printf "%sFAIL%s\n" "$RED" "$NORMAL"
         failures+=("$name")
-        ((fail++))
+        fail=$((fail+1))
     fi
 }
 
 echo "=== GATE RUN ==="
 
-# Gates that apply to the compiled mboxfw image (not the flasher bin).
+# Target detection: safety_net-flavored images run the safety_net gate
+# set. All others (mboxfw + any future targets) run the mboxfw set.
+# The wrap_hex + validate + code-size gates apply to both.
+case "$(basename "$IMG")" in
+    safety_net_*.bin) TARGET=safety_net ;;
+    *)                TARGET=mboxfw ;;
+esac
+echo "  (target: $TARGET)"
+
+# Gates that apply to the compiled image (not the flasher bin).
 # preflight is called on a wrapped .bin, but the gates run against the
 # build artifacts that produced it. We assume the working tree matches.
 check "SDCC version matches pin"            bash    tools/check_sdcc_version.sh
-check "code size within budget"             python3 tools/check_code_size.py
-check "sim_smoke (main loop + CONN + canaries)" bash tools/sim_smoke.sh
-check "verify_descriptors"        python3 tools/verify_descriptors.py
-check "verify_usb_init"           python3 tools/verify_usb_init.py
-check "verify_cs8427"             python3 tools/verify_cs8427.py
-check "verify_setup_paths"        python3 tools/verify_setup_paths.py
-check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
 check "wrap_hex golden regression"          python3 tools/test_wrap_hex_golden.py
-check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py
-check "Rev-20 SFR diff justified"           python3 tools/diff_vs_rev20.py
-check "DFU response timing"                 bash    tools/dfu_timing_profile.sh
-check "mboxflash --validate on target"      ./mboxflash/mboxflash --validate "$IMG"
+
+if [[ "$TARGET" == "safety_net" ]]; then
+    # Safety-net path: minimal, single-file image whose sole job is
+    # to enumerate on USB and accept the Digi DFU class trigger.
+    check "verify_safety_net init writes"   python3 tools/verify_safety_net.py
+    check "mboxflash --validate on target"  ./mboxflash/mboxflash --validate "$IMG"
+else
+    check "code size within budget"             python3 tools/check_code_size.py
+    check "sim_smoke (main loop + CONN + canaries)" bash tools/sim_smoke.sh
+    check "verify_descriptors"        python3 tools/verify_descriptors.py
+    check "verify_usb_init"           python3 tools/verify_usb_init.py
+    check "verify_cs8427"             python3 tools/verify_cs8427.py
+    check "verify_setup_paths"        python3 tools/verify_setup_paths.py
+    check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
+    check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py
+    check "Rev-20 SFR diff justified"           python3 tools/diff_vs_rev20.py
+    check "DFU response timing"                 bash    tools/dfu_timing_profile.sh
+    check "mboxflash --validate on target"      ./mboxflash/mboxflash --validate "$IMG"
+fi
 
 echo
 if (( fail > 0 )); then

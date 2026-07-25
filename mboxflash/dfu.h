@@ -62,6 +62,11 @@ BOOL DFU_Upload(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
 BOOL DFU_GetStatus(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                    DFUStatus *out, NSError **error);
 BOOL DFU_QueryStatus(DFUStatus *out, NSError **error);
+// DFU_Abort (§6.1.4): from any non-error state, returns the state machine
+// to dfuIDLE without touching any user memory. Useful to recover from
+// dfuUPLOAD_IDLE after --dump so --flash (which requires dfuIDLE) accepts.
+BOOL DFU_Abort(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
+               NSError **error);
 
 // Open the DFU-mode Mbox, execute a callback with an open handle
 // suitable for DFU_Download / DFU_GetStatus calls. Cleanly closes on exit.

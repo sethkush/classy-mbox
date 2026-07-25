@@ -11,6 +11,58 @@ known-good image.
 
 ## Entries (newest first)
 
+### 2026-07-23 — Near-recurrence of Flash #2 (caught pre-flash by fork audit)
+
+**Symptom:** would have been identical to Flash #2 — silent USB after
+`USBCTL = 0xC0` assignment. Caught in the safety_net firmware BEFORE any
+flash attempt, during a multi-fork audit of everything shortcut in the
+run-up to a proposed flash.
+
+**Root cause:** safety_net/src/main.c had `USBCTL = 0xC0` (assignment)
+plus `USBIMSK = 0x9F` justified by a fabricated theory that "IEP0
+(bit 3) must be unmasked" — no source-side evidence exists for either.
+The USBCTL assign is exactly Flash #2's pattern; the USBIMSK value
+would have masked the SETUP interrupt paths the rest of the code
+relies on. A prior fork also fabricated a `GLOBCTL |= 0x04; delay(10)`
+"TI Device.c:75 canonical bring-up sequence" — no such code exists in
+`reference/tas1020a/ti_uac_reference/Application/Device.c`.
+
+**Fixes applied pre-flash (all cross-verified against source):**
+- `USBCTL = 0` disconnect at top of main (POLICY §2 carve-out A;
+  matches Rev 20 rev20_flat.asm 0x08E5 inside master-init sub 0x08CB)
+- `USBCTL |= 0x80` RMW attach (matches Rev 20 0x0AE2)
+- `USBIMSK = 0xE5` reverted from 0x9F (matches TI UsbEng.c:640 and
+  Rev 20 0x091A)
+- `GLOBCTL |= 0x01` USB-enable bit (matches Rev 20 0x100F and
+  mboxfw/src/hw_init.c:54), not the fabricated `|= 0x04`
+- `IT0 = 0` level-triggered INT0 (matches TI UsbEng.c:644)
+- ~65k-iteration settle loop before EA=1/attach (matches Rev 20
+  0x0AC5-0x0AD8)
+
+**Fresh bug caught by the new gate:** safety_net/src/main.c has
+`#define GLOBCTL XDATA(0xFFA1)` — wrong address. Correct is 0xFFB1
+(Reg_stc1.h line 22, Rev 20 disasm 0x100F). `verify_safety_net.py`
+flagged this as MISS on `0xFFB1 |= 0x01` before any flash.
+
+**Prevention:**
+- `tools/verify_safety_net.py` — new gate; parallel to
+  `verify_usb_init.py` but scoped to safety_net's init sequence. Fails
+  if any of the 17 enumeration-critical writes are missing from the
+  emitted image.
+- `tools/preflight.sh` — extended: safety_net_*.bin targets now route
+  to the safety_net gate set instead of silently running mboxfw gates
+  against a mismatched image.
+- POLICY §2 carve-out A — explicitly authorizes `USBCTL = 0`
+  disconnect at top of main() (with Rev 20 citation), so future
+  assign-flavored disconnects don't get flagged as Flash #2 relapses.
+
+**Meta-lesson:** fork reports are input, not truth. Every source
+citation must be checked against the cited file before code changes
+land. This session had three fabricated citations that would have led
+to a brick if applied blindly.
+
+---
+
 ### 2026-07-22 — Flash #2 — silent USB after `USBCTL = 0xC0` assignment
 
 **Symptom:** flashed mboxfw, device came up with front-panel LEDs at

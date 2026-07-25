@@ -411,15 +411,29 @@ void usb_init(void)
     g_alt_capture  = 0;
     g_ep0_reply_remaining = 0;
 
-    /* LAST: attach to the bus. Rev 20's disasm at 0x0ADE-0x0AE4 does
-     * `USBCTL |= 0x80` — READ-MODIFY-WRITE just the CONN bit, preserving
-     * whatever else the boot ROM had set (SDW confirm, FEN if pre-set).
-     * TI's engUsbInit writes 0xC0 (CONN|FEN) as a plain assignment, but
-     * that assumes engUsbInit ran from a clean cold-boot state. In our
-     * case the boot ROM has been driving USB during download; clobbering
-     * FEN/SDW with `=` bricks the handoff. Earlier drafts wrote `=0xC0`
-     * and left the device fully silent on USB after boot. Match Rev 20. */
-    USBCTL |= USBCTL_CONN;
+    /* Settle before attach. Rev 20 (rev20_flat.asm 0x0AC5-0x0AD8) runs a
+     * ~65k-iter outer loop between finishing peripheral init and enabling
+     * EA / attaching D+. Gives the USB engine time to reach a stable idle
+     * state. mboxfw's outer order runs hw_init/cs8427/codec AFTER usb_init
+     * so a lot of settle time exists naturally, but the extra ~15 ms loop
+     * here matches Rev 20's pattern exactly and is defensive against
+     * future ordering changes. */
+    { unsigned int settle; for (settle = 0; settle < 0xFFFF; settle++) { } }
+
+    /* LAST: attach to the bus.
+     *
+     * `USBCTL |= 0xC0` — RMW OR of CONT (bit 7) AND FEN (bit 6).
+     *
+     * Per datasheet §6.5.1.4: FEN=0 means "the UBM ignores all USB
+     * transactions." Post-DFU-manifest, boot ROM's UsbDfu.c:699 leaves
+     * USBCTL=0. A prior committed fix (e8172f1) used `|= USBCTL_CONN`
+     * (bit 7 only) matching Rev 20's cold-init at 0x0AE2 — that worked
+     * because Rev 20 relies on its VEC_RSTR handler at 0x0F72 to do
+     * `USBCTL |= 0xC0` and set FEN after each bus reset. mboxfw's
+     * VEC_RSTR handler at usb.c:478 does `usb_init()`, so setting both
+     * bits here means both boot-attach AND post-RSTR paths correctly
+     * enable FEN in one place. */
+    USBCTL |= (USBCTL_CONN | USBCTL_FEN);
 }
 
 void usb_service(void)
@@ -471,8 +485,14 @@ void usb_service(void)
             break;
 
         case VEC_NONE:
+            break;
         default:
-            /* No pending interrupt (or one we don't care about yet). */
+            /* Any other unmasked source (STPOW, SUSR, RESR, spurious).
+             * Per datasheet §6.5.7.3, VECINT must be written to clear
+             * the source; without it the ISR re-fires on return and
+             * the CPU wedges. TI's usbIntrHandler (UsbEng.c:44-96)
+             * writes VECINT = 0 in every case for this reason. */
+            VECINT = 0;
             break;
     }
 }

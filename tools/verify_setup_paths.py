@@ -177,6 +177,94 @@ def check_reply_zero_length_present(image: bytes) -> bool:
         i = j + 1
 
 
+def check_set_address_acks(image: bytes, pending_slot: int,
+                           reply_zlp_addr: int | None) -> bool:
+    """
+    The SET_ADDRESS handler must ACK the status stage — either by
+    calling reply_zero_length() (LCALL) or by inlining an IEPBCTX0 = 0
+    write. The tell-tale is the store to _g_pending_address: `85 <src>
+    <slot>` (mov direct,direct) OR `F5 <slot>` (mov direct,a). Right
+    after that store, within ~20 bytes, we require either an LCALL
+    to _reply_zero_length or the inlined `mov dptr,#0xff6b; ... movx`
+    sequence.
+
+    Without this ACK the SET_ADDRESS status IN packet never ships,
+    host times out the enumeration retry cycle, and the device fails
+    to advance past address assignment. Removing the call while the
+    reply_zero_length function still exists (called from other
+    handlers) slips past a bare presence-check.
+    """
+    hits = []
+    # `mov <pending_slot>, a`   → F5 slot
+    i = 0
+    while True:
+        j = image.find(bytes([0xF5, pending_slot]), i)
+        if j < 0: break
+        hits.append(j + 2)
+        i = j + 1
+    # `mov <pending_slot>, <src>`   → 85 src slot   (8051 quirk: dst last)
+    i = 0
+    while True:
+        j = image.find(bytes([0x85]), i)
+        if j < 0: break
+        if j + 2 < len(image) and image[j + 2] == pending_slot:
+            hits.append(j + 3)
+        i = j + 1
+    if not hits:
+        return False
+
+    lcall_zlp = None
+    ljmp_zlp = None
+    if reply_zlp_addr is not None:
+        hi, lo = (reply_zlp_addr >> 8) & 0xFF, reply_zlp_addr & 0xFF
+        lcall_zlp = bytes([0x12, hi, lo])
+        # SDCC tail-call-optimizes `reply_zero_length(); break;` at the
+        # end of a switch case into LJMP.
+        ljmp_zlp  = bytes([0x02, hi, lo])
+    load_zlp_dptr = bytes([0x90, 0xFF, 0x6B])
+
+    for start in hits:
+        window = image[start:start + 20]
+        if lcall_zlp and lcall_zlp in window:
+            return True
+        if ljmp_zlp and ljmp_zlp in window:
+            return True
+        # Inlined IEPBCTX0 = 0: dptr load then clr-a/movx or mov #0/movx.
+        k = window.find(load_zlp_dptr)
+        if k >= 0:
+            tail = window[k + 3:k + 3 + 4]
+            if bytes([0xE4, 0xF0]) in tail or bytes([0x74, 0x00, 0xF0]) in tail:
+                return True
+    return False
+
+
+def resolve_code_symbol(build_dir: Path, sym: str) -> int | None:
+    """Return the CODE address of `sym`. Static functions don't land in
+    the .map — search .rst listings too (line-labeled form:
+    `<addr>                        NNN <sym>:`)."""
+    map_file = build_dir / "mboxfw.map"
+    if map_file.exists():
+        with map_file.open() as f:
+            for line in f:
+                m = re.search(r'\bC:\s*([0-9A-Fa-f]{4,8})\s+' +
+                              re.escape(sym) + r'\b', line)
+                if m:
+                    v = int(m.group(1), 16)
+                    if 0 <= v <= 0xFFFF:
+                        return v
+    label = re.compile(r'^\s*([0-9A-Fa-f]{4,6})\s+\d+\s+' +
+                       re.escape(sym) + r':\s*$')
+    for rst in build_dir.glob("*.rst"):
+        with rst.open() as f:
+            for line in f:
+                m = label.match(line)
+                if m:
+                    v = int(m.group(1), 16)
+                    if 0 <= v <= 0xFFFF:
+                        return v
+    return None
+
+
 def main() -> int:
     ihx_path = Path(sys.argv[1] if len(sys.argv) > 1
                     else "mboxfw/build/mboxfw.ihx")
@@ -188,12 +276,19 @@ def main() -> int:
               " SET_ADDRESS deferred-write patch even in this build?")
         return 1
     print(f"  _g_pending_address IRAM slot: 0x{pending_slot:02X}")
+    reply_zlp_addr = resolve_code_symbol(ihx_path.parent, "_reply_zero_length")
+    if reply_zlp_addr is not None:
+        print(f"  _reply_zero_length code addr: 0x{reply_zlp_addr:04X}")
 
     checks = [
         ("SET_ADDRESS writes USBFADR from g_pending_address",
          lambda: check_usbfadr_deferred_write(image, pending_slot),
          "SET_ADDRESS status stage completes but device never latches new "
          "address — half-enumeration bug (fixed 2026-07-19)"),
+        ("SET_ADDRESS handler ACKs status stage via reply_zero_length",
+         lambda: check_set_address_acks(image, pending_slot, reply_zlp_addr),
+         "Removing the reply_zero_length() call after the pending-address "
+         "store leaves the status stage un-ACKed — host times out enum."),
         ("Digi enter-DFU class request has a recognition path",
          lambda: check_digi_dfu_recognition(image),
          "mboxflash --enter-dfu won't be able to soft-reset a running "

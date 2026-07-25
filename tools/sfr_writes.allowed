@@ -75,6 +75,17 @@
 0xfff8  assign    0xa8    # streaming
 0xfff9  assign    0x0f    # streaming
 0xfff9  assign    0x20    # streaming
-0xfffc  runtime   -       # usb
+# USBCTL — two writes, both intentional and cited:
+#   assign 0x00 (main.c): defensive disconnect at top of main(). POLICY §2
+#     carve-out A. Matches Rev 20 disasm 0x08E5 (master init) and
+#     safety_net's top-of-main disconnect. No-op on the expected boot
+#     paths (post-DFU-manifest USBCTL=0, cold boot USBCTL=0).
+#   or 0xC0 (usb.c): RMW attach — CONN + FEN together. FEN required per
+#     datasheet §6.5.1.4 ("UBM ignores all USB transactions" when FEN=0).
+#     usb_init is called at boot and re-called from VEC_RSTR, so both
+#     paths reliably set FEN. Rev 20 splits this: |=0x80 at cold init
+#     0x0AE2 and |=0xC0 in RSTR handler at 0x0F72.
+0xfffc  assign    0x00    # main
+0xfffc  or        0xc0    # usb
 0xfffd  or        0xe5    # usb
 0xffff  runtime   -       # usb

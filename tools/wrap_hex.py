@@ -79,7 +79,8 @@ def parse_ihx(text: str) -> bytes:
 def build_eeprom_header(payload_size: int,
                         vid: int = 0x0DBA,
                         pid: int = 0x1001,
-                        max_power_mA: int = 500) -> bytes:
+                        max_power_mA: int = 500,
+                        data_type: int = 0x01) -> bytes:
     """
     Build the 18-byte TAS1020A EEPROM_HEADER_STRUCT.
     Fields (per TI's ROM/eeprom.h):
@@ -108,7 +109,7 @@ def build_eeprom_header(payload_size: int,
         max_power_mA // 2,
         0x02,        # attribute
         32,          # wPageSize
-        0x01,        # dataType = APPCODE
+        data_type,   # dataType (0x01=APPCODE, 0x03=APPCODE_UPDATING bootstrap)
         0x00,        # rPageSize
         payload_size,
     )
@@ -178,6 +179,14 @@ def main() -> int:
     ap.add_argument("--vid", type=lambda s: int(s, 0), default=0x0DBA)
     ap.add_argument("--pid", type=lambda s: int(s, 0), default=0x1001)
     ap.add_argument("--max-power-mA", type=int, default=500)
+    ap.add_argument("--data-type", type=lambda s: int(s, 0), default=0x01,
+                    help="EEPROM header dataType: 0x01=APPCODE (normal), "
+                         "0x03=APPCODE_UPDATING (bootstrap — forces boot ROM into "
+                         "app-DFU 0x0DBA:0x1001 on next boot, whose DFU_DNLOAD "
+                         "actually writes CODE to EEPROM. Bulletproof DFU only "
+                         "writes headers, so a plain 0x01 flash from bulletproof "
+                         "leaves the chip with a valid header pointing at garbage code — "
+                         "boot ROM then jumps to garbage on every replug. Fixed 2026-07-23.)")
     args = ap.parse_args()
 
     code = parse_ihx(args.ihx.read_text())
@@ -188,7 +197,8 @@ def main() -> int:
     # blob afterwards.
     header = build_eeprom_header(len(code),
                                  vid=args.vid, pid=args.pid,
-                                 max_power_mA=args.max_power_mA)
+                                 max_power_mA=args.max_power_mA,
+                                 data_type=args.data_type)
     stream = emit_records(header, code)
     args.out.write_bytes(stream)
 

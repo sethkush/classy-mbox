@@ -116,6 +116,14 @@ def check_device(desc, r):
     vid = desc[8]  | (desc[9]  << 8)
     pid = desc[10] | (desc[11] << 8)
     r.note(f"VID:PID = 0x{vid:04X}:0x{pid:04X}")
+    # mboxflash --probe hardcodes 0x0DBA; any other VID means mboxflash
+    # can't find the device and recovery via --enter-dfu is impossible.
+    if vid != 0x0DBA:
+        r.err(f"idVendor = 0x{vid:04X}, must be 0x0DBA (Digidesign)")
+    # Two legal PIDs: 0x1000 runtime audio, 0x1001 app-DFU. Anything
+    # else breaks the host-side driver bind + our own probe path.
+    if pid not in (0x1000, 0x1001):
+        r.err(f"idProduct = 0x{pid:04X}, must be 0x1000 or 0x1001")
     r.note(f"bMaxPacketSize0 = {desc[7]}")
     if desc[7] not in (8, 16, 32, 64):
         r.err(f"bMaxPacketSize0 = {desc[7]}, must be 8/16/32/64")

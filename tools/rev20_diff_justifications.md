@@ -320,8 +320,10 @@ sections above.
 | 0xfffc | and_not | 0x7f | rev20 | SAFE_OMIT — USBCTL bit-manipulation in Rev 20 mode-switch (bus-reset simulation on rate change). mboxfw doesn't do runtime re-enum. |
 | 0xfffc | or | 0x80 | rev20 | FALSE_POSITIVE — Rev 20 runtime USBCTL |= CONN. mboxfw does same at end of usb_init. |
 | 0xfffc | or | 0xc0 | rev20 | SAFE_OMIT — Rev 20 sets CONN+FEN together in a runtime path. mboxfw sets only CONN (Rev 20 also does |= 0x80 boot-time via 0x0ADE-0x0AE4). |
+| 0xfffc | assign | 0x00 | safety_net | JUSTIFIED — intentional pre-init USB disconnect at top of `main()`. Assignment (not RMW) is the only way to guarantee a clean 0-state before re-configuring. POLICY §2 carve-out A applies. Rev 20 does the same at rev20_flat.asm 0x08E5 (`clr a; mov dptr,#0xfffc; movx @dptr,a` inside master-init sub 0x08CB). safety_net does it one instruction earlier — semantically equivalent. |
+| 0xffa1 | any | any | safety_net | SPURIOUS — safety_net/src/main.c had `#define GLOBCTL XDATA(0xFFA1)` at one point; correct address is 0xFFB1 per Reg_stc1.h and Rev 20 0x100F. Any write to 0xFFA1 is unintended; if this row triggers, fix the #define. |
 | 0xfffd | assign | 0x00 | rev20 | SAFE_OMIT — USBIMSK disable-all path (Rev 20 uses during mode switches). |
-| 0xfffd | assign | 0x9f | rev20 | SAFE_OMIT — USBIMSK per-mode mask in Rev 20. mboxfw uses fixed 0xE5 (TI reference). |
+| 0xfffd | assign | 0x9f | rev20 | SAFE_OMIT — USBIMSK per-mode mask in Rev 20 dynamic-reconfig paths. mboxfw uses fixed 0xE5 (TI reference UsbEng.c:640). NOTE 2026-07-23: an earlier fork claimed 0x9F was Rev 20's boot value and that IEP0 (bit 3) had to be unmasked — both were fabricated. Rev 20's boot USBIMSK is 0xE5 at rev20_flat.asm 0x091A (verified). 0x9F only appears in later runtime mode-switch paths. Do NOT set safety_net or mboxfw USBIMSK to 0x9F. |
 | 0xfffd | assign | 0xff | rev20 | SAFE_OMIT — USBIMSK enable-all. Superset of mboxfw's 0xE5. |
 | 0xfffd | or | 0xe5 | mboxfw | JUSTIFIED — TI engUsbInit UsbEng.c line 647 uses exactly 0xE5. |
 | 0xffff | assign | 0x00 | rev20 | FALSE_POSITIVE — USBFADR clear on bus reset. mboxfw does same in VEC_RSTR / usb_init. |

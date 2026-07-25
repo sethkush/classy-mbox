@@ -28,6 +28,7 @@ import sys
 
 
 RE_SFR_WRITE = re.compile(
+    r"(?:"
     r"XDATA\s*\(\s*0x[fF][fF][0-9a-fA-F]{2}\s*\)"
     r"|"
     r"(?:USBCTL|USBIMSK|USBFADR|USBSTA|GLOBCTL|MEMCFG"
@@ -36,8 +37,16 @@ RE_SFR_WRITE = re.compile(
     r"|CPTCTL|CPTBRRX|CPTBRTX|CPTCNF[0-9]|DMACTL[0-9]"
     r"|DMASRC[0-9]_[LMH]"
     r"|I2C_STA|I2C_TX|I2C_RX|I2C_SADDR|VECINT|USBIMSK)"
+    r")"
+    # Require an assignment operator (=, |=, &=, ^=, ~=) for BOTH forms,
+    # not just the SFR-name form. Original pattern grouped `\s*=` only
+    # with the SFR-name alternative, so `#define GLOBCTL XDATA(0xFFB1)`
+    # falsely matched the XDATA half without an operator.
     r"\s*(?:\|=|&=|\^=|~=|=)(?!=)"
 )
+# Comment lines that mention an SFR write inside prose ("USBCTL |= 0x80")
+# aren't actual writes — skip them.
+RE_COMMENT_LINE = re.compile(r"^\s*(?:\*|//|/\*)")
 
 CITATION_MARKERS = [
     re.compile(r"Rev\s*20\b", re.IGNORECASE),
@@ -45,9 +54,18 @@ CITATION_MARKERS = [
     re.compile(r"fcn\.0x[0-9a-fA-F]"),
     re.compile(r"TI\s+(reference|UsbDfu|UsbEng|RomBoot|Utils|I2c|Eeprom|Reg_stc)",
                re.IGNORECASE),
+    # Bare file-line citations (e.g. `UsbEng.c:227`, `hwMacro.h:9-10`,
+    # `UsbDfu.c:1004-1014`). Same intent as `TI UsbEng.c` — the "TI"
+    # prefix is doc-ergonomic, not load-bearing.
+    re.compile(r"(UsbDfu|UsbEng|RomBoot|Utils|I2c|Eeprom|Reg_stc|hwMacro"
+               r"|Device|Application)\.[ch]:\d+"),
     re.compile(r"NOVEL\b[^\n]*reason\s*:", re.IGNORECASE),
     re.compile(r"boot\s*rom", re.IGNORECASE),
-    re.compile(r"engUsbInit|dfuSetup|UtilResetCPU"),
+    re.compile(r"engUsbInit|engEp0[A-Z]\w+|engLoad[A-Z]\w+"
+               r"|dfuSetup|UtilResetCPU|STALL(?:Clr|Set)?[IO]n?Ep0"
+               r"|TOGGLE[IO]n?Ep0"),
+    # Bare "TI's <symbol>" narrative citation.
+    re.compile(r"TI's\s+\w"),
 ]
 
 
@@ -84,7 +102,12 @@ def main() -> int:
     # Track the last few `+` context lines so we can look for a comment
     # above the offending write.
     plus_recent: list[str] = []
-    old_plus_max = 4
+    # Window sized so a multi-line comment block above a cluster of SFR
+    # writes still has its citation visible when checking the last write
+    # in the cluster. Originally 4, bumped to 12 — the safety_net init
+    # sequence has 4-8 consecutive SFR writes under a single 6-10 line
+    # doc-comment; 4 was catching false positives on the trailing writes.
+    old_plus_max = 12
 
     for raw in diff.splitlines():
         if raw.startswith("+++ "):
@@ -105,6 +128,8 @@ def main() -> int:
             if len(plus_recent) > old_plus_max:
                 plus_recent.pop(0)
             # Check for SFR write on THIS added line.
+            if RE_COMMENT_LINE.match(body):
+                continue
             if RE_SFR_WRITE.search(body):
                 # Look at the last 4 lines (including this one) for a
                 # citation comment. Also allow inline (same-line) comment.

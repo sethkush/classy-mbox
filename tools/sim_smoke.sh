@@ -84,6 +84,39 @@ if (( (usbctl_int & 0x80) == 0 )); then
     exit 1
 fi
 
+# The sim's default XDATA[0xFFFC] on reset is 0xA0 (bit 7 already set),
+# so the byte-level check above passes even if the firmware NEVER
+# wrote USBCTL. Belt-and-suspenders: parse the emitted .ihx for at
+# least one `mov dptr,#0xFFFC` (`90 FF FC`) followed by any movx
+# write within 8 bytes. If missing, no code ever touches USBCTL.
+usbctl_write_present=$(python3 -c "
+import sys
+data = bytearray()
+for line in open('$IHX'):
+    line = line.strip()
+    if not line.startswith(':'): continue
+    n = int(line[1:3],16); a = int(line[3:7],16); t = int(line[7:9],16)
+    if t != 0: continue
+    b = bytes.fromhex(line[9:9+n*2])
+    if a + n > len(data):
+        data.extend([0] * (a + n - len(data)))
+    for i, x in enumerate(b): data[a+i] = x
+tgt = bytes([0x90, 0xFF, 0xFC])
+i = 0
+while True:
+    j = data.find(tgt, i)
+    if j < 0:
+        print('MISSING'); sys.exit(0)
+    if 0xF0 in data[j+3:j+3+8]:
+        print('OK'); sys.exit(0)
+    i = j + 1
+" 2>&1 || echo "PYERR")
+if [[ "$usbctl_write_present" != "OK" ]]; then
+    echo "SMOKE FAIL: no code path writes USBCTL[0xFFFC]. Firmware never" >&2
+    echo "  attaches to the USB bus — the sim's 0xA0 default masks this." >&2
+    exit 1
+fi
+
 # Read phase canaries at 0xFA00..0xFA05. `dx 0xfa00 0xfa05` prints
 # a single line like: "0xfa00 a1 a2 a3 a4 a5 a6 ......"
 canary_line=$(echo "$out" | grep -iE "^0xfa00")

@@ -31,6 +31,21 @@ Assignment (`=`) clobbers whatever bits it set. Always use `|=` /
 For interrupt masks (`USBIMSK`, `IE`), RMW is preferred but not
 required — those are logically ours to fully own after boot.
 
+### Carve-outs (assignments explicitly authorized)
+
+- **A.** `USBCTL = 0` at the very top of `main()`, as an intentional
+  pre-init USB disconnect. This is one of the two things Rev 20 does
+  before doing anything else with USB (rev20_flat.asm 0x08E5, inside
+  master-init sub 0x08CB): `clr a; mov dptr,#0xfffc; movx @dptr,a`.
+  Using `&= ~0xC0` here does not work — boot ROM may have set bits
+  we don't know about, and we want a fully-zero USBCTL before
+  reconfiguring GLOBCTL/EP0/USBIMSK. Any assignment to USBCTL after
+  init falls back under §2 general rule (RMW only).
+
+Add carve-outs to this list only after citing a working reference
+(Rev 20 disasm or TI reference source) that does the same thing, AND
+after documenting the reason a plain RMW form does not suffice.
+
 ## 3. Run the gates before every flash
 
 There are eleven pre-flash gates. If any fails, the flash does not

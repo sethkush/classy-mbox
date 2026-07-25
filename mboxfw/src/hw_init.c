@@ -26,6 +26,13 @@ void hw_init(void)
     TH1  = 0x00;
     TL1  = 0x00;
     TCON = 0x00;
+    /* Explicit IT0 = 0 (level-triggered INT0). TCON = 0x00 above already
+     * zeroes bit 0, but making it explicit documents the intent and
+     * survives refactors of the TCON write. Reference: TI UsbEng.c:644
+     * `IT0 = 0` in engUsbInit; Rev 20 clears TCON at 0x08FD. Level mode
+     * is required because the USB engine ORs all unmasked USBIMSK sources
+     * into INT0 — edge mode would only fire once and miss re-assertions. */
+    IT0  = 0;
     IE   = 0x03;   /* EX0 + ET0 enabled, EA still off (set later) */
     IP   = 0x00;
     P1   = 0x00;   /* all P1 pins low */
