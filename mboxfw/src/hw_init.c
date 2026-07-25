@@ -58,7 +58,16 @@ void hw_init(void)
     CPTBRTX   = 0x25;
     CPTBRRX   = 0xAC;
     CPTCTL    = 0x03;
-    GLOBCTL  |= 0x01;   /* enable USB last */
+    /* GLOBCTL bit 0 = CPTEN (codec port enable), NOT USB engine —
+     * verified against TI RomBoot.c:33 "GLOBCTL = 0x04; // 12Mclk,
+     * Ext int off, LPWR on, CODEC is off". The USB engine is
+     * already up (boot ROM leaves LPWR bit 2 = 1). We set CPTEN
+     * only AFTER the six CPTCNF/CPTBR/CPTCTL codec regs above are
+     * programmed, matching Rev 20 fcn.0x08CB @0x0946 and v22. Do
+     * NOT copy this write into any codec-less context (see
+     * safety_net main.c:473-491 comment for the silent-USB bug
+     * this pattern caused there). */
+    GLOBCTL  |= 0x01;   /* enable codec port (CPTEN) */
 
     /* -------- DMA channel 0 + 1 boot init --------
      *

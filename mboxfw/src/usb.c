@@ -404,7 +404,16 @@ void usb_init(void)
      *   bit 7 (0x80) RSTR   — bus reset
      * Earlier drafts wrote 0xFF (all bits including IEP/OEP done) as an
      * assignment; that also clobbered whatever boot ROM had set. RMW to
-     * be safe. Reference: TI UsbEng.c::engUsbInit line ~647.  */
+     * be safe. Reference: TI UsbEng.c::engUsbInit line ~647.
+     *
+     * NOTE (2026-07-25): Rev 20's boot USBIMSK is actually 0x9F
+     * (rev20_flat.asm 0x09FE-0x0A03, verified), NOT 0xE5 as an
+     * earlier doc row claimed — 0x091A writes 0xE5 to CPTCNF4
+     * (0xFFDF), not USBIMSK. Choosing 0xE5 over Rev 20's 0x9F is a
+     * deliberate architectural divergence: we dispatch SETUP via
+     * the STPOW interrupt path (bit 5), while Rev 20 uses a polled
+     * EP0 model that doesn't need STPOW. Do NOT "fix" this back to
+     * 0x9F. */
     USBIMSK |= 0xE5;
 
     g_configured   = 0;
