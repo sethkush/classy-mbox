@@ -42,6 +42,21 @@ required — those are logically ours to fully own after boot.
   reconfiguring GLOBCTL/EP0/USBIMSK. Any assignment to USBCTL after
   init falls back under §2 general rule (RMW only).
 
+- **B.** *(reserved for future use)*
+
+- **C.** The `RESET_TO_BOOT_ROM()` macro in `mboxfw/include/regs.h`
+  does a USBCTL SDW-confirm handshake bracket (`|= 0x01` then
+  `&= ~0x01`) as part of re-entering boot ROM from app mode. Both
+  writes look like forbidden RMW-on-boot-ROM-owned SFR under the §2
+  general rule, but they are literally byte-for-byte the sequence
+  TI's own boot ROM uses in Utils.SRC UtilResetBootCPU (lines
+  119-160). Do not strip these writes: they wrap the MEMCFG.SDW flip
+  and are the documented USB-engine shadow-view handshake. This
+  carve-out fires only in the DFU-trigger recovery path (called from
+  `handle_dfu_trigger` in safety_net, `check_boot_dfu_button` in
+  mboxfw main.c, and the DFU-class request handler in mboxfw usb.c).
+  See BRICK_LOG 2026-07-24 for the bug pattern this replaces.
+
 Add carve-outs to this list only after citing a working reference
 (Rev 20 disasm or TI reference source) that does the same thing, AND
 after documenting the reason a plain RMW form does not suffice.

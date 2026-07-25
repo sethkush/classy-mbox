@@ -11,6 +11,55 @@ known-good image.
 
 ## Entries (newest first)
 
+### 2026-07-24 — Three `ljmp 0 with SDW=1` bugs (all caught pre-flash by fork audit)
+
+**Symptom (would have been):** software DFU trigger appears to succeed
+(EEPROM signature bytes invalidated at offsets 2 and 3, `ljmp 0`
+executed), but device stays in the currently-running firmware instead
+of entering DFU. User perceives the "trigger DFU" recovery button as
+non-functional, has to unplug/replug for the invalidated signature to
+take effect via the boot ROM's power-on signature check.
+
+**Root cause:** three inline-asm sites did `__asm__("ljmp 0");` intending
+to re-enter boot ROM, but with MEMCFG.SDW=1 (our runtime state) the
+memory map is RAM 0x0000-0x1FFF / ROM 0x2000-0xFFFF. Address 0x0000 is
+in RAM, so `ljmp 0` restarts the currently-running firmware's own reset
+vector — it never reaches boot ROM. The invalidated EEPROM signature
+only takes effect on the next physical power cycle, when boot ROM runs
+its normal cold-start signature check.
+
+**Sites:**
+- `safety_net/src/main.c` handle_dfu_trigger (fixed 2026-07-24 first
+  pass; then second-pass audit caught missing `clr ea` before the SDW
+  flip — any USB interrupt firing between MEMCFG write and ljmp
+  vectors into 0x0003 in boot ROM instead of app RAM, undefined code)
+- `mboxfw/src/main.c` check_boot_dfu_button
+- `mboxfw/src/usb.c` DFU-class request handler (arguably worst — USB
+  fully live at this point, highest chance of ISR-during-transition)
+
+**Fix:** shared `RESET_TO_BOOT_ROM()` macro in `mboxfw/include/regs.h`.
+Byte-for-byte match to TI Utils.SRC UtilResetBootCPU (lines 119-160):
+mask INT0 (`clr ea`) → USBCTL SDW-confirm ON → flip MEMCFG.SDW off →
+USBCTL SDW-confirm OFF → `ljmp 0x8000`. The 0x8000 target is in ROM
+under both SDW=0 (post-flip state) and SDW=1, so it always lands in
+boot code.
+
+**Prevention:**
+- Full inline-asm audit fork sweep (task #112) enumerated every
+  `__asm__` block in the tree and re-verified. Now 5 correct sites.
+- Startup-code 4-way fork (safety_net vs mboxfw vs Rev 20 vs Rev 22,
+  task #113) confirmed the fix matches TI reference byte-for-byte.
+- POLICY §2 carve-out C — explicitly authorizes the RESET_TO_BOOT_ROM
+  macro's USBCTL toggling (would otherwise be forbidden RMW-on-boot-
+  ROM-owned SFR).
+
+**Meta-lesson:** memory-map assumptions must cite the datasheet. An
+earlier fork (#108) had claimed "RAM 0x0000-0x7FFF" based on
+extrapolation; datasheet §6.5.7.5 says CODESZ=01b → RAM 0x0000-0x1FFF.
+Fork #114 caught this while investigating a different question.
+
+---
+
 ### 2026-07-23 — Near-recurrence of Flash #2 (caught pre-flash by fork audit)
 
 **Symptom:** would have been identical to Flash #2 — silent USB after

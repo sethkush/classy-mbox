@@ -131,6 +131,12 @@ static unsigned char wait_bit(unsigned char mask)
     return 0;
 }
 
+/* Post-EEPROM-write hold — NOT the I²C STOP handshake (STOP is asserted
+ * via I2C_STA |= STOP_WRITE before pushing the final data byte, matching
+ * TI I2c.c I2CAccess). This is the 24C64's internal program-cycle delay:
+ * spec says up to 5 ms between STOP and the next START. Loop count sized
+ * for ~7 ms at 12 MHz to leave margin. Matches mboxfw/src/eeprom.c
+ * eeprom_write_hold. */
 static void write_hold(void)
 {
     unsigned int i;
