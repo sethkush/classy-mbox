@@ -4,7 +4,7 @@ Reject any staged commit that adds a new XDATA (0xFFxx) SFR write
 without a nearby citation. Designed to run from a git pre-commit hook.
 
 What counts as "SFR write":
-    Any line matching /XDATA\(0xFF..\)\s*[|&^~]?=/ in the +hunk.
+    Any line matching /XDATA\\(0xFF..\\)\\s*[|&^~]?=/ in the +hunk.
     Common forms:
         USBCTL = ...
         USBCTL |= ...

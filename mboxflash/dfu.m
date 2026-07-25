@@ -235,6 +235,24 @@ BOOL DFU_Abort(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
     return YES;
 }
 
+BOOL DFU_ClearStatus(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
+                     NSError **error) {
+    IOUSBDevRequest req = {
+        .bmRequestType = 0x21,
+        .bRequest      = DFU_CLRSTATUS,
+        .wValue        = 0,
+        .wIndex        = interfaceNumber,
+        .wLength       = 0,
+        .pData         = NULL,
+    };
+    IOReturn rc = (*dev)->DeviceRequest(dev, &req);
+    if (rc != kIOReturnSuccess) {
+        if (error) *error = usbError(@"DFU_CLRSTATUS", rc);
+        return NO;
+    }
+    return YES;
+}
+
 NSString *DFU_StateName(DFUState s) {
     switch (s) {
       case DFU_appIDLE:                return @"appIDLE";

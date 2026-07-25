@@ -373,16 +373,29 @@ static int cmd_flash(const char *path) {
                     DFU_StateName((DFUState)st.bState).UTF8String]}];
             return NO;
         }
+        // Scope-2 whole-flash restart wrapper. On a transient dfuERROR
+        // (errUSBR/errPOR/errUNKNOWN/errSTALLEDPKT), issue DFU_CLRSTATUS,
+        // poll back to dfuIDLE, and restart the block loop from 0. Safe
+        // per fork audit 2026-07-24: DFU_DNLOAD from dfuIDLE resets
+        // loadStatus=DFU_LOAD_NOT (UsbDfu.c:500), which walks the exact
+        // same init path as a first-time flash (bufferAddr, dataRemain,
+        // headerCount all reset in dfuDnloadTarget/dfuDnloadHeader).
+        // Bound of 2 restarts (3 total attempts) — beyond that, the
+        // fault is more likely persistent hardware than transient.
+        BOOL flash_complete = NO;
+        for (int restart = 0; restart <= 2 && !flash_complete; restart++) {
+            if (restart > 0) {
+                printf("=== FLASH RESTART %d/2 ===\n", restart);
+            }
+            BOOL need_restart = NO;
         for (NSUInteger i = 0; i < recs.count; i++) {
             MBoxPayloadRecord *r = recs[i];
             printf("  block %3lu/%lu  size=%4lu  ", (unsigned long)i,
                    (unsigned long)recs.count-1, (unsigned long)r.data.length);
             fflush(stdout);
-            // Per-block transport-retry (scope 1 of the retry design). Only
-            // safe for transport-layer failures: the block was never
-            // accepted by boot ROM, so re-sending is idempotent. dfuERROR
-            // (whole-flash restart) is out of scope pending UsbDfu.c
-            // dataRemain-reset verification — see follow-up task.
+            // Per-block transport-retry (scope 1). Safe for transport-
+            // layer failures: block was never accepted by boot ROM, so
+            // re-send is idempotent.
             BOOL block_ok = NO;
             for (int attempt = 0; attempt < 3; attempt++) {
                 NSError *attempt_err = nil;
@@ -398,13 +411,39 @@ static int cmd_flash(const char *path) {
                 if (attempt == 2 && e) *e = attempt_err;
             }
             if (!block_ok) { printf("FAILED\n"); return NO; }
-            // Poll until dfuDNLOAD_IDLE
+            // Poll until dfuDNLOAD_IDLE. On dfuERROR, classify bStatus:
+            // transient → CLRSTATUS + restart whole flash; terminal → bail.
+            BOOL block_errored = NO;
             for (int poll = 0; poll < 100; poll++) {
                 if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
                 if (st.bState == DFU_dfuDNLOAD_IDLE) break;
                 if (st.bState == DFU_dfuERROR) {
-                    printf("device entered dfuERROR: %s\n",
-                           DFU_StatusName(st.bStatus).UTF8String);
+                    // Transient bStatus codes per DFU 1.1 §6.1.2 that
+                    // are safe to recover from via CLRSTATUS + restart:
+                    //   12 errUSBR, 13 errPOR, 14 errUNKNOWN, 15 errSTALLEDPKT
+                    BOOL transient = (st.bStatus == 12 || st.bStatus == 13 ||
+                                      st.bStatus == 14 || st.bStatus == 15);
+                    if (transient && restart < 2) {
+                        printf("transient dfuERROR (%s) — CLRSTATUS + restart\n",
+                               DFU_StatusName(st.bStatus).UTF8String);
+                        if (!DFU_ClearStatus(dev, ifaceNum, e)) return NO;
+                        for (int p = 0; p < 20; p++) {
+                            if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+                            if (st.bState == DFU_dfuIDLE) break;
+                            usleep(50 * 1000);
+                        }
+                        if (st.bState != DFU_dfuIDLE) {
+                            fprintf(stderr, "CLRSTATUS did not return to dfuIDLE"
+                                    " (state=%s)\n",
+                                    DFU_StateName((DFUState)st.bState).UTF8String);
+                            return NO;
+                        }
+                        block_errored = YES;
+                        need_restart = YES;
+                        break;
+                    }
+                    printf("terminal dfuERROR: %s (bStatus=%u)\n",
+                           DFU_StatusName(st.bStatus).UTF8String, st.bStatus);
                     return NO;
                 }
                 uint32_t poll_ms = st.bwPollTimeout[0]
@@ -412,7 +451,14 @@ static int cmd_flash(const char *path) {
                                 | (st.bwPollTimeout[2] << 16);
                 usleep((poll_ms ? poll_ms : 5) * 1000);
             }
+            if (block_errored) break;  // out of block loop → outer restart
             printf("OK\n");
+        }
+            if (!need_restart) flash_complete = YES;
+        }
+        if (!flash_complete) {
+            fprintf(stderr, "flash did not complete after 2 restarts\n");
+            return NO;
         }
         // Zero-length DFU_DNLOAD to signal end of download
         printf("  zero-length end marker... ");

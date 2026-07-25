@@ -65,6 +65,15 @@ BOOL DFU_QueryStatus(DFUStatus *out, NSError **error);
 // DFU_Abort (§6.1.4): from any non-error state, returns the state machine
 // to dfuIDLE without touching any user memory. Useful to recover from
 // dfuUPLOAD_IDLE after --dump so --flash (which requires dfuIDLE) accepts.
+// DFU_ClearStatus (§6.1.2): from dfuERROR back to dfuIDLE. Boot ROM
+// preserves loadStatus/bufferAddr/dataRemain across CLRSTATUS, but a
+// subsequent DFU_DNLOAD with wValue=0 resets loadStatus=DFU_LOAD_NOT
+// (UsbDfu.c:500), falling into dfuDnloadHeader which re-inits bufferAddr
+// and dataRemain from scratch. Safe to restart the whole flash after
+// CLRSTATUS. Fork audit 2026-07-24.
+BOOL DFU_ClearStatus(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
+                     NSError **error);
+
 BOOL DFU_Abort(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                NSError **error);
 

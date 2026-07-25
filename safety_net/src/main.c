@@ -225,23 +225,39 @@ static void handle_dfu_trigger(void)
     (void)eeprom_wr(0x00, 0x02, 0x00);
     (void)eeprom_wr(0x00, 0x03, 0x00);
     /* Re-enter boot ROM to make the invalidated signature take effect
-     * NOW, not on next power cycle. Clear SDW (MEMCFG bit 0) to unmap
-     * app RAM from 0x0000, then jump to boot ROM at 0x8000. This is
-     * exactly TI Utils.SRC UtilResetBootCPU (lines 119-160): the same
-     * routine boot ROM itself uses to reset into DFU. With SDW=0 the
-     * 8051 sees boot ROM at 0x0000-0x7FFF and app-RAM disappears;
-     * jumping to 0x8000 lands in the ROM's boot entry. Boot ROM then
-     * checks EEPROM signature at 0x02/0x03, sees the 0x00 bytes we
-     * just wrote, and enters DFU mode.
+     * NOW, not on next power cycle. Byte-for-byte match to TI
+     * Utils.SRC UtilResetBootCPU (lines 119-160): mask interrupts,
+     * SDW-confirm ON, flip SDW off, SDW-confirm OFF, ljmp 0x8000.
      *
-     * Without this, `ljmp 0` with SDW=1 restarts safety_net (we jump
-     * back into our own reset vector in RAM) — the invalidated
-     * signature is only checked on next physical power cycle, so the
-     * DFU trigger becomes a "please unplug the device" instruction.
-     * Fork audit 2026-07-24. */
+     * The `clr ea` is load-bearing: without it, any USB interrupt
+     * firing between the SDW-clearing `movx @dptr,a` and the `ljmp`
+     * vectors to 0x0003 with the memory map already flipped — CPU
+     * sees BOOT ROM at 0x0003 instead of our ISR handler and jumps
+     * into undefined boot-ROM bytes. Fork audit 2026-07-24 second
+     * pass caught this after first-pass patch shipped without EA
+     * disable.
+     *
+     * USBCTL SDW-confirm bracket (bit 0) matches TI hygiene — even
+     * though boot ROM re-inits USB from scratch, the datasheet
+     * describes SDW-confirm as a required handshake with the USB
+     * engine's shadow view.
+     *
+     * Without any of this, `ljmp 0` with SDW=1 restarts safety_net
+     * (we jump back into our own reset vector in RAM) — the
+     * invalidated signature is only checked on next physical power
+     * cycle, so the DFU trigger becomes a "please unplug" instruction. */
+    __asm__("clr  ea");                        /* mask INT0 before SDW flip */
+    __asm__("mov  dptr,#0xFFFC");   /* USBCTL */
+    __asm__("movx a,@dptr");
+    __asm__("orl  a,#0x01");                   /* SDW-confirm ON */
+    __asm__("movx @dptr,a");
     __asm__("mov  dptr,#0xFFB0");   /* MEMCFG */
     __asm__("movx a,@dptr");
-    __asm__("anl  a,#0xFE");         /* clear SDW bit 0 */
+    __asm__("anl  a,#0xFE");                   /* clear SDW bit 0 */
+    __asm__("movx @dptr,a");
+    __asm__("mov  dptr,#0xFFFC");   /* USBCTL */
+    __asm__("movx a,@dptr");
+    __asm__("anl  a,#0xFE");                   /* SDW-confirm OFF */
     __asm__("movx @dptr,a");
     __asm__("ljmp 0x8000");
 }
@@ -451,7 +467,7 @@ void main(void)
      * (2 = clock select, 6/7 = ROM modes) belong to the boot ROM.
      * (Earlier fork report claimed `|= 0x04` at TI Device.c:75 — that
      * citation was fabricated; no GLOBCTL write exists in TI
-     * Application/*.c. Rev 20 asm is the authoritative source.) */
+     * Application anywhere. Rev 20 asm is the authoritative source.) */
     GLOBCTL |= 0x01;
 
     /* MEMCFG SDW confirm — boot ROM already set it, be idempotent. */
