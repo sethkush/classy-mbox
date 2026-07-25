@@ -59,6 +59,12 @@ BOOL DFU_Download(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
 BOOL DFU_Upload(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                 uint16_t blockNum, void *data, uint16_t length,
                 uint16_t *outLength, NSError **error);
+// DFU_GetStatus_Retry: same as DFU_GetStatus but retries up to N
+// times on transport error with 50 ms backoff. Safe: GET_STATUS is
+// spec-idempotent (§6.1.3). Fork audit 2026-07-24 (scope-3 retry).
+BOOL DFU_GetStatus_Retry(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
+                         DFUStatus *out, NSError **error);
+
 BOOL DFU_GetStatus(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                    DFUStatus *out, NSError **error);
 BOOL DFU_QueryStatus(DFUStatus *out, NSError **error);

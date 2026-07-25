@@ -314,7 +314,7 @@ static int cmd_flash_check(const char *path) {
     err = nil;
     ok = DFU_WithOpenDevice(^BOOL(IOUSBDeviceInterface **dev, uint16_t ifaceNum, NSError **e) {
         DFUStatus st = {0};
-        if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+        if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
         printf("device DFU state: %s / %s\n",
                DFU_StateName((DFUState)st.bState).UTF8String,
                DFU_StatusName(st.bStatus).UTF8String);
@@ -365,7 +365,7 @@ static int cmd_flash(const char *path) {
     err = nil;
     ok = DFU_WithOpenDevice(^BOOL(IOUSBDeviceInterface **dev, uint16_t ifaceNum, NSError **e) {
         DFUStatus st = {0};
-        if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+        if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
         if (st.bState != DFU_dfuIDLE) {
             if (e) *e = [NSError errorWithDomain:@"MBoxFlash" code:2 userInfo:@{
                 NSLocalizedDescriptionKey: [NSString stringWithFormat:
@@ -415,7 +415,7 @@ static int cmd_flash(const char *path) {
             // transient → CLRSTATUS + restart whole flash; terminal → bail.
             BOOL block_errored = NO;
             for (int poll = 0; poll < 100; poll++) {
-                if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+                if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
                 if (st.bState == DFU_dfuDNLOAD_IDLE) break;
                 if (st.bState == DFU_dfuERROR) {
                     // Transient bStatus codes per DFU 1.1 §6.1.2 that
@@ -428,7 +428,7 @@ static int cmd_flash(const char *path) {
                                DFU_StatusName(st.bStatus).UTF8String);
                         if (!DFU_ClearStatus(dev, ifaceNum, e)) return NO;
                         for (int p = 0; p < 20; p++) {
-                            if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+                            if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
                             if (st.bState == DFU_dfuIDLE) break;
                             usleep(50 * 1000);
                         }
@@ -473,7 +473,7 @@ static int cmd_flash(const char *path) {
         //     (bitManifestationTolerant=1 → dfuIDLE)
         // Exit on any state that means "committed" and honor bwPollTimeout.
         for (int poll = 0; poll < 100; poll++) {
-            if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+            if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
             if (st.bState == DFU_dfuMANIFEST_WAIT_RESET ||
                 st.bState == DFU_dfuIDLE) break;
             if (st.bState == DFU_dfuERROR) {
@@ -539,7 +539,7 @@ static int cmd_dump(const char *outPath) {
     __block BOOL ok = NO;
     ok = DFU_WithOpenDevice(^BOOL(IOUSBDeviceInterface **dev, uint16_t ifaceNum, NSError **e) {
         DFUStatus st = {0};
-        if (!DFU_GetStatus(dev, ifaceNum, &st, e)) return NO;
+        if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
         printf("device DFU state: %s / %s\n",
                DFU_StateName((DFUState)st.bState).UTF8String,
                DFU_StatusName(st.bStatus).UTF8String);

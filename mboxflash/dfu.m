@@ -235,6 +235,17 @@ BOOL DFU_Abort(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
     return YES;
 }
 
+BOOL DFU_GetStatus_Retry(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
+                         DFUStatus *out, NSError **error) {
+    for (int attempt = 0; attempt < 3; attempt++) {
+        NSError *attempt_err = nil;
+        if (DFU_GetStatus(dev, interfaceNumber, out, &attempt_err)) return YES;
+        if (attempt == 2) { if (error) *error = attempt_err; return NO; }
+        usleep(50 * 1000);
+    }
+    return NO;
+}
+
 BOOL DFU_ClearStatus(IOUSBDeviceInterface **dev, uint16_t interfaceNumber,
                      NSError **error) {
     IOUSBDevRequest req = {

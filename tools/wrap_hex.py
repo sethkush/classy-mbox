@@ -51,7 +51,19 @@ def parse_ihx(text: str) -> bytes:
         addr = int(line[3:7], 16)
         rec_type = int(line[7:9], 16)
         data = bytes.fromhex(line[9:9 + 2 * n])
-        # Checksum byte follows; skip validation for now.
+        # Intel HEX per-line checksum: two's-complement of the sum of all
+        # bytes on the line (byte count, address hi/lo, type, data). A
+        # corrupt .ihx (partial write, disk error, transcription bug)
+        # would otherwise silently flow through to the wrapper and
+        # produce a bad flasher.bin. SDCC output is trusted but that's
+        # exactly the assumption most likely to bite in a regression.
+        line_chk = int(line[9 + 2 * n:11 + 2 * n], 16)
+        total = n + (addr >> 8) + (addr & 0xFF) + rec_type + sum(data)
+        computed = (-total) & 0xFF
+        if line_chk != computed:
+            raise ValueError(
+                f"line {line_no}: bad IHX checksum 0x{line_chk:02X},"
+                f" computed 0x{computed:02X}")
         if rec_type == 0x00:  # data record
             chunks[addr] = data
             max_addr = max(max_addr, addr + n)
