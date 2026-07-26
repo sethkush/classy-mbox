@@ -443,6 +443,14 @@ void usb_init(void)
      * VEC_RSTR handler at usb.c:478 does `usb_init()`, so setting both
      * bits here means both boot-attach AND post-RSTR paths correctly
      * enable FEN in one place. */
+    /* Attach: CONN|FEN together. FEN (bit 6) must be set for the UBM to
+     * respond to any USB transaction — datasheet §6.5.1.4: "FEN=0 means
+     * the UBM ignores all USB transactions." Trying CONN-only-at-init +
+     * FEN-in-VEC_RSTR (safety_net's pattern) resulted in silent enum on
+     * real hardware 2026-07-25 — the host apparently sends SETUP before
+     * bus reset, so FEN needs to be up from the moment we attach. The
+     * RSTR handler also re-asserts CONN|FEN (datasheet says bus reset
+     * clears FEN), so this is set in both places. */
     USBCTL |= (USBCTL_CONN | USBCTL_FEN);
 }
 
@@ -484,8 +492,28 @@ void usb_service(void)
             break;
 
         case VEC_RSTR:
-            /* Bus reset — re-init endpoints, clear address. */
-            usb_init();
+            /* USB bus reset. Per TAS1020B datasheet §6.5.1.4, bus reset
+             * CLEARS FEN — the UBM then ignores all USB transactions
+             * until FEN is set again. Re-arm EP0 config (also cleared
+             * by reset) and re-assert CONN|FEN together.
+             *
+             * DO NOT call usb_init() here — that would re-run the 65k
+             * settle loop inside an ISR-adjacent context, blow away
+             * USBIMSK (RMW OR of 0xE5 is idempotent, but the extra work
+             * is pointless), and reset g_pending_address/g_ep0_reply_*
+             * state that a mid-enum reset shouldn't clobber. Mirrors
+             * safety_net/src/main.c:402-433 exactly. */
+            /* TI UsbEng.c engUsbInit: IEPCNF0=OEPCNF0=0x84, USBFADR=0.
+             * Rev 20 fcn.0x0F72 @ 0x0F7C-0x0F82: USBCTL |= 0xC0. */
+            OEPCNF0 = 0x84;
+            IEPCNF0 = 0x84;
+            USBFADR = 0;
+            USBCTL |= (USBCTL_CONN | USBCTL_FEN);
+            g_pending_address = 0xFF;
+            g_ep0_reply_remaining = 0;
+            g_configured = 0;
+            g_alt_playback = 0;
+            g_alt_capture = 0;
             VECINT = 0;
             break;
 

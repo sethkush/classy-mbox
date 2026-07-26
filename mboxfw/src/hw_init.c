@@ -33,7 +33,7 @@ void hw_init(void)
      * is required because the USB engine ORs all unmasked USBIMSK sources
      * into INT0 — edge mode would only fire once and miss re-assertions. */
     IT0  = 0;
-    IE   = 0x03;   /* EX0 + ET0 enabled, EA still off (set later) */
+    IE   = 0x03;   /* EX0 (INT0/USB) + ET0 (Timer 0) */
     IP   = 0x00;
     P1   = 0x00;   /* all P1 pins low */
     P3   = 0xFF;   /* all P3 pins high (button inputs pull-up) */
@@ -85,12 +85,13 @@ void hw_init(void)
      * channels are configured, not two") and rev20_dynamic_reconfig.md
      * §3 "Common streaming tail". Names cited by address per the
      * regs.h naming caveat (Rev-20 vs TI Reg_stc1.h disagree). */
-    XDATA(0xFFE8) = 0x02;   /* TI DMACTL0 base — Rev 20 fcn.0x08CB */
-    XDATA(0xFFE9) = 0x80;   /* TI DMATSH0 — same */
-    XDATA(0xFFEA) = 0x03;   /* TI DMATSL0 — same */
-    XDATA(0xFFEE) = 0x09;   /* TI DMACTL1 base — Rev 20 fcn.0x08CB */
-    XDATA(0xFFEF) = 0x80;   /* TI DMATSH1 — same */
-    XDATA(0xFFF0) = 0x03;   /* TI DMATSL1 — same */
+    /* Rev 20 fcn.0x08CB @ 0x0912-0x092A — six DMA-channel init bytes. */
+    XDATA(0xFFE8) = 0x02;
+    XDATA(0xFFE9) = 0x80;
+    XDATA(0xFFEA) = 0x03;
+    XDATA(0xFFEE) = 0x09;
+    XDATA(0xFFEF) = 0x80;
+    XDATA(0xFFF0) = 0x03;
 
     /* -------- Initial mux state -------- */
     g_mux_state  = 0x00;
