@@ -11,6 +11,85 @@ known-good image.
 
 ## Entries (newest first)
 
+### 2026-07-25 — Rev 20 finally flashes cleanly. Multi-fault session, three real bugs found.
+
+**Presenting symptom (start of session):** flashing safety_net or
+Rev 20 stock via mboxflash produced silent USB on cold boot —
+`ioreg` empty for VID 0x0DBA, `mboxflash --probe` said "no Mbox
+found" or reported stale IOKit cache entries.
+
+**Root cause 1 (the load-bearing one) — flashing from bulletproof-DFU
+directly with a dataType=0x01 image only writes the HEADER to EEPROM,
+never the CODE.** Bulletproof-DFU (0xFFFF:0xFFFE, entered via SDA-short)
+is a minimal boot-ROM DFU implementation that writes user data to RAM
+only, per TI UsbDfu.c:948-951. Only the 18-byte EEPROM header (chksum,
+sigs, VID/PID, dataType, payloadSize) is persisted. Flashing the full
+firmware image from bulletproof leaves the chip with a valid header
+pointing at an unwritten code region → boot ROM validates on cold
+boot, sees garbage in the code region → fails validation → enters
+bulletproof again → silent USB.
+
+The safety_net Makefile had documented this and provided
+`safety_net_bootstrap.bin` (dataType=0x03 APPCODE_UPDATING) as the
+first stage of a two-stage bootstrap. Multiple past sessions had
+forgotten to use it — including several attempts this session before
+we finally noticed the Makefile comment.
+
+**The working sequence (CANONICAL — see POLICY §7):**
+1. SDA-short → device enters bulletproof-DFU (0xFFFF:0xFFFE)
+2. Flash `safety_net_bootstrap.bin` (dataType=0x03) — header written,
+   telling boot ROM "flash in progress"
+3. Replug → device comes up in app-DFU (0x0DBA:0x1001) — this is NOT
+   bulletproof-DFU, it's the boot ROM's real DFU implementation which
+   DOES persist code to EEPROM
+4. Flash real firmware (`rev20_flasher_payload.bin` or
+   `safety_net_flasher.bin`, both dataType=0x01) — code persists
+5. Replug → boot ROM validates → device boots the firmware
+
+**Root cause 2 — mboxflash post-manifest DFU_ABORT (introduced commit
+82042d0):** even when the flash sequence was correct, our mboxflash
+had a "post-flash readback verify" that issued `DFU_ABORT` while boot
+ROM was in `dfuMANIFEST` state. Per TI UsbDfu.c DFU_ABORT handler,
+only dfuDNLOAD_IDLE/dfuIDLE/dfuUPLOAD_IDLE are safe states for
+DFU_ABORT — every other state hits `dfuErrStalledPkt()` → transitions
+to `dfuERROR`. That corrupted the DFU state machine right before we
+issued the bus reset. Removed in this session by reverting mboxflash
+to commit `15fc73b` (last pre-post-verify commit).
+
+**Root cause 3 — noise from four "fork audit" commits that added
+speculative safety logic to mboxflash without hardware testing:**
+`9787940` (per-block transport retry), `ddc50e9` (scope-2 whole-flash
+restart), `15fc73b` (scope-3 retry), `82042d0` (post-manifest verify).
+The retry logic never triggered under normal conditions, so it was
+neutral, but the post-manifest verify was actively harmful (root cause 2).
+General lesson: mboxflash changes must be hardware-tested end-to-end
+before commit, not merely fork-audited.
+
+**Confirmed working state (2026-07-25 end of session):** flashed Rev 20
+stock via the two-stage bootstrap. `ioreg` shows:
+- idVendor 0x0DBA, idProduct 0x1000
+- bcdDevice 0x0020 (Rev 20)
+- USB Product Name "Mbox USB Audio Device copyright Digidesign 2001"
+
+**Session cost:** four SDA-shorts, several hours of chasing firmware
+theories that were toolchain issues. Meta-lesson: when the presenting
+symptom is a flash failure, verify the FLASH TOOLCHAIN against
+known-good bytes (Rev 20 stock) before touching any firmware code.
+
+**Historical fabrications this session dead-endified:**
+- `GLOBCTL |= 0x01` claiming "enable USB" — actually CPTEN (codec).
+  Removed from safety_net in 2b09379. Correct fix in isolation, did
+  NOT resolve the presenting symptom (which was toolchain).
+- USBIMSK bit-meaning comments in safety_net main.c — corrected in
+  189c219 against datasheet §6.5.1.3. Correct in isolation, did NOT
+  resolve the presenting symptom.
+- "USBIMSK = 0x9F removed from VEC_RSTR" (2b09379) — argued in-code
+  based on wrong bit meanings. Not harmful either way; not a fix.
+
+Do NOT reflash these safety_net changes expecting them to solve
+anything. They may or may not be the right thing depending on future
+tests; they're comment-level clarifications, not silent-USB fixes.
+
 ### 2026-07-24 — Three `ljmp 0 with SDW=1` bugs (all caught pre-flash by fork audit)
 
 **Symptom (would have been):** software DFU trigger appears to succeed

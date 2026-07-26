@@ -350,6 +350,41 @@ static int cmd_flash(const char *path) {
     NSUInteger totalBytes = 0;
     for (MBoxPayloadRecord *r in recs) totalBytes += r.data.length;
 
+    // Detect the "flash 0x01 from bulletproof-DFU" trap. See POLICY §7
+    // and BRICK_LOG 2026-07-25 for the multi-hour hunt that led to this
+    // check. Bulletproof-DFU (VID 0xFFFF PID 0xFFFE, entered via
+    // SDA-short) only persists the EEPROM HEADER, not the code region.
+    // A dataType=0x01 flash from bulletproof leaves the chip with a
+    // valid header pointing at unwritten code → boot ROM validates on
+    // cold boot, fails, re-enters bulletproof → silent USB.
+    //
+    // The dataType byte lives at offset 14 of the 18-byte EEPROM header,
+    // which is the first ≥18 bytes of the first record we're about to
+    // send. Parse it and refuse if dataType=0x01 while in bulletproof.
+    if (probeDFUMode() && recs.count > 0 && recs.firstObject.data.length >= 15) {
+        const uint8_t *hdr = (const uint8_t *)recs.firstObject.data.bytes;
+        uint8_t dataType = hdr[14];
+        if (dataType == 0x01) {
+            fprintf(stderr,
+                "\nABORT: device is in bulletproof-DFU (0xFFFF:0xFFFE) but this\n"
+                "image has dataType = 0x01 (APPCODE). Bulletproof-DFU does NOT\n"
+                "persist the code region to EEPROM — only the header. Flashing\n"
+                "this directly WILL brick the device (silent USB on next boot).\n\n"
+                "Correct procedure per POLICY §7:\n"
+                "  1. Flash safety_net/build/safety_net_bootstrap.bin first\n"
+                "     (that image has dataType=0x03 = APPCODE_UPDATING, which\n"
+                "     tells the boot ROM to come up in app-DFU on next boot).\n"
+                "  2. Physically unplug/replug — device should re-enumerate as\n"
+                "     app-DFU (0x0DBA:0x1001). Verify with:\n"
+                "         ioreg -p IOUSB -l | grep 'idProduct.*4097'\n"
+                "  3. Re-run this --flash command from app-DFU. Code will\n"
+                "     persist to EEPROM.\n"
+                "  4. Physically unplug/replug — device boots the new firmware.\n\n"
+                "This check exists because we bricked ourselves this exact way\n"
+                "several times before understanding the bulletproof-DFU limit.\n");
+            return 1;
+        }
+    }
     printf("=== ABOUT TO WRITE EEPROM ===\n");
     printf("payload: %lu records, %lu bytes\n", (unsigned long)recs.count, (unsigned long)totalBytes);
     printf("device: DFU-mode Mbox at 0xFFFF:0xFFFE\n");
@@ -497,69 +532,6 @@ static int cmd_flash(const char *path) {
             usleep(poll_ms * 1000);
         }
         printf("manifest complete. Final state: %s\n", DFU_StateName((DFUState)st.bState).UTF8String);
-
-        // Post-flash readback verify. DFU 1.1 §6.2: DFU_UPLOAD is legal
-        // from dfuIDLE. After manifest, boot ROM is in dfuIDLE (or
-        // WAIT_RESET which is functionally close) — read each block back,
-        // compare against what we wrote. Catches silent EEPROM
-        // programming failures that would otherwise only surface as a
-        // brick on next power cycle. Fork audit 2026-07-24 (task #117).
-        //
-        // If the state isn't dfuIDLE (some boot-ROM manifest paths land
-        // in WAIT_RESET), issue DFU_ABORT to force back to idle. If that
-        // fails, skip verify and warn — better to complete-with-warning
-        // than to hang, since manifest already committed.
-        if (st.bState != DFU_dfuIDLE) {
-            printf("post-manifest state is %s; issuing DFU_ABORT to reach"
-                   " dfuIDLE for readback verify...\n",
-                   DFU_StateName((DFUState)st.bState).UTF8String);
-            NSError *abort_err = nil;
-            if (!DFU_Abort(dev, ifaceNum, &abort_err)) {
-                printf("  DFU_ABORT failed (%s) — skipping readback verify\n",
-                       abort_err.localizedDescription.UTF8String);
-                goto skip_verify;
-            }
-            for (int p = 0; p < 20; p++) {
-                if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
-                if (st.bState == DFU_dfuIDLE) break;
-                usleep(50 * 1000);
-            }
-            if (st.bState != DFU_dfuIDLE) {
-                printf("  did not reach dfuIDLE after ABORT — skipping"
-                       " readback verify\n");
-                goto skip_verify;
-            }
-        }
-        printf("=== POST-FLASH READBACK VERIFY ===\n");
-        NSUInteger mismatches = 0;
-        for (NSUInteger i = 0; i < recs.count; i++) {
-            MBoxPayloadRecord *r = recs[i];
-            uint8_t rb[64] = {0};
-            uint16_t got = 0;
-            if (!DFU_Upload(dev, ifaceNum, (uint16_t)i, rb,
-                            (uint16_t)r.data.length, &got, e)) {
-                fprintf(stderr, "  block %lu: DFU_UPLOAD failed\n",
-                        (unsigned long)i);
-                return NO;
-            }
-            if (got != r.data.length ||
-                memcmp(rb, r.data.bytes, r.data.length) != 0) {
-                fprintf(stderr, "  block %lu MISMATCH: wrote %u bytes,"
-                        " read %u bytes\n",
-                        (unsigned long)i, (unsigned)r.data.length, got);
-                mismatches++;
-            }
-        }
-        if (mismatches) {
-            fprintf(stderr, "\nFAIL: %lu block(s) failed post-flash readback"
-                    " verify — device may be bricked. Do not power-cycle;"
-                    " retry --flash immediately.\n",
-                    (unsigned long)mismatches);
-            return NO;
-        }
-        printf("verify OK: all %lu blocks readback-match\n",
-               (unsigned long)recs.count);
-    skip_verify:;
 
         // Boot ROM's DFU descriptor has bitManifestationTolerant=1 (UsbDfu.c:113).
         // With ManTol=1, host is NOT required to issue USB bus reset after

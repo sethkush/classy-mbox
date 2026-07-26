@@ -128,6 +128,66 @@ Do not proceed with a flash without explicitly stating each of:
 
 Missing any item = do not flash.
 
+## 7. Flashing from bulletproof-DFU REQUIRES two-stage bootstrap
+
+**If the device is in bulletproof-DFU (VID 0xFFFF PID 0xFFFE — entered
+via SDA-short), you CANNOT flash a dataType=0x01 image directly.**
+Bulletproof-DFU only persists the 18-byte EEPROM header, not the code
+region. A single-stage flash from bulletproof-DFU leaves the chip with
+a valid header pointing at an unwritten code region → boot ROM fails
+validation on cold boot → device re-enters bulletproof-DFU → silent
+USB. See BRICK_LOG 2026-07-25 for the multi-hour hunt that finally
+pinned this down.
+
+**Correct sequence (do all steps in order):**
+1. SDA-short → device enters bulletproof-DFU (verify with
+   `ioreg -p IOUSB -l | grep "idVendor.*65535"`).
+2. `mboxflash --flash safety_net/build/safety_net_bootstrap.bin` —
+   this uses dataType=0x03 (APPCODE_UPDATING). Only the 18-byte
+   header persists, but that's enough to signal "flash in progress"
+   to the boot ROM.
+3. Physically unplug/replug — device MUST come up as app-DFU
+   (0x0DBA:0x1001). Verify with `ioreg -p IOUSB -l | grep
+   "idProduct.*4097"`. If it's still 0xFFFF:0xFFFE or absent from
+   ioreg, something went wrong — do NOT proceed.
+4. `mboxflash --flash <real_image>` — from app-DFU, code WILL persist
+   to EEPROM. Use `firmware_stock/rev20_flasher_payload.bin`,
+   `firmware_stock/rev22_flasher_payload_raw.bin` (after wrapping),
+   `mboxfw/build/mboxfw_flasher.bin`, or
+   `safety_net/build/safety_net_flasher.bin`.
+5. Physically unplug/replug — device boots the flashed firmware.
+
+**If the device is already in APP-DFU (0x0DBA:0x1001) — e.g., because a
+prior flash left dataType=0x03, or because the running firmware
+accepted a `--enter-dfu` class request — skip step 2 and go straight
+to step 4.**
+
+## 8. mboxflash changes require hardware verification, not just fork audit
+
+Four commits in July 2026 added "safety" logic to `mboxflash/main.m`
+and `mboxflash/dfu.m` based on fork-audit speculation about
+hypothetical DFU edge cases: `9787940` (per-block retry), `ddc50e9`
+(scope-2 restart), `15fc73b` (scope-3 retry), `82042d0` (post-manifest
+readback verify). None were tested against real hardware before
+commit. `82042d0`'s post-manifest verify was actively harmful — it
+issued `DFU_ABORT` during dfuMANIFEST, which per TI UsbDfu.c
+transitions the boot ROM into dfuERROR, corrupting the state machine.
+
+**Rule: any change to mboxflash's DFU flow — retry logic, poll
+intervals, request sequencing, error handling — must be verified on
+hardware end-to-end before commit.** "Verified via fork audit" or
+"reviewed against DFU 1.1 spec" is NOT sufficient. The wire-level
+IOKit behavior on modern macOS + the specific TAS1020B boot-ROM DFU
+implementation together form a system with quirks that neither the
+spec nor code review can predict.
+
+Digidesign's own updaters (RE'd this session — see
+`reference/firmware/rev20/digidesign_flasher_dfu_flow.md` and
+`reference/firmware/rev22_updater_dfu_flow.md`) use a MINIMAL DFU
+sequence: only DNLOAD and GETSTATUS, no ABORT/CLRSTATUS/UPLOAD, no
+forced bus reset. They wait for the user to physically unplug/replug.
+That minimal flow is what our mboxflash should stay close to.
+
 ## History of what NOT to do
 
 Each of these was a real brick 2026-07-22:
