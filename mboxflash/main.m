@@ -24,10 +24,12 @@ static void die(NSString *msg, NSError *err) {
     exit(1);
 }
 
-static int probeBcdDevice(void) {
-    // IOKit matching with only VendorID silently returns 0 hits; iterate all
-    // IOUSBDevice services and filter on idVendor. Accepts any Digi PID —
-    // 0x1000 audio, 0x1001 boot-loaded/half-brick.
+// Read a Digi (VID=0x0DBA) device's idProduct+bcdDevice. Returns 0 if
+// found (with *outPid and *outBcd populated), -1 if no matching device.
+// Historic bug: earlier version only checked VID and reported anything
+// as "audio mode" — misidentified app-DFU (0x0DBA:0x1001) devices and
+// created the illusion of a "2 flashes needed" bootstrap pattern.
+static int probeDigiDevice(int *outPid, int *outBcd) {
     CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
     if (!match) return -1;
     io_iterator_t it = IO_OBJECT_NULL;
@@ -44,17 +46,20 @@ static int probeBcdDevice(void) {
     }
     IOObjectRelease(it);
     if (!svc) return -1;
+    CFNumberRef pid = (CFNumberRef)IORegistryEntrySearchCFProperty(svc,
+        kIOServicePlane, CFSTR("idProduct"), NULL, kIORegistryIterateRecursively);
     CFNumberRef bcd = (CFNumberRef)IORegistryEntrySearchCFProperty(svc,
         kIOServicePlane, CFSTR("bcdDevice"), NULL, kIORegistryIterateRecursively);
-    int result = -1;
-    if (bcd) {
-        int v = 0;
-        CFNumberGetValue(bcd, kCFNumberIntType, &v);
-        result = v;
-        CFRelease(bcd);
-    }
+    if (pid) { int v = 0; CFNumberGetValue(pid, kCFNumberIntType, &v); *outPid = v; CFRelease(pid); }
+    if (bcd) { int v = 0; CFNumberGetValue(bcd, kCFNumberIntType, &v); *outBcd = v; CFRelease(bcd); }
     IOObjectRelease(svc);
-    return result;
+    return 0;
+}
+
+static int probeBcdDevice(void) {
+    int pid = 0, bcd = 0;
+    if (probeDigiDevice(&pid, &bcd) < 0) return -1;
+    return bcd;
 }
 
 // Return YES if a DFU-mode Mbox is present (VID 0xFFFF PID 0xFFFE
@@ -85,26 +90,37 @@ static BOOL probeDFUMode(void) {
 
 static int cmd_probe(void) {
     if (probeDFUMode()) {
-        printf("Mbox connected in DFU mode (VID 0xFFFF PID 0xFFFE, class 0xFE)\n");
-        printf("  Ready to accept DFU_DNLOAD transfers. Use --dfu-status to query state,\n");
-        printf("  or --flash PATH to write firmware.\n");
+        printf("Mbox connected in bulletproof-DFU mode (VID 0xFFFF PID 0xFFFE, class 0xFE)\n");
+        printf("  Boot-ROM DFU. Only header persists on flash — use safety_net_bootstrap.bin\n");
+        printf("  to transition to app-DFU (0x0DBA:0x1001), then flash real firmware.\n");
         return 0;
     }
-    int bcd = probeBcdDevice();
-    if (bcd < 0) {
-        fprintf(stderr, "no Mbox found (neither audio-mode 0x0DBA:0x1000 nor DFU-mode 0xFFFF:0xFFFE)\n");
+    int pid = 0, bcd = 0;
+    if (probeDigiDevice(&pid, &bcd) < 0) {
+        fprintf(stderr, "no Mbox found (neither 0x0DBA:0x1000/0x1001 nor 0xFFFF:0xFFFE)\n");
         return 1;
     }
-    fprintf(stdout, "Mbox 1 connected in audio mode, bcdDevice = 0x%04x (firmware ", bcd);
-    if      (bcd == 0x0022) fprintf(stdout, "v22 — OK, no flash needed)\n");
-    else if (bcd == 0x0020) fprintf(stdout, "Rev 20 — BUGGY, should flash to v22)\n");
-    else if (bcd == 0x0016 || bcd == 0x0018 || bcd == 0x0019)
-        fprintf(stdout, "very old, %u.%u — should flash to at least Rev 20)\n",
-            bcd >> 8, bcd & 0xff);
-    else fprintf(stdout, "unknown 0.%u)\n", bcd);
-    printf("\nTo flash: hold a front-panel source button while plugging the Mbox in.\n");
-    printf("Device will re-enumerate in DFU mode (VID 0xFFFF PID 0xFFFE).\n");
-    return 0;
+    if (pid == 0x1001) {
+        printf("Mbox connected in app-DFU mode (VID 0x0DBA PID 0x1001), bcdDevice = 0x%04x\n", bcd);
+        printf("  Running firmware presents DFU class. Flash real firmware here — code\n");
+        printf("  WILL persist to EEPROM. Use --flash PATH.\n");
+        return 0;
+    }
+    if (pid == 0x1000) {
+        fprintf(stdout, "Mbox 1 connected in audio mode (VID 0x0DBA PID 0x1000), bcdDevice = 0x%04x (firmware ", bcd);
+        if      (bcd == 0x0022) fprintf(stdout, "v22 — OK, no flash needed)\n");
+        else if (bcd == 0x0020) fprintf(stdout, "Rev 20 — BUGGY, should flash to v22)\n");
+        else if (bcd == 0x0016 || bcd == 0x0018 || bcd == 0x0019)
+            fprintf(stdout, "very old, %u.%u — should flash to at least Rev 20)\n",
+                bcd >> 8, bcd & 0xff);
+        else if (bcd == 0x0100) fprintf(stdout, "mboxfw v1.0 — custom)\n");
+        else fprintf(stdout, "unknown 0x%04x)\n", bcd);
+        printf("\nTo flash: hold a front-panel source button while plugging the Mbox in,\n");
+        printf("or short EEPROM SDA during power-up. Device re-enumerates in DFU mode.\n");
+        return 0;
+    }
+    fprintf(stderr, "Digi device present but PID=0x%04x is unrecognized (bcdDevice=0x%04x)\n", pid, bcd);
+    return 1;
 }
 
 static int cmd_enter_dfu(void) {

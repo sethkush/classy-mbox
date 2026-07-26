@@ -53,7 +53,7 @@ static IOUSBDeviceInterface **openMboxDevice(NSError **error) {
         if (error) *error = usbError(@"QueryInterface(IOUSBDevice)", (IOReturn)hr);
         return NULL;
     }
-    IOReturn rc = (*dev)->USBDeviceOpen(dev);
+    IOReturn rc = (*dev)->USBDeviceOpenSeize(dev);
     if (rc != kIOReturnSuccess) {
         (*dev)->Release(dev);
         if (error) *error = usbError(@"USBDeviceOpen (busy? try unplug/replug)", rc);
@@ -334,7 +334,7 @@ BOOL DFU_QueryStatus(DFUStatus *out, NSError **error) {
     (*plugin)->Release(plugin);
     if (!dev) { if (error) *error = usbError(@"QueryInterface(DFU device)", -1); return NO; }
 
-    IOReturn rc = (*dev)->USBDeviceOpen(dev);
+    IOReturn rc = (*dev)->USBDeviceOpenSeize(dev);
     if (rc != kIOReturnSuccess) {
         (*dev)->Release(dev);
         if (error) *error = usbError(@"USBDeviceOpen(DFU device)", rc);
@@ -396,7 +396,7 @@ BOOL DFU_WithOpenDevice(BOOL (^body)(IOUSBDeviceInterface **dev,
         CFUUIDGetUUIDBytes(kIOUSBDeviceInterfaceID), (LPVOID*)&dev);
     (*plugin)->Release(plugin);
     if (!dev) { if (error) *error = usbError(@"QueryInterface(DFU dev)", -1); return NO; }
-    IOReturn rc = (*dev)->USBDeviceOpen(dev);
+    IOReturn rc = (*dev)->USBDeviceOpenSeize(dev);
     if (rc != kIOReturnSuccess) {
         (*dev)->Release(dev);
         if (error) *error = usbError(@"USBDeviceOpen(DFU dev)", rc);
