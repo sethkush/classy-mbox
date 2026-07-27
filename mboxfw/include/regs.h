@@ -180,10 +180,32 @@
 #define DMASRC0_M   XDATA(0xFFE6)
 #define DMASRC0_H   XDATA(0xFFE7)
 #define DMACTL1     XDATA(0xFFE1)
-#define DMACTL2     XDATA(0xFFE2)
-#define DMASRC2_L   XDATA(0xFFF7)
-#define DMASRC2_M   XDATA(0xFFF8)
-#define DMASRC2_H   XDATA(0xFFF9)
+
+/* 0xFFE2 and 0xFFF6-0xFFF9 are NOT DMA registers. TI Reg_stc1.h names
+ * them as the adaptive clock generators. Earlier revisions of this file
+ * called 0xFFE2 "DMACTL2" and 0xFFF7-0xFFF9 "DMASRC2_L/M/H"; those names
+ * were invented here and appear nowhere in TI's header. The bad names
+ * produced a real bug in streaming_set_rate (writing 0x00 to what it
+ * thought was a DMA halt register, when Rev 20 writes 0x10 to a clock
+ * control register) — see the comment there.
+ *
+ * The mistake is easy to repeat: Reg_stc1.h contains COMMENTED-OUT
+ * defines that put DMA names on these same addresses. Any tooling that
+ * greps the header for `#define ... stc_sfr(0x....)` without excluding
+ * comment lines will pick up the dead aliases. Five addresses are
+ * affected: 0xFFF4, 0xFFF6, 0xFFF7, 0xFFF8, 0xFFF9. */
+#define ACGDCTL     XDATA(0xFFE2)   /* TI Reg_stc1.h */
+#define ACG2DCTL    XDATA(0xFFF6)   /* TI Reg_stc1.h */
+#define ACG2FRQ2    XDATA(0xFFF7)   /* TI Reg_stc1.h */
+#define ACG2FRQ1    XDATA(0xFFF8)   /* TI Reg_stc1.h */
+#define ACG2FRQ0    XDATA(0xFFF9)   /* TI Reg_stc1.h */
+
+/* Compatibility aliases for the three ACG2FRQ bytes, kept because the
+ * streaming code writes them as a 24-bit frequency word (0x204B6A) and
+ * reads better under the old names in that context. Same addresses. */
+#define DMASRC2_L   ACG2FRQ2
+#define DMASRC2_M   ACG2FRQ1
+#define DMASRC2_H   ACG2FRQ0
 
 /* Bit-bang GPIO helpers on P1 — see NOTES.md for pin map.
  * P1.0/1/2 = codec, P1.3/4 = CS8427 I²C, P1.5/6/7 = input mux shift-reg.

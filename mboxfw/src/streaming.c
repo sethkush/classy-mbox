@@ -66,10 +66,26 @@ void streaming_set_rate(unsigned long hz)
 {
     stream_rate = hz;
 
-    /* Prelude — halt capture DMA before reconfiguring.
-     * Rev 20 fcn.0x0728 @ 0x0738 (rev20_dynamic_reconfig.md §2
-     * "prelude" line `DMACTL2 = 0`). */
-    XDATA(0xFFE2) = 0x00;                 /* Rev-20 DMACTL2 halt */
+    /* Prelude — seed both adaptive-clock-generator digital control
+     * registers with 0x10, exactly as Rev 20 does.
+     *
+     * 0xFFE2 is ACGDCTL and 0xFFF6 is ACG2DCTL per TI Reg_stc1.h. This
+     * previously read `XDATA(0xFFE2) = 0x00` with the comment "Rev-20
+     * DMACTL2 halt", citing rev20_dynamic_reconfig.md §2's line
+     * `DMACTL2 = 0`. Both halves of that were wrong:
+     *   - 0xFFE2 is not a DMA register at all. Our regs.h alias
+     *     "DMACTL2" for it was invented; TI names it ACGDCTL.
+     *   - Rev 20 never writes 0x00 there. Its only reference to 0xFFE2
+     *     is at 0x0736 (MOV DPTR,#0xFFE2) followed by LCALL 0x0E18,
+     *     and 0x0E18 is `MOV A,#0x10 / MOVX @DPTR,A / MOV DPTR,#0xFFF6
+     *     / MOVX @DPTR,A / RET` — it writes 0x10 to BOTH ACG registers.
+     *     Verified by scanning rev20_firmware_code.bin for every
+     *     occurrence of the byte sequence 90 FF E2; there is exactly one.
+     *
+     * Writing 0 to a clock-generator control register instead of 0x10
+     * would misconfigure the capture clock on every rate change. */
+    ACGDCTL  = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E18 */
+    ACG2DCTL = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E1B */
 
     if (hz == 48000UL) {
         /* mode 2 — 48 kHz internal. All 6 writes: Rev 20 fcn.0x0728
