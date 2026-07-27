@@ -110,18 +110,45 @@
  * A steady 6 means main finished but no USB interrupt ever arrived.
  * A steady 9 means resets arrive but SETUP never does. And so on.
  *
- * PANEL WIRING: the 8-bit shift register on P1.7/P1.5/P1.6 is the
- * "panel control/LED" chain (rev22_ANNOTATED.md §2.3, Rev 20 fcn.0x0F0C
- * / Rev 22 fcn_0efc). Which bit drives which LED is UNKNOWN and is not
- * relied on here — we only toggle the whole byte between two values Rev
- * 20 itself sits in during normal operation, so no new hardware state is
- * created:
- *   PANEL_OFF 0x00 — Rev 20 hw_init first mux_write
- *   PANEL_ON  0xF6 — Rev 20 hw_init steady state (0xFF & ~0x01 & ~0x08)
+ * PANEL WIRING (derived 2026-07-26 from the disassembly + observed
+ * hardware behaviour — see PANEL_LEDS.md):
+ *
+ * The 8-bit shift register on P1.7 data / P1.5 clock / P1.6 latch
+ * (Rev 20 fcn.0x0F0C = `shiftreg8_commit_p1_7_6_5`, Rev 22 fcn_0efc)
+ * carries the six input-source LEDs as two ACTIVE-LOW one-cold groups
+ * of three, plus two non-LED control lines:
+ *
+ *   0x22.0 .1 .2  channel A source select — mic / line / inst
+ *   0x22.3 .4 .5  channel B source select — mic / line / inst
+ *   0x22.6        control line (computed from 0x25.4/.5) — NOT an LED
+ *   0x22.7        run/stop-like line              — NOT an LED
+ *
+ * Rev 20 `hw_master_init` writes 0xFF then clears exactly bits 0x10
+ * (0x22.0) and 0x13 (0x22.3) at 0x095B-0x0960 → 0xF6 → position 0 of
+ * each group lit → the two mic LEDs, which is precisely the observed
+ * end state. Bit clear = LED lit.
+ *
+ * So we blink between two bytes that differ ONLY in the two mic bits,
+ * holding control bits 6 and 7 HIGH in both — the value they carry in
+ * Rev 20's boot state. Both bytes are ones Rev 20 itself writes
+ * (0xFF at 0x039B, 0xF6 at boot), so no new hardware state is created
+ * and neither control line is ever asserted:
+ *
+ *   PANEL_DARK 0xFF — all six source LEDs off
+ *   PANEL_LIT  0xF6 — the two mic LEDs on
+ *
+ * (An earlier draft blinked against 0x00, which would have driven both
+ * control lines low. Fixed — they now stay high throughout.)
+ *
  * The latch is always pulsed with the 0x23.6-clear pattern. That bit's
  * physical meaning is explicitly UNVERIFIED in rev20_ANNOTATED.md:4141
  * (input-mux swap *or* 48 V phantom — the two guesses contradict), so we
  * never set it.
+ *
+ * Baseline is unambiguous: safety_net currently never drives either
+ * latch, so the panel sits all-on from power-up. The first panel_write
+ * darkens four LEDs (line×2, inst×2) — visible proof we reached stage 2
+ * — and the two mic LEDs then blink the stage count.
  */
 #ifdef CANARY
 
@@ -129,8 +156,8 @@
 #define P1_PANEL_LATCH  0x40   /* P1.6 — latch pulse */
 #define P1_PANEL_DATA   0x80   /* P1.7 — serial data, MSB first */
 
-#define PANEL_OFF  0x00
-#define PANEL_ON   0xF6
+#define PANEL_DARK 0xFF   /* all six source LEDs off, control lines high */
+#define PANEL_LIT  0xF6   /* two mic LEDs on  (Rev 20 hw_init end state) */
 
 volatile __data unsigned char g_stage = 0;
 
@@ -178,9 +205,9 @@ static void canary_blink_forever(void)
     for (;;) {
         n = g_stage;
         for (k = 0; k < n; k++) {
-            panel_write(PANEL_ON);
+            panel_write(PANEL_LIT);
             delay_units(10);
-            panel_write(PANEL_OFF);
+            panel_write(PANEL_DARK);
             delay_units(10);
         }
         delay_units(80);
@@ -621,7 +648,7 @@ void main(void)
      * Rev 20 does exactly this at boot (rev20_STARTUP_TRACE.md row 4,
      * 0x08DA `P1 = 0x00`), so it creates no state Rev 20 does not. */
     P1 = 0x00;
-    panel_write(PANEL_OFF);
+    panel_write(PANEL_DARK);
 #endif
 
     /* Bring EP0 up. Values match TI engUsbInit (UsbEng.c:609-624):
