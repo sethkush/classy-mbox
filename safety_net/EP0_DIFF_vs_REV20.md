@@ -160,10 +160,30 @@ routine (VECINT = 0x17)". safety_net's `VEC_RSTR` is 0x17 and it writes
 `TOGGLEInEp0Data`/`TOGGLEOutEp0Data` (`|= 0x20`) — with values matching
 `ROM/hwMacro.h:27-28,46-47` exactly.
 
-Two deltas, both benign:
-- safety_net omits `EMPTYOutEp0`/`EMPTYInEp0` (`OEPDCNTX0 = 0` / `IEPDCNTX0 =
-  0x80`). Every path that follows writes `IEPBCTX0` before returning, so the
-  flush is redundant.
+Two deltas:
+
+- **safety_net omits `EMPTYOutEp0`/`EMPTYInEp0`** (`OEPDCNTX0 = 0` /
+  `IEPDCNTX0 = 0x80`). **This was the bug.** This section originally called
+  it "benign — every path that follows writes `IEPBCTX0` before returning,
+  so the flush is redundant." That reasoning was wrong: `reply_zlp` writes
+  `IEPBCTX0` but leaves `desc_left` set, so a descriptor read the host walked
+  away from gets shipped during the *next* request's status stage.
+
+  Caught on hardware 2026-07-26 by the LED canary (stages 12→13→14, then
+  stuck): macOS requests the device descriptor with wLength=64, we clamp to
+  18 and ship 8 leaving `desc_left = 10`, macOS takes just the
+  `bMaxPacketSize0` it wanted and resets, and the following SET_ADDRESS
+  status stage shipped those 10 leftover bytes. The address applied fine
+  (13), the host kept talking (14), but EP0 was desynchronised and
+  SET_CONFIGURATION never arrived.
+
+  Fixed by clearing `desc_left` at the top of `handle_setup` — USB 2.0
+  §8.5.3, a SETUP always terminates the previous control transfer — which is
+  what TI's flush accomplishes. `reply_zlp` clears it too, defensively.
+
+  Lesson for the rest of this document: "reference does X, we don't, and I
+  can construct an argument why it doesn't matter" is not a clearance. The
+  argument was one clause long and it was wrong.
 - `VECINT = 0` is written by the caller after `handle_setup()` returns, whereas
   TI clears it at the end of `engEp0SetupDone`. Same ordering relative to
   staging the IN data — arm first, then release the SETUP hold-off.

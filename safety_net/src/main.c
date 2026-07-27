@@ -108,19 +108,33 @@
  *   12  SET_ADDRESS received
  *   13  USBFADR actually written — deferred address applied in VEC_IEP0
  *   14  a SETUP arrived AFTER that — host is talking at the new address
- *   15  SET_CONFIGURATION received — enumeration essentially done
+ *   15  a multi-packet continuation chunk was shipped from VEC_IEP0
+ *   16  a multi-packet descriptor transfer fully drained
+ *   17  GET_DESCRIPTOR(Configuration) requested
+ *   18  GET_DESCRIPTOR(String) requested
+ *   19  SET_CONFIGURATION received — enumeration essentially done
  *
- * A steady 6 means main finished but no USB interrupt ever arrived.
- * A steady 9 means resets arrive but SETUP never does. And so on.
+ * The ladder must stay in true protocol order because g_stage is a
+ * monotonic maximum: a later-numbered stage masks every lower one. An
+ * earlier draft numbered SET_CONFIGURATION 15 and the descriptor stages
+ * 16-19, which would have hidden SET_CONFIGURATION entirely.
  *
- * 2026-07-26 hardware result: steady 12, with the device absent from the
- * bus. So EP0 works, descriptors are served, SET_ADDRESS is received —
- * and it dies immediately after. Stages 13-15 exist to split that
- * window. 13 is the one that matters: SET_ADDRESS only arms a ZLP, and
- * USBFADR is written later from VEC_IEP0 when that status stage
- * completes. If 13 never lights, that interrupt never fires and the
- * device stays at address 0 while the host addresses it elsewhere —
- * silent, which is exactly the observed symptom.
+ * HARDWARE RESULTS
+ *
+ * 2026-07-26 run 1: steady 12, device absent. EP0 works, descriptors are
+ * served, SET_ADDRESS is received, dies right after. Stages 13-14 added
+ * to split that window; 13 was the prime suspect, since SET_ADDRESS only
+ * arms a ZLP and USBFADR is written later from VEC_IEP0.
+ *
+ * 2026-07-26 run 2: brief 9, then steady 14. So 13 PASSES — the deferred
+ * USBFADR write works and the prime suspect was wrong — and 14 passes
+ * too, meaning the host is addressing us at the assigned address and we
+ * are answering SETUPs there. It dies before SET_CONFIGURATION.
+ *
+ * That points at the multi-packet continuation path. macOS's first
+ * GET_DESCRIPTOR(Device) uses wLength=8, which fits one packet and never
+ * exercises the continuation (that was stage 11 passing). The 18-byte
+ * request after addressing is its debut, and stages 15-16 bracket it.
  *
  * PANEL WIRING (derived 2026-07-26 from the disassembly + observed
  * hardware behaviour — see PANEL_LEDS.md):
@@ -215,15 +229,34 @@ static void delay_units(unsigned char units)
 /* Flash the panel g_stage times, then hold dark for ~2 s. Re-reads
  * g_stage every pass, so the count tracks progress as the ISR advances
  * it. */
+/* Blink g_stage as TENS then UNITS: each ten is one LONG flash, each
+ * unit one SHORT flash, then a ~2 s dark gap.
+ *
+ *   12  =  1 long + 2 short
+ *   14  =  1 long + 4 short
+ *   19  =  1 long + 9 short
+ *
+ * Counting fifteen-plus identical blinks by eye is error-prone and the
+ * ladder now runs past 19, so encode the digits instead. Long is ~600 ms
+ * and short ~150 ms — a 4x ratio, unmistakable. */
 static void canary_blink_forever(void)
 {
-    unsigned char n, k;
+    unsigned char n, k, tens, units;
 
     for (;;) {
         n = g_stage;
-        for (k = 0; k < n; k++) {
+        tens  = n / 10;
+        units = n % 10;
+
+        for (k = 0; k < tens; k++) {
             panel_write(PANEL_LIT);
+            delay_units(24);          /* long */
+            panel_write(PANEL_DARK);
             delay_units(10);
+        }
+        for (k = 0; k < units; k++) {
+            panel_write(PANEL_LIT);
+            delay_units(6);           /* short */
             panel_write(PANEL_DARK);
             delay_units(10);
         }
@@ -334,7 +367,17 @@ static __data unsigned char pending_addr = 0xFF;
 static const __code unsigned char *desc_ptr = 0;
 static unsigned int desc_left = 0;
 
-static void reply_zlp(void) { IEPBCTX0 = 0; }
+/* Zero-length status reply.
+ *
+ * IEPBCTX0 = 0 arms a zero-byte IN packet: TI UsbEng.c engEp0SetupDone
+ * takes the same path for the wLength==0 write case, and Rev 20's EP0 IN
+ * loader fcn.0x0B8C writes the byte count to the same register.
+ *
+ * desc_left = 0 is not an SFR write; it clears the multi-packet
+ * continuation state for the same reason reply_short does. Belt and
+ * braces alongside the flush at the top of handle_setup, so no future
+ * caller can reintroduce the EP0 desync fixed on 2026-07-26. */
+static void reply_zlp(void) { desc_left = 0; IEPBCTX0 = 0; }
 
 /* Ship a 1- or 2-byte reply from a small immediate value. Used for the
  * short mandatory-request responses: GET_STATUS (2B, both 0),
@@ -446,6 +489,32 @@ static void handle_setup(void)
     IEPCNF0 |= 0x20;
     OEPCNF0 |= 0x20;
 
+    /* ABANDON ANY IN-FLIGHT CONTROL TRANSFER.
+     *
+     * USB 2.0 §8.5.3: a SETUP packet always terminates whatever control
+     * transfer was in progress. Without this, leftover `desc_left` from
+     * a descriptor read the host walked away from gets shipped during
+     * the NEXT request's status stage, desynchronising EP0.
+     *
+     * Concretely, the bug this fixes (hardware, 2026-07-26): macOS asks
+     * for the device descriptor with wLength=64, we clamp to 18 and ship
+     * 8, leaving desc_left=10. macOS only wanted bMaxPacketSize0, so it
+     * resets and sends SET_ADDRESS. reply_zlp arms the status ZLP but
+     * left desc_left alone; VEC_IEP0 then wrote USBFADR (stage 13, which
+     * is why the address applied fine) and immediately shipped 8
+     * descriptor bytes as the address status stage. The host kept
+     * talking (stage 14) but every subsequent transfer was corrupt, so
+     * SET_CONFIGURATION never arrived — exactly the observed 12/13/14
+     * ladder with the device absent from the bus.
+     *
+     * This is TI's EMPTYInEp0 / EMPTYOutEp0 (hwMacro.h:50,53) at the top
+     * of engEp0SetupDone (UsbEng.c:230-231), which safety_net omitted.
+     * EP0_DIFF_vs_REV20.md §5 called that omission "benign — every path
+     * that follows writes IEPBCTX0". That was wrong: reply_zlp writes
+     * IEPBCTX0 but does not clear desc_left, so the flush is exactly
+     * what was load-bearing. Corrected there too. */
+    desc_left = 0;
+
     /* 14 = a SETUP after the address was applied — proves the host is
      * addressing us at the assigned address, not still at 0. */
     if (g_addr_applied) STAGE(14);
@@ -485,8 +554,10 @@ static void handle_setup(void)
                 switch (wVH) {
                     case 0x01: STAGE(11);
                                reply_desc(DevDesc, 18);       return;
-                    case 0x02: reply_desc(ConfigDesc, 18);    return;
+                    case 0x02: STAGE(17);                     /* Config */
+                               reply_desc(ConfigDesc, 18);    return;
                     case 0x03:
+                        STAGE(18);                            /* String */
                         switch (wVL) {
                             case 0: reply_desc(StringLang, 4);            return;
                             case 1: reply_desc(StringMfr, StringMfr[0]);  return;
@@ -500,7 +571,7 @@ static void handle_setup(void)
                 reply_short(1, 0, 1);
                 return;
             case 0x09: /* SET_CONFIGURATION */
-                STAGE(15);
+                STAGE(19);
                 reply_zlp();
                 return;
             case 0x0A: /* GET_INTERFACE (USB 2.0 §9.4.4). Return 1B:
@@ -550,6 +621,11 @@ static void usb_service(void)
              * leftover bytes to send, ship the next up-to-8 chunk. */
             if (desc_left) {
                 unsigned int chunk = (desc_left > 8) ? 8 : desc_left;
+                /* 16 = a continuation packet was shipped. Before
+                 * SET_ADDRESS macOS only asks for 8 bytes, so this path
+                 * is never exercised; the first 18-byte request after
+                 * addressing is its debut. */
+                STAGE(15);
                 unsigned int i;
                 __xdata unsigned char *dst =
                     (__xdata unsigned char *)EP0_IN_BUF_ADDR;
@@ -565,6 +641,8 @@ static void usb_service(void)
                  * mis-cited 0x0B1E): clears TOGGLE+STALL bits and
                  * zeroes both EP0 buffer counts, priming for the next
                  * SETUP. */
+                /* 17 = a multi-packet transfer fully drained. */
+                STAGE(16);
                 IEPCNF0 &= 0xD7;   /* clear bit 5 TOGGLE + bit 3 STALL */
                 OEPCNF0 &= 0xD7;
                 IEPBCTX0 = 0;
