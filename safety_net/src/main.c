@@ -106,9 +106,21 @@
  *   10  VEC_SETUP seen — host is talking to EP0
  *   11  GET_DESCRIPTOR(Device) served
  *   12  SET_ADDRESS received
+ *   13  USBFADR actually written — deferred address applied in VEC_IEP0
+ *   14  a SETUP arrived AFTER that — host is talking at the new address
+ *   15  SET_CONFIGURATION received — enumeration essentially done
  *
  * A steady 6 means main finished but no USB interrupt ever arrived.
  * A steady 9 means resets arrive but SETUP never does. And so on.
+ *
+ * 2026-07-26 hardware result: steady 12, with the device absent from the
+ * bus. So EP0 works, descriptors are served, SET_ADDRESS is received —
+ * and it dies immediately after. Stages 13-15 exist to split that
+ * window. 13 is the one that matters: SET_ADDRESS only arms a ZLP, and
+ * USBFADR is written later from VEC_IEP0 when that status stage
+ * completes. If 13 never lights, that interrupt never fires and the
+ * device stays at address 0 while the host addresses it elsewhere —
+ * silent, which is exactly the observed symptom.
  *
  * PANEL WIRING (derived 2026-07-26 from the disassembly + observed
  * hardware behaviour — see PANEL_LEDS.md):
@@ -160,6 +172,11 @@
 #define PANEL_LIT  0xF6   /* two mic LEDs on  (Rev 20 hw_init end state) */
 
 volatile __data unsigned char g_stage = 0;
+
+/* Set once USBFADR has been written with the host-assigned address, so a
+ * later SETUP can be distinguished as "host is talking to us at the new
+ * address" (stage 14) rather than another address-0 exchange. */
+volatile __data unsigned char g_addr_applied = 0;
 
 #define STAGE(n) do { if ((unsigned char)(n) > g_stage) g_stage = (n); } while (0)
 
@@ -429,6 +446,10 @@ static void handle_setup(void)
     IEPCNF0 |= 0x20;
     OEPCNF0 |= 0x20;
 
+    /* 14 = a SETUP after the address was applied — proves the host is
+     * addressing us at the assigned address, not still at 0. */
+    if (g_addr_applied) STAGE(14);
+
     unsigned char bmReq = SETPACK_BMREQ;
     unsigned char bReq  = SETPACK_BREQ;
     unsigned char wVL   = SETPACK_WVAL_L;
@@ -479,6 +500,7 @@ static void handle_setup(void)
                 reply_short(1, 0, 1);
                 return;
             case 0x09: /* SET_CONFIGURATION */
+                STAGE(15);
                 reply_zlp();
                 return;
             case 0x0A: /* GET_INTERFACE (USB 2.0 §9.4.4). Return 1B:
@@ -517,6 +539,12 @@ static void usb_service(void)
             if (pending_addr != 0xFF) {
                 USBFADR = pending_addr;
                 pending_addr = 0xFF;
+                /* 13 = the deferred address actually landed. If the
+                 * canary sticks at 12, this line never ran, meaning the
+                 * IEP0 completion for the SET_ADDRESS status ZLP never
+                 * fired and we are still answering at address 0. */
+                STAGE(13);
+                g_addr_applied = 1;
             }
             /* Multi-packet descriptor continuation. If reply_desc had
              * leftover bytes to send, ship the next up-to-8 chunk. */

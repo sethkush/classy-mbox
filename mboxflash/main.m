@@ -449,6 +449,24 @@ static int cmd_flash(const char *path) {
     ok = DFU_WithOpenDevice(^BOOL(IOUSBDeviceInterface **dev, uint16_t ifaceNum, NSError **e) {
         DFUStatus st = {0};
         if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
+        // Self-heal a non-idle entry state instead of forcing a replug.
+        //
+        // A prior --dump leaves the device parked in dfuUPLOAD_IDLE, and
+        // an abandoned download leaves dfuDNLOAD_IDLE. Both are benign,
+        // and DFU 1.0 §6.1.4 says DFU_ABORT returns the state machine to
+        // dfuIDLE from any non-error state — so just do that rather than
+        // making the user unplug the box. dfuERROR is handled separately
+        // by the CLRSTATUS restart wrapper below.
+        //
+        // Flashing this device already takes more physical replugs than
+        // anyone wants; do not add one for a state we can clear over the
+        // wire.
+        if (st.bState != DFU_dfuIDLE && st.bState != DFU_dfuERROR) {
+            printf("device is in %s — sending DFU_ABORT to return to dfuIDLE\n",
+                   DFU_StateName((DFUState)st.bState).UTF8String);
+            if (!DFU_Abort(dev, ifaceNum, e)) return NO;
+            if (!DFU_GetStatus_Retry(dev, ifaceNum, &st, e)) return NO;
+        }
         if (st.bState != DFU_dfuIDLE) {
             if (e) *e = [NSError errorWithDomain:@"MBoxFlash" code:2 userInfo:@{
                 NSLocalizedDescriptionKey: [NSString stringWithFormat:
