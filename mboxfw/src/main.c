@@ -120,39 +120,34 @@ void main(void)
 
     check_boot_dfu_button();
 
+    /* Interrupts on, then attach — the Rev 20 order (SETB EA at 0x0ACA,
+     * USBCTL |= 0x80 at 0x0AD2, two instructions apart). */
+    EA = 1;
+    usb_attach();
+    CANARY(5, CANARY_LOOP);
+
+    /* Audio bring-up runs AFTER the attach. Rev 20 does it before, but
+     * Rev 20's codec init is known-good; ours is not yet proven, and a
+     * hang in either of these leaves the device unreachable if it happens
+     * before we are on the bus. Because isr_int0 now services USB, the
+     * host is answered throughout these two calls even if one wedges —
+     * so a hang here costs audio, not the device.
+     *
+     * Move these back above the attach once both are hardware-proven. */
     cs8427_boot_init();
     CANARY(3, CANARY_CS8427);
 
     codec_init();
     CANARY(4, CANARY_CODEC);
 
-    EA = 1;   /* enable interrupts (Timer 0 + INT0) */
-
-    /* ATTACH LAST — only now can the host see us, and only now can we
-     * answer it. Startup traces of both stock firmwares (see
-     * firmware_stock/disasm/rev2{0,2}_STARTUP_TRACE.md) show the same
-     * order: all hardware init, then EA=1, then USBCTL |= CONN. In Rev 20
-     * the last two are two instructions apart (0x0ACA, 0x0AD2).
-     *
-     * The previous ordering attached inside usb_init() BEFORE hw_init,
-     * cs8427_boot_init and codec_init — task #47's "never-brick
-     * guarantee", the idea being that a hang in codec init could still be
-     * recovered over USB. That was actively harmful: mboxfw services USB
-     * only from usb_service() in the loop below (our INT0 ISR merely
-     * counts, unlike Rev 20 whose ISR dispatches), so the device
-     * presented its D+ pull-up and then ignored the bus for the whole
-     * duration of the audio-hardware init. The host begins enumerating
-     * the moment it sees the pull-up, gets no answer to anything, and
-     * gives up — which is exactly the observed "nothing in ioreg at all".
-     *
-     * The never-brick property is not lost: two hardware recovery paths
-     * exist (EEPROM SDA short, and check_boot_dfu_button above, which
-     * runs before the audio init that might hang). */
-    usb_attach();
-    CANARY(5, CANARY_LOOP);
-
     for (;;) {
-        usb_service();
+        /* USB is serviced from isr_int0 ONLY — see isr.c. Calling
+         * usb_service() here as well would let the ISR re-enter it while
+         * the loop is part-way through, and SDCC gives non-reentrant
+         * functions static overlay locals, so the re-entry would corrupt
+         * the EP0 transfer state. Rev 20 has the same division of
+         * labour: its INT0 handler dispatches USB, its main loop handles
+         * deferred panel/codec actions. */
         buttons_poll();
     }
 }

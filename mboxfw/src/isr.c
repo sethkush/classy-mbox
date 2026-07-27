@@ -21,6 +21,8 @@
 
 #include "regs.h"
 
+extern void usb_service(void);
+
 /* Bumped every time each ISR fires. Volatile so the main loop's reads
  * are not optimised out. Declared __data so they live in fast IRAM and
  * the ISR's read-modify-write inc doesn't touch xdata. */
@@ -33,6 +35,17 @@ volatile __data unsigned char g_timer0_ticks = 0;
 void isr_int0(void) __interrupt(0)
 {
     g_int0_ticks++;
+    /* Service USB from the ISR, as Rev 20 does (its INT0 handler at
+     * 0x0DAC dispatches on VECINT rather than merely counting).
+     *
+     * Without this, USB is serviced ONLY from usb_service() in main()'s
+     * loop, so any hang in the audio bring-up leaves the device attached
+     * but permanently mute on the bus — indistinguishable from a dead
+     * device, and unrecoverable without opening the case. With it, the
+     * device answers the host even while cs8427_boot_init or codec_init
+     * is stuck, which is what makes --enter-dfu a real recovery path
+     * rather than a theoretical one. */
+    usb_service();
 }
 
 /* Timer 0 (vector 0x0B). Rev 20 reloads TH0 = 0xCE and sets a "pending"
