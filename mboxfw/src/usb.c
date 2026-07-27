@@ -93,7 +93,16 @@ static void reply_stall(void)
 
 static void reply_zero_length(void)
 {
-    /* Zero-length IN packet acknowledges an OUT-only request (SET_CONFIG etc.) */
+    /* Drop any half-finished multi-packet reply before arming the status
+     * stage. stage_immediate() already does this (see its
+     * g_ep0_reply_remaining = 0); this path did not, which is the EP0
+     * desync fixed in safety_net on 2026-07-26 and proven on hardware.
+     * See the flush at the top of handle_setup() for the full story. */
+    g_ep0_reply_remaining = 0;
+    /* Zero-length IN packet acknowledges an OUT-only request (SET_CONFIG
+     * etc.). TI UsbEng.c engEp0SetupDone takes the same path for the
+     * wLength == 0 case; Rev 20's EP0 IN loader fcn.0x0B8C writes the
+     * byte count to this same register. */
     IEPBCTX0 = 0;
 }
 
@@ -314,6 +323,30 @@ static void handle_setup(void)
 {
     unsigned char reqtype = bmReq & 0x60;   /* mask off type field */
     unsigned char recip   = bmReq & 0x1F;
+
+    /* ABANDON ANY IN-FLIGHT CONTROL TRANSFER.
+     *
+     * USB 2.0 §8.5.3: a SETUP packet always terminates whatever control
+     * transfer was in progress. TI does this via EMPTYInEp0 /
+     * EMPTYOutEp0 (hwMacro.h:50,53) at the head of engEp0SetupDone
+     * (UsbEng.c:230-231).
+     *
+     * Without it: macOS requests the device descriptor with wLength=64,
+     * we clamp to 18 and ship 8, leaving g_ep0_reply_remaining = 10.
+     * macOS only wanted bMaxPacketSize0, so it resets and sends
+     * SET_ADDRESS. reply_zero_length() arms the status ZLP but left the
+     * counter set, so the VEC_IEP0 completion wrote USBFADR and then
+     * shipped 8 leftover descriptor bytes AS the address status stage.
+     * EP0 desynchronises; the host keeps talking but every subsequent
+     * transfer is corrupt, and enumeration never completes.
+     *
+     * Found in safety_net by the LED canary (stages 12→13→14 then stuck)
+     * and fixed there 2026-07-26; safety_net enumerated immediately
+     * afterwards, bcdDevice 0xDEAD visible on the bus. mboxfw carried the
+     * identical asymmetry — stage_immediate() cleared the counter,
+     * reply_zero_length() did not — so it is fixed here by the same
+     * means. See safety_net/EP0_DIFF_vs_REV20.md §5. */
+    g_ep0_reply_remaining = 0;
 
     if (reqtype == 0x00) {
         /* Standard request */
