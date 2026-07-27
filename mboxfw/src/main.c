@@ -14,6 +14,7 @@
 
 extern void hw_init(void);
 extern void usb_init(void);
+extern void usb_attach(void);
 extern void usb_service(void);
 
 /*
@@ -103,21 +104,14 @@ void main(void)
      * boot-ROM-owned SFR — POLICY §2 carve-out A. */
     USBCTL = 0;
 
-    /* BISECT: check_boot_dfu_button() moved after hw_init() — fork
-     * suspect #3, was reading P3 before pull-ups set. */
+    /* check_boot_dfu_button() runs after hw_init so P3 pull-ups are set
+     * before the button is sampled, and before cs8427/codec init so the
+     * escape hatch still works if either of those hangs. */
 
     CANARY(0, CANARY_MAIN);
 
-    /* NEVER-BRICK GUARANTEE (task #47):
-     * Bring the USB engine up BEFORE any of the audio-hardware init.
-     * usb_init() ends with `USBCTL |= CONN`, which attaches the device
-     * to the bus. From this point onward the host can enumerate us and
-     * we can respond to the Digi DFU class request in handle_setup —
-     * so even if any of hw_init / cs8427_boot_init / codec_init hangs
-     * indefinitely, `mboxflash --enter-dfu` still recovers us.
-     *
-     * Prior ordering (usb_init LAST) meant a single hang in cs8427 or
-     * codec bricked the device silently (2026-07-22 flash #2). */
+    /* usb_init() configures endpoints and buffers but does NOT attach.
+     * Ordering below mirrors both stock firmwares exactly. */
     usb_init();
     CANARY(1, CANARY_USB);
 
@@ -130,13 +124,31 @@ void main(void)
     CANARY(3, CANARY_CS8427);
 
     codec_init();
-    /* CANARY_CODEC written into slot 2 to overwrite HW canary — once
-     * we've reached here, all four phases before EA=1 are done. Reading
-     * XDATA[0xFA02] on a stuck device tells you exactly which init
-     * blew up: 0 = pre-hw, 0xA3 = hw done / cs8427 stuck, etc. */
     CANARY(4, CANARY_CODEC);
 
     EA = 1;   /* enable interrupts (Timer 0 + INT0) */
+
+    /* ATTACH LAST — only now can the host see us, and only now can we
+     * answer it. Startup traces of both stock firmwares (see
+     * firmware_stock/disasm/rev2{0,2}_STARTUP_TRACE.md) show the same
+     * order: all hardware init, then EA=1, then USBCTL |= CONN. In Rev 20
+     * the last two are two instructions apart (0x0ACA, 0x0AD2).
+     *
+     * The previous ordering attached inside usb_init() BEFORE hw_init,
+     * cs8427_boot_init and codec_init — task #47's "never-brick
+     * guarantee", the idea being that a hang in codec init could still be
+     * recovered over USB. That was actively harmful: mboxfw services USB
+     * only from usb_service() in the loop below (our INT0 ISR merely
+     * counts, unlike Rev 20 whose ISR dispatches), so the device
+     * presented its D+ pull-up and then ignored the bus for the whole
+     * duration of the audio-hardware init. The host begins enumerating
+     * the moment it sees the pull-up, gets no answer to anything, and
+     * gives up — which is exactly the observed "nothing in ioreg at all".
+     *
+     * The never-brick property is not lost: two hardware recovery paths
+     * exist (EEPROM SDA short, and check_boot_dfu_button above, which
+     * runs before the audio init that might hang). */
+    usb_attach();
     CANARY(5, CANARY_LOOP);
 
     for (;;) {

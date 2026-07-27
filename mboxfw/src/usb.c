@@ -462,28 +462,37 @@ void usb_init(void)
      * future ordering changes. */
     { unsigned int settle; for (settle = 0; settle < 0xFFFF; settle++) { } }
 
-    /* LAST: attach to the bus.
-     *
-     * `USBCTL |= 0xC0` — RMW OR of CONT (bit 7) AND FEN (bit 6).
-     *
-     * Per datasheet §6.5.1.4: FEN=0 means "the UBM ignores all USB
-     * transactions." Post-DFU-manifest, boot ROM's UsbDfu.c:699 leaves
-     * USBCTL=0. A prior committed fix (e8172f1) used `|= USBCTL_CONN`
-     * (bit 7 only) matching Rev 20's cold-init at 0x0AE2 — that worked
-     * because Rev 20 relies on its VEC_RSTR handler at 0x0F72 to do
-     * `USBCTL |= 0xC0` and set FEN after each bus reset. mboxfw's
-     * VEC_RSTR handler at usb.c:478 does `usb_init()`, so setting both
-     * bits here means both boot-attach AND post-RSTR paths correctly
-     * enable FEN in one place. */
-    /* Attach: CONN|FEN together. FEN (bit 6) must be set for the UBM to
-     * respond to any USB transaction — datasheet §6.5.1.4: "FEN=0 means
-     * the UBM ignores all USB transactions." Trying CONN-only-at-init +
-     * FEN-in-VEC_RSTR (safety_net's pattern) resulted in silent enum on
-     * real hardware 2026-07-25 — the host apparently sends SETUP before
-     * bus reset, so FEN needs to be up from the moment we attach. The
-     * RSTR handler also re-asserts CONN|FEN (datasheet says bus reset
-     * clears FEN), so this is set in both places. */
-    USBCTL |= (USBCTL_CONN | USBCTL_FEN);
+    /* NO ATTACH HERE. usb_init() only configures endpoints and buffers.
+     * The bus attach lives in usb_attach(), called from main() after all
+     * hardware init and after EA=1 — see the comment there. */
+}
+
+/*
+ * Attach to the USB bus. MUST be called last, after every other init and
+ * after EA=1.
+ *
+ * Both stock firmwares do exactly this, verified by full startup traces:
+ *   Rev 20  hardware init -> SETB EA @0x0ACA -> USBCTL |= 0x80 @0x0AD2
+ *   Rev 22  hardware init -> SETB EA       -> USBCTL |= 0x80 @0x0A7C
+ * Two instructions apart in Rev 20. The device does not present its D+
+ * pull-up until it is fully able to answer the host.
+ *
+ * CONN only (bit 7), not CONN|FEN. Neither stock image contains a single
+ * `ORL A,#0x40` — FEN is asserted only from the bus-reset handler
+ * (Rev 20 0x0F60 inside the RSTR handler at 0x0F43, VECINT slot 0x17;
+ * Rev 22 0x0F81 inside usb_rstr_handler at 0x0F64). Our VEC_RSTR case
+ * does the same, so FEN comes up on the first bus reset exactly as the
+ * stock firmware arranges it.
+ *
+ * A CONN-only attach was tried on hardware 2026-07-25 and appeared to
+ * fail, which is why this file briefly forced CONN|FEN here. That test
+ * was confounded: the build under test still contained the fatal
+ * `lcall #0x2f00` in handle_setup, so no configuration could have
+ * enumerated. The stock traces are the stronger evidence.
+ */
+void usb_attach(void)
+{
+    USBCTL |= USBCTL_CONN;
 }
 
 void usb_service(void)
