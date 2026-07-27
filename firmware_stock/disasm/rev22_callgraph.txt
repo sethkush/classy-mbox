@@ -104,15 +104,15 @@ CODE:001f  vecint_iep3_noop -> (leaf)
 CODE:0020  vecint_iep4_noop -> (leaf)
 CODE:0021  vecint_iep5_noop -> (leaf)
 CODE:0022  vecint_iep6_noop -> (leaf)
-CODE:0026  usb_setup_handler -> ep0_store_byte_and_arm_zlp ep0_in_buf_ptr_load ep0_load_dptr ep0_clear_stall_both ep0_buf_store_zero
+CODE:0026  usb_setup_handler -> ep0_in_buf_ptr_load ep0_clear_stall_both ep0_store_byte_and_arm_zlp ep0_buf_store_zero ep0_load_dptr
 CODE:0100  thunk_stall_ep0 -> (leaf)
 CODE:0103  ep0_arm_in_3bytes -> (leaf)
 CODE:010b  usb_std_request_dispatch -> (leaf)
 CODE:0145  std_clear_feature -> ep0_clear_stall_both
 CODE:015c  std_get_configuration -> ep0_in_buf_ptr_load ep0_load_dptr
-CODE:0177  std_get_descriptor -> ep0_in_stage_and_go ep0_clamp_len_to_wlength load_dptr_from_ptr19
+CODE:0177  std_get_descriptor -> ep0_clamp_len_to_wlength load_dptr_from_ptr19 ep0_in_stage_and_go
 CODE:01ed  std_get_interface -> ep0_in_buf_ptr_load ep0_load_dptr
-CODE:022f  std_get_status -> ep0_in_buf_ptr_load ep0_load_dptr ep0_buf_store_zero
+CODE:022f  std_get_status -> ep0_in_buf_ptr_load ep0_buf_store_zero ep0_load_dptr
 CODE:0247  ep0_arm_in_and_done -> (leaf)
 CODE:024d  std_set_address -> (leaf)
 CODE:0259  std_set_configuration -> ep0_set_both_dcnt
@@ -121,29 +121,29 @@ CODE:029d  std_set_interface -> (leaf)
 CODE:02e8  ep0_done_no_data -> (leaf)
 CODE:02ef  ep0_stall_both -> ep0_stall_both_clear_phase_flags
 CODE:02f3  usb_deferred_action_dispatch -> (leaf)
-CODE:0336  cmd1_apply_clock_mode -> dma0_disable audio_hw_bringup cport_cnf3_write_enable shiftreg_out16_p1
-CODE:038a  cmd2_apply_iface1_alt -> audio_hw_bringup dma0_disable shiftreg_out8_p1hi audio_clock_set_mode shiftreg_out16_p1
+CODE:0336  cmd1_apply_clock_mode -> cport_cnf3_write_enable audio_hw_bringup shiftreg_out16_p1 dma0_disable
+CODE:038a  cmd2_apply_iface1_alt -> shiftreg_out8_p1hi audio_hw_bringup shiftreg_out16_p1 dma0_disable audio_clock_set_mode
 CODE:03fd  cmd3_apply_iface2_alt -> audio_hw_bringup dma0_disable audio_clock_set_mode
 CODE:045a  cmd4_reapply_current_clock_mode -> shiftreg_out8_p1hi shiftreg_out16_p1
 CODE:0469  cmd5_set_clock_mode1_altbits -> shiftreg_out8_p1hi shiftreg_out16_p1
 CODE:0478  cmd6_12_set_clock_mode1 -> (leaf)
-CODE:047d  cmd7_set_clock_mode2_prog_spdif -> cs8427_write_shadowed cs8427_write_reg04_val41 audio_clock_set_mode stage_ctrl_pair_12_00
-CODE:049f  cmd8_set_clock_mode3_prog_spdif -> cs8427_write_shadowed cs8427_write_reg04_val41 audio_clock_set_mode stage_ctrl_pair_12_00
+CODE:047d  cmd7_set_clock_mode2_prog_spdif -> cs8427_write_shadowed stage_ctrl_pair_12_00 cs8427_write_reg04_val41 audio_clock_set_mode
+CODE:049f  cmd8_set_clock_mode3_prog_spdif -> cs8427_write_shadowed stage_ctrl_pair_12_00 cs8427_write_reg04_val41 audio_clock_set_mode
 CODE:04c0  cmd9_set_clock_mode4 -> (leaf)
 CODE:04c4  cmd10_set_clock_mode5 -> (leaf)
-CODE:04c8  cmd11_eeprom_selftest -> i2c_eeprom_read_byte audio_hw_bringup i2c_eeprom_write3 spi3wire_write_3bytes shiftreg_out8_p1hi audio_clock_set_mode stage_ctrl_pair_12_00
+CODE:04c8  cmd11_eeprom_selftest -> spi3wire_write_3bytes stage_ctrl_pair_12_00 i2c_eeprom_read_byte i2c_eeprom_write3 shiftreg_out8_p1hi audio_hw_bringup audio_clock_set_mode
 CODE:0517  cmd13_invalidate_boot_eeprom -> i2c_eeprom_write3
-CODE:0525  cmd14_usb_suspend_and_resume -> shiftreg_out8_p1hi usb_ep_dma_init hw_clock_codec_init shiftreg_out16_p1
+CODE:0525  cmd14_usb_suspend_and_resume -> hw_clock_codec_init shiftreg_out8_p1hi shiftreg_out16_p1 usb_ep_dma_init
 CODE:0567  cs8427_write_reg04_val41 -> spi3wire_write_3bytes
 CODE:0575  cs8427_write_shadowed -> spi3wire_write_3bytes
-CODE:070f  audio_clock_set_mode -> acg_both_synths_24576khz acg_both_dctl_write_0x10 spi3wire_write_3bytes sfr_write_then_acg_program shiftreg_out16_p1 acg2frq0_load_and_acgctl
-CODE:07ec  hw_clock_codec_init -> shiftreg_out8_p1hi sfr_write_then_acg_program acg_dividers_div2 shiftreg_out16_p1
+CODE:070f  audio_clock_set_mode -> acg2frq0_load_and_acgctl spi3wire_write_3bytes acg_both_dctl_write_0x10 shiftreg_out16_p1 acg_both_synths_24576khz sfr_write_then_acg_program
+CODE:07ec  hw_clock_codec_init -> shiftreg_out8_p1hi shiftreg_out16_p1 acg_dividers_div2 sfr_write_then_acg_program
 CODE:0891  usb_ep_dma_init -> (leaf)
 CODE:092a  keil_c51_startup -> main_loop
 CODE:0939  keil_c_init_interpreter -> (leaf)
-CODE:09b6  audio_hw_bringup -> acg_both_synths_24576khz spi3wire_write_3bytes shiftreg_out16_p1 acg_dividers_div2
-CODE:0a3f  main_loop -> p3_edge_poll_dispatch shiftreg_out8_p1hi usb_deferred_action_dispatch usb_ep_dma_init hw_clock_codec_init shiftreg_out16_p1
-CODE:0abb  ep0_in_send_chunk -> ep0_in_buf_ptr_load load_dptr_from_ptr19 ep0_load_dptr
+CODE:09b6  audio_hw_bringup -> spi3wire_write_3bytes shiftreg_out16_p1 acg_both_synths_24576khz acg_dividers_div2
+CODE:0a3f  main_loop -> p3_edge_poll_dispatch hw_clock_codec_init usb_deferred_action_dispatch shiftreg_out8_p1hi usb_ep_dma_init shiftreg_out16_p1
+CODE:0abb  ep0_in_send_chunk -> ep0_in_buf_ptr_load ep0_load_dptr load_dptr_from_ptr19
 CODE:0b1f  ep0_out_buf_ptr_load -> (leaf)
 CODE:0b25  ep0_load_dptr -> (leaf)
 CODE:0b2c  ep0_store_byte_and_arm_zlp -> (leaf)
@@ -160,7 +160,7 @@ CODE:0bd4  jmp_via_r2r1 -> (leaf)
 CODE:0bda  i2c_eeprom_write3 -> (leaf)
 CODE:0c31  spi3wire_write_3bytes -> shiftreg_out16_p1
 CODE:0cc7  oep0_int_handler -> ep0_out_buf_ptr_load ep0_flush_arm
-CODE:0d0a  oep0_clear_stall_and_rearm -> ep0_store_byte_and_arm_zlp ep0_clear_stall_toggle
+CODE:0d0a  oep0_clear_stall_and_rearm -> ep0_clear_stall_toggle ep0_store_byte_and_arm_zlp
 CODE:0d11  i2c_eeprom_read_byte -> (leaf)
 CODE:0d58  sof_int_handler -> udiv16
 CODE:0d9e  ep0_clamp_len_to_wlength -> (leaf)
@@ -176,7 +176,7 @@ CODE:0ef4  acg_both_dctl_write_0x10 -> (leaf)
 CODE:0efc  shiftreg_out8_p1hi -> (leaf)
 CODE:0f31  p3_edge_poll_dispatch -> toggle_bit1E_state panel_state_cycle_A panel_state_cycle_B
 CODE:0f64  usb_rstr_handler -> ep0_flush_arm
-CODE:0f91  ep0_in_done_handler -> ep0_in_stage_and_go ep0_store_byte_and_arm_zlp ep0_clear_stall_toggle
+CODE:0f91  ep0_in_done_handler -> ep0_clear_stall_toggle ep0_store_byte_and_arm_zlp ep0_in_stage_and_go
 CODE:0fe2  cport_cnf3_write_enable -> (leaf)
 CODE:0ff2  dma0_disable -> (leaf)
 CODE:0ffa  stage_ctrl_pair_12_00 -> (leaf)

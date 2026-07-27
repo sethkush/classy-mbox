@@ -311,14 +311,15 @@ void usb_ev_setup(void)
 
 {
   char cVar1;
-  undefined1 *puVar2;
+  undefined *puVar2;
+  undefined1 *puVar3;
   
   ep0_clear_stall_both();
   IEPCNF0 = IEPCNF0 | 0x20;
   EP0_IN_remaining_length__low = ep0_store_cnf_and_arm_both(OEPCNF0 | 0x20);
   _1_5 = 0;
   EP0_IN_remaining_length__high = EP0_IN_remaining_length__low;
-  puVar2 = (undefined1 *)0xff28;
+  puVar2 = &SETPACK_bmRequestType_code;
   if (SETPACK_bmRequestType == '\"') {
     pending_deferred_request = 1;
     _1_3 = 1;
@@ -339,7 +340,7 @@ void usb_ev_setup(void)
     return;
   }
   if (SETPACK_bmRequestType == -0x5e) {
-    puVar2 = (undefined1 *)0xff2b;
+    puVar3 = &SETPACK_wValueH_code;
     if (SETPACK_wValueH != '\x01') {
       ep0_stall_both();
       return;
@@ -347,7 +348,7 @@ void usb_ev_setup(void)
     ep0_ptr_set_in_buf();
     if (clock == '\x01') {
       dptr_from_ep0_ptr();
-      *puVar2 = 0;
+      *puVar3 = 0;
       BANK3_R4 = BANK3_R4 + '\x01';
       if (BANK3_R4 == '\0') {
         XDATA_destination_pointer__hi_lo = XDATA_destination_pointer__hi_lo + '\x01';
@@ -362,7 +363,7 @@ void usb_ev_setup(void)
     else if (clock == '\x02') {
       dptr_from_ep0_ptr();
       cVar1 = BANK3_R4;
-      *puVar2 = 0x44;
+      *puVar3 = 0x44;
       BANK3_R4 = BANK3_R4 + '\x01';
       if (BANK3_R4 == '\0') {
         XDATA_destination_pointer__hi_lo = XDATA_destination_pointer__hi_lo + '\x01';
@@ -381,7 +382,7 @@ void usb_ev_setup(void)
       }
       dptr_from_ep0_ptr();
       cVar1 = BANK3_R4;
-      *puVar2 = 0x80;
+      *puVar3 = 0x80;
       BANK3_R4 = BANK3_R4 + '\x01';
       if (BANK3_R4 == '\0') {
         XDATA_destination_pointer__hi_lo = XDATA_destination_pointer__hi_lo + '\x01';
@@ -493,7 +494,7 @@ void setup_get_sample_freq(void)
   char cVar1;
   undefined1 *puVar2;
   
-  puVar2 = (undefined1 *)0xff2b;
+  puVar2 = &SETPACK_wValueH_code;
   if (SETPACK_wValueH != '\x01') {
     ep0_stall_both();
     return;
@@ -704,7 +705,7 @@ void std_get_interface(char param_1)
         *pcVar1 = '\x01';
       }
       else {
-        puVar2 = (undefined1 *)0xff2c;
+        puVar2 = &SETPACK_wIndexL_code;
         if ((SETPACK_wIndexL == 2) && (_1_1 != '\0')) {
           dptr_from_ep0_ptr();
           *puVar2 = 2;
@@ -2852,10 +2853,10 @@ void switch_case_dispatch(char param_1)
   
   for (pcVar1 = (char *)CONCAT11(uStackX_0,in_stack_000000ff);
       (*pcVar1 != '\0' || (pcVar1[1] != '\0')); pcVar1 = pcVar1 + 3) {
-    if (pcVar1[2] == param_1) goto LAB_CODE_0f80;
+    if (pcVar1[2] == param_1) goto stdreq_table_entry_found;
   }
   pcVar1 = pcVar1 + 2;
-LAB_CODE_0f80:
+stdreq_table_entry_found:
                     /* WARNING: Could not recover jumptable at 0x0f8a. Too many branches */
                     /* WARNING: Treating indirect jump as call */
   (**(code **)pcVar1)();

@@ -2146,7 +2146,7 @@ CODE:0f7b  93        MOVC A,@A+DPTR
 CODE:0f7c  700d      JNZ 0x0f8b                    
 CODE:0f7e  a3        INC DPTR                      
 CODE:0f7f  a3        INC DPTR                      
-LAB_CODE_0f80:
+stdreq_table_entry_found:
 CODE:0f80  93        MOVC A,@A+DPTR                  ; XREF from CODE:0f8f
 CODE:0f81  f8        MOV R0,A                      
 CODE:0f82  7401      MOV A,#0x1                    

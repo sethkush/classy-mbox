@@ -120,55 +120,55 @@ CODE:0020  vecint_iep4_noop -> (leaf)
 CODE:0021  vecint_iep5_noop -> (leaf)
 CODE:0022  vecint_iep6_noop -> (leaf)
 CODE:0023  uart_vector -> (leaf)
-CODE:0026  usb_ev_setup -> ep0_store_cnf_and_arm_both ep0_clear_stall_both
+CODE:0026  usb_ev_setup -> ep0_clear_stall_both ep0_store_cnf_and_arm_both
 CODE:0055  setup_class_out_interface -> (leaf)
 CODE:006b  setup_class_out_endpoint -> (leaf)
-CODE:0073  setup_get_input_source -> ep0_ptr_set_in_buf dptr_from_ep0_ptr ep0_send_1byte
-CODE:008a  setup_get_sample_freq -> ep0_stall_both ep0_ptr_set_in_buf dptr_from_ep0_ptr ep0_buf_clear_byte
+CODE:0073  setup_get_input_source -> ep0_send_1byte ep0_ptr_set_in_buf dptr_from_ep0_ptr
+CODE:008a  setup_get_sample_freq -> ep0_buf_clear_byte ep0_stall_both ep0_ptr_set_in_buf dptr_from_ep0_ptr
 CODE:010d  send_3byte_ep0_reply -> (leaf)
 CODE:0118  std_request_dispatch -> switch_case_dispatch
-CODE:0144  std_clear_feature -> ep0_stall_both ep0_clear_stall_both
-CODE:015d  std_get_configuration -> ep0_ptr_set_in_buf dptr_from_ep0_ptr ep0_send_1byte
-CODE:0173  std_get_descriptor -> code_read_byte_at_srcptr ep0_stall_both ep0_in_start_transfer ep0_clamp_len_to_wlength
-CODE:01f1  std_get_interface -> ep0_stall_both ep0_ptr_set_in_buf dptr_from_ep0_ptr ep0_send_1byte
-CODE:022f  std_get_status -> ep0_ptr_set_in_buf dptr_from_ep0_ptr ep0_buf_clear_byte
+CODE:0144  std_clear_feature -> ep0_clear_stall_both ep0_stall_both
+CODE:015d  std_get_configuration -> ep0_send_1byte ep0_ptr_set_in_buf dptr_from_ep0_ptr
+CODE:0173  std_get_descriptor -> code_read_byte_at_srcptr ep0_clamp_len_to_wlength ep0_stall_both ep0_in_start_transfer
+CODE:01f1  std_get_interface -> ep0_send_1byte ep0_stall_both ep0_ptr_set_in_buf dptr_from_ep0_ptr
+CODE:022f  std_get_status -> ep0_buf_clear_byte ep0_ptr_set_in_buf dptr_from_ep0_ptr
 CODE:024d  std_set_address -> (leaf)
-CODE:025b  std_set_configuration -> ep0_stall_both ep0_nack_both
+CODE:025b  std_set_configuration -> ep0_nack_both ep0_stall_both
 CODE:0299  std_set_descriptor_stall -> ep0_stall_both
 CODE:029c  std_set_feature_stall -> ep0_stall_both
-CODE:029f  std_set_interface -> ep0_stall_both ep0_nack_both
+CODE:029f  std_set_interface -> ep0_nack_both ep0_stall_both
 CODE:02e7  std_synch_frame_stall -> ep0_stall_both
 CODE:02ea  std_request_unknown_default -> ep0_stall_both
 CODE:02ee  device_event_dispatch -> (leaf)
 CODE:0300  event_jump_table -> cmd1_apply_clock_mode
-CODE:032a  cmd1_apply_clock_mode -> codec_port_cfg3_commit audio_path_reconfig_ext_chips dma0_disable ep0_arm_zlp_in_and_out shiftreg16_commit_p1_0_1_2
-CODE:0386  cmd2_apply_iface1_alt -> audio_path_reconfig_ext_chips dma0_disable audio_clock_mode_apply ep0_arm_zlp_in_and_out shiftreg8_commit_p1_7_6_5 shiftreg16_commit_p1_0_1_2
-CODE:03fd  cmd3_apply_iface2_alt -> audio_path_reconfig_ext_chips dma0_disable audio_clock_mode_apply ep0_arm_zlp_in_and_out
-CODE:0454  cmd4_variantA_reapply_mode -> audio_clock_mode_apply shiftreg8_commit_p1_7_6_5 shiftreg16_commit_p1_0_1_2
-CODE:0466  cmd5_variantB_set_mode1 -> audio_clock_mode_apply shiftreg8_commit_p1_7_6_5 shiftreg16_commit_p1_0_1_2
+CODE:032a  cmd1_apply_clock_mode -> shiftreg16_commit_p1_0_1_2 audio_path_reconfig_ext_chips dma0_disable codec_port_cfg3_commit ep0_arm_zlp_in_and_out
+CODE:0386  cmd2_apply_iface1_alt -> shiftreg16_commit_p1_0_1_2 shiftreg8_commit_p1_7_6_5 audio_path_reconfig_ext_chips dma0_disable ep0_arm_zlp_in_and_out audio_clock_mode_apply
+CODE:03fd  cmd3_apply_iface2_alt -> audio_path_reconfig_ext_chips dma0_disable ep0_arm_zlp_in_and_out audio_clock_mode_apply
+CODE:0454  cmd4_variantA_reapply_mode -> shiftreg16_commit_p1_0_1_2 shiftreg8_commit_p1_7_6_5 audio_clock_mode_apply
+CODE:0466  cmd5_variantB_set_mode1 -> shiftreg16_commit_p1_0_1_2 shiftreg8_commit_p1_7_6_5 audio_clock_mode_apply
 CODE:0478  cmd6_set_cpt_mode1 -> audio_clock_mode_apply
 CODE:0480  cmd7_set_cpt_mode2_progchip -> serial_ctl_write_04_41_then_12_00 audio_clock_mode_apply serial_ctl_write_caller_pair_then_24_80
 CODE:049a  cmd8_set_cpt_mode3_progchip -> serial_ctl_write_04_41_then_12_00 audio_clock_mode_apply serial_ctl_write_caller_pair_then_24_80
 CODE:04b4  cmd9_set_cpt_mode4 -> audio_clock_mode_apply
 CODE:04bc  cmd10_set_cpt_mode5 -> audio_clock_mode_apply
-CODE:04c4  cmd11_eeprom_selftest -> audio_path_reconfig_ext_chips i2c_eeprom_read_byte i2c_eeprom_write_byte audio_clock_mode_apply shiftreg8_commit_p1_7_6_5 cs8427_ctl_write
+CODE:04c4  cmd11_eeprom_selftest -> shiftreg8_commit_p1_7_6_5 audio_path_reconfig_ext_chips cs8427_ctl_write i2c_eeprom_read_byte audio_clock_mode_apply i2c_eeprom_write_byte
 CODE:0511  cmd12_set_cpt_mode1 -> audio_clock_mode_apply
 CODE:0518  evt0d_invalidate_boot_eeprom -> i2c_eeprom_write_byte
-CODE:0526  evt0e_usb_suspend_enter_and_resume -> usb_ep_dma_init hw_master_init shiftreg8_commit_p1_7_6_5 shiftreg16_commit_p1_0_1_2
+CODE:0526  evt0e_usb_suspend_enter_and_resume -> shiftreg16_commit_p1_0_1_2 shiftreg8_commit_p1_7_6_5 usb_ep_dma_init hw_master_init
 CODE:0564  evt_dispatch_epilogue -> (leaf)
 CODE:0568  serial_ctl_write_04_41_then_12_00 -> cs8427_ctl_write
 CODE:0582  serial_ctl_write_caller_pair_then_24_80 -> cs8427_ctl_write
-CODE:0728  audio_clock_mode_apply -> acg_set_both_dctl_10 sfr_store_then_cpt_cfg_tail queue_cs8427_reg4_val40 acg_commit_and_ctl acg_set_freq_48k_family shiftreg16_commit_p1_0_1_2 cs8427_ctl_write
-CODE:080b  audio_path_reconfig_ext_chips -> extchip_write_2e_2f extchip_write_2e_2f_dup extchip_write_val05 acg_dptr_inc_then_set_both_dctl_10 acg_set_freq_48k_family extchip_write_reg4_zero shiftreg16_commit_p1_0_1_2 cs8427_ctl_write
+CODE:0728  audio_clock_mode_apply -> shiftreg16_commit_p1_0_1_2 acg_set_freq_48k_family cs8427_ctl_write acg_set_both_dctl_10 queue_cs8427_reg4_val40 acg_commit_and_ctl sfr_store_then_cpt_cfg_tail
+CODE:080b  audio_path_reconfig_ext_chips -> shiftreg16_commit_p1_0_1_2 acg_dptr_inc_then_set_both_dctl_10 extchip_write_2e_2f_dup acg_set_freq_48k_family cs8427_ctl_write extchip_write_2e_2f extchip_write_val05 extchip_write_reg4_zero
 CODE:08a6  extchip_write_reg4_zero -> cs8427_ctl_write
 CODE:08b3  extchip_write_val05 -> cs8427_ctl_write
 CODE:08bd  extchip_write_2e_2f -> cs8427_ctl_write
 CODE:08c4  extchip_write_2e_2f_dup -> cs8427_ctl_write
-CODE:08cb  hw_master_init -> sfr_store_then_cpt_cfg_tail acg_dptr_inc_then_set_both_dctl_10 shiftreg8_commit_p1_7_6_5 shiftreg16_commit_p1_0_1_2
+CODE:08cb  hw_master_init -> acg_dptr_inc_then_set_both_dctl_10 shiftreg16_commit_p1_0_1_2 shiftreg8_commit_p1_7_6_5 sfr_store_then_cpt_cfg_tail
 CODE:0970  usb_ep_dma_init -> (leaf)
 CODE:0a09  c51_startup -> (leaf)
 CODE:0a18  c51_init_interpreter -> (leaf)
-CODE:0a95  main -> usb_ep_dma_init device_event_dispatch hw_master_init p3_button_scan shiftreg8_commit_p1_7_6_5 shiftreg16_commit_p1_0_1_2
+CODE:0a95  main -> shiftreg16_commit_p1_0_1_2 shiftreg8_commit_p1_7_6_5 device_event_dispatch usb_ep_dma_init hw_master_init p3_button_scan
 CODE:0b11  dptr_to_ep0_out_buf -> (leaf)
 CODE:0b17  dptr_from_ep0_ptr -> (leaf)
 CODE:0b1e  ep0_clear_stall_toggle_and_arm -> (leaf)
@@ -185,7 +185,7 @@ CODE:0b8c  ep0_in_fill_chunk -> code_read_byte_at_srcptr ep0_ptr_set_in_buf dptr
 CODE:0bee  i2c_eeprom_write_byte -> (leaf)
 CODE:0c45  cs8427_ctl_write -> shiftreg16_commit_p1_0_1_2
 CODE:0cdd  i2c_eeprom_read_byte -> (leaf)
-CODE:0d25  ep0_out_data_handler -> dptr_to_ep0_out_buf ep0_clear_stall_toggle_and_arm ep0_arm_zlp_and_out
+CODE:0d25  ep0_out_data_handler -> ep0_clear_stall_toggle_and_arm dptr_to_ep0_out_buf ep0_arm_zlp_and_out
 CODE:0d6b  ep0_clamp_len_to_wlength -> (leaf)
 CODE:0dac  usb_int0_isr -> jmp_r2r1_trampoline
 CODE:0deb  sfr_store_then_cpt_cfg_tail -> (leaf)
@@ -202,7 +202,7 @@ CODE:0f0c  shiftreg8_commit_p1_7_6_5 -> (leaf)
 CODE:0f43  usb_rstr_handler -> ep0_arm_zlp_and_out
 CODE:0f70  switch_case_dispatch -> (leaf)
 CODE:0f96  jmp_r2r1_trampoline -> (leaf)
-CODE:0fc4  usb_iep0_done_handler -> ep0_in_start_transfer ep0_store_cnf_and_arm_both ep0_clear_stall_toggle_and_arm
+CODE:0fc4  usb_iep0_done_handler -> ep0_clear_stall_toggle_and_arm ep0_store_cnf_and_arm_both ep0_in_start_transfer
 CODE:0fea  ep0_arm_zlp_in_and_out -> (leaf)
 CODE:0ff4  codec_port_cfg3_commit -> (leaf)
 CODE:1001  dma0_disable -> (leaf)

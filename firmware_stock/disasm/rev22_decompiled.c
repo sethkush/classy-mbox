@@ -267,14 +267,15 @@ void usb_setup_handler(void)
 
 {
   char cVar1;
-  undefined1 *puVar2;
+  undefined *puVar2;
+  undefined1 *puVar3;
   
   ep0_clear_stall_both();
   IEPCNF0 = IEPCNF0 | 0x20;
   xfer_len_lo = ep0_store_byte_and_arm_zlp(OEPCNF0 | 0x20);
   _1_5 = 0;
   xfer_len_hi = xfer_len_lo;
-  puVar2 = (undefined1 *)0xff28;
+  puVar2 = &SETPACK_bmRequestType_code;
   if (SETPACK_bmRequestType == '\"') {
     BANK1_R5 = 1;
     _1_3 = 1;
@@ -297,12 +298,12 @@ void usb_setup_handler(void)
     return;
   }
   if (SETPACK_bmRequestType == -0x5e) {
-    puVar2 = (undefined1 *)0xff2b;
+    puVar3 = &SETPACK_wValueH_code;
     if (SETPACK_wValueH == '\x01') {
       ep0_in_buf_ptr_load();
       if (clock_mode_id == '\x01') {
         ep0_load_dptr();
-        *puVar2 = 0;
+        *puVar3 = 0;
         BANK3_R6 = BANK3_R6 + '\x01';
         if (BANK3_R6 == '\0') {
           BANK3_R5 = BANK3_R5 + '\x01';
@@ -316,7 +317,7 @@ void usb_setup_handler(void)
       else if (clock_mode_id == '\x02') {
         ep0_load_dptr();
         cVar1 = BANK3_R6;
-        *puVar2 = 0x44;
+        *puVar3 = 0x44;
         BANK3_R6 = BANK3_R6 + '\x01';
         if (BANK3_R6 == '\0') {
           BANK3_R5 = BANK3_R5 + '\x01';
@@ -331,7 +332,7 @@ void usb_setup_handler(void)
         if (clock_mode_id != '\x03') goto ep0_stall_both;
         ep0_load_dptr();
         cVar1 = BANK3_R6;
-        *puVar2 = 0x80;
+        *puVar3 = 0x80;
         BANK3_R6 = BANK3_R6 + '\x01';
         if (BANK3_R6 == '\0') {
           BANK3_R5 = BANK3_R5 + '\x01';
@@ -487,10 +488,10 @@ void std_get_configuration(undefined1 *param_1)
 void std_get_descriptor(void)
 
 {
-  undefined1 *puVar1;
+  undefined *puVar1;
   short sVar2;
   
-  puVar1 = (undefined1 *)0xff2b;
+  puVar1 = &SETPACK_wValueH_code;
   if (SETPACK_wValueH == '\x01') {
     BANK3_R1 = 5;
     BANK3_R2 = 0x7d;
@@ -502,7 +503,7 @@ void std_get_descriptor(void)
       load_dptr_from_ptr19();
       xfer_len_lo = *(undefined1 *)(sVar2 + 2);
       xfer_len_hi = *(undefined1 *)(sVar2 + 3);
-      goto LAB_CODE_01e6;
+      goto ep0_clamp_and_send;
     }
     if (SETPACK_wValueH != '\x03') {
       ep0_stall_both_clear_phase_flags();
@@ -516,7 +517,7 @@ void std_get_descriptor(void)
       BANK3_R1 = 6;
       BANK3_R2 = 0x91;
     }
-    puVar1 = (undefined1 *)0xff2a;
+    puVar1 = &SETPACK_wValueL_code;
     if (SETPACK_wValueL == '\x02') {
       BANK3_R1 = 6;
       BANK3_R2 = 0xaf;
@@ -525,7 +526,7 @@ void std_get_descriptor(void)
   load_dptr_from_ptr19();
   xfer_len_lo = *puVar1;
   xfer_len_hi = 0;
-LAB_CODE_01e6:
+ep0_clamp_and_send:
   ep0_clamp_len_to_wlength();
   ep0_in_stage_and_go();
   return;
@@ -555,7 +556,7 @@ void std_get_interface(char param_1)
         *pcVar1 = '\x01';
       }
       else {
-        puVar2 = &DAT_CODE_ff2c;
+        puVar2 = &SETPACK_wIndexL_code;
         if ((SETPACK_wIndexL == 2) && (_1_1 != '\0')) {
           ep0_load_dptr();
           *puVar2 = 2;
@@ -1191,7 +1192,7 @@ void audio_clock_set_mode(char param_1)
         pending_serial_reg = 4;
         pending_serial_val = 0x41;
       }
-      goto LAB_CODE_07a6;
+      goto clockmode_commit_serial_write;
     }
     GLOBCTL = GLOBCTL & 0xfe;
     CPTRXCNF4 = 1;
@@ -1206,7 +1207,7 @@ void audio_clock_set_mode(char param_1)
   }
   pending_serial_reg = 4;
   pending_serial_val = 0x40;
-LAB_CODE_07a6:
+clockmode_commit_serial_write:
   spi3wire_write_3bytes(pending_serial_val,pending_serial_reg);
   ACGCTL = ACGCTL | 0xc0;
   IEPDCNTX1 = 0;
@@ -1913,7 +1914,7 @@ byte udiv16(char param_1,byte param_2,byte param_3,byte param_4)
   if (cVar3 != '\x01') {
     cVar3 = '\b';
     bVar5 = bVar2;
-LAB_CODE_0bbd:
+c51_shift_divide_loop:
     do {
       bVar1 = CARRY1(param_4,param_4);
       param_4 = param_4 * '\x02';
@@ -1931,7 +1932,7 @@ LAB_CODE_0bbd:
           if (cVar3 == '\0') {
             return bVar6;
           }
-          goto LAB_CODE_0bbd;
+          goto c51_shift_divide_loop;
         }
       }
       param_4 = param_4 + 1;

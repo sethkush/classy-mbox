@@ -330,7 +330,7 @@ CODE:01df  f50b      MOV 0x0b,A
 CODE:01e1  8003      SJMP 0x01e6                   
 LAB_CODE_01e3:
 CODE:01e3  0202ef    LJMP 0x02ef                     ; XREF from CODE:01af
-LAB_CODE_01e6:
+ep0_clamp_and_send:
 CODE:01e6  120d9e    LCALL 0x0d9e                    ; XREF from CODE:01a7,CODE:01e1
 CODE:01e9  120b63    LCALL 0x0b63                  
 CODE:01ec  22        RET                           
@@ -943,7 +943,7 @@ CODE:079d  750805    MOV 0x08,#0x5
 LAB_CODE_07a0:
 CODE:07a0  753104    MOV 0x31,#0x4                   ; XREF from CODE:076c,CODE:0775
 CODE:07a3  753240    MOV 0x32,#0x40                
-LAB_CODE_07a6:
+clockmode_commit_serial_write:
 CODE:07a6  ad32      MOV R5,0x32                     ; XREF from CODE:0732,CODE:0743
 CODE:07a8  af31      MOV R7,0x31                   
 CODE:07aa  120c31    LCALL 0x0c31                  
@@ -1596,7 +1596,7 @@ CODE:0bb4  20d21c    JB 0xd2,0x0bd3
 CODE:0bb7  fe        MOV R6,A                      
 CODE:0bb8  adf0      MOV R5,B                      
 CODE:0bba  75f008    MOV B,#0x8                    
-LAB_CODE_0bbd:
+c51_shift_divide_loop:
 CODE:0bbd  ef        MOV A,R7                        ; XREF from CODE:0bc8,CODE:0bd0
 CODE:0bbe  2f        ADD A,R7                      
 CODE:0bbf  ff        MOV R7,A                      
