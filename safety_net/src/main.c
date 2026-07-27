@@ -80,6 +80,118 @@
 #define EP_BSIZE(b)      (unsigned char)((b) >> 3)
 
 
+/* --- Progress canary (diagnostic build only) ------------------------
+ *
+ * Built only when CANARY is defined (Makefile: `make` = on,
+ * `make CANARY=0` = the clean image). Purpose: Rev 20 enumerates on this
+ * exact hardware and safety_net does not, and EP0_DIFF_vs_REV20.md ruled
+ * out every EP0/interrupt register value. What is NOT established is
+ * whether execution reaches the places we assume — D+ asserting proves
+ * one instruction ran, not that the ISR ever fires.
+ *
+ * g_stage only ever increases, and the idle loop flashes the front panel
+ * g_stage times, pauses, and repeats. Because the ISR bumps it, the
+ * blink count climbs live as enumeration progresses. Count the flashes
+ * between the long pauses:
+ *
+ *    1  main() entered
+ *    2  USBCTL=0 + MEMCFG SDW done
+ *    3  EP0 registers programmed
+ *    4  USBIMSK / IT0 / EX0 done
+ *    5  EA=1 (global interrupts on)
+ *    6  USBCTL |= 0x80 — attached, idle loop running
+ *    7  usb_isr() entered at least once   <-- ISR proven to fire
+ *    8  VECINT returned a real source (not NONE)
+ *    9  VEC_RSTR seen — host issued a bus reset, FEN now set
+ *   10  VEC_SETUP seen — host is talking to EP0
+ *   11  GET_DESCRIPTOR(Device) served
+ *   12  SET_ADDRESS received
+ *
+ * A steady 6 means main finished but no USB interrupt ever arrived.
+ * A steady 9 means resets arrive but SETUP never does. And so on.
+ *
+ * PANEL WIRING: the 8-bit shift register on P1.7/P1.5/P1.6 is the
+ * "panel control/LED" chain (rev22_ANNOTATED.md §2.3, Rev 20 fcn.0x0F0C
+ * / Rev 22 fcn_0efc). Which bit drives which LED is UNKNOWN and is not
+ * relied on here — we only toggle the whole byte between two values Rev
+ * 20 itself sits in during normal operation, so no new hardware state is
+ * created:
+ *   PANEL_OFF 0x00 — Rev 20 hw_init first mux_write
+ *   PANEL_ON  0xF6 — Rev 20 hw_init steady state (0xFF & ~0x01 & ~0x08)
+ * The latch is always pulsed with the 0x23.6-clear pattern. That bit's
+ * physical meaning is explicitly UNVERIFIED in rev20_ANNOTATED.md:4141
+ * (input-mux swap *or* 48 V phantom — the two guesses contradict), so we
+ * never set it.
+ */
+#ifdef CANARY
+
+#define P1_PANEL_SCLK   0x20   /* P1.5 — clock, rising edge samples */
+#define P1_PANEL_LATCH  0x40   /* P1.6 — latch pulse */
+#define P1_PANEL_DATA   0x80   /* P1.7 — serial data, MSB first */
+
+#define PANEL_OFF  0x00
+#define PANEL_ON   0xF6
+
+volatile __data unsigned char g_stage = 0;
+
+#define STAGE(n) do { if ((unsigned char)(n) > g_stage) g_stage = (n); } while (0)
+
+/* Shift one byte out to the 8-bit panel latch, MSB first. Port of Rev 20
+ * fcn.0x0F0C with the phantom/0x23.6 branch pinned to the clear path. */
+static void panel_write(unsigned char v)
+{
+    unsigned char i;
+
+    P1 &= (unsigned char)~P1_PANEL_LATCH;
+    for (i = 0; i < 8; i++) {
+        if (v & 0x80) P1 |= P1_PANEL_DATA;
+        else          P1 &= (unsigned char)~P1_PANEL_DATA;
+        P1 |= P1_PANEL_SCLK;
+        P1 &= (unsigned char)~P1_PANEL_SCLK;
+        v <<= 1;
+    }
+    P1 &= (unsigned char)~P1_PANEL_DATA;
+    P1 |= P1_PANEL_LATCH;
+    P1 &= (unsigned char)~P1_PANEL_LATCH;
+}
+
+/* Rough delay. One unit is ~25 ms at the 12 MHz / 12-clock machine cycle
+ * the boot ROM leaves us in (GLOBCTL bit 7 MCUCLK = 0). The counter is
+ * volatile so SDCC cannot fold the loop away. Timing only has to be slow
+ * enough to count by eye — it is not calibrated. */
+static void delay_units(unsigned char units)
+{
+    unsigned char u;
+    volatile unsigned int i;
+
+    for (u = 0; u < units; u++)
+        for (i = 0; i < 1500; i++) { }
+}
+
+/* Flash the panel g_stage times, then hold dark for ~2 s. Re-reads
+ * g_stage every pass, so the count tracks progress as the ISR advances
+ * it. */
+static void canary_blink_forever(void)
+{
+    unsigned char n, k;
+
+    for (;;) {
+        n = g_stage;
+        for (k = 0; k < n; k++) {
+            panel_write(PANEL_ON);
+            delay_units(10);
+            panel_write(PANEL_OFF);
+            delay_units(10);
+        }
+        delay_units(80);
+    }
+}
+
+#else
+#define STAGE(n) do { } while (0)
+#endif /* CANARY */
+
+
 /* --- Minimal descriptors -------------------------------------------
  * VID/PID/bcdDevice chosen to be immediately recognizable in ioreg as
  * "safety net, not mboxfw":
@@ -317,12 +429,14 @@ static void handle_setup(void)
                 reply_short(0, 0, 2);
                 return;
             case 0x05: /* SET_ADDRESS */
+                STAGE(12);
                 pending_addr = wVL;
                 reply_zlp();
                 return;
             case 0x06: /* GET_DESCRIPTOR */
                 switch (wVH) {
-                    case 0x01: reply_desc(DevDesc, 18);       return;
+                    case 0x01: STAGE(11);
+                               reply_desc(DevDesc, 18);       return;
                     case 0x02: reply_desc(ConfigDesc, 18);    return;
                     case 0x03:
                         switch (wVL) {
@@ -360,8 +474,15 @@ static void handle_setup(void)
 static void usb_service(void)
 {
     unsigned char v = VECINT;
+
+    /* 8 = the engine handed us a real source. Distinguishes "ISR fires
+     * but VECINT is always NONE" (a spurious/stuck INT0) from "ISR fires
+     * with genuine USB events". */
+    if (v != VEC_NONE) STAGE(8);
+
     switch (v) {
         case VEC_SETUP:
+            STAGE(10);
             handle_setup();
             VECINT = 0;
             break;
@@ -422,6 +543,7 @@ static void usb_service(void)
              * on for suspend/resume) instead of Rev 20's 0x9F
              * (SOF+PSOF on for streaming). Divergence is deliberate
              * and neutral for enumeration. */
+            STAGE(9);
             OEPCNF0 = 0x84;
             IEPCNF0 = 0x84;
             USBFADR = 0;
@@ -458,6 +580,8 @@ void main(void)
     /* GATE ALL INTERRUPTS while we reconfigure. */
     EA = 0;
 
+    STAGE(1);
+
     /* DISCONNECT FIRST. Boot ROM leaves USBCTL with CONN asserted after
      * its DFU manifest; if we run init while the host is still trying to
      * enumerate boot ROM, the two enumerations race and the host times
@@ -490,6 +614,16 @@ void main(void)
     /* MEMCFG SDW confirm — boot ROM already set it, be idempotent. */
     MEMCFG |= 0x01;
 
+    STAGE(2);
+
+#ifdef CANARY
+    /* Establish a known P1 state before bit-banging the panel latch.
+     * Rev 20 does exactly this at boot (rev20_STARTUP_TRACE.md row 4,
+     * 0x08DA `P1 = 0x00`), so it creates no state Rev 20 does not. */
+    P1 = 0x00;
+    panel_write(PANEL_OFF);
+#endif
+
     /* Bring EP0 up. Values match TI engUsbInit (UsbEng.c:609-624):
      * IEPCNF0/OEPCNF0 = 0x84 (UBME | UBMIE, no STALL bit at init);
      * IEPBCTX0 = 0x80 (NAK IN); OEPBCTX0 = 0 (OUT ready to receive). */
@@ -513,6 +647,8 @@ void main(void)
     /* USBFADR = 0 — device starts unaddressed. TI UsbEng.c engUsbInit
      * line 635; Rev 20 rev20_flat.asm 0x0910. */
     USBFADR  = 0;
+
+    STAGE(3);
 
     /* USBIMSK = 0xE5 = RSTR|SUSR|RESR|SETUP|STPOW (bits 7,6,5,2,0
      * per TAS1020B datasheet §6.5.1.3). Matches TI UsbEng.c:640
@@ -545,6 +681,8 @@ void main(void)
     /* Enable INT0 (USB engine) source. */
     EX0 = 1;
 
+    STAGE(4);
+
     /* Settle. Rev 20 (rev20_flat.asm 0x0AC5-0x0AD8) runs a ~65k-iter
      * outer loop between finishing init and enabling EA/CONN. This
      * gives the USB engine time to reach a stable idle state before
@@ -554,12 +692,20 @@ void main(void)
     /* Unmask global interrupts. */
     EA = 1;
 
+    STAGE(5);
+
     /* Attach to bus. RMW `|= 0x80` — CONN only, FEN stays clear.
      * See USBCTL_ATTACH_BIT comment for full justification. */
     USBCTL |= USBCTL_ATTACH_BIT;
 
+    STAGE(6);
+
     /* Idle. All USB work is done in usb_isr() below. */
+#ifdef CANARY
+    canary_blink_forever();   /* never returns */
+#else
     for (;;) { }
+#endif
 }
 
 /* USB interrupt service routine, installed at 8051 vector 0
@@ -573,6 +719,10 @@ void main(void)
  * the per-case handlers in usb_service). */
 void usb_isr(void) __interrupt(0)
 {
+    /* 7 = the ISR fired at all. This is the single fact the whole canary
+     * exists to establish: a steady 6 means INT0 never asserted despite
+     * EX0/EA/IT0 all being set and USBIMSK unmasking RSTR/SETUP/STPOW. */
+    STAGE(7);
     usb_service();
 }
 

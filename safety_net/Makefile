@@ -8,6 +8,15 @@ CC      = sdcc
 TARGET  = safety_net
 BUILD   = build
 CFLAGS  = -mmcs51 --model-small --std-c99 --opt-code-size
+
+# Progress canary. CANARY=1 (default) builds the diagnostic image that
+# flashes the front panel N times to report how far execution reached —
+# see the block comment above `#ifdef CANARY` in src/main.c for the stage
+# table. `make CANARY=0` builds the clean image with the plain idle loop.
+CANARY ?= 1
+ifeq ($(CANARY),1)
+CFLAGS += -DCANARY
+endif
 LDFLAGS = -mmcs51 --model-small --code-size 0x1F00 --xram-size 0x1000
 
 SRCS = src/main.c
