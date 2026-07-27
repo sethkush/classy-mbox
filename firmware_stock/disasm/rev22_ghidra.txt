@@ -1,0 +1,2810 @@
+
+; ======== FUNCTION thunk_FUN_CODE_092a @ CODE:0000 ========
+CODE:0000  02092a    LJMP 0x092a                     ; XREF from CODE:0580,CODE:0594,CODE:0600,CODE:05eb,CODE:05f8,CODE:0622,CODE:066b
+CODE:0003  020ddf    LJMP 0x0ddf                   
+CODE:0006  750a0e    MOV 0x0a,#0xe                 
+LAB_CODE_0009:
+CODE:0009  22        RET                             ; XREF from CODE:058e
+LAB_CODE_000a:
+CODE:000a  32        RETI                            ; XREF from CODE:0013
+CODE:000b  021016    LJMP 0x1016                   
+LAB_CODE_000e:
+CODE:000e  32        RETI                            ; XREF from CODE:001b
+LAB_CODE_000f:
+CODE:000f  32        RETI                            ; XREF from CODE:0023
+CODE:0010  22        RET                           
+CODE:0011  22        RET                           
+CODE:0012  22        RET                           
+CODE:0013  02000a    LJMP 0x000a                   
+
+; ======== FUNCTION FUN_CODE_0016 @ CODE:0016 ========
+CODE:0016  22        RET                             ; XREF from CODE:0c84
+CODE:0017  22        RET                           
+CODE:0018  22        RET                           
+CODE:0019  22        RET                           
+CODE:001a  22        RET                           
+CODE:001b  02000e    LJMP 0x000e                   
+CODE:001e  22        RET                           
+CODE:001f  22        RET                           
+CODE:0020  22        RET                           
+CODE:0021  22        RET                           
+CODE:0022  22        RET                           
+CODE:0023  02000f    LJMP 0x000f                   
+CODE:0026  120b3e    LCALL 0x0b3e                  
+CODE:002b  68        XRL A,R0                      
+CODE:002c  e0        MOVX A,@DPTR                  
+CODE:002d  4420      ORL A,#0x20                   
+CODE:002f  f0        MOVX @DPTR,A                  
+CODE:0030  90ffa8    MOV DPTR,#0xffa8              
+CODE:0033  e0        MOVX A,@DPTR                  
+CODE:0034  4420      ORL A,#0x20                   
+CODE:0036  120b2c    LCALL 0x0b2c                  
+CODE:0039  c20d      CLR 0x0d                      
+CODE:003b  f509      MOV 0x09,A                    
+CODE:003d  f50b      MOV 0x0b,A                    
+CODE:003f  90ff28    MOV DPTR,#0xff28              
+CODE:0042  e0        MOVX A,@DPTR                  
+CODE:0043  24de      ADD A,#0xde                   
+CODE:0045  601f      JZ 0x0066                     
+CODE:0047  2481      ADD A,#0x81                   
+CODE:0049  6023      JZ 0x006e                     
+CODE:004b  14        DEC A                         
+CODE:004c  6038      JZ 0x0086                     
+CODE:004e  2481      ADD A,#0x81                   
+CODE:0050  6003      JZ 0x0055                     
+CODE:0052  02010b    LJMP 0x010b                   
+LAB_CODE_0055:
+CODE:0055  90ff29    MOV DPTR,#0xff29                ; XREF from CODE:0050
+CODE:0058  e0        MOVX A,@DPTR                  
+CODE:0059  7006      JNZ 0x0061                    
+CODE:005b  750a0d    MOV 0x0a,#0xd                 
+CODE:005e  0202e8    LJMP 0x02e8                   
+LAB_CODE_0061:
+CODE:0061  750d02    MOV 0x0d,#0x2                   ; XREF from CODE:0059
+CODE:0064  8003      SJMP 0x0069                   
+LAB_CODE_0066:
+CODE:0066  750d01    MOV 0x0d,#0x1                   ; XREF from CODE:0045
+LAB_CODE_0069:
+CODE:0069  d20b      SETB 0x0b                       ; XREF from CODE:0064
+CODE:006b  c20c      CLR 0x0c                      
+CODE:006d  22        RET                           
+LAB_CODE_006e:
+CODE:006e  120b37    LCALL 0x0b37                    ; XREF from CODE:0049
+CODE:0071  302c09    JNB 0x2c,0x007d               
+CODE:0074  120b25    LCALL 0x0b25                  
+CODE:0077  7402      MOV A,#0x2                    
+CODE:0079  f0        MOVX @DPTR,A                  
+CODE:007a  02016f    LJMP 0x016f                   
+LAB_CODE_007d:
+CODE:007d  120b25    LCALL 0x0b25                    ; XREF from CODE:0071
+CODE:0080  7401      MOV A,#0x1                    
+CODE:0082  f0        MOVX @DPTR,A                  
+CODE:0083  02016f    LJMP 0x016f                   
+LAB_CODE_0086:
+CODE:0086  90ff2b    MOV DPTR,#0xff2b                ; XREF from CODE:004c
+CODE:0089  e0        MOVX A,@DPTR                  
+CODE:008a  6401      XRL A,#0x1                    
+CODE:008c  6003      JZ 0x0091                     
+CODE:008e  0202ef    LJMP 0x02ef                   
+LAB_CODE_0091:
+CODE:0091  120b37    LCALL 0x0b37                    ; XREF from CODE:008c
+CODE:0094  e508      MOV A,0x08                    
+CODE:0096  b4011a    CJNE A,#0x1,0x00b3            
+CODE:0099  120b25    LCALL 0x0b25                  
+CODE:009c  e4        CLR A                         
+CODE:009d  f0        MOVX @DPTR,A                  
+CODE:009e  051e      INC 0x1e                      
+CODE:00a0  e51e      MOV A,0x1e                    
+CODE:00a2  7002      JNZ 0x00a6                    
+CODE:00a4  051d      INC 0x1d                      
+LAB_CODE_00a6:
+CODE:00a6  120b5b    LCALL 0x0b5b                    ; XREF from CODE:00a2
+CODE:00a9  051e      INC 0x1e                      
+CODE:00ab  e51e      MOV A,0x1e                    
+CODE:00ad  704c      JNZ 0x00fb                    
+CODE:00af  051d      INC 0x1d                      
+CODE:00b1  8048      SJMP 0x00fb                   
+LAB_CODE_00b3:
+CODE:00b3  e508      MOV A,0x08                      ; XREF from CODE:0096
+CODE:00b5  b40220    CJNE A,#0x2,0x00d8            
+CODE:00b8  120b25    LCALL 0x0b25                  
+CODE:00bb  7444      MOV A,#0x44                   
+CODE:00bd  f0        MOVX @DPTR,A                  
+CODE:00be  051e      INC 0x1e                      
+CODE:00c0  e51e      MOV A,0x1e                    
+CODE:00c2  7002      JNZ 0x00c6                    
+CODE:00c4  051d      INC 0x1d                      
+LAB_CODE_00c6:
+CODE:00c6  f582      MOV DPL,A                       ; XREF from CODE:00c2
+CODE:00c8  851d83    MOV DPH,0x1d                  
+CODE:00cb  74ac      MOV A,#0xac                   
+CODE:00cd  f0        MOVX @DPTR,A                  
+CODE:00ce  051e      INC 0x1e                      
+CODE:00d0  e51e      MOV A,0x1e                    
+CODE:00d2  7002      JNZ 0x00d6                    
+CODE:00d4  051d      INC 0x1d                      
+LAB_CODE_00d6:
+CODE:00d6  8023      SJMP 0x00fb                     ; XREF from CODE:00d2
+LAB_CODE_00d8:
+CODE:00d8  e508      MOV A,0x08                      ; XREF from CODE:00b5
+CODE:00da  b40323    CJNE A,#0x3,0x0100            
+CODE:00dd  120b25    LCALL 0x0b25                  
+CODE:00e0  7480      MOV A,#0x80                   
+CODE:00e2  f0        MOVX @DPTR,A                  
+CODE:00e3  051e      INC 0x1e                      
+CODE:00e5  e51e      MOV A,0x1e                    
+CODE:00e7  7002      JNZ 0x00eb                    
+CODE:00e9  051d      INC 0x1d                      
+LAB_CODE_00eb:
+CODE:00eb  f582      MOV DPL,A                       ; XREF from CODE:00e7
+CODE:00ed  851d83    MOV DPH,0x1d                  
+CODE:00f0  74bb      MOV A,#0xbb                   
+CODE:00f2  f0        MOVX @DPTR,A                  
+CODE:00f3  051e      INC 0x1e                      
+CODE:00f5  e51e      MOV A,0x1e                    
+CODE:00f7  7002      JNZ 0x00fb                    
+CODE:00f9  051d      INC 0x1d                      
+LAB_CODE_00fb:
+CODE:00fb  120b5b    LCALL 0x0b5b                    ; XREF from CODE:00ad,CODE:00b1,CODE:00d6,CODE:00f7
+CODE:00fe  8003      SJMP 0x0103                   
+
+; ======== FUNCTION thunk_FUN_CODE_02ef @ CODE:0100 ========
+CODE:0100  0202ef    LJMP 0x02ef                     ; XREF from CODE:00da,CODE:070d,CODE:05d5,CODE:065b
+
+; ======== FUNCTION FUN_CODE_0103 @ CODE:0103 ========
+CODE:0103  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:00fe
+LAB_CODE_0106:
+CODE:0106  7403      MOV A,#0x3                      ; XREF from CODE:05ba
+CODE:0108  020247    LJMP 0x0247                   
+
+; ======== FUNCTION FUN_CODE_010b @ CODE:010b ========
+CODE:010b  90ff29    MOV DPTR,#0xff29                ; XREF from CODE:0052
+CODE:010e  e0        MOVX A,@DPTR                  
+CODE:010f  b40d00    CJNE A,#0xd,0x0112            
+LAB_CODE_0112:
+CODE:0112  4003      JC 0x0117                       ; XREF from CODE:010f
+CODE:0114  0202ef    LJMP 0x02ef                   
+LAB_CODE_0117:
+CODE:0117  90011e    MOV DPTR,#0x11e                 ; XREF from CODE:0112
+CODE:011a  f8        MOV R0,A                      
+CODE:011b  28        ADD A,R0                      
+CODE:011c  28        ADD A,R0                      
+CODE:011d  73        JMP @A+DPTR                   
+CODE:011e  02022f    LJMP 0x022f                   
+CODE:0121  020145    LJMP 0x0145                   
+CODE:0124  0202ef    LJMP 0x02ef                   
+CODE:0127  02029b    LJMP 0x029b                   
+CODE:012a  0202ef    LJMP 0x02ef                   
+CODE:012d  02024d    LJMP 0x024d                   
+CODE:0130  020177    LJMP 0x0177                   
+CODE:0133  02029b    LJMP 0x029b                   
+CODE:0136  02015c    LJMP 0x015c                   
+CODE:0139  020259    LJMP 0x0259                   
+CODE:013c  0201ed    LJMP 0x01ed                   
+CODE:013f  02029d    LJMP 0x029d                   
+CODE:0142  02029b    LJMP 0x029b                   
+LAB_CODE_0145:
+CODE:0145  90ff28    MOV DPTR,#0xff28                ; XREF from CODE:0121
+CODE:0148  e0        MOVX A,@DPTR                  
+CODE:0149  6402      XRL A,#0x2                    
+CODE:014b  700c      JNZ 0x0159                    
+CODE:014d  90ff2c    MOV DPTR,#0xff2c              
+CODE:0150  e0        MOVX A,@DPTR                  
+CODE:0151  7006      JNZ 0x0159                    
+CODE:0153  120b3e    LCALL 0x0b3e                  
+CODE:0156  0202e8    LJMP 0x02e8                   
+LAB_CODE_0159:
+CODE:0159  0202ef    LJMP 0x02ef                     ; XREF from CODE:014b,CODE:0151
+LAB_CODE_015c:
+CODE:015c  120b37    LCALL 0x0b37                    ; XREF from CODE:0136
+CODE:015f  300e08    JNB 0x0e,0x016a               
+CODE:0162  120b25    LCALL 0x0b25                  
+CODE:0165  7401      MOV A,#0x1                    
+CODE:0167  f0        MOVX @DPTR,A                  
+CODE:0168  8005      SJMP 0x016f                   
+LAB_CODE_016a:
+CODE:016a  120b25    LCALL 0x0b25                    ; XREF from CODE:015f
+CODE:016d  e4        CLR A                         
+CODE:016e  f0        MOVX @DPTR,A                  
+LAB_CODE_016f:
+CODE:016f  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:007a,CODE:0083,CODE:0168
+CODE:0172  7401      MOV A,#0x1                    
+CODE:0174  020247    LJMP 0x0247                   
+LAB_CODE_0177:
+CODE:0177  90ff2b    MOV DPTR,#0xff2b                ; XREF from CODE:0130
+CODE:017a  e0        MOVX A,@DPTR                  
+CODE:017b  b40108    CJNE A,#0x1,0x0186            
+CODE:017e  751905    MOV 0x19,#0x5                 
+CODE:0181  751a7d    MOV 0x1a,#0x7d                
+CODE:0184  8051      SJMP 0x01d7                   
+LAB_CODE_0186:
+CODE:0186  90ff2b    MOV DPTR,#0xff2b                ; XREF from CODE:017b
+CODE:0189  e0        MOVX A,@DPTR                  
+CODE:018a  6402      XRL A,#0x2                    
+CODE:018c  701b      JNZ 0x01a9                    
+CODE:018e  90ff2a    MOV DPTR,#0xff2a              
+CODE:0191  e0        MOVX A,@DPTR                  
+CODE:0192  7015      JNZ 0x01a9                    
+CODE:0194  751906    MOV 0x19,#0x6                 
+CODE:0197  751a57    MOV 0x1a,#0x57                
+CODE:019a  120b6e    LCALL 0x0b6e                  
+CODE:019d  7402      MOV A,#0x2                    
+CODE:019f  93        MOVC A,@A+DPTR                
+CODE:01a0  f509      MOV 0x09,A                    
+CODE:01a2  7403      MOV A,#0x3                    
+CODE:01a4  93        MOVC A,@A+DPTR                
+CODE:01a5  f50b      MOV 0x0b,A                    
+CODE:01a7  803d      SJMP 0x01e6                   
+LAB_CODE_01a9:
+CODE:01a9  90ff2b    MOV DPTR,#0xff2b                ; XREF from CODE:018c,CODE:0192
+CODE:01ac  e0        MOVX A,@DPTR                  
+CODE:01ad  6403      XRL A,#0x3                    
+CODE:01af  7032      JNZ 0x01e3                    
+CODE:01b1  90ff2a    MOV DPTR,#0xff2a              
+CODE:01b4  e0        MOVX A,@DPTR                  
+CODE:01b5  7006      JNZ 0x01bd                    
+CODE:01b7  751906    MOV 0x19,#0x6                 
+CODE:01ba  751a8d    MOV 0x1a,#0x8d                
+LAB_CODE_01bd:
+CODE:01bd  90ff2a    MOV DPTR,#0xff2a                ; XREF from CODE:01b5
+CODE:01c0  e0        MOVX A,@DPTR                  
+CODE:01c1  b40106    CJNE A,#0x1,0x01ca            
+CODE:01c4  751906    MOV 0x19,#0x6                 
+CODE:01c7  751a91    MOV 0x1a,#0x91                
+LAB_CODE_01ca:
+CODE:01ca  90ff2a    MOV DPTR,#0xff2a                ; XREF from CODE:01c1
+CODE:01cd  e0        MOVX A,@DPTR                  
+CODE:01ce  b40206    CJNE A,#0x2,0x01d7            
+CODE:01d1  751906    MOV 0x19,#0x6                 
+CODE:01d4  751aaf    MOV 0x1a,#0xaf                
+LAB_CODE_01d7:
+CODE:01d7  120b6e    LCALL 0x0b6e                    ; XREF from CODE:0184,CODE:01ce
+CODE:01da  e4        CLR A                         
+CODE:01db  93        MOVC A,@A+DPTR                
+CODE:01dc  f509      MOV 0x09,A                    
+CODE:01de  e4        CLR A                         
+CODE:01df  f50b      MOV 0x0b,A                    
+CODE:01e1  8003      SJMP 0x01e6                   
+LAB_CODE_01e3:
+CODE:01e3  0202ef    LJMP 0x02ef                     ; XREF from CODE:01af
+LAB_CODE_01e6:
+CODE:01e6  120d9e    LCALL 0x0d9e                    ; XREF from CODE:01a7,CODE:01e1
+CODE:01e9  120b63    LCALL 0x0b63                  
+CODE:01ec  22        RET                           
+LAB_CODE_01ed:
+CODE:01ed  200a03    JB 0x0a,0x01f3                  ; XREF from CODE:013c
+CODE:01f0  300e39    JNB 0x0e,0x022c               
+LAB_CODE_01f3:
+CODE:01f3  90ff2c    MOV DPTR,#0xff2c                ; XREF from CODE:01ed
+CODE:01f6  e0        MOVX A,@DPTR                  
+CODE:01f7  d3        SETB CY                       
+CODE:01f8  9402      SUBB A,#0x2                   
+CODE:01fa  5030      JNC 0x022c                    
+CODE:01fc  120b37    LCALL 0x0b37                  
+CODE:01ff  e0        MOVX A,@DPTR                  
+CODE:0200  b4010b    CJNE A,#0x1,0x020e            
+CODE:0203  300808    JNB 0x08,0x020e               
+CODE:0206  120b25    LCALL 0x0b25                  
+CODE:0209  7401      MOV A,#0x1                    
+CODE:020b  f0        MOVX @DPTR,A                  
+CODE:020c  8017      SJMP 0x0225                   
+LAB_CODE_020e:
+CODE:020e  90ff2c    MOV DPTR,#0xff2c                ; XREF from CODE:0200,CODE:0203
+CODE:0211  e0        MOVX A,@DPTR                  
+CODE:0212  b4020b    CJNE A,#0x2,0x0220            
+CODE:0215  300908    JNB 0x09,0x0220               
+CODE:0218  120b25    LCALL 0x0b25                  
+CODE:021b  7402      MOV A,#0x2                    
+CODE:021d  f0        MOVX @DPTR,A                  
+CODE:021e  8005      SJMP 0x0225                   
+LAB_CODE_0220:
+CODE:0220  120b25    LCALL 0x0b25                    ; XREF from CODE:0212,CODE:0215
+CODE:0223  e4        CLR A                         
+CODE:0224  f0        MOVX @DPTR,A                  
+LAB_CODE_0225:
+CODE:0225  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:020c,CODE:021e
+CODE:0228  7401      MOV A,#0x1                    
+CODE:022a  801b      SJMP 0x0247                   
+LAB_CODE_022c:
+CODE:022c  0202ef    LJMP 0x02ef                     ; XREF from CODE:01f0,CODE:01fa
+LAB_CODE_022f:
+CODE:022f  120b37    LCALL 0x0b37                    ; XREF from CODE:011e
+CODE:0232  120b25    LCALL 0x0b25                  
+CODE:0235  e4        CLR A                         
+CODE:0236  f0        MOVX @DPTR,A                  
+CODE:0237  051e      INC 0x1e                      
+CODE:0239  e51e      MOV A,0x1e                    
+CODE:023b  7002      JNZ 0x023f                    
+CODE:023d  051d      INC 0x1d                      
+LAB_CODE_023f:
+CODE:023f  120b5b    LCALL 0x0b5b                    ; XREF from CODE:023b
+CODE:0242  90ff6b    MOV DPTR,#0xff6b              
+CODE:0245  7402      MOV A,#0x2                    
+LAB_CODE_0247:
+CODE:0247  f0        MOVX @DPTR,A                    ; XREF from CODE:0108,CODE:0174,CODE:022a
+CODE:0248  c20b      CLR 0x0b                      
+CODE:024a  d20c      SETB 0x0c                     
+CODE:024c  22        RET                           
+LAB_CODE_024d:
+CODE:024d  750d05    MOV 0x0d,#0x5                   ; XREF from CODE:012d
+CODE:0250  90ff2a    MOV DPTR,#0xff2a              
+CODE:0253  e0        MOVX A,@DPTR                  
+CODE:0254  f50e      MOV 0x0e,A                    
+CODE:0256  0202e8    LJMP 0x02e8                   
+LAB_CODE_0259:
+CODE:0259  90ff2a    MOV DPTR,#0xff2a                ; XREF from CODE:0139
+CODE:025c  e0        MOVX A,@DPTR                  
+CODE:025d  d3        SETB CY                       
+CODE:025e  9401      SUBB A,#0x1                   
+CODE:0260  4003      JC 0x0265                     
+CODE:0262  0202ef    LJMP 0x02ef                   
+LAB_CODE_0265:
+CODE:0265  90ff2a    MOV DPTR,#0xff2a                ; XREF from CODE:0260
+CODE:0268  e0        MOVX A,@DPTR                  
+CODE:0269  7008      JNZ 0x0273                    
+CODE:026b  c20a      CLR 0x0a                      
+CODE:026d  c20e      CLR 0x0e                      
+CODE:026f  c208      CLR 0x08                      
+CODE:0271  c209      CLR 0x09                      
+LAB_CODE_0273:
+CODE:0273  90ff2a    MOV DPTR,#0xff2a                ; XREF from CODE:0269
+CODE:0276  e0        MOVX A,@DPTR                  
+CODE:0277  b40108    CJNE A,#0x1,0x0282            
+CODE:027a  c20a      CLR 0x0a                      
+CODE:027c  d20e      SETB 0x0e                     
+CODE:027e  c208      CLR 0x08                      
+CODE:0280  c209      CLR 0x09                      
+LAB_CODE_0282:
+CODE:0282  90ff2a    MOV DPTR,#0xff2a                ; XREF from CODE:0277
+CODE:0285  e0        MOVX A,@DPTR                  
+CODE:0286  b40208    CJNE A,#0x2,0x0291            
+CODE:0289  c20a      CLR 0x0a                      
+CODE:028b  d20e      SETB 0x0e                     
+CODE:028d  c208      CLR 0x08                      
+CODE:028f  c209      CLR 0x09                      
+LAB_CODE_0291:
+CODE:0291  750a01    MOV 0x0a,#0x1                   ; XREF from CODE:0286
+CODE:0294  7480      MOV A,#0x80                   
+CODE:0296  120b2e    LCALL 0x0b2e                  
+CODE:0299  804d      SJMP 0x02e8                   
+LAB_CODE_029b:
+CODE:029b  8052      SJMP 0x02ef                     ; XREF from CODE:0127,CODE:0133,CODE:0142
+LAB_CODE_029d:
+CODE:029d  90ff2c    MOV DPTR,#0xff2c                ; XREF from CODE:013f
+CODE:02a0  e0        MOVX A,@DPTR                  
+CODE:02a1  d3        SETB CY                       
+CODE:02a2  9402      SUBB A,#0x2                   
+CODE:02a4  5047      JNC 0x02ed                    
+CODE:02a6  90ff2a    MOV DPTR,#0xff2a              
+CODE:02a9  e0        MOVX A,@DPTR                  
+CODE:02aa  9401      SUBB A,#0x1                   
+CODE:02ac  503f      JNC 0x02ed                    
+CODE:02ae  200a03    JB 0x0a,0x02b4                
+CODE:02b1  300e39    JNB 0x0e,0x02ed               
+LAB_CODE_02b4:
+CODE:02b4  90ff2c    MOV DPTR,#0xff2c                ; XREF from CODE:02ae
+CODE:02b7  e0        MOVX A,@DPTR                  
+CODE:02b8  b4010d    CJNE A,#0x1,0x02c8            
+CODE:02bb  90ff2a    MOV DPTR,#0xff2a              
+CODE:02be  e0        MOVX A,@DPTR                  
+CODE:02bf  24ff      ADD A,#0xff                   
+CODE:02c1  9208      MOV 0x08,CY                   
+CODE:02c3  750a02    MOV 0x0a,#0x2                 
+CODE:02c6  8016      SJMP 0x02de                   
+LAB_CODE_02c8:
+CODE:02c8  90ff2c    MOV DPTR,#0xff2c                ; XREF from CODE:02b8
+CODE:02cb  e0        MOVX A,@DPTR                  
+CODE:02cc  b4020d    CJNE A,#0x2,0x02dc            
+CODE:02cf  90ff2a    MOV DPTR,#0xff2a              
+CODE:02d2  e0        MOVX A,@DPTR                  
+CODE:02d3  24ff      ADD A,#0xff                   
+CODE:02d5  9209      MOV 0x09,CY                   
+CODE:02d7  750a03    MOV 0x0a,#0x3                 
+CODE:02da  8002      SJMP 0x02de                   
+LAB_CODE_02dc:
+CODE:02dc  8011      SJMP 0x02ef                     ; XREF from CODE:02cc
+LAB_CODE_02de:
+CODE:02de  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:02c6,CODE:02da
+CODE:02e1  7480      MOV A,#0x80                   
+CODE:02e3  f0        MOVX @DPTR,A                  
+CODE:02e4  90ffab    MOV DPTR,#0xffab              
+CODE:02e7  f0        MOVX @DPTR,A                  
+LAB_CODE_02e8:
+CODE:02e8  c20b      CLR 0x0b                        ; XREF from CODE:005e,CODE:0156,CODE:0256,CODE:0299
+CODE:02ea  c20c      CLR 0x0c                      
+CODE:02ec  22        RET                           
+LAB_CODE_02ed:
+CODE:02ed  8000      SJMP 0x02ef                     ; XREF from CODE:02a4,CODE:02ac,CODE:02b1
+
+; ======== FUNCTION FUN_CODE_02ef @ CODE:02ef ========
+CODE:02ef  121001    LCALL 0x1001                    ; XREF from CODE:0100,CODE:008e,CODE:0114,CODE:0159,CODE:0124,CODE:029b,CODE:012a,CODE:01e3
+CODE:02f2  22        RET                           
+
+; ======== FUNCTION FUN_CODE_02f3 @ CODE:02f3 ========
+CODE:02f3  e50a      MOV A,0x0a                      ; XREF from CODE:0a84,CODE:0aa3,CODE:0ab4
+CODE:02f5  14        DEC A                         
+CODE:02f6  b40e00    CJNE A,#0xe,0x02f9            
+LAB_CODE_02f9:
+CODE:02f9  4003      JC 0x02fe                       ; XREF from CODE:02f6
+CODE:02fb  020563    LJMP 0x0563                   
+LAB_CODE_02fe:
+CODE:02fe  90030c    MOV DPTR,#0x30c                 ; XREF from CODE:02f9
+CODE:0301  75f003    MOV B,#0x3                    
+CODE:0304  a4        MUL AB                        
+CODE:0305  c583      XCH A,DPH                     
+CODE:0307  25f0      ADD A,B                       
+CODE:0309  c583      XCH A,DPH                     
+CODE:030b  73        JMP @A+DPTR                   
+CODE:030c  020336    LJMP 0x0336                   
+CODE:030f  02038a    LJMP 0x038a                   
+CODE:0312  0203fd    LJMP 0x03fd                   
+CODE:0315  02045a    LJMP 0x045a                   
+CODE:0318  020469    LJMP 0x0469                   
+CODE:031b  020478    LJMP 0x0478                   
+CODE:031e  02047d    LJMP 0x047d                   
+CODE:0321  02049f    LJMP 0x049f                   
+CODE:0324  0204c0    LJMP 0x04c0                   
+CODE:0327  0204c4    LJMP 0x04c4                   
+CODE:032a  0204c8    LJMP 0x04c8                   
+CODE:032d  020478    LJMP 0x0478                   
+CODE:0330  020517    LJMP 0x0517                   
+CODE:0333  020525    LJMP 0x0525                   
+LAB_CODE_0336:
+CODE:0336  120ff2    LCALL 0x0ff2                    ; XREF from CODE:030c
+CODE:0339  90ffee    MOV DPTR,#0xffee              
+CODE:033c  e0        MOVX A,@DPTR                  
+CODE:033d  547f      ANL A,#0x7f                   
+CODE:033f  f0        MOVX @DPTR,A                  
+CODE:0340  90ffb1    MOV DPTR,#0xffb1              
+CODE:0343  e0        MOVX A,@DPTR                  
+CODE:0344  54fe      ANL A,#0xfe                   
+CODE:0346  f0        MOVX @DPTR,A                  
+CODE:0347  200a03    JB 0x0a,0x034d                
+CODE:034a  300e1f    JNB 0x0e,0x036c               
+LAB_CODE_034d:
+CODE:034d  20081c    JB 0x08,0x036c                  ; XREF from CODE:0347
+CODE:0350  200919    JB 0x09,0x036c                
+CODE:0353  300a05    JNB 0x0a,0x035b               
+CODE:0356  74ac      MOV A,#0xac                   
+CODE:0358  120fe2    LCALL 0x0fe2                  
+LAB_CODE_035b:
+CODE:035b  300e05    JNB 0x0e,0x0363                 ; XREF from CODE:0353
+CODE:035e  74a8      MOV A,#0xa8                   
+CODE:0360  120fe2    LCALL 0x0fe2                  
+LAB_CODE_0363:
+CODE:0363  202e21    JB 0x2e,0x0387                  ; XREF from CODE:035b
+CODE:0366  1209b6    LCALL 0x09b6                  
+CODE:0369  02044e    LJMP 0x044e                   
+LAB_CODE_036c:
+CODE:036c  200a03    JB 0x0a,0x0372                  ; XREF from CODE:034a,CODE:034d,CODE:0350
+CODE:036f  300e06    JNB 0x0e,0x0378               
+LAB_CODE_0372:
+CODE:0372  7e00      MOV R6,#0x0                     ; XREF from CODE:036c
+CODE:0374  7f01      MOV R7,#0x1                   
+CODE:0376  8004      SJMP 0x037c                   
+LAB_CODE_0378:
+CODE:0378  7e00      MOV R6,#0x0                     ; XREF from CODE:036f
+CODE:037a  7f00      MOV R7,#0x0                   
+LAB_CODE_037c:
+CODE:037c  ef        MOV A,R7                        ; XREF from CODE:0376
+CODE:037d  6401      XRL A,#0x1                    
+CODE:037f  4e        ORL A,R6                      
+CODE:0380  6005      JZ 0x0387                     
+CODE:0382  c22e      CLR 0x2e                      
+CODE:0384  120e56    LCALL 0x0e56                  
+LAB_CODE_0387:
+CODE:0387  02044e    LJMP 0x044e                     ; XREF from CODE:0363,CODE:0380
+LAB_CODE_038a:
+CODE:038a  200a03    JB 0x0a,0x0390                  ; XREF from CODE:030f
+CODE:038d  300e4a    JNB 0x0e,0x03da               
+LAB_CODE_0390:
+CODE:0390  300847    JNB 0x08,0x03da                 ; XREF from CODE:038a
+CODE:0393  202e03    JB 0x2e,0x0399                
+CODE:0396  1209b6    LCALL 0x09b6                  
+LAB_CODE_0399:
+CODE:0399  c22d      CLR 0x2d                        ; XREF from CODE:0393
+CODE:039b  7522ff    MOV 0x22,#0xff                
+CODE:039e  c210      CLR 0x10                      
+CODE:03a0  c213      CLR 0x13                      
+CODE:03a2  c21e      CLR 0x1e                      
+CODE:03a4  c217      CLR 0x17                      
+CODE:03a6  120efc    LCALL 0x0efc                  
+CODE:03a9  c228      CLR 0x28                      
+CODE:03ab  c229      CLR 0x29                      
+CODE:03ad  c22a      CLR 0x2a                      
+CODE:03af  c22b      CLR 0x2b                      
+CODE:03b1  c22c      CLR 0x2c                      
+CODE:03b3  120e56    LCALL 0x0e56                  
+CODE:03b6  90ff60    MOV DPTR,#0xff60              
+CODE:03b9  74c5      MOV A,#0xc5                   
+CODE:03bb  f0        MOVX @DPTR,A                  
+CODE:03bc  7f03      MOV R7,#0x3                   
+CODE:03be  12070f    LCALL 0x070f                  
+CODE:03c1  90ffee    MOV DPTR,#0xffee              
+CODE:03c4  e0        MOVX A,@DPTR                  
+CODE:03c5  4480      ORL A,#0x80                   
+CODE:03c7  f0        MOVX @DPTR,A                  
+CODE:03c8  300e2a    JNB 0x0e,0x03f5               
+CODE:03cb  90ff98    MOV DPTR,#0xff98              
+CODE:03ce  74c5      MOV A,#0xc5                   
+CODE:03d0  f0        MOVX @DPTR,A                  
+CODE:03d1  90ffe8    MOV DPTR,#0xffe8              
+CODE:03d4  e0        MOVX A,@DPTR                  
+CODE:03d5  4480      ORL A,#0x80                   
+CODE:03d7  f0        MOVX @DPTR,A                  
+CODE:03d8  801b      SJMP 0x03f5                   
+LAB_CODE_03da:
+CODE:03da  200a03    JB 0x0a,0x03e0                  ; XREF from CODE:038d,CODE:0390
+CODE:03dd  300e15    JNB 0x0e,0x03f5               
+LAB_CODE_03e0:
+CODE:03e0  200812    JB 0x08,0x03f5                  ; XREF from CODE:03da
+CODE:03e3  90ffee    MOV DPTR,#0xffee              
+CODE:03e6  e0        MOVX A,@DPTR                  
+CODE:03e7  547f      ANL A,#0x7f                   
+CODE:03e9  f0        MOVX @DPTR,A                  
+CODE:03ea  d217      SETB 0x17                     
+CODE:03ec  120efc    LCALL 0x0efc                  
+CODE:03ef  300e03    JNB 0x0e,0x03f5               
+CODE:03f2  120ff2    LCALL 0x0ff2                  
+LAB_CODE_03f5:
+CODE:03f5  90fffd    MOV DPTR,#0xfffd                ; XREF from CODE:03c8,CODE:03d8,CODE:03dd,CODE:03e0,CODE:03ef
+CODE:03f8  74ff      MOV A,#0xff                   
+CODE:03fa  f0        MOVX @DPTR,A                  
+CODE:03fb  8051      SJMP 0x044e                   
+LAB_CODE_03fd:
+CODE:03fd  300e04    JNB 0x0e,0x0404                 ; XREF from CODE:0312
+CODE:0400  7f01      MOV R7,#0x1                   
+CODE:0402  8002      SJMP 0x0406                   
+LAB_CODE_0404:
+CODE:0404  7f00      MOV R7,#0x0                     ; XREF from CODE:03fd
+LAB_CODE_0406:
+CODE:0406  300a04    JNB 0x0a,0x040d                 ; XREF from CODE:0402
+CODE:0409  7e01      MOV R6,#0x1                   
+CODE:040b  8002      SJMP 0x040f                   
+LAB_CODE_040d:
+CODE:040d  7e00      MOV R6,#0x0                     ; XREF from CODE:0406
+LAB_CODE_040f:
+CODE:040f  ee        MOV A,R6                        ; XREF from CODE:040b
+CODE:0410  4f        ORL A,R7                      
+CODE:0411  601f      JZ 0x0432                     
+CODE:0413  30091c    JNB 0x09,0x0432               
+CODE:0416  202e03    JB 0x2e,0x041c                
+CODE:0419  1209b6    LCALL 0x09b6                  
+LAB_CODE_041c:
+CODE:041c  c22d      CLR 0x2d                        ; XREF from CODE:0416
+CODE:041e  90ff98    MOV DPTR,#0xff98              
+CODE:0421  74c5      MOV A,#0xc5                   
+CODE:0423  f0        MOVX @DPTR,A                  
+CODE:0424  7f03      MOV R7,#0x3                   
+CODE:0426  12070f    LCALL 0x070f                  
+CODE:0429  90ffe8    MOV DPTR,#0xffe8              
+CODE:042c  e0        MOVX A,@DPTR                  
+CODE:042d  4480      ORL A,#0x80                   
+CODE:042f  f0        MOVX @DPTR,A                  
+CODE:0430  801c      SJMP 0x044e                   
+LAB_CODE_0432:
+CODE:0432  300e04    JNB 0x0e,0x0439                 ; XREF from CODE:0411,CODE:0413
+CODE:0435  7f01      MOV R7,#0x1                   
+CODE:0437  8002      SJMP 0x043b                   
+LAB_CODE_0439:
+CODE:0439  7f00      MOV R7,#0x0                     ; XREF from CODE:0432
+LAB_CODE_043b:
+CODE:043b  300a04    JNB 0x0a,0x0442                 ; XREF from CODE:0437
+CODE:043e  7e01      MOV R6,#0x1                   
+CODE:0440  8002      SJMP 0x0444                   
+LAB_CODE_0442:
+CODE:0442  7e00      MOV R6,#0x0                     ; XREF from CODE:043b
+LAB_CODE_0444:
+CODE:0444  ee        MOV A,R6                        ; XREF from CODE:0440
+CODE:0445  4f        ORL A,R7                      
+CODE:0446  6006      JZ 0x044e                     
+CODE:0448  200903    JB 0x09,0x044e                
+CODE:044b  120ff2    LCALL 0x0ff2                  
+LAB_CODE_044e:
+CODE:044e  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:0369,CODE:0387,CODE:03fb,CODE:0430,CODE:0446,CODE:0448
+CODE:0451  e4        CLR A                         
+CODE:0452  f0        MOVX @DPTR,A                  
+CODE:0453  90ffab    MOV DPTR,#0xffab              
+CODE:0456  f0        MOVX @DPTR,A                  
+CODE:0457  020563    LJMP 0x0563                   
+LAB_CODE_045a:
+CODE:045a  c22c      CLR 0x2c                        ; XREF from CODE:0315
+CODE:045c  d216      SETB 0x16                     
+CODE:045e  120e56    LCALL 0x0e56                  
+CODE:0461  120efc    LCALL 0x0efc                  
+CODE:0464  af08      MOV R7,0x08                   
+CODE:0466  020512    LJMP 0x0512                   
+LAB_CODE_0469:
+CODE:0469  d22c      SETB 0x2c                       ; XREF from CODE:0318
+CODE:046b  c216      CLR 0x16                      
+CODE:046d  120e56    LCALL 0x0e56                  
+CODE:0470  120efc    LCALL 0x0efc                  
+CODE:0473  7f01      MOV R7,#0x1                   
+CODE:0475  020512    LJMP 0x0512                   
+LAB_CODE_0478:
+CODE:0478  7f01      MOV R7,#0x1                     ; XREF from CODE:031b,CODE:032d
+CODE:047a  020512    LJMP 0x0512                   
+LAB_CODE_047d:
+CODE:047d  7f02      MOV R7,#0x2                     ; XREF from CODE:031e
+CODE:047f  12070f    LCALL 0x070f                  
+CODE:0482  302c09    JNB 0x2c,0x048e               
+CODE:0485  120567    LCALL 0x0567                  
+CODE:0488  120ffa    LCALL 0x0ffa                  
+CODE:048b  020509    LJMP 0x0509                   
+LAB_CODE_048e:
+CODE:048e  752c23    MOV 0x2c,#0x23                  ; XREF from CODE:0482
+CODE:0491  e4        CLR A                         
+CODE:0492  f52d      MOV 0x2d,A                    
+CODE:0494  120575    LCALL 0x0575                  
+CODE:0497  752c24    MOV 0x2c,#0x24                
+CODE:049a  752d80    MOV 0x2d,#0x80                
+CODE:049d  806a      SJMP 0x0509                   
+LAB_CODE_049f:
+CODE:049f  7f03      MOV R7,#0x3                     ; XREF from CODE:0321
+CODE:04a1  12070f    LCALL 0x070f                  
+CODE:04a4  302c08    JNB 0x2c,0x04af               
+CODE:04a7  120567    LCALL 0x0567                  
+CODE:04aa  120ffa    LCALL 0x0ffa                  
+CODE:04ad  800f      SJMP 0x04be                   
+LAB_CODE_04af:
+CODE:04af  752c23    MOV 0x2c,#0x23                  ; XREF from CODE:04a4
+CODE:04b2  752d40    MOV 0x2d,#0x40                
+CODE:04b5  120575    LCALL 0x0575                  
+CODE:04b8  752c24    MOV 0x2c,#0x24                
+CODE:04bb  752d80    MOV 0x2d,#0x80                
+LAB_CODE_04be:
+CODE:04be  8049      SJMP 0x0509                     ; XREF from CODE:04ad
+LAB_CODE_04c0:
+CODE:04c0  7f04      MOV R7,#0x4                     ; XREF from CODE:0324
+CODE:04c2  804e      SJMP 0x0512                   
+LAB_CODE_04c4:
+CODE:04c4  7f05      MOV R7,#0x5                     ; XREF from CODE:0327
+CODE:04c6  804a      SJMP 0x0512                   
+LAB_CODE_04c8:
+CODE:04c8  202e03    JB 0x2e,0x04ce                  ; XREF from CODE:032a
+CODE:04cb  1209b6    LCALL 0x09b6                  
+LAB_CODE_04ce:
+CODE:04ce  d22d      SETB 0x2d                       ; XREF from CODE:04c8
+CODE:04d0  7f03      MOV R7,#0x3                   
+CODE:04d2  12070f    LCALL 0x070f                  
+CODE:04d5  752c04    MOV 0x2c,#0x4                 
+CODE:04d8  752d41    MOV 0x2d,#0x41                
+CODE:04db  ad2d      MOV R5,0x2d                   
+CODE:04dd  af2c      MOV R7,0x2c                   
+CODE:04df  120c31    LCALL 0x0c31                  
+CODE:04e2  7dff      MOV R5,#0xff                  
+CODE:04e4  7f1f      MOV R7,#0x1f                  
+CODE:04e6  120d11    LCALL 0x0d11                  
+CODE:04e9  8f2c      MOV 0x2c,R7                   
+CODE:04eb  632cff    XRL 0x2c,#0xff                
+CODE:04ee  ab2c      MOV R3,0x2c                   
+CODE:04f0  7f1f      MOV R7,#0x1f                  
+CODE:04f2  120bda    LCALL 0x0bda                  
+CODE:04f5  7dff      MOV R5,#0xff                  
+CODE:04f7  120d11    LCALL 0x0d11                  
+CODE:04fa  8f2d      MOV 0x2d,R7                   
+CODE:04fc  e52d      MOV A,0x2d                    
+CODE:04fe  b52c02    CJNE A,0x2c,0x0503            
+CODE:0501  c216      CLR 0x16                      
+LAB_CODE_0503:
+CODE:0503  120efc    LCALL 0x0efc                    ; XREF from CODE:04fe
+CODE:0506  120ffa    LCALL 0x0ffa                  
+LAB_CODE_0509:
+CODE:0509  ad2d      MOV R5,0x2d                     ; XREF from CODE:048b,CODE:049d,CODE:04be
+CODE:050b  af2c      MOV R7,0x2c                   
+CODE:050d  120c31    LCALL 0x0c31                  
+CODE:0510  8051      SJMP 0x0563                   
+LAB_CODE_0512:
+CODE:0512  12070f    LCALL 0x070f                    ; XREF from CODE:0466,CODE:0475,CODE:047a,CODE:04c2,CODE:04c6
+CODE:0515  804c      SJMP 0x0563                   
+LAB_CODE_0517:
+CODE:0517  e4        CLR A                           ; XREF from CODE:0330
+CODE:0518  fb        MOV R3,A                      
+CODE:0519  fd        MOV R5,A                      
+CODE:051a  ff        MOV R7,A                      
+CODE:051b  120bda    LCALL 0x0bda                  
+CODE:051e  90ffab    MOV DPTR,#0xffab              
+CODE:0521  e4        CLR A                         
+CODE:0522  f0        MOVX @DPTR,A                  
+CODE:0523  803e      SJMP 0x0563                   
+LAB_CODE_0525:
+CODE:0525  a20e      MOV CY,0x0e                     ; XREF from CODE:0333
+CODE:0527  720a      ORL CY,0x0a                   
+CODE:0529  5038      JNC 0x0563                    
+CODE:052b  90ffe1    MOV DPTR,#0xffe1              
+CODE:052e  e0        MOVX A,@DPTR                  
+CODE:052f  543f      ANL A,#0x3f                   
+CODE:0531  f0        MOVX @DPTR,A                  
+CODE:0532  e4        CLR A                         
+CODE:0533  f525      MOV 0x25,A                    
+CODE:0535  f523      MOV 0x23,A                    
+CODE:0537  120e56    LCALL 0x0e56                  
+CODE:053a  7522ff    MOV 0x22,#0xff                
+CODE:053d  c21e      CLR 0x1e                      
+CODE:053f  120efc    LCALL 0x0efc                  
+CODE:0542  438701    ORL 0x87,#0x1                 
+CODE:0545  90fffc    MOV DPTR,#0xfffc              
+CODE:0548  e0        MOVX A,@DPTR                  
+CODE:0549  547f      ANL A,#0x7f                   
+CODE:054b  f0        MOVX @DPTR,A                  
+CODE:054c  a3        INC DPTR                      
+CODE:054d  749f      MOV A,#0x9f                   
+CODE:054f  f0        MOVX @DPTR,A                  
+CODE:0550  1207ec    LCALL 0x07ec                  
+CODE:0553  120891    LCALL 0x0891                  
+CODE:0556  d28c      SETB 0x8c                     
+CODE:0558  d2a8      SETB 0xa8                     
+CODE:055a  d2af      SETB 0xaf                     
+CODE:055c  90fffc    MOV DPTR,#0xfffc              
+CODE:055f  e0        MOVX A,@DPTR                  
+CODE:0560  4480      ORL A,#0x80                   
+CODE:0562  f0        MOVX @DPTR,A                  
+LAB_CODE_0563:
+CODE:0563  e4        CLR A                           ; XREF from CODE:02fb,CODE:0457,CODE:0515,CODE:0510,CODE:0523,CODE:0529
+CODE:0564  f50a      MOV 0x0a,A                    
+CODE:0566  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0567 @ CODE:0567 ========
+CODE:0567  752c04    MOV 0x2c,#0x4                   ; XREF from CODE:0485,CODE:04a7
+CODE:056a  752d41    MOV 0x2d,#0x41                
+CODE:056d  ad2d      MOV R5,0x2d                   
+CODE:056f  af2c      MOV R7,0x2c                   
+CODE:0571  120c31    LCALL 0x0c31                  
+CODE:0574  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0575 @ CODE:0575 ========
+CODE:0575  ad2d      MOV R5,0x2d                     ; XREF from CODE:0494,CODE:04b5
+CODE:0577  af2c      MOV R7,0x2c                   
+CODE:0579  120c31    LCALL 0x0c31                  
+CODE:057c  22        RET                           
+CODE:057d  120110    LCALL 0x0110                  
+CODE:0580  0100      AJMP 0x0000                   
+CODE:0584  08        INC R0                        
+CODE:0585  ba0d00    CJNE R2,#0xd,0x0588           
+LAB_CODE_0588:
+CODE:0588  102200    JBC 0x22,0x058b                 ; XREF from CODE:0585,CODE:0596
+LAB_CODE_058b:
+CODE:058b  0102      AJMP 0x0002                     ; XREF from CODE:0588
+CODE:058e  0109      AJMP 0x0009                   
+CODE:0590  02c800    LJMP 0xc800                   
+CODE:0593  03        RR A                          
+CODE:0594  0100      AJMP 0x0000                   
+CODE:0596  80f0      SJMP 0x0588                   
+CODE:0598  09        INC R1                        
+CODE:0599  04        INC A                         
+CODE:059a  00        NOP                           
+CODE:059b  00        NOP                           
+CODE:059c  00        NOP                           
+CODE:059d  0101      AJMP 0x0001                   
+CODE:05a1  0a        INC R2                        
+CODE:05a2  2401      ADD A,#0x1                    
+CODE:05a4  00        NOP                           
+CODE:05a5  0148      AJMP 0x0048                   
+CODE:05a8  020102    LJMP 0x0102                   
+CODE:05ab  0c        INC R4                        
+CODE:05ac  2402      ADD A,#0x2                    
+CODE:05ae  0101      AJMP 0x0001                   
+CODE:05b0  0105      AJMP 0x0005                   
+CODE:05b2  020300    LJMP 0x0300                   
+CODE:05b7  0c        INC R4                        
+CODE:05b8  2402      ADD A,#0x2                    
+CODE:05ba  020106    LJMP 0x0106                   
+CODE:05bd  03        RR A                          
+CODE:05be  020300    LJMP 0x0300                   
+CODE:05c3  0c        INC R4                        
+CODE:05c4  2402      ADD A,#0x2                    
+CODE:05c6  06        INC @R0                       
+CODE:05c7  0506      INC 0x06                      
+CODE:05c9  00        NOP                           
+LAB_CODE_05ca:
+CODE:05ca  020300    LJMP 0x0300                     ; XREF from CODE:060d
+CODE:05cf  09        INC R1                        
+CODE:05d0  2403      ADD A,#0x3                    
+CODE:05d2  03        RR A                          
+CODE:05d3  03        RR A                          
+CODE:05d4  06        INC @R0                       
+CODE:05d5  020100    LJMP 0x0100                   
+CODE:05d8  09        INC R1                        
+CODE:05d9  2403      ADD A,#0x3                    
+CODE:05db  04        INC A                         
+CODE:05dc  0101      AJMP 0x0001                   
+CODE:05de  0105      AJMP 0x0005                   
+CODE:05e1  08        INC R0                        
+CODE:05e2  2405      ADD A,#0x5                    
+CODE:05e4  0502      INC 0x02                      
+CODE:05e6  020600    LJMP 0x0600                   
+CODE:05e9  09        INC R1                        
+CODE:05ea  04        INC A                         
+CODE:05eb  0100      AJMP 0x0000                   
+CODE:05ee  0102      AJMP 0x0002                   
+CODE:05f2  09        INC R1                        
+CODE:05f3  04        INC A                         
+CODE:05f4  0101      AJMP 0x0001                   
+CODE:05f6  0101      AJMP 0x0001                   
+CODE:05f8  020000    LJMP 0x0000                   
+CODE:05fb  07        INC @R1                       
+CODE:05fc  2401      ADD A,#0x1                    
+CODE:05fe  09        INC R1                        
+LAB_CODE_0600:
+CODE:0600  0100      AJMP 0x0000                     ; XREF from CODE:05e6
+CODE:0602  0e        INC R6                        
+CODE:0603  2402      ADD A,#0x2                    
+CODE:0605  0102      AJMP 0x0002                   
+CODE:0607  03        RR A                          
+CODE:0608  18        DEC R0                        
+CODE:0609  0244ac    LJMP 0x44ac                   
+CODE:060d  80bb      SJMP 0x05ca                   
+CODE:0610  09        INC R1                        
+CODE:0611  0581      INC 0x81                      
+CODE:0613  0530      INC 0x30                      
+CODE:0615  0101      AJMP 0x0001                   
+CODE:0619  07        INC @R1                       
+CODE:061a  2501      ADD A,0x01                    
+CODE:061c  0101      AJMP 0x0001                   
+CODE:061f  020904    LJMP 0x0904                   
+CODE:0622  020000    LJMP 0x0000                   
+CODE:0625  0102      AJMP 0x0002                   
+CODE:0629  09        INC R1                        
+CODE:062a  04        INC A                         
+CODE:062b  020101    LJMP 0x0101                   
+CODE:062e  0102      AJMP 0x0002                   
+CODE:0632  07        INC @R1                       
+CODE:0633  2401      ADD A,#0x1                    
+CODE:0635  08        INC R0                        
+CODE:0636  0101      AJMP 0x0001                   
+CODE:0639  0e        INC R6                        
+CODE:063a  2402      ADD A,#0x2                    
+CODE:063c  0102      AJMP 0x0002                   
+CODE:063e  03        RR A                          
+CODE:063f  18        DEC R0                        
+CODE:0640  0244ac    LJMP 0x44ac                   
+CODE:0644  80bb      SJMP 0x0601                   
+CODE:0647  09        INC R1                        
+CODE:0648  0502      INC 0x02                      
+CODE:064a  0530      INC 0x30                      
+CODE:064c  0101      AJMP 0x0001                   
+LAB_CODE_0650:
+CODE:0650  07        INC @R1                         ; XREF from CODE:065e
+CODE:0651  2501      ADD A,0x01                    
+CODE:0653  0101      AJMP 0x0001                   
+CODE:0656  020902    LJMP 0x0902                   
+CODE:0659  36        ADDC A,@R0                    
+CODE:065a  00        NOP                           
+CODE:065b  020100    LJMP 0x0100                   
+CODE:065e  80f0      SJMP 0x0650                   
+CODE:0660  09        INC R1                        
+CODE:0661  04        INC A                         
+CODE:0662  00        NOP                           
+CODE:0663  00        NOP                           
+CODE:0664  00        NOP                           
+CODE:0665  ff        MOV R7,A                      
+CODE:0666  00        NOP                           
+CODE:0667  00        NOP                           
+CODE:0668  00        NOP                           
+CODE:0669  09        INC R1                        
+CODE:066a  04        INC A                         
+CODE:066b  0100      AJMP 0x0000                   
+CODE:0672  09        INC R1                        
+CODE:0673  04        INC A                         
+CODE:0674  0101      AJMP 0x0001                   
+CODE:0676  02ff00    LJMP 0xff00                   
+CODE:067b  09        INC R1                        
+CODE:067c  0581      INC 0x81                      
+CODE:067e  0530      INC 0x30                      
+CODE:0680  0101      AJMP 0x0001                   
+CODE:0684  09        INC R1                        
+CODE:0685  0502      INC 0x02                      
+CODE:0687  0530      INC 0x30                      
+CODE:0689  0101      AJMP 0x0001                   
+CODE:068d  04        INC A                         
+CODE:068e  03        RR A                          
+CODE:068f  09        INC R1                        
+CODE:0690  04        INC A                         
+CODE:0691  1e        DEC R6                        
+CODE:0692  03        RR A                          
+CODE:0693  4400      ORL A,#0x0                    
+CODE:0695  69        XRL A,R1                      
+CODE:0696  00        NOP                           
+CODE:0697  67        XRL A,@R1                     
+CODE:0698  00        NOP                           
+CODE:0699  69        XRL A,R1                      
+CODE:069a  00        NOP                           
+CODE:069b  6400      XRL A,#0x0                    
+CODE:069d  6500      XRL A,0x00                    
+CODE:069f  73        JMP @A+DPTR                   
+CODE:06a1  69        XRL A,R1                      
+CODE:06a2  00        NOP                           
+CODE:06a3  67        XRL A,@R1                     
+CODE:06a4  00        NOP                           
+CODE:06a5  6e        XRL A,R6                      
+CODE:06a6  00        NOP                           
+CODE:06a7  200049    JB 0x00,0x06f3                
+CODE:06aa  00        NOP                           
+CODE:06ab  6e        XRL A,R6                      
+CODE:06ac  00        NOP                           
+CODE:06ad  630060    XRL 0x00,#0x60                
+CODE:06b0  03        RR A                          
+CODE:06b1  4d        ORL A,R5                      
+CODE:06b2  00        NOP                           
+CODE:06b3  6200      XRL 0x00,A                    
+CODE:06b5  6f        XRL A,R7                      
+CODE:06b6  00        NOP                           
+CODE:06b7  7800      MOV R0,#0x0                   
+CODE:06b9  200055    JB 0x00,0x0711                
+CODE:06bc  00        NOP                           
+CODE:06bd  530042    ANL 0x00,#0x42                
+CODE:06c0  00        NOP                           
+CODE:06c1  200041    JB 0x00,0x0705                
+CODE:06c4  00        NOP                           
+CODE:06c5  750064    MOV 0x00,#0x64                
+CODE:06c8  00        NOP                           
+CODE:06c9  69        XRL A,R1                      
+CODE:06ca  00        NOP                           
+CODE:06cb  6f        XRL A,R7                      
+CODE:06cc  00        NOP                           
+CODE:06cd  200044    JB 0x00,0x0714                
+CODE:06d0  00        NOP                           
+CODE:06d1  6500      XRL A,0x00                    
+CODE:06d3  7600      MOV @R0,#0x0                  
+CODE:06d5  69        XRL A,R1                      
+CODE:06d6  00        NOP                           
+CODE:06d7  630065    XRL 0x00,#0x65                
+CODE:06da  00        NOP                           
+CODE:06db  200063    JB 0x00,0x0741                
+CODE:06de  00        NOP                           
+CODE:06df  6f        XRL A,R7                      
+CODE:06e0  00        NOP                           
+CODE:06e1  7000      JNZ 0x06e3                    
+LAB_CODE_06e3:
+CODE:06e3  7900      MOV R1,#0x0                     ; XREF from CODE:06e1
+CODE:06e5  7200      ORL CY,0x00                   
+CODE:06e7  69        XRL A,R1                      
+CODE:06e8  00        NOP                           
+CODE:06e9  67        XRL A,@R1                     
+CODE:06ea  00        NOP                           
+CODE:06eb  68        XRL A,R0                      
+CODE:06ec  00        NOP                           
+CODE:06ed  7400      MOV A,#0x0                    
+CODE:06ef  200044    JB 0x00,0x0736                
+CODE:06f2  00        NOP                           
+LAB_CODE_06f3:
+CODE:06f3  69        XRL A,R1                        ; XREF from CODE:06a7
+CODE:06f4  00        NOP                           
+CODE:06f5  67        XRL A,@R1                     
+CODE:06f6  00        NOP                           
+CODE:06f7  69        XRL A,R1                      
+CODE:06f8  00        NOP                           
+CODE:06f9  6400      XRL A,#0x0                    
+CODE:06fb  6500      XRL A,0x00                    
+CODE:06fd  73        JMP @A+DPTR                   
+CODE:06ff  69        XRL A,R1                      
+CODE:0700  00        NOP                           
+CODE:0701  67        XRL A,@R1                     
+CODE:0702  00        NOP                           
+CODE:0703  6e        XRL A,R6                      
+CODE:0704  00        NOP                           
+LAB_CODE_0705:
+CODE:0705  200032    JB 0x00,0x073a                  ; XREF from CODE:06c1
+CODE:0708  00        NOP                           
+CODE:0709  300030    JNB 0x00,0x073c               
+CODE:070c  00        NOP                           
+CODE:070d  3100      ACALL 0x0100                  
+
+; ======== FUNCTION FUN_CODE_070f @ CODE:070f ========
+CODE:070f  8f2e      MOV 0x2e,R7                     ; XREF from CODE:03be,CODE:0426,CODE:0512,CODE:047f,CODE:04a1,CODE:04d2
+LAB_CODE_0711:
+CODE:0711  e4        CLR A                           ; XREF from CODE:06b9
+CODE:0712  f52f      MOV 0x2f,A                    
+LAB_CODE_0714:
+CODE:0714  f530      MOV 0x30,A                      ; XREF from CODE:06cd
+CODE:0716  c21a      CLR 0x1a                      
+CODE:0718  c21b      CLR 0x1b                      
+CODE:071a  120e56    LCALL 0x0e56                  
+CODE:071d  90ffe2    MOV DPTR,#0xffe2              
+CODE:0720  120ef4    LCALL 0x0ef4                  
+CODE:0723  e52e      MOV A,0x2e                    
+CODE:0725  24fe      ADD A,#0xfe                   
+CODE:0727  601d      JZ 0x0746                     
+CODE:0729  14        DEC A                         
+CODE:072a  6043      JZ 0x076f                     
+CODE:072c  24fe      ADD A,#0xfe                   
+CODE:072e  6047      JZ 0x0777                     
+CODE:0730  2404      ADD A,#0x4                    
+CODE:0732  7072      JNZ 0x07a6                    
+CODE:0734  90ffe1    MOV DPTR,#0xffe1              
+CODE:0737  740d      MOV A,#0xd                    
+CODE:0739  f0        MOVX @DPTR,A                  
+LAB_CODE_073a:
+CODE:073a  750801    MOV 0x08,#0x1                   ; XREF from CODE:0705
+CODE:073d  753104    MOV 0x31,#0x4                 
+CODE:0740  753241    MOV 0x32,#0x41                
+CODE:0743  0207a6    LJMP 0x07a6                   
+LAB_CODE_0746:
+CODE:0746  90ffe6    MOV DPTR,#0xffe6                ; XREF from CODE:0727
+CODE:0749  744b      MOV A,#0x4b                   
+CODE:074b  f0        MOVX @DPTR,A                  
+CODE:074c  90ffe5    MOV DPTR,#0xffe5              
+CODE:074f  746a      MOV A,#0x6a                   
+CODE:0751  f0        MOVX @DPTR,A                  
+CODE:0752  90ffe7    MOV DPTR,#0xffe7              
+CODE:0755  7420      MOV A,#0x20                   
+CODE:0757  f0        MOVX @DPTR,A                  
+CODE:0758  90fff8    MOV DPTR,#0xfff8              
+CODE:075b  744b      MOV A,#0x4b                   
+CODE:075d  f0        MOVX @DPTR,A                  
+CODE:075e  90fff7    MOV DPTR,#0xfff7              
+CODE:0761  746a      MOV A,#0x6a                   
+CODE:0763  f0        MOVX @DPTR,A                  
+CODE:0764  7420      MOV A,#0x20                   
+CODE:0766  120ee8    LCALL 0x0ee8                  
+CODE:0769  750802    MOV 0x08,#0x2                 
+CODE:076c  0207a0    LJMP 0x07a0                   
+LAB_CODE_076f:
+CODE:076f  120ec8    LCALL 0x0ec8                    ; XREF from CODE:072a
+CODE:0772  750803    MOV 0x08,#0x3                 
+CODE:0775  8029      SJMP 0x07a0                   
+LAB_CODE_0777:
+CODE:0777  90ffb1    MOV DPTR,#0xffb1                ; XREF from CODE:072e
+CODE:077a  e0        MOVX A,@DPTR                  
+CODE:077b  54fe      ANL A,#0xfe                   
+CODE:077d  f0        MOVX @DPTR,A                  
+CODE:077e  90ffd4    MOV DPTR,#0xffd4              
+CODE:0781  7401      MOV A,#0x1                    
+CODE:0783  f0        MOVX @DPTR,A                  
+CODE:0784  90ffb1    MOV DPTR,#0xffb1              
+CODE:0787  e0        MOVX A,@DPTR                  
+CODE:0788  4401      ORL A,#0x1                    
+CODE:078a  120ec7    LCALL 0x0ec7                  
+CODE:078d  a3        INC DPTR                      
+CODE:078e  e4        CLR A                         
+CODE:078f  f0        MOVX @DPTR,A                  
+CODE:0790  90fff6    MOV DPTR,#0xfff6              
+CODE:0793  7410      MOV A,#0x10                   
+CODE:0795  f0        MOVX @DPTR,A                  
+CODE:0796  d218      SETB 0x18                     
+CODE:0798  d219      SETB 0x19                     
+CODE:079a  120e56    LCALL 0x0e56                  
+CODE:079d  750805    MOV 0x08,#0x5                 
+LAB_CODE_07a0:
+CODE:07a0  753104    MOV 0x31,#0x4                   ; XREF from CODE:076c,CODE:0775
+CODE:07a3  753240    MOV 0x32,#0x40                
+LAB_CODE_07a6:
+CODE:07a6  ad32      MOV R5,0x32                     ; XREF from CODE:0732,CODE:0743
+CODE:07a8  af31      MOV R7,0x31                   
+CODE:07aa  120c31    LCALL 0x0c31                  
+CODE:07ad  90ffe1    MOV DPTR,#0xffe1              
+CODE:07b0  e0        MOVX A,@DPTR                  
+CODE:07b1  44c0      ORL A,#0xc0                   
+CODE:07b3  f0        MOVX @DPTR,A                  
+CODE:07b4  90ff63    MOV DPTR,#0xff63              
+CODE:07b7  e4        CLR A                         
+CODE:07b8  f0        MOVX @DPTR,A                  
+CODE:07b9  90ff67    MOV DPTR,#0xff67              
+CODE:07bc  f0        MOVX @DPTR,A                  
+CODE:07bd  90ff9b    MOV DPTR,#0xff9b              
+CODE:07c0  f0        MOVX @DPTR,A                  
+CODE:07c1  90ff9f    MOV DPTR,#0xff9f              
+CODE:07c4  f0        MOVX @DPTR,A                  
+CODE:07c5  90ff60    MOV DPTR,#0xff60              
+CODE:07c8  74c5      MOV A,#0xc5                   
+CODE:07ca  f0        MOVX @DPTR,A                  
+CODE:07cb  90ff98    MOV DPTR,#0xff98              
+CODE:07ce  f0        MOVX @DPTR,A                  
+CODE:07cf  d21a      SETB 0x1a                     
+CODE:07d1  d21b      SETB 0x1b                     
+CODE:07d3  120e56    LCALL 0x0e56                  
+CODE:07d6  e4        CLR A                         
+CODE:07d7  f52f      MOV 0x2f,A                    
+CODE:07d9  f530      MOV 0x30,A                    
+LAB_CODE_07db:
+CODE:07db  0530      INC 0x30                        ; XREF from CODE:07e3,CODE:07e8
+CODE:07dd  e530      MOV A,0x30                    
+CODE:07df  7002      JNZ 0x07e3                    
+CODE:07e1  052f      INC 0x2f                      
+LAB_CODE_07e3:
+CODE:07e3  b4fff5    CJNE A,#0xff,0x07db             ; XREF from CODE:07df
+CODE:07e6  e52f      MOV A,0x2f                    
+CODE:07e8  b40ff0    CJNE A,#0xf,0x07db            
+CODE:07eb  22        RET                           
+
+; ======== FUNCTION FUN_CODE_07ec @ CODE:07ec ========
+CODE:07ec  e4        CLR A                           ; XREF from CODE:0a57,CODE:0550
+CODE:07ed  f52e      MOV 0x2e,A                    
+CODE:07ef  f52f      MOV 0x2f,A                    
+CODE:07f1  90fffc    MOV DPTR,#0xfffc              
+CODE:07f4  f0        MOVX @DPTR,A                  
+CODE:07f5  90ffb0    MOV DPTR,#0xffb0              
+CODE:07f8  04        INC A                         
+CODE:07f9  f0        MOVX @DPTR,A                  
+CODE:07fa  e4        CLR A                         
+CODE:07fb  f590      MOV 0x90,A                    
+CODE:07fd  75b0ff    MOV 0xb0,#0xff                
+CODE:0800  758cce    MOV 0x8c,#0xce                
+CODE:0803  f58a      MOV 0x8a,A                    
+CODE:0805  f58d      MOV 0x8d,A                    
+CODE:0807  f58b      MOV 0x8b,A                    
+LAB_CODE_0809:
+CODE:0809  758911    MOV 0x89,#0x11                  ; XREF from CODE:0fcc
+LAB_CODE_080c:
+CODE:080c  f588      MOV 0x88,A                      ; XREF from CODE:0fcf
+LAB_CODE_080e:
+CODE:080e  c2af      CLR 0xaf                        ; XREF from CODE:0fd5
+CODE:0810  c2ac      CLR 0xac                      
+CODE:0812  c2aa      CLR 0xaa                      
+CODE:0814  d2a9      SETB 0xa9                     
+CODE:0816  c2ab      CLR 0xab                      
+CODE:0818  d2a8      SETB 0xa8                     
+CODE:081a  f5b8      MOV 0xb8,A                    
+CODE:081c  a3        INC DPTR                      
+CODE:081d  7406      MOV A,#0x6                    
+CODE:081f  f0        MOVX @DPTR,A                  
+CODE:0820  90ffe0    MOV DPTR,#0xffe0              
+CODE:0823  740d      MOV A,#0xd                    
+CODE:0825  f0        MOVX @DPTR,A                  
+CODE:0826  90ffdf    MOV DPTR,#0xffdf              
+CODE:0829  74e5      MOV A,#0xe5                   
+CODE:082b  f0        MOVX @DPTR,A                  
+CODE:082c  90ffde    MOV DPTR,#0xffde              
+CODE:082f  74ac      MOV A,#0xac                   
+CODE:0831  f0        MOVX @DPTR,A                  
+CODE:0832  90ffdd    MOV DPTR,#0xffdd              
+CODE:0835  7403      MOV A,#0x3                    
+CODE:0837  f0        MOVX @DPTR,A                  
+CODE:0838  90ffdc    MOV DPTR,#0xffdc              
+CODE:083b  7450      MOV A,#0x50                   
+CODE:083d  f0        MOVX @DPTR,A                  
+CODE:083e  90ffd6    MOV DPTR,#0xffd6              
+CODE:0841  7425      MOV A,#0x25                   
+CODE:0843  f0        MOVX @DPTR,A                  
+CODE:0844  90ffd5    MOV DPTR,#0xffd5              
+CODE:0847  74ac      MOV A,#0xac                   
+CODE:0849  f0        MOVX @DPTR,A                  
+CODE:084a  90ffd4    MOV DPTR,#0xffd4              
+CODE:084d  7403      MOV A,#0x3                    
+CODE:084f  120ec7    LCALL 0x0ec7                  
+CODE:0852  120ef3    LCALL 0x0ef3                  
+CODE:0855  90ffb1    MOV DPTR,#0xffb1              
+CODE:0858  e0        MOVX A,@DPTR                  
+CODE:0859  4401      ORL A,#0x1                    
+CODE:085b  f0        MOVX @DPTR,A                  
+CODE:085c  750803    MOV 0x08,#0x3                 
+CODE:085f  e4        CLR A                         
+CODE:0860  f522      MOV 0x22,A                    
+CODE:0862  d21e      SETB 0x1e                     
+CODE:0864  120efc    LCALL 0x0efc                  
+LAB_CODE_0867:
+CODE:0867  e52f      MOV A,0x2f                      ; XREF from CODE:087a
+CODE:0869  f4        CPL A                         
+CODE:086a  7004      JNZ 0x0870                    
+CODE:086c  e52e      MOV A,0x2e                    
+CODE:086e  640f      XRL A,#0xf                    
+LAB_CODE_0870:
+CODE:0870  600a      JZ 0x087c                       ; XREF from CODE:086a
+CODE:0872  052f      INC 0x2f                      
+CODE:0874  e52f      MOV A,0x2f                    
+CODE:0876  7002      JNZ 0x087a                    
+CODE:0878  052e      INC 0x2e                      
+LAB_CODE_087a:
+CODE:087a  80eb      SJMP 0x0867                     ; XREF from CODE:0876
+LAB_CODE_087c:
+CODE:087c  7522ff    MOV 0x22,#0xff                  ; XREF from CODE:0870
+CODE:087f  c210      CLR 0x10                      
+CODE:0881  c213      CLR 0x13                      
+CODE:0883  c21e      CLR 0x1e                      
+CODE:0885  120efc    LCALL 0x0efc                  
+CODE:0888  e4        CLR A                         
+CODE:0889  f525      MOV 0x25,A                    
+CODE:088b  f523      MOV 0x23,A                    
+CODE:088d  120e56    LCALL 0x0e56                  
+CODE:0890  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0891 @ CODE:0891 ========
+CODE:0891  90ffa9    MOV DPTR,#0xffa9                ; XREF from CODE:0a5a,CODE:0553
+CODE:0894  7442      MOV A,#0x42                   
+CODE:0896  f0        MOVX @DPTR,A                  
+CODE:0897  90ff69    MOV DPTR,#0xff69              
+CODE:089a  04        INC A                         
+CODE:089b  f0        MOVX @DPTR,A                  
+CODE:089c  90ffab    MOV DPTR,#0xffab              
+CODE:089f  e4        CLR A                         
+CODE:08a0  f0        MOVX @DPTR,A                  
+CODE:08a1  90ff6b    MOV DPTR,#0xff6b              
+CODE:08a4  f0        MOVX @DPTR,A                  
+CODE:08a5  90ffaf    MOV DPTR,#0xffaf              
+CODE:08a8  f0        MOVX @DPTR,A                  
+CODE:08a9  90ff6f    MOV DPTR,#0xff6f              
+CODE:08ac  f0        MOVX @DPTR,A                  
+CODE:08ad  90ffaa    MOV DPTR,#0xffaa              
+CODE:08b0  04        INC A                         
+CODE:08b1  f0        MOVX @DPTR,A                  
+CODE:08b2  90ff6a    MOV DPTR,#0xff6a              
+CODE:08b5  f0        MOVX @DPTR,A                  
+CODE:08b6  90ffa8    MOV DPTR,#0xffa8              
+CODE:08b9  7484      MOV A,#0x84                   
+CODE:08bb  f0        MOVX @DPTR,A                  
+CODE:08bc  90ff68    MOV DPTR,#0xff68              
+CODE:08bf  f0        MOVX @DPTR,A                  
+CODE:08c0  90ff99    MOV DPTR,#0xff99              
+CODE:08c3  7444      MOV A,#0x44                   
+CODE:08c5  f0        MOVX @DPTR,A                  
+CODE:08c6  90ff61    MOV DPTR,#0xff61              
+CODE:08c9  7494      MOV A,#0x94                   
+CODE:08cb  f0        MOVX @DPTR,A                  
+CODE:08cc  90ff9a    MOV DPTR,#0xff9a              
+CODE:08cf  7450      MOV A,#0x50                   
+CODE:08d1  f0        MOVX @DPTR,A                  
+CODE:08d2  90ff62    MOV DPTR,#0xff62              
+CODE:08d5  f0        MOVX @DPTR,A                  
+CODE:08d6  90ff9b    MOV DPTR,#0xff9b              
+CODE:08d9  e4        CLR A                         
+CODE:08da  f0        MOVX @DPTR,A                  
+CODE:08db  90ff63    MOV DPTR,#0xff63              
+CODE:08de  f0        MOVX @DPTR,A                  
+CODE:08df  90ff98    MOV DPTR,#0xff98              
+CODE:08e2  74c5      MOV A,#0xc5                   
+CODE:08e4  f0        MOVX @DPTR,A                  
+CODE:08e5  90ff60    MOV DPTR,#0xff60              
+CODE:08e8  f0        MOVX @DPTR,A                  
+CODE:08e9  90ffea    MOV DPTR,#0xffea              
+CODE:08ec  7403      MOV A,#0x3                    
+CODE:08ee  f0        MOVX @DPTR,A                  
+CODE:08ef  90ffe9    MOV DPTR,#0xffe9              
+CODE:08f2  7480      MOV A,#0x80                   
+CODE:08f4  f0        MOVX @DPTR,A                  
+CODE:08f5  90fff0    MOV DPTR,#0xfff0              
+CODE:08f8  7403      MOV A,#0x3                    
+CODE:08fa  f0        MOVX @DPTR,A                  
+CODE:08fb  90ffef    MOV DPTR,#0xffef              
+CODE:08fe  7480      MOV A,#0x80                   
+CODE:0900  f0        MOVX @DPTR,A                  
+CODE:0901  90ffe8    MOV DPTR,#0xffe8              
+LAB_CODE_0904:
+CODE:0904  7402      MOV A,#0x2                      ; XREF from CODE:061f
+CODE:0906  f0        MOVX @DPTR,A                  
+CODE:0907  90ffee    MOV DPTR,#0xffee              
+CODE:090a  7409      MOV A,#0x9                    
+CODE:090c  f0        MOVX @DPTR,A                  
+CODE:090d  90fffd    MOV DPTR,#0xfffd              
+
+; ======== FUNCTION FUN_CODE_0910 @ CODE:0910 ========
+CODE:0910  749f      MOV A,#0x9f                     ; XREF from CODE:0cbc
+CODE:0912  f0        MOVX @DPTR,A                  
+CODE:0913  90ffff    MOV DPTR,#0xffff              
+CODE:0916  e4        CLR A                         
+CODE:0917  f0        MOVX @DPTR,A                  
+CODE:0918  c20a      CLR 0x0a                      
+CODE:091a  c20e      CLR 0x0e                      
+CODE:091c  c208      CLR 0x08                      
+CODE:091e  c209      CLR 0x09                      
+CODE:0920  f509      MOV 0x09,A                    
+CODE:0922  f50b      MOV 0x0b,A                    
+CODE:0924  750cfe    MOV 0x0c,#0xfe                
+CODE:0927  f50a      MOV 0x0a,A                    
+CODE:0929  22        RET                           
+
+; ======== FUNCTION FUN_CODE_092a @ CODE:092a ========
+CODE:092a  787f      MOV R0,#0x7f                    ; XREF from CODE:0000
+CODE:092c  e4        CLR A                         
+LAB_CODE_092d:
+CODE:092d  f6        MOV @R0,A                       ; XREF from CODE:092e
+CODE:092e  d8fd      DJNZ R0,0x092d                
+CODE:0930  758132    MOV 0x81,#0x32                
+CODE:0933  020971    LJMP 0x0971                   
+LAB_CODE_0936:
+CODE:0936  020a3f    LJMP 0x0a3f                     ; XREF from CODE:0978
+LAB_CODE_0939:
+CODE:0939  e4        CLR A                           ; XREF from CODE:098f
+CODE:093a  93        MOVC A,@A+DPTR                
+CODE:093b  a3        INC DPTR                      
+CODE:093c  f8        MOV R0,A                      
+LAB_CODE_093d:
+CODE:093d  e4        CLR A                           ; XREF from CODE:0947
+CODE:093e  93        MOVC A,@A+DPTR                
+CODE:093f  a3        INC DPTR                      
+CODE:0940  4003      JC 0x0945                     
+CODE:0942  f6        MOV @R0,A                     
+CODE:0943  8001      SJMP 0x0946                   
+LAB_CODE_0945:
+CODE:0945  f2        MOVX @R0,A                      ; XREF from CODE:0940
+LAB_CODE_0946:
+CODE:0946  08        INC R0                          ; XREF from CODE:0943
+CODE:0947  dff4      DJNZ R7,0x093d                
+CODE:0949  8029      SJMP 0x0974                   
+LAB_CODE_094b:
+CODE:094b  e4        CLR A                           ; XREF from CODE:0991,CODE:0965
+CODE:094c  93        MOVC A,@A+DPTR                
+CODE:094d  a3        INC DPTR                      
+CODE:094e  f8        MOV R0,A                      
+CODE:094f  5407      ANL A,#0x7                    
+CODE:0951  240c      ADD A,#0xc                    
+CODE:0953  c8        XCH A,R0                      
+CODE:0954  c3        CLR CY                        
+CODE:0955  33        RLC A                         
+CODE:0956  c4        SWAP A                        
+CODE:0957  540f      ANL A,#0xf                    
+CODE:0959  4420      ORL A,#0x20                   
+CODE:095b  c8        XCH A,R0                      
+CODE:095c  83        MOVC A,@A+PC                  
+CODE:095d  4004      JC 0x0963                     
+CODE:095f  f4        CPL A                         
+CODE:0960  56        ANL A,@R0                     
+CODE:0961  8001      SJMP 0x0964                   
+LAB_CODE_0963:
+CODE:0963  46        ORL A,@R0                       ; XREF from CODE:095d
+LAB_CODE_0964:
+CODE:0964  f6        MOV @R0,A                       ; XREF from CODE:0961
+CODE:0965  dfe4      DJNZ R7,0x094b                
+CODE:0967  800b      SJMP 0x0974                   
+CODE:0969  0102      AJMP 0x0802                   
+CODE:096b  04        INC A                         
+CODE:096d  102040    JBC 0x20,0x09b0               
+LAB_CODE_0971:
+CODE:0971  900fba    MOV DPTR,#0xfba                 ; XREF from CODE:0933
+LAB_CODE_0974:
+CODE:0974  e4        CLR A                           ; XREF from CODE:09b4,CODE:0949,CODE:0967
+CODE:0975  7e01      MOV R6,#0x1                   
+CODE:0977  93        MOVC A,@A+DPTR                
+CODE:0978  60bc      JZ 0x0936                     
+CODE:097a  a3        INC DPTR                      
+CODE:097b  ff        MOV R7,A                      
+CODE:097c  543f      ANL A,#0x3f                   
+CODE:097e  30e509    JNB 0xe5,0x098a               
+CODE:0981  541f      ANL A,#0x1f                   
+CODE:0983  fe        MOV R6,A                      
+CODE:0984  e4        CLR A                         
+CODE:0985  93        MOVC A,@A+DPTR                
+CODE:0986  a3        INC DPTR                      
+CODE:0987  6001      JZ 0x098a                     
+CODE:0989  0e        INC R6                        
+LAB_CODE_098a:
+CODE:098a  cf        XCH A,R7                        ; XREF from CODE:097e,CODE:0987
+CODE:098b  54c0      ANL A,#0xc0                   
+CODE:098d  25e0      ADD A,A                       
+CODE:098f  60a8      JZ 0x0939                     
+CODE:0991  40b8      JC 0x094b                     
+CODE:0993  e4        CLR A                         
+CODE:0994  93        MOVC A,@A+DPTR                
+CODE:0995  a3        INC DPTR                      
+CODE:0996  fa        MOV R2,A                      
+CODE:0997  e4        CLR A                         
+CODE:0998  93        MOVC A,@A+DPTR                
+CODE:0999  a3        INC DPTR                      
+CODE:099a  f8        MOV R0,A                      
+LAB_CODE_099b:
+CODE:099b  e4        CLR A                           ; XREF from CODE:09b0,CODE:09b2
+CODE:099c  93        MOVC A,@A+DPTR                
+CODE:099d  a3        INC DPTR                      
+CODE:099e  c8        XCH A,R0                      
+CODE:099f  c582      XCH A,DPL                     
+CODE:09a1  c8        XCH A,R0                      
+CODE:09a2  ca        XCH A,R2                      
+CODE:09a3  c583      XCH A,DPH                     
+CODE:09a5  ca        XCH A,R2                      
+CODE:09a6  f0        MOVX @DPTR,A                  
+CODE:09a7  a3        INC DPTR                      
+CODE:09a8  c8        XCH A,R0                      
+CODE:09a9  c582      XCH A,DPL                     
+CODE:09ab  c8        XCH A,R0                      
+CODE:09ac  ca        XCH A,R2                      
+CODE:09ad  c583      XCH A,DPH                     
+CODE:09af  ca        XCH A,R2                      
+LAB_CODE_09b0:
+CODE:09b0  dfe9      DJNZ R7,0x099b                  ; XREF from CODE:096d
+CODE:09b2  dee7      DJNZ R6,0x099b                
+CODE:09b4  80be      SJMP 0x0974                   
+
+; ======== FUNCTION FUN_CODE_09b6 @ CODE:09b6 ========
+CODE:09b6  e4        CLR A                           ; XREF from CODE:0366,CODE:0396,CODE:0419,CODE:04cb
+CODE:09b7  f525      MOV 0x25,A                    
+CODE:09b9  f523      MOV 0x23,A                    
+CODE:09bb  d22e      SETB 0x2e                     
+CODE:09bd  7fff      MOV R7,#0xff                  
+LAB_CODE_09bf:
+CODE:09bf  dffe      DJNZ R7,0x09bf                  ; XREF from CODE:09bf
+CODE:09c1  120e56    LCALL 0x0e56                  
+CODE:09c4  120ec8    LCALL 0x0ec8                  
+CODE:09c7  120ef3    LCALL 0x0ef3                  
+CODE:09ca  750803    MOV 0x08,#0x3                 
+CODE:09cd  90ffe1    MOV DPTR,#0xffe1              
+CODE:09d0  e0        MOVX A,@DPTR                  
+CODE:09d1  44c0      ORL A,#0xc0                   
+CODE:09d3  f0        MOVX @DPTR,A                  
+CODE:09d4  7fff      MOV R7,#0xff                  
+LAB_CODE_09d6:
+CODE:09d6  dffe      DJNZ R7,0x09d6                  ; XREF from CODE:09d6
+CODE:09d8  d21a      SETB 0x1a                     
+CODE:09da  d21b      SETB 0x1b                     
+CODE:09dc  120e56    LCALL 0x0e56                  
+CODE:09df  7fff      MOV R7,#0xff                  
+LAB_CODE_09e1:
+CODE:09e1  dffe      DJNZ R7,0x09e1                  ; XREF from CODE:09e1
+CODE:09e3  d22f      SETB 0x2f                     
+CODE:09e5  d21c      SETB 0x1c                     
+CODE:09e7  120e56    LCALL 0x0e56                  
+CODE:09ea  7fff      MOV R7,#0xff                  
+LAB_CODE_09ec:
+CODE:09ec  dffe      DJNZ R7,0x09ec                  ; XREF from CODE:09ec
+CODE:09ee  c22f      CLR 0x2f                      
+CODE:09f0  120e56    LCALL 0x0e56                  
+CODE:09f3  d22f      SETB 0x2f                     
+CODE:09f5  120e56    LCALL 0x0e56                  
+CODE:09f8  7f04      MOV R7,#0x4                   
+CODE:09fa  e4        CLR A                         
+CODE:09fb  fd        MOV R5,A                      
+CODE:09fc  120c31    LCALL 0x0c31                  
+CODE:09ff  7f13      MOV R7,#0x13                  
+CODE:0a01  7d10      MOV R5,#0x10                  
+CODE:0a03  120c31    LCALL 0x0c31                  
+CODE:0a06  7f04      MOV R7,#0x4                   
+CODE:0a08  e4        CLR A                         
+CODE:0a09  fd        MOV R5,A                      
+CODE:0a0a  120c31    LCALL 0x0c31                  
+CODE:0a0d  7f04      MOV R7,#0x4                   
+CODE:0a0f  7d40      MOV R5,#0x40                  
+CODE:0a11  120c31    LCALL 0x0c31                  
+CODE:0a14  7f01      MOV R7,#0x1                   
+CODE:0a16  7d01      MOV R5,#0x1                   
+CODE:0a18  120c31    LCALL 0x0c31                  
+CODE:0a1b  7f02      MOV R7,#0x2                   
+CODE:0a1d  7d20      MOV R5,#0x20                  
+CODE:0a1f  120c31    LCALL 0x0c31                  
+CODE:0a22  7f03      MOV R7,#0x3                   
+CODE:0a24  7d0c      MOV R5,#0xc                   
+CODE:0a26  120c31    LCALL 0x0c31                  
+CODE:0a29  7f05      MOV R7,#0x5                   
+CODE:0a2b  7d05      MOV R5,#0x5                   
+CODE:0a2d  120c31    LCALL 0x0c31                  
+CODE:0a30  7f06      MOV R7,#0x6                   
+CODE:0a32  7d05      MOV R5,#0x5                   
+CODE:0a34  120c31    LCALL 0x0c31                  
+CODE:0a37  7f11      MOV R7,#0x11                  
+CODE:0a39  7dff      MOV R5,#0xff                  
+CODE:0a3b  120c31    LCALL 0x0c31                  
+CODE:0a3e  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0a3f @ CODE:0a3f ========
+CODE:0a3f  e4        CLR A                           ; XREF from CODE:0936
+CODE:0a40  f527      MOV 0x27,A                    
+CODE:0a42  74ff      MOV A,#0xff                   
+CODE:0a44  f528      MOV 0x28,A                    
+CODE:0a46  f529      MOV 0x29,A                    
+CODE:0a48  752a00    MOV 0x2a,#0x0                 
+CODE:0a4b  752b10    MOV 0x2b,#0x10                
+CODE:0a4e  c2af      CLR 0xaf                      
+CODE:0a50  90fffd    MOV DPTR,#0xfffd              
+CODE:0a53  e4        CLR A                         
+CODE:0a54  f0        MOVX @DPTR,A                  
+CODE:0a55  c222      CLR 0x22                      
+CODE:0a57  1207ec    LCALL 0x07ec                  
+CODE:0a5a  120891    LCALL 0x0891                  
+LAB_CODE_0a5d:
+CODE:0a5d  d3        SETB CY                         ; XREF from CODE:0a6c,CODE:0a70
+CODE:0a5e  e529      MOV A,0x29                    
+CODE:0a60  9400      SUBB A,#0x0                   
+CODE:0a62  e528      MOV A,0x28                    
+CODE:0a64  9400      SUBB A,#0x0                   
+CODE:0a66  400a      JC 0x0a72                     
+CODE:0a68  e529      MOV A,0x29                    
+CODE:0a6a  1529      DEC 0x29                      
+CODE:0a6c  70ef      JNZ 0x0a5d                    
+CODE:0a6e  1528      DEC 0x28                      
+CODE:0a70  80eb      SJMP 0x0a5d                   
+LAB_CODE_0a72:
+CODE:0a72  d28c      SETB 0x8c                       ; XREF from CODE:0a66
+CODE:0a74  d2af      SETB 0xaf                     
+CODE:0a76  90fffc    MOV DPTR,#0xfffc              
+CODE:0a79  e0        MOVX A,@DPTR                  
+CODE:0a7a  4480      ORL A,#0x80                   
+CODE:0a7c  f0        MOVX @DPTR,A                  
+LAB_CODE_0a7d:
+CODE:0a7d  202009    JB 0x20,0x0a89                  ; XREF from CODE:0a82,CODE:0a87,CODE:0ab9
+CODE:0a80  e50a      MOV A,0x0a                    
+CODE:0a82  60f9      JZ 0x0a7d                     
+CODE:0a84  1202f3    LCALL 0x02f3                  
+CODE:0a87  80f4      SJMP 0x0a7d                   
+LAB_CODE_0a89:
+CODE:0a89  120f31    LCALL 0x0f31                    ; XREF from CODE:0a7d
+CODE:0a8c  ef        MOV A,R7                      
+CODE:0a8d  30e006    JNB 0xe0,0x0a96               
+CODE:0a90  120efc    LCALL 0x0efc                  
+CODE:0a93  120e56    LCALL 0x0e56                  
+LAB_CODE_0a96:
+CODE:0a96  20010d    JB 0x01,0x0aa6                  ; XREF from CODE:0a8d
+CODE:0a99  e527      MOV A,0x27                    
+CODE:0a9b  7009      JNZ 0x0aa6                    
+CODE:0a9d  752701    MOV 0x27,#0x1                 
+CODE:0aa0  750a0b    MOV 0x0a,#0xb                 
+CODE:0aa3  1202f3    LCALL 0x02f3                  
+LAB_CODE_0aa6:
+CODE:0aa6  30010e    JNB 0x01,0x0ab7                 ; XREF from CODE:0a96,CODE:0a9b
+CODE:0aa9  e527      MOV A,0x27                    
+CODE:0aab  b40109    CJNE A,#0x1,0x0ab7            
+CODE:0aae  e4        CLR A                         
+CODE:0aaf  f527      MOV 0x27,A                    
+CODE:0ab1  750a0c    MOV 0x0a,#0xc                 
+CODE:0ab4  1202f3    LCALL 0x02f3                  
+LAB_CODE_0ab7:
+CODE:0ab7  c220      CLR 0x20                        ; XREF from CODE:0aa6,CODE:0aab
+CODE:0ab9  80c2      SJMP 0x0a7d                   
+
+; ======== FUNCTION FUN_CODE_0abb @ CODE:0abb ========
+CODE:0abb  e4        CLR A                           ; XREF from CODE:0b63
+CODE:0abc  f518      MOV 0x18,A                    
+CODE:0abe  120b37    LCALL 0x0b37                  
+LAB_CODE_0ac1:
+CODE:0ac1  e509      MOV A,0x09                      ; XREF from CODE:0af4
+CODE:0ac3  d3        SETB CY                       
+CODE:0ac4  9400      SUBB A,#0x0                   
+CODE:0ac6  402f      JC 0x0af7                     
+CODE:0ac8  120b6e    LCALL 0x0b6e                  
+CODE:0acb  e4        CLR A                         
+CODE:0acc  93        MOVC A,@A+DPTR                
+CODE:0acd  120b25    LCALL 0x0b25                  
+CODE:0ad0  f0        MOVX @DPTR,A                  
+CODE:0ad1  051e      INC 0x1e                      
+CODE:0ad3  e51e      MOV A,0x1e                    
+CODE:0ad5  7002      JNZ 0x0ad9                    
+CODE:0ad7  051d      INC 0x1d                      
+LAB_CODE_0ad9:
+CODE:0ad9  051a      INC 0x1a                        ; XREF from CODE:0ad5
+CODE:0adb  e51a      MOV A,0x1a                    
+CODE:0add  7002      JNZ 0x0ae1                    
+CODE:0adf  0519      INC 0x19                      
+LAB_CODE_0ae1:
+CODE:0ae1  d5090c    DJNZ 0x09,0x0af0                ; XREF from CODE:0add
+CODE:0ae4  e50b      MOV A,0x0b                    
+CODE:0ae6  d3        SETB CY                       
+CODE:0ae7  9400      SUBB A,#0x0                   
+CODE:0ae9  4005      JC 0x0af0                     
+CODE:0aeb  7509ff    MOV 0x09,#0xff                
+CODE:0aee  150b      DEC 0x0b                      
+LAB_CODE_0af0:
+CODE:0af0  0518      INC 0x18                        ; XREF from CODE:0ae1,CODE:0ae9
+CODE:0af2  e518      MOV A,0x18                    
+CODE:0af4  b408ca    CJNE A,#0x8,0x0ac1            
+LAB_CODE_0af7:
+CODE:0af7  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:0ac6
+CODE:0afa  7480      MOV A,#0x80                   
+CODE:0afc  f0        MOVX @DPTR,A                  
+CODE:0afd  e0        MOVX A,@DPTR                  
+CODE:0afe  4518      ORL A,0x18                    
+CODE:0b00  f0        MOVX @DPTR,A                  
+CODE:0b01  d20b      SETB 0x0b                     
+CODE:0b03  c20c      CLR 0x0c                      
+CODE:0b05  e509      MOV A,0x09                    
+CODE:0b07  7015      JNZ 0x0b1e                    
+CODE:0b09  e50b      MOV A,0x0b                    
+CODE:0b0b  7011      JNZ 0x0b1e                    
+CODE:0b0d  e518      MOV A,0x18                    
+CODE:0b0f  b40808    CJNE A,#0x8,0x0b1a            
+CODE:0b12  300d05    JNB 0x0d,0x0b1a               
+CODE:0b15  d20b      SETB 0x0b                     
+CODE:0b17  c20c      CLR 0x0c                      
+CODE:0b19  22        RET                           
+LAB_CODE_0b1a:
+CODE:0b1a  c20b      CLR 0x0b                        ; XREF from CODE:0b0f,CODE:0b12
+CODE:0b1c  d20c      SETB 0x0c                     
+LAB_CODE_0b1e:
+CODE:0b1e  22        RET                             ; XREF from CODE:0b07,CODE:0b0b
+
+; ======== FUNCTION FUN_CODE_0b1f @ CODE:0b1f ========
+CODE:0b1f  751dfa    MOV 0x1d,#0xfa                  ; XREF from CODE:0ccf,CODE:0cec
+CODE:0b22  751e10    MOV 0x1e,#0x10                
+
+; ======== FUNCTION FUN_CODE_0b25 @ CODE:0b25 ========
+CODE:0b25  851e82    MOV DPL,0x1e                    ; XREF from CODE:0074,CODE:007d,CODE:0099,CODE:00b8,CODE:00dd,CODE:0232,CODE:0acd,CODE:0162
+CODE:0b28  851d83    MOV DPH,0x1d                  
+CODE:0b2b  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0b2c @ CODE:0b2c ========
+CODE:0b2c  f0        MOVX @DPTR,A                    ; XREF from CODE:0036,CODE:100e,CODE:0d0d,CODE:0fb6
+CODE:0b2d  e4        CLR A                         
+
+; ======== FUNCTION FUN_CODE_0b2e @ CODE:0b2e ========
+CODE:0b2e  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:0296
+CODE:0b31  f0        MOVX @DPTR,A                  
+CODE:0b32  90ffab    MOV DPTR,#0xffab              
+CODE:0b35  f0        MOVX @DPTR,A                  
+CODE:0b36  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0b37 @ CODE:0b37 ========
+CODE:0b37  751dfa    MOV 0x1d,#0xfa                  ; XREF from CODE:006e,CODE:0091,CODE:022f,CODE:0abe,CODE:015c,CODE:01fc
+CODE:0b3a  751e18    MOV 0x1e,#0x18                
+CODE:0b3d  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0b3e @ CODE:0b3e ========
+CODE:0b3e  90ff68    MOV DPTR,#0xff68                ; XREF from CODE:0026,CODE:0153
+CODE:0b41  e0        MOVX A,@DPTR                  
+CODE:0b42  54f7      ANL A,#0xf7                   
+CODE:0b44  f0        MOVX @DPTR,A                  
+CODE:0b45  90ffa8    MOV DPTR,#0xffa8              
+CODE:0b48  e0        MOVX A,@DPTR                  
+CODE:0b49  54f7      ANL A,#0xf7                   
+CODE:0b4b  f0        MOVX @DPTR,A                  
+CODE:0b4c  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0b4d @ CODE:0b4d ========
+CODE:0b4d  90ff68    MOV DPTR,#0xff68                ; XREF from CODE:0d0a,CODE:0fb3
+CODE:0b50  e0        MOVX A,@DPTR                  
+CODE:0b51  54d7      ANL A,#0xd7                   
+CODE:0b53  f0        MOVX @DPTR,A                  
+CODE:0b54  90ffa8    MOV DPTR,#0xffa8              
+CODE:0b57  e0        MOVX A,@DPTR                  
+CODE:0b58  54d7      ANL A,#0xd7                   
+CODE:0b5a  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0b5b @ CODE:0b5b ========
+CODE:0b5b  f582      MOV DPL,A                       ; XREF from CODE:00a6,CODE:00fb,CODE:023f
+CODE:0b5d  851d83    MOV DPH,0x1d                  
+CODE:0b60  e4        CLR A                         
+CODE:0b61  f0        MOVX @DPTR,A                  
+CODE:0b62  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0b63 @ CODE:0b63 ========
+CODE:0b63  120abb    LCALL 0x0abb                    ; XREF from CODE:01e9,CODE:0f94
+CODE:0b66  90ff6b    MOV DPTR,#0xff6b              
+CODE:0b69  e0        MOVX A,@DPTR                  
+CODE:0b6a  547f      ANL A,#0x7f                   
+CODE:0b6c  f0        MOVX @DPTR,A                  
+CODE:0b6d  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0b6e @ CODE:0b6e ========
+CODE:0b6e  851a82    MOV DPL,0x1a                    ; XREF from CODE:019a,CODE:01d7,CODE:0ac8
+CODE:0b71  851983    MOV DPH,0x19                  
+CODE:0b74  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0b75 @ CODE:0b75 ========
+CODE:0b75  90ffab    MOV DPTR,#0xffab                ; XREF from CODE:0d06,CODE:0f64
+CODE:0b78  e4        CLR A                         
+CODE:0b79  f0        MOVX @DPTR,A                  
+CODE:0b7a  90ff6b    MOV DPTR,#0xff6b              
+CODE:0b7d  f0        MOVX @DPTR,A                  
+CODE:0b7e  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0b7f @ CODE:0b7f ========
+CODE:0b7f  bc000b    CJNE R4,#0x0,0x0b8d             ; XREF from CODE:0d79
+CODE:0b82  be0029    CJNE R6,#0x0,0x0bae           
+CODE:0b85  ef        MOV A,R7                      
+CODE:0b86  8df0      MOV B,R5                      
+CODE:0b88  84        DIV AB                        
+CODE:0b89  ff        MOV R7,A                      
+CODE:0b8a  adf0      MOV R5,B                      
+CODE:0b8c  22        RET                           
+LAB_CODE_0b8d:
+CODE:0b8d  e4        CLR A                           ; XREF from CODE:0b7f
+CODE:0b8e  cc        XCH A,R4                      
+CODE:0b8f  f8        MOV R0,A                      
+CODE:0b90  75f008    MOV B,#0x8                    
+LAB_CODE_0b93:
+CODE:0b93  ef        MOV A,R7                        ; XREF from CODE:0ba7
+CODE:0b94  2f        ADD A,R7                      
+CODE:0b95  ff        MOV R7,A                      
+CODE:0b96  ee        MOV A,R6                      
+CODE:0b97  33        RLC A                         
+CODE:0b98  fe        MOV R6,A                      
+CODE:0b99  ec        MOV A,R4                      
+CODE:0b9a  33        RLC A                         
+CODE:0b9b  fc        MOV R4,A                      
+CODE:0b9c  ee        MOV A,R6                      
+CODE:0b9d  9d        SUBB A,R5                     
+CODE:0b9e  ec        MOV A,R4                      
+CODE:0b9f  98        SUBB A,R0                     
+CODE:0ba0  4005      JC 0x0ba7                     
+CODE:0ba2  fc        MOV R4,A                      
+CODE:0ba3  ee        MOV A,R6                      
+CODE:0ba4  9d        SUBB A,R5                     
+CODE:0ba5  fe        MOV R6,A                      
+CODE:0ba6  0f        INC R7                        
+LAB_CODE_0ba7:
+CODE:0ba7  d5f0e9    DJNZ B,0x0b93                   ; XREF from CODE:0ba0
+CODE:0baa  e4        CLR A                         
+CODE:0bab  ce        XCH A,R6                      
+CODE:0bac  fd        MOV R5,A                      
+CODE:0bad  22        RET                           
+LAB_CODE_0bae:
+CODE:0bae  ed        MOV A,R5                        ; XREF from CODE:0b82
+CODE:0baf  f8        MOV R0,A                      
+CODE:0bb0  f5f0      MOV B,A                       
+CODE:0bb2  ee        MOV A,R6                      
+CODE:0bb3  84        DIV AB                        
+CODE:0bb4  20d21c    JB 0xd2,0x0bd3                
+CODE:0bb7  fe        MOV R6,A                      
+CODE:0bb8  adf0      MOV R5,B                      
+CODE:0bba  75f008    MOV B,#0x8                    
+LAB_CODE_0bbd:
+CODE:0bbd  ef        MOV A,R7                        ; XREF from CODE:0bc8,CODE:0bd0
+CODE:0bbe  2f        ADD A,R7                      
+CODE:0bbf  ff        MOV R7,A                      
+CODE:0bc0  ed        MOV A,R5                      
+CODE:0bc1  33        RLC A                         
+CODE:0bc2  fd        MOV R5,A                      
+CODE:0bc3  4007      JC 0x0bcc                     
+CODE:0bc5  98        SUBB A,R0                     
+CODE:0bc6  5006      JNC 0x0bce                    
+CODE:0bc8  d5f0f2    DJNZ B,0x0bbd                 
+CODE:0bcb  22        RET                           
+LAB_CODE_0bcc:
+CODE:0bcc  c3        CLR CY                          ; XREF from CODE:0bc3
+CODE:0bcd  98        SUBB A,R0                     
+LAB_CODE_0bce:
+CODE:0bce  fd        MOV R5,A                        ; XREF from CODE:0bc6
+CODE:0bcf  0f        INC R7                        
+CODE:0bd0  d5f0ea    DJNZ B,0x0bbd                 
+LAB_CODE_0bd3:
+CODE:0bd3  22        RET                             ; XREF from CODE:0bb4
+
+; ======== FUNCTION FUN_CODE_0bd4 @ CODE:0bd4 ========
+CODE:0bd4  8a83      MOV DPH,R2                      ; XREF from CODE:0e06
+CODE:0bd6  8982      MOV DPL,R1                    
+CODE:0bd8  e4        CLR A                         
+CODE:0bd9  73        JMP @A+DPTR                   
+
+; ======== FUNCTION FUN_CODE_0bda @ CODE:0bda ========
+CODE:0bda  ae05      MOV R6,0x05                     ; XREF from CODE:04f2,CODE:051b
+CODE:0bdc  90ffc0    MOV DPTR,#0xffc0              
+CODE:0bdf  e0        MOVX A,@DPTR                  
+CODE:0be0  54fc      ANL A,#0xfc                   
+CODE:0be2  f0        MOVX @DPTR,A                  
+CODE:0be3  90ffc3    MOV DPTR,#0xffc3              
+CODE:0be6  74a0      MOV A,#0xa0                   
+CODE:0be8  f0        MOVX @DPTR,A                  
+CODE:0be9  7dff      MOV R5,#0xff                  
+CODE:0beb  7c00      MOV R4,#0x0                   
+LAB_CODE_0bed:
+CODE:0bed  ed        MOV A,R5                        ; XREF from CODE:0bf4
+CODE:0bee  1d        DEC R5                        
+CODE:0bef  7001      JNZ 0x0bf2                    
+CODE:0bf1  1c        DEC R4                        
+LAB_CODE_0bf2:
+CODE:0bf2  ed        MOV A,R5                        ; XREF from CODE:0bef
+CODE:0bf3  4c        ORL A,R4                      
+CODE:0bf4  70f7      JNZ 0x0bed                    
+CODE:0bf6  90ffc1    MOV DPTR,#0xffc1              
+CODE:0bf9  ef        MOV A,R7                      
+CODE:0bfa  f0        MOVX @DPTR,A                  
+LAB_CODE_0bfb:
+CODE:0bfb  90ffc0    MOV DPTR,#0xffc0                ; XREF from CODE:0bff
+CODE:0bfe  e0        MOVX A,@DPTR                  
+CODE:0bff  30e3f9    JNB 0xe3,0x0bfb               
+CODE:0c02  90ffc1    MOV DPTR,#0xffc1              
+CODE:0c05  ee        MOV A,R6                      
+CODE:0c06  f0        MOVX @DPTR,A                  
+LAB_CODE_0c07:
+CODE:0c07  90ffc0    MOV DPTR,#0xffc0                ; XREF from CODE:0c0b
+CODE:0c0a  e0        MOVX A,@DPTR                  
+CODE:0c0b  30e3f9    JNB 0xe3,0x0c07               
+CODE:0c0e  90ffc0    MOV DPTR,#0xffc0              
+CODE:0c11  e0        MOVX A,@DPTR                  
+CODE:0c12  4401      ORL A,#0x1                    
+CODE:0c14  f0        MOVX @DPTR,A                  
+CODE:0c15  a3        INC DPTR                      
+CODE:0c16  eb        MOV A,R3                      
+CODE:0c17  f0        MOVX @DPTR,A                  
+LAB_CODE_0c18:
+CODE:0c18  90ffc0    MOV DPTR,#0xffc0                ; XREF from CODE:0c23
+CODE:0c1b  e0        MOVX A,@DPTR                  
+CODE:0c1c  20e306    JB 0xe3,0x0c25                
+CODE:0c1f  74ff      MOV A,#0xff                   
+CODE:0c21  fc        MOV R4,A                      
+CODE:0c22  fd        MOV R5,A                      
+CODE:0c23  80f3      SJMP 0x0c18                   
+LAB_CODE_0c25:
+CODE:0c25  ed        MOV A,R5                        ; XREF from CODE:0c1c,CODE:0c2b,CODE:0c2e
+CODE:0c26  4c        ORL A,R4                      
+CODE:0c27  6007      JZ 0x0c30                     
+CODE:0c29  ed        MOV A,R5                      
+CODE:0c2a  1d        DEC R5                        
+CODE:0c2b  70f8      JNZ 0x0c25                    
+CODE:0c2d  1c        DEC R4                        
+CODE:0c2e  80f5      SJMP 0x0c25                   
+LAB_CODE_0c30:
+CODE:0c30  22        RET                             ; XREF from CODE:0c27
+
+; ======== FUNCTION FUN_CODE_0c31 @ CODE:0c31 ========
+CODE:0c31  a907      MOV R1,0x07                     ; XREF from CODE:09fc,CODE:0a03,CODE:0a0a,CODE:0a11,CODE:0a18,CODE:0a1f,CODE:0a26,CODE:0a2d
+CODE:0c33  7c08      MOV R4,#0x8                   
+CODE:0c35  7b20      MOV R3,#0x20                  
+CODE:0c37  7a01      MOV R2,#0x1                   
+CODE:0c39  c22f      CLR 0x2f                      
+CODE:0c3b  120e56    LCALL 0x0e56                  
+LAB_CODE_0c3e:
+CODE:0c3e  ec        MOV A,R4                        ; XREF from CODE:0c5f,CODE:0c6a,CODE:0c75
+CODE:0c3f  6020      JZ 0x0c61                     
+CODE:0c41  7801      MOV R0,#0x1                   
+CODE:0c43  af03      MOV R7,0x03                   
+CODE:0c45  ef        MOV A,R7                      
+CODE:0c46  08        INC R0                        
+CODE:0c47  8001      SJMP 0x0c4a                   
+LAB_CODE_0c49:
+CODE:0c49  23        RL A                            ; XREF from CODE:0c4a
+LAB_CODE_0c4a:
+CODE:0c4a  d8fd      DJNZ R0,0x0c49                  ; XREF from CODE:0c47
+CODE:0c4c  fb        MOV R3,A                      
+CODE:0c4d  30e005    JNB 0xe0,0x0c55               
+CODE:0c50  439010    ORL 0x90,#0x10                
+CODE:0c53  8003      SJMP 0x0c58                   
+LAB_CODE_0c55:
+CODE:0c55  5390ef    ANL 0x90,#0xef                  ; XREF from CODE:0c4d
+LAB_CODE_0c58:
+CODE:0c58  439008    ORL 0x90,#0x8                   ; XREF from CODE:0c53
+CODE:0c5b  5390f7    ANL 0x90,#0xf7                
+CODE:0c5e  1c        DEC R4                        
+CODE:0c5f  80dd      SJMP 0x0c3e                   
+LAB_CODE_0c61:
+CODE:0c61  ba0108    CJNE R2,#0x1,0x0c6c             ; XREF from CODE:0c3f
+CODE:0c64  7a02      MOV R2,#0x2                   
+CODE:0c66  ab01      MOV R3,0x01                   
+CODE:0c68  7c08      MOV R4,#0x8                   
+CODE:0c6a  80d2      SJMP 0x0c3e                   
+LAB_CODE_0c6c:
+CODE:0c6c  ba0208    CJNE R2,#0x2,0x0c77             ; XREF from CODE:0c61
+CODE:0c6f  7a03      MOV R2,#0x3                   
+CODE:0c71  ab05      MOV R3,0x05                   
+CODE:0c73  7c08      MOV R4,#0x8                   
+CODE:0c75  80c7      SJMP 0x0c3e                   
+LAB_CODE_0c77:
+CODE:0c77  d22f      SETB 0x2f                       ; XREF from CODE:0c6c
+CODE:0c79  120e56    LCALL 0x0e56                  
+CODE:0c7c  22        RET                           
+CODE:0c7d  0c        INC R4                        
+CODE:0c7e  c7        XCH A,@R1                     
+CODE:0c7f  00        NOP                           
+CODE:0c80  100011    JBC 0x00,0x0c94               
+CODE:0c83  00        NOP                           
+CODE:0c84  120016    LCALL 0x0016                  
+CODE:0c87  00        NOP                           
+CODE:0c88  17        DEC @R1                       
+CODE:0c89  00        NOP                           
+CODE:0c8a  18        DEC R0                        
+CODE:0c8b  00        NOP                           
+CODE:0c8c  19        DEC R1                        
+CODE:0c8d  0f        INC R7                        
+CODE:0c8e  9100      ACALL 0x0c00                  
+CODE:0c90  1a        DEC R2                        
+CODE:0c91  00        NOP                           
+CODE:0c92  1e        DEC R6                        
+CODE:0c93  00        NOP                           
+LAB_CODE_0c94:
+CODE:0c94  1f        DEC R7                          ; XREF from CODE:0c80
+CODE:0c95  00        NOP                           
+CODE:0c96  200021    JB 0x00,0x0cba                
+CODE:0c99  00        NOP                           
+CODE:0c9a  22        RET                           
+CODE:0c9b  102910    JBC 0x29,0x0cae               
+CODE:0c9e  2a        ADD A,R2                      
+CODE:0c9f  103500    JBC 0x35,0x0ca2               
+LAB_CODE_0ca2:
+CODE:0ca2  26        ADD A,@R0                       ; XREF from CODE:0c9f
+CODE:0ca3  102b0d    JBC 0x2b,0x0cb3               
+CODE:0ca6  58        ANL A,R0                      
+CODE:0ca7  102c00    JBC 0x2c,0x0caa               
+LAB_CODE_0caa:
+CODE:0caa  06        INC @R0                         ; XREF from CODE:0ca7
+CODE:0cab  0f        INC R7                        
+CODE:0cac  6410      XRL A,#0x10                   
+LAB_CODE_0cae:
+CODE:0cae  2d        ADD A,R5                        ; XREF from CODE:0c9b
+CODE:0caf  102e10    JBC 0x2e,0x0cc2               
+CODE:0cb2  3510      ADDC A,0x10                   
+CODE:0cb4  3510      ADDC A,0x10                   
+CODE:0cb6  2f        ADD A,R7                      
+CODE:0cb7  103010    JBC 0x30,0x0cca               
+LAB_CODE_0cba:
+CODE:0cba  3510      ADDC A,0x10                     ; XREF from CODE:0c96
+CODE:0cbc  3110      ACALL 0x0910                  
+CODE:0cbe  32        RETI                          
+CODE:0cbf  103310    JBC 0x33,0x0cd2               
+LAB_CODE_0cc2:
+CODE:0cc2  3510      ADDC A,0x10                     ; XREF from CODE:0caf
+CODE:0cc4  3510      ADDC A,0x10                   
+CODE:0cc6  3430      ADDC A,#0x30                  
+CODE:0cc8  0b        INC R3                        
+CODE:0cc9  40e5      JC 0x0cb0                     
+CODE:0ccb  0d        INC R5                        
+CODE:0ccc  b40118    CJNE A,#0x1,0x0ce7            
+CODE:0ccf  120b1f    LCALL 0x0b1f                  
+LAB_CODE_0cd2:
+CODE:0cd2  e0        MOVX A,@DPTR                    ; XREF from CODE:0cbf
+CODE:0cd3  ff        MOV R7,A                      
+CODE:0cd4  b44403    CJNE A,#0x44,0x0cda           
+CODE:0cd7  750a07    MOV 0x0a,#0x7                 
+LAB_CODE_0cda:
+CODE:0cda  ef        MOV A,R7                        ; XREF from CODE:0cd4
+CODE:0cdb  b48003    CJNE A,#0x80,0x0ce1           
+CODE:0cde  750a08    MOV 0x0a,#0x8                 
+LAB_CODE_0ce1:
+CODE:0ce1  ef        MOV A,R7                        ; XREF from CODE:0cdb
+CODE:0ce2  7003      JNZ 0x0ce7                    
+CODE:0ce4  750a06    MOV 0x0a,#0x6                 
+LAB_CODE_0ce7:
+CODE:0ce7  e50d      MOV A,0x0d                      ; XREF from CODE:0ccc,CODE:0ce2
+CODE:0ce9  b4020f    CJNE A,#0x2,0x0cfb            
+CODE:0cec  120b1f    LCALL 0x0b1f                  
+CODE:0cef  e0        MOVX A,@DPTR                  
+CODE:0cf0  b40105    CJNE A,#0x1,0x0cf8            
+CODE:0cf3  750a04    MOV 0x0a,#0x4                 
+CODE:0cf6  8003      SJMP 0x0cfb                   
+LAB_CODE_0cf8:
+CODE:0cf8  750a05    MOV 0x0a,#0x5                   ; XREF from CODE:0cf0
+LAB_CODE_0cfb:
+CODE:0cfb  c20b      CLR 0x0b                        ; XREF from CODE:0ce9,CODE:0cf6
+CODE:0cfd  c20c      CLR 0x0c                      
+CODE:0cff  90ff68    MOV DPTR,#0xff68              
+CODE:0d02  e0        MOVX A,@DPTR                  
+CODE:0d03  4420      ORL A,#0x20                   
+CODE:0d05  f0        MOVX @DPTR,A                  
+CODE:0d06  120b75    LCALL 0x0b75                  
+CODE:0d09  22        RET                           
+CODE:0d0a  120b4d    LCALL 0x0b4d                  
+CODE:0d0d  120b2c    LCALL 0x0b2c                  
+CODE:0d10  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0d11 @ CODE:0d11 ========
+CODE:0d11  90ffc0    MOV DPTR,#0xffc0                ; XREF from CODE:04e6,CODE:04f7
+CODE:0d14  e0        MOVX A,@DPTR                  
+CODE:0d15  54fc      ANL A,#0xfc                   
+CODE:0d17  f0        MOVX @DPTR,A                  
+CODE:0d18  7ea0      MOV R6,#0xa0                  
+CODE:0d1a  90ffc3    MOV DPTR,#0xffc3              
+CODE:0d1d  ee        MOV A,R6                      
+CODE:0d1e  f0        MOVX @DPTR,A                  
+CODE:0d1f  90ffc1    MOV DPTR,#0xffc1              
+CODE:0d22  ef        MOV A,R7                      
+CODE:0d23  f0        MOVX @DPTR,A                  
+LAB_CODE_0d24:
+CODE:0d24  90ffc0    MOV DPTR,#0xffc0                ; XREF from CODE:0d28
+CODE:0d27  e0        MOVX A,@DPTR                  
+CODE:0d28  30e3f9    JNB 0xe3,0x0d24               
+CODE:0d2b  90ffc1    MOV DPTR,#0xffc1              
+CODE:0d2e  ed        MOV A,R5                      
+CODE:0d2f  f0        MOVX @DPTR,A                  
+LAB_CODE_0d30:
+CODE:0d30  90ffc0    MOV DPTR,#0xffc0                ; XREF from CODE:0d34
+CODE:0d33  e0        MOVX A,@DPTR                  
+CODE:0d34  30e3f9    JNB 0xe3,0x0d30               
+CODE:0d37  430601    ORL 0x06,#0x1                 
+CODE:0d3a  90ffc3    MOV DPTR,#0xffc3              
+CODE:0d3d  ee        MOV A,R6                      
+CODE:0d3e  f0        MOVX @DPTR,A                  
+CODE:0d3f  90ffc1    MOV DPTR,#0xffc1              
+CODE:0d42  e4        CLR A                         
+CODE:0d43  f0        MOVX @DPTR,A                  
+CODE:0d44  90ffc0    MOV DPTR,#0xffc0              
+CODE:0d47  e0        MOVX A,@DPTR                  
+CODE:0d48  4402      ORL A,#0x2                    
+CODE:0d4a  f0        MOVX @DPTR,A                  
+LAB_CODE_0d4b:
+CODE:0d4b  90ffc0    MOV DPTR,#0xffc0                ; XREF from CODE:0d4f
+CODE:0d4e  e0        MOVX A,@DPTR                  
+CODE:0d4f  30e7f9    JNB 0xe7,0x0d4b               
+CODE:0d52  90ffc2    MOV DPTR,#0xffc2              
+CODE:0d55  e0        MOVX A,@DPTR                  
+CODE:0d56  ff        MOV R7,A                      
+CODE:0d57  22        RET                           
+CODE:0d58  90ffec    MOV DPTR,#0xffec              
+CODE:0d5b  e0        MOVX A,@DPTR                  
+CODE:0d5c  fe        MOV R6,A                      
+CODE:0d5d  90ffeb    MOV DPTR,#0xffeb              
+CODE:0d60  e0        MOVX A,@DPTR                  
+CODE:0d61  7c00      MOV R4,#0x0                   
+CODE:0d63  2400      ADD A,#0x0                    
+CODE:0d65  ff        MOV R7,A                      
+CODE:0d66  ec        MOV A,R4                      
+CODE:0d67  3e        ADDC A,R6                     
+CODE:0d68  fe        MOV R6,A                      
+CODE:0d69  ef        MOV A,R7                      
+CODE:0d6a  651c      XRL A,0x1c                    
+CODE:0d6c  7003      JNZ 0x0d71                    
+CODE:0d6e  ee        MOV A,R6                      
+CODE:0d6f  651b      XRL A,0x1b                    
+LAB_CODE_0d71:
+CODE:0d71  602a      JZ 0x0d9d                       ; XREF from CODE:0d6c
+CODE:0d73  8e1b      MOV 0x1b,R6                   
+CODE:0d75  8f1c      MOV 0x1c,R7                   
+CODE:0d77  7d06      MOV R5,#0x6                   
+CODE:0d79  120b7f    LCALL 0x0b7f                  
+CODE:0d7c  ed        MOV A,R5                      
+CODE:0d7d  4c        ORL A,R4                      
+CODE:0d7e  601d      JZ 0x0d9d                     
+CODE:0d80  90ffe8    MOV DPTR,#0xffe8              
+CODE:0d83  e0        MOVX A,@DPTR                  
+CODE:0d84  547f      ANL A,#0x7f                   
+CODE:0d86  f0        MOVX @DPTR,A                  
+CODE:0d87  90ff9b    MOV DPTR,#0xff9b              
+CODE:0d8a  e4        CLR A                         
+CODE:0d8b  f0        MOVX @DPTR,A                  
+CODE:0d8c  90ff9f    MOV DPTR,#0xff9f              
+CODE:0d8f  f0        MOVX @DPTR,A                  
+CODE:0d90  90ff98    MOV DPTR,#0xff98              
+CODE:0d93  74c5      MOV A,#0xc5                   
+CODE:0d95  f0        MOVX @DPTR,A                  
+CODE:0d96  90ffe8    MOV DPTR,#0xffe8              
+CODE:0d99  e0        MOVX A,@DPTR                  
+CODE:0d9a  4480      ORL A,#0x80                   
+CODE:0d9c  f0        MOVX @DPTR,A                  
+LAB_CODE_0d9d:
+CODE:0d9d  22        RET                             ; XREF from CODE:0d71,CODE:0d7e
+
+; ======== FUNCTION FUN_CODE_0d9e @ CODE:0d9e ========
+CODE:0d9e  90ff2f    MOV DPTR,#0xff2f                ; XREF from CODE:01e6
+CODE:0da1  e0        MOVX A,@DPTR                  
+CODE:0da2  ff        MOV R7,A                      
+CODE:0da3  e50b      MOV A,0x0b                    
+CODE:0da5  d3        SETB CY                       
+CODE:0da6  9f        SUBB A,R7                     
+CODE:0da7  500f      JNC 0x0db8                    
+CODE:0da9  e0        MOVX A,@DPTR                  
+CODE:0daa  b50b17    CJNE A,0x0b,0x0dc4            
+CODE:0dad  90ff2e    MOV DPTR,#0xff2e              
+CODE:0db0  e0        MOVX A,@DPTR                  
+CODE:0db1  ff        MOV R7,A                      
+CODE:0db2  e509      MOV A,0x09                    
+CODE:0db4  d3        SETB CY                       
+CODE:0db5  9f        SUBB A,R7                     
+CODE:0db6  400c      JC 0x0dc4                     
+LAB_CODE_0db8:
+CODE:0db8  90ff2e    MOV DPTR,#0xff2e                ; XREF from CODE:0da7
+CODE:0dbb  e0        MOVX A,@DPTR                  
+CODE:0dbc  f509      MOV 0x09,A                    
+CODE:0dbe  a3        INC DPTR                      
+CODE:0dbf  e0        MOVX A,@DPTR                  
+CODE:0dc0  f50b      MOV 0x0b,A                    
+CODE:0dc2  c20d      CLR 0x0d                      
+LAB_CODE_0dc4:
+CODE:0dc4  90ff2e    MOV DPTR,#0xff2e                ; XREF from CODE:0daa,CODE:0db6
+CODE:0dc7  e0        MOVX A,@DPTR                  
+CODE:0dc8  ff        MOV R7,A                      
+CODE:0dc9  e509      MOV A,0x09                    
+CODE:0dcb  c3        CLR CY                        
+CODE:0dcc  9f        SUBB A,R7                     
+CODE:0dcd  400d      JC 0x0ddc                     
+CODE:0dcf  e0        MOVX A,@DPTR                  
+CODE:0dd0  b5090b    CJNE A,0x09,0x0dde            
+CODE:0dd3  a3        INC DPTR                      
+CODE:0dd4  e0        MOVX A,@DPTR                  
+CODE:0dd5  ff        MOV R7,A                      
+CODE:0dd6  e50b      MOV A,0x0b                    
+CODE:0dd8  c3        CLR CY                        
+CODE:0dd9  9f        SUBB A,R7                     
+CODE:0dda  5002      JNC 0x0dde                    
+LAB_CODE_0ddc:
+CODE:0ddc  d20d      SETB 0x0d                       ; XREF from CODE:0dcd
+LAB_CODE_0dde:
+CODE:0dde  22        RET                             ; XREF from CODE:0dd0,CODE:0dda
+
+; ======== FUNCTION FUN_CODE_0ddf @ CODE:0ddf ========
+CODE:0ddf  c0e0      PUSH A                          ; XREF from CODE:0003
+CODE:0de1  c0f0      PUSH B                        
+CODE:0de3  c083      PUSH DPH                      
+CODE:0de5  c082      PUSH DPL                      
+CODE:0de7  c0d0      PUSH PSW                      
+CODE:0de9  75d010    MOV PSW,#0x10                 
+CODE:0dec  c2af      CLR 0xaf                      
+CODE:0dee  90ffb2    MOV DPTR,#0xffb2              
+CODE:0df1  e0        MOVX A,@DPTR                  
+CODE:0df2  25e0      ADD A,A                       
+CODE:0df4  247d      ADD A,#0x7d                   
+CODE:0df6  f582      MOV DPL,A                     
+CODE:0df8  e4        CLR A                         
+CODE:0df9  340c      ADDC A,#0xc                   
+CODE:0dfb  f583      MOV DPH,A                     
+CODE:0dfd  e4        CLR A                         
+CODE:0dfe  93        MOVC A,@A+DPTR                
+CODE:0dff  fe        MOV R6,A                      
+CODE:0e00  7401      MOV A,#0x1                    
+CODE:0e02  93        MOVC A,@A+DPTR                
+CODE:0e03  aa16      MOV R2,0x16                   
+CODE:0e05  f9        MOV R1,A                      
+CODE:0e06  120bd4    LCALL 0x0bd4                  
+CODE:0e09  90ffb2    MOV DPTR,#0xffb2              
+CODE:0e0c  e4        CLR A                         
+CODE:0e0d  f0        MOVX @DPTR,A                  
+CODE:0e0e  d2af      SETB 0xaf                     
+CODE:0e10  d0d0      POP PSW                       
+CODE:0e12  d082      POP DPL                       
+CODE:0e14  d083      POP DPH                       
+CODE:0e16  d0f0      POP B                         
+CODE:0e18  d0e0      POP A                         
+CODE:0e1a  32        RETI                          
+
+; ======== FUNCTION FUN_CODE_0e1b @ CODE:0e1b ========
+CODE:0e1b  20280c    JB 0x28,0x0e2a                  ; XREF from CODE:0f4e
+CODE:0e1e  d228      SETB 0x28                     
+CODE:0e20  d22a      SETB 0x2a                     
+CODE:0e22  d210      SETB 0x10                     
+CODE:0e24  c211      CLR 0x11                      
+CODE:0e26  d212      SETB 0x12                     
+CODE:0e28  801c      SJMP 0x0e46                   
+LAB_CODE_0e2a:
+CODE:0e2a  30280f    JNB 0x28,0x0e3c                 ; XREF from CODE:0e1b
+CODE:0e2d  302a0c    JNB 0x2a,0x0e3c               
+CODE:0e30  d228      SETB 0x28                     
+CODE:0e32  c22a      CLR 0x2a                      
+CODE:0e34  d210      SETB 0x10                     
+CODE:0e36  d211      SETB 0x11                     
+CODE:0e38  c212      CLR 0x12                      
+CODE:0e3a  800a      SJMP 0x0e46                   
+LAB_CODE_0e3c:
+CODE:0e3c  c228      CLR 0x28                        ; XREF from CODE:0e2a,CODE:0e2d
+CODE:0e3e  c22a      CLR 0x2a                      
+CODE:0e40  c210      CLR 0x10                      
+CODE:0e42  d211      SETB 0x11                     
+CODE:0e44  d212      SETB 0x12                     
+LAB_CODE_0e46:
+CODE:0e46  202c02    JB 0x2c,0x0e4b                  ; XREF from CODE:0e28,CODE:0e3a
+CODE:0e49  d216      SETB 0x16                     
+LAB_CODE_0e4b:
+CODE:0e4b  302c02    JNB 0x2c,0x0e50                 ; XREF from CODE:0e46
+CODE:0e4e  c216      CLR 0x16                      
+LAB_CODE_0e50:
+CODE:0e50  302d02    JNB 0x2d,0x0e55                 ; XREF from CODE:0e4b
+CODE:0e53  c216      CLR 0x16                      
+LAB_CODE_0e55:
+CODE:0e55  22        RET                             ; XREF from CODE:0e50
+
+; ======== FUNCTION FUN_CODE_0e56 @ CODE:0e56 ========
+CODE:0e56  7e08      MOV R6,#0x8                     ; XREF from CODE:0a93,CODE:088d,CODE:0384,CODE:09c1,CODE:09dc,CODE:09e7,CODE:09f0,CODE:09f5
+CODE:0e58  af23      MOV R7,0x23                   
+CODE:0e5a  d230      SETB 0x30                     
+LAB_CODE_0e5c:
+CODE:0e5c  ee        MOV A,R6                        ; XREF from CODE:0e7b,CODE:0e86
+CODE:0e5d  601e      JZ 0x0e7d                     
+CODE:0e5f  7801      MOV R0,#0x1                   
+CODE:0e61  ef        MOV A,R7                      
+CODE:0e62  08        INC R0                        
+CODE:0e63  8001      SJMP 0x0e66                   
+LAB_CODE_0e65:
+CODE:0e65  23        RL A                            ; XREF from CODE:0e66
+LAB_CODE_0e66:
+CODE:0e66  d8fd      DJNZ R0,0x0e65                  ; XREF from CODE:0e63
+CODE:0e68  ff        MOV R7,A                      
+CODE:0e69  30e005    JNB 0xe0,0x0e71               
+CODE:0e6c  439001    ORL 0x90,#0x1                 
+CODE:0e6f  8003      SJMP 0x0e74                   
+LAB_CODE_0e71:
+CODE:0e71  5390fe    ANL 0x90,#0xfe                  ; XREF from CODE:0e69
+LAB_CODE_0e74:
+CODE:0e74  439004    ORL 0x90,#0x4                   ; XREF from CODE:0e6f
+CODE:0e77  5390fb    ANL 0x90,#0xfb                
+CODE:0e7a  1e        DEC R6                        
+CODE:0e7b  80df      SJMP 0x0e5c                   
+LAB_CODE_0e7d:
+CODE:0e7d  303008    JNB 0x30,0x0e88                 ; XREF from CODE:0e5d
+CODE:0e80  c230      CLR 0x30                      
+CODE:0e82  af25      MOV R7,0x25                   
+CODE:0e84  7e08      MOV R6,#0x8                   
+CODE:0e86  80d4      SJMP 0x0e5c                   
+LAB_CODE_0e88:
+CODE:0e88  439002    ORL 0x90,#0x2                   ; XREF from CODE:0e7d
+CODE:0e8b  5390fd    ANL 0x90,#0xfd                
+CODE:0e8e  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0e8f @ CODE:0e8f ========
+CODE:0e8f  20290c    JB 0x29,0x0e9e                  ; XREF from CODE:0f5b
+CODE:0e92  d229      SETB 0x29                     
+CODE:0e94  d22b      SETB 0x2b                     
+CODE:0e96  d213      SETB 0x13                     
+CODE:0e98  c214      CLR 0x14                      
+CODE:0e9a  d215      SETB 0x15                     
+CODE:0e9c  8019      SJMP 0x0eb7                   
+LAB_CODE_0e9e:
+CODE:0e9e  302b0c    JNB 0x2b,0x0ead                 ; XREF from CODE:0e8f
+CODE:0ea1  d229      SETB 0x29                     
+CODE:0ea3  c22b      CLR 0x2b                      
+CODE:0ea5  d213      SETB 0x13                     
+CODE:0ea7  d214      SETB 0x14                     
+CODE:0ea9  c215      CLR 0x15                      
+CODE:0eab  800a      SJMP 0x0eb7                   
+LAB_CODE_0ead:
+CODE:0ead  c229      CLR 0x29                        ; XREF from CODE:0e9e
+CODE:0eaf  c22b      CLR 0x2b                      
+CODE:0eb1  c213      CLR 0x13                      
+CODE:0eb3  d214      SETB 0x14                     
+CODE:0eb5  d215      SETB 0x15                     
+LAB_CODE_0eb7:
+CODE:0eb7  202c02    JB 0x2c,0x0ebc                  ; XREF from CODE:0e9c,CODE:0eab
+CODE:0eba  d216      SETB 0x16                     
+LAB_CODE_0ebc:
+CODE:0ebc  302c02    JNB 0x2c,0x0ec1                 ; XREF from CODE:0eb7
+CODE:0ebf  c216      CLR 0x16                      
+LAB_CODE_0ec1:
+CODE:0ec1  302d02    JNB 0x2d,0x0ec6                 ; XREF from CODE:0ebc
+CODE:0ec4  c216      CLR 0x16                      
+LAB_CODE_0ec6:
+CODE:0ec6  22        RET                             ; XREF from CODE:0ec1
+
+; ======== FUNCTION FUN_CODE_0ec7 @ CODE:0ec7 ========
+CODE:0ec7  f0        MOVX @DPTR,A                    ; XREF from CODE:084f,CODE:078a
+
+; ======== FUNCTION FUN_CODE_0ec8 @ CODE:0ec8 ========
+CODE:0ec8  90ffe6    MOV DPTR,#0xffe6                ; XREF from CODE:09c4,CODE:076f
+CODE:0ecb  74a8      MOV A,#0xa8                   
+CODE:0ecd  f0        MOVX @DPTR,A                  
+CODE:0ece  90ffe5    MOV DPTR,#0xffe5              
+CODE:0ed1  7461      MOV A,#0x61                   
+CODE:0ed3  f0        MOVX @DPTR,A                  
+CODE:0ed4  90ffe7    MOV DPTR,#0xffe7              
+CODE:0ed7  740f      MOV A,#0xf                    
+CODE:0ed9  f0        MOVX @DPTR,A                  
+CODE:0eda  90fff8    MOV DPTR,#0xfff8              
+CODE:0edd  74a8      MOV A,#0xa8                   
+CODE:0edf  f0        MOVX @DPTR,A                  
+CODE:0ee0  90fff7    MOV DPTR,#0xfff7              
+CODE:0ee3  7461      MOV A,#0x61                   
+CODE:0ee5  f0        MOVX @DPTR,A                  
+CODE:0ee6  740f      MOV A,#0xf                    
+
+; ======== FUNCTION FUN_CODE_0ee8 @ CODE:0ee8 ========
+CODE:0ee8  90fff9    MOV DPTR,#0xfff9                ; XREF from CODE:0766
+CODE:0eeb  f0        MOVX @DPTR,A                  
+CODE:0eec  90ffe1    MOV DPTR,#0xffe1              
+CODE:0eef  7406      MOV A,#0x6                    
+CODE:0ef1  f0        MOVX @DPTR,A                  
+CODE:0ef2  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0ef3 @ CODE:0ef3 ========
+CODE:0ef3  a3        INC DPTR                        ; XREF from CODE:0852,CODE:09c7
+
+; ======== FUNCTION FUN_CODE_0ef4 @ CODE:0ef4 ========
+CODE:0ef4  7410      MOV A,#0x10                     ; XREF from CODE:0720
+CODE:0ef6  f0        MOVX @DPTR,A                  
+CODE:0ef7  90fff6    MOV DPTR,#0xfff6              
+CODE:0efa  f0        MOVX @DPTR,A                  
+CODE:0efb  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0efc @ CODE:0efc ========
+CODE:0efc  7e08      MOV R6,#0x8                     ; XREF from CODE:0a90,CODE:0864,CODE:0885,CODE:03a6,CODE:03ec,CODE:0461,CODE:0470,CODE:0503
+CODE:0efe  af22      MOV R7,0x22                   
+CODE:0f00  5390bf    ANL 0x90,#0xbf                
+LAB_CODE_0f03:
+CODE:0f03  7801      MOV R0,#0x1                     ; XREF from CODE:0f1e
+CODE:0f05  ef        MOV A,R7                      
+CODE:0f06  08        INC R0                        
+CODE:0f07  8001      SJMP 0x0f0a                   
+LAB_CODE_0f09:
+CODE:0f09  23        RL A                            ; XREF from CODE:0f0a
+LAB_CODE_0f0a:
+CODE:0f0a  d8fd      DJNZ R0,0x0f09                  ; XREF from CODE:0f07
+CODE:0f0c  ff        MOV R7,A                      
+CODE:0f0d  30e005    JNB 0xe0,0x0f15               
+CODE:0f10  439080    ORL 0x90,#0x80                
+CODE:0f13  8003      SJMP 0x0f18                   
+LAB_CODE_0f15:
+CODE:0f15  53907f    ANL 0x90,#0x7f                  ; XREF from CODE:0f0d
+LAB_CODE_0f18:
+CODE:0f18  439020    ORL 0x90,#0x20                  ; XREF from CODE:0f13
+CODE:0f1b  5390df    ANL 0x90,#0xdf                
+CODE:0f1e  dee3      DJNZ R6,0x0f03                
+CODE:0f20  301e04    JNB 0x1e,0x0f27               
+CODE:0f23  4390c0    ORL 0x90,#0xc0                
+CODE:0f26  22        RET                           
+LAB_CODE_0f27:
+CODE:0f27  53907f    ANL 0x90,#0x7f                  ; XREF from CODE:0f20
+CODE:0f2a  439040    ORL 0x90,#0x40                
+CODE:0f2d  5390bf    ANL 0x90,#0xbf                
+CODE:0f30  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0f31 @ CODE:0f31 ========
+CODE:0f31  e4        CLR A                           ; XREF from CODE:0a89
+CODE:0f32  ff        MOV R7,A                      
+CODE:0f33  aeb0      MOV R6,0xb0                   
+CODE:0f35  ee        MOV A,R6                      
+CODE:0f36  b52001    CJNE A,0x20,0x0f3a            
+CODE:0f39  22        RET                           
+LAB_CODE_0f3a:
+CODE:0f3a  20050a    JB 0x05,0x0f47                  ; XREF from CODE:0f36
+CODE:0f3d  ee        MOV A,R6                      
+CODE:0f3e  30e506    JNB 0xe5,0x0f47               
+CODE:0f41  121020    LCALL 0x1020                  
+CODE:0f44  430701    ORL 0x07,#0x1                 
+LAB_CODE_0f47:
+CODE:0f47  20030a    JB 0x03,0x0f54                  ; XREF from CODE:0f3a,CODE:0f3e
+CODE:0f4a  ee        MOV A,R6                      
+CODE:0f4b  30e306    JNB 0xe3,0x0f54               
+CODE:0f4e  120e1b    LCALL 0x0e1b                  
+CODE:0f51  430701    ORL 0x07,#0x1                 
+LAB_CODE_0f54:
+CODE:0f54  20040a    JB 0x04,0x0f61                  ; XREF from CODE:0f47,CODE:0f4b
+CODE:0f57  ee        MOV A,R6                      
+CODE:0f58  30e406    JNB 0xe4,0x0f61               
+CODE:0f5b  120e8f    LCALL 0x0e8f                  
+CODE:0f5e  430701    ORL 0x07,#0x1                 
+LAB_CODE_0f61:
+CODE:0f61  8e20      MOV 0x20,R6                     ; XREF from CODE:0f54,CODE:0f58
+CODE:0f63  22        RET                           
+CODE:0f64  120b75    LCALL 0x0b75                  
+CODE:0f67  90ff9b    MOV DPTR,#0xff9b              
+CODE:0f6a  f0        MOVX @DPTR,A                  
+CODE:0f6b  90ff63    MOV DPTR,#0xff63              
+CODE:0f6e  f0        MOVX @DPTR,A                  
+CODE:0f6f  90ffff    MOV DPTR,#0xffff              
+CODE:0f72  f0        MOVX @DPTR,A                  
+CODE:0f73  90ffa8    MOV DPTR,#0xffa8              
+CODE:0f76  7484      MOV A,#0x84                   
+CODE:0f78  f0        MOVX @DPTR,A                  
+CODE:0f79  90ff68    MOV DPTR,#0xff68              
+CODE:0f7c  f0        MOVX @DPTR,A                  
+CODE:0f7d  90fffc    MOV DPTR,#0xfffc              
+CODE:0f80  e0        MOVX A,@DPTR                  
+CODE:0f81  44c0      ORL A,#0xc0                   
+CODE:0f83  f0        MOVX @DPTR,A                  
+CODE:0f84  c20a      CLR 0x0a                      
+CODE:0f86  c20e      CLR 0x0e                      
+CODE:0f88  c208      CLR 0x08                      
+CODE:0f8a  c209      CLR 0x09                      
+CODE:0f8c  a3        INC DPTR                      
+CODE:0f8d  749f      MOV A,#0x9f                   
+CODE:0f8f  f0        MOVX @DPTR,A                  
+CODE:0f90  22        RET                           
+CODE:0f91  300b04    JNB 0x0b,0x0f98               
+CODE:0f94  120b63    LCALL 0x0b63                  
+CODE:0f97  22        RET                           
+LAB_CODE_0f98:
+CODE:0f98  300c0a    JNB 0x0c,0x0fa5                 ; XREF from CODE:0f91
+CODE:0f9b  c20c      CLR 0x0c                      
+CODE:0f9d  90ffa8    MOV DPTR,#0xffa8              
+CODE:0fa0  e0        MOVX A,@DPTR                  
+CODE:0fa1  4420      ORL A,#0x20                   
+CODE:0fa3  8011      SJMP 0x0fb6                   
+LAB_CODE_0fa5:
+CODE:0fa5  e50d      MOV A,0x0d                      ; XREF from CODE:0f98
+CODE:0fa7  b40509    CJNE A,#0x5,0x0fb3            
+CODE:0faa  90ffff    MOV DPTR,#0xffff              
+CODE:0fad  e50e      MOV A,0x0e                    
+CODE:0faf  f0        MOVX @DPTR,A                  
+CODE:0fb0  e4        CLR A                         
+CODE:0fb1  f50d      MOV 0x0d,A                    
+LAB_CODE_0fb3:
+CODE:0fb3  120b4d    LCALL 0x0b4d                    ; XREF from CODE:0fa7
+LAB_CODE_0fb6:
+CODE:0fb6  120b2c    LCALL 0x0b2c                    ; XREF from CODE:0fa3
+CODE:0fb9  22        RET                           
+CODE:0fc7  2400      ADD A,#0x0                    
+CODE:0fc9  0121      AJMP 0x0821                   
+CODE:0fcc  0109      AJMP 0x0809                   
+CODE:0fcf  010c      AJMP 0x080c                   
+CODE:0fd2  010b      AJMP 0x080b                   
+CODE:0fd5  010e      AJMP 0x080e                   
+CODE:0fd8  010a      AJMP 0x080a                   
+CODE:0fdb  010d      AJMP 0x080d                   
+CODE:0fde  0108      AJMP 0x0808                   
+CODE:0fe0  03        RR A                          
+CODE:0fe1  00        NOP                           
+
+; ======== FUNCTION FUN_CODE_0fe2 @ CODE:0fe2 ========
+CODE:0fe2  90ffde    MOV DPTR,#0xffde                ; XREF from CODE:0358,CODE:0360
+CODE:0fe5  f0        MOVX @DPTR,A                  
+CODE:0fe6  90ffd5    MOV DPTR,#0xffd5              
+CODE:0fe9  f0        MOVX @DPTR,A                  
+CODE:0fea  90ffb1    MOV DPTR,#0xffb1              
+CODE:0fed  e0        MOVX A,@DPTR                  
+CODE:0fee  4401      ORL A,#0x1                    
+CODE:0ff0  f0        MOVX @DPTR,A                  
+CODE:0ff1  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0ff2 @ CODE:0ff2 ========
+CODE:0ff2  90ffe8    MOV DPTR,#0xffe8                ; XREF from CODE:0336,CODE:03f2,CODE:044b
+CODE:0ff5  e0        MOVX A,@DPTR                  
+CODE:0ff6  547f      ANL A,#0x7f                   
+CODE:0ff8  f0        MOVX @DPTR,A                  
+CODE:0ff9  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0ffa @ CODE:0ffa ========
+CODE:0ffa  752c12    MOV 0x2c,#0x12                  ; XREF from CODE:0488,CODE:04aa,CODE:0506
+CODE:0ffd  e4        CLR A                         
+CODE:0ffe  f52d      MOV 0x2d,A                    
+CODE:1000  22        RET                           
+
+; ======== FUNCTION FUN_CODE_1001 @ CODE:1001 ========
+CODE:1001  90ff68    MOV DPTR,#0xff68                ; XREF from CODE:02ef
+CODE:1004  e0        MOVX A,@DPTR                  
+CODE:1005  4408      ORL A,#0x8                    
+CODE:1007  f0        MOVX @DPTR,A                  
+CODE:1008  90ffa8    MOV DPTR,#0xffa8              
+CODE:100b  e0        MOVX A,@DPTR                  
+CODE:100c  4408      ORL A,#0x8                    
+CODE:100e  120b2c    LCALL 0x0b2c                  
+CODE:1011  c20b      CLR 0x0b                      
+CODE:1013  c20c      CLR 0x0c                      
+CODE:1015  22        RET                           
+
+; ======== FUNCTION FUN_CODE_1016 @ CODE:1016 ========
+CODE:1016  c2af      CLR 0xaf                        ; XREF from CODE:000b
+CODE:1018  d220      SETB 0x20                     
+CODE:101a  758cce    MOV 0x8c,#0xce                
+CODE:101d  d2af      SETB 0xaf                     
+CODE:101f  32        RETI                          
+
+; ======== FUNCTION FUN_CODE_1020 @ CODE:1020 ========
+CODE:1020  301e03    JNB 0x1e,0x1026                 ; XREF from CODE:0f41
+CODE:1023  c21e      CLR 0x1e                      
+CODE:1025  22        RET                           
+LAB_CODE_1026:
+CODE:1026  d21e      SETB 0x1e                       ; XREF from CODE:1020
+CODE:1028  22        RET                           
+CODE:1029  22        RET                           
+CODE:102a  22        RET                           
+CODE:102b  22        RET                           
+CODE:102c  22        RET                           
+CODE:102d  22        RET                           
+CODE:102e  22        RET                           
+CODE:102f  22        RET                           
+CODE:1030  22        RET                           
+CODE:1031  22        RET                           
+CODE:1032  22        RET                           
+CODE:1033  22        RET                           
+CODE:1034  22        RET                           
+CODE:1035  22        RET                           
+
+; ======== GAPS (bytes not disassembled — data tables or unreached code) ========
+
+; GAP CODE:0029 (2 bytes):
+CODE:0029  90 ff
+
+; GAP CODE:0582 (2 bytes):
+CODE:0582  00 00
+
+; GAP CODE:058d (1 bytes):
+CODE:058d  00
+
+; GAP CODE:059f (2 bytes):
+CODE:059f  00 00
+
+; GAP CODE:05a7 (1 bytes):
+CODE:05a7  00
+
+; GAP CODE:05b5 (2 bytes):
+CODE:05b5  00 00
+
+; GAP CODE:05c1 (2 bytes):
+CODE:05c1  00 00
+
+; GAP CODE:05cd (2 bytes):
+CODE:05cd  00 00
+
+; GAP CODE:05e0 (1 bytes):
+CODE:05e0  00
+
+; GAP CODE:05ed (1 bytes):
+CODE:05ed  00
+
+; GAP CODE:05f0 (2 bytes):
+CODE:05f0  00 00
+
+; GAP CODE:05ff (1 bytes):
+CODE:05ff  01
+
+; GAP CODE:060c (1 bytes):
+CODE:060c  00
+
+; GAP CODE:060f (1 bytes):
+CODE:060f  00
+
+; GAP CODE:0617 (2 bytes):
+CODE:0617  00 00
+
+; GAP CODE:061e (1 bytes):
+CODE:061e  00
+
+; GAP CODE:0627 (2 bytes):
+CODE:0627  00 00
+
+; GAP CODE:0630 (2 bytes):
+CODE:0630  00 00
+
+; GAP CODE:0638 (1 bytes):
+CODE:0638  00
+
+; GAP CODE:0643 (1 bytes):
+CODE:0643  00
+
+; GAP CODE:0646 (1 bytes):
+CODE:0646  00
+
+; GAP CODE:064e (2 bytes):
+CODE:064e  00 00
+
+; GAP CODE:0655 (1 bytes):
+CODE:0655  00
+
+; GAP CODE:066d (5 bytes):
+CODE:066d  00 ff 00 00 00
+
+; GAP CODE:0679 (2 bytes):
+CODE:0679  00 00
+
+; GAP CODE:0682 (2 bytes):
+CODE:0682  00 00
+
+; GAP CODE:068b (2 bytes):
+CODE:068b  00 00
+
+; GAP CODE:06a0 (1 bytes):
+CODE:06a0  00
+
+; GAP CODE:06fe (1 bytes):
+CODE:06fe  00
+
+; GAP CODE:096c (1 bytes):
+CODE:096c  08
+
+; GAP CODE:0970 (1 bytes):
+CODE:0970  80
+
+; GAP CODE:0fba (13 bytes):
+CODE:0fba  01 22 00 01 20 00 01 25 00 01 23 00 01
+
+; GAP CODE:0fcb (1 bytes):
+CODE:0fcb  00
+
+; GAP CODE:0fce (1 bytes):
+CODE:0fce  00
+
+; GAP CODE:0fd1 (1 bytes):
+CODE:0fd1  00
+
+; GAP CODE:0fd4 (1 bytes):
+CODE:0fd4  00
+
+; GAP CODE:0fd7 (1 bytes):
+CODE:0fd7  00
+
+; GAP CODE:0fda (1 bytes):
+CODE:0fda  00
+
+; GAP CODE:0fdd (1 bytes):
+CODE:0fdd  00
+
+; GAP CODE:1036 (4024 bytes):
+CODE:1036  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1046  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1056  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1066  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1076  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1086  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1096  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:10a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:10b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:10c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:10d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:10e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:10f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1106  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1116  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1126  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1136  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1146  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1156  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1166  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1176  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1186  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1196  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:11a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:11b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:11c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:11d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:11e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:11f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1206  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1216  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1226  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1236  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1246  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1256  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1266  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1276  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1286  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1296  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:12a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:12b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:12c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:12d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:12e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:12f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1306  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1316  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1326  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1336  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1346  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1356  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1366  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1376  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1386  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1396  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:13a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:13b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:13c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:13d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:13e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:13f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1406  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1416  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1426  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1436  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1446  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1456  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1466  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1476  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1486  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1496  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:14a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:14b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:14c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:14d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:14e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:14f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1506  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1516  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1526  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1536  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1546  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1556  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1566  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1576  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1586  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1596  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:15a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:15b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:15c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:15d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:15e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:15f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1606  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1616  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1626  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1636  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1646  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1656  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1666  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1676  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1686  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1696  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:16a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:16b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:16c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:16d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:16e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:16f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1706  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1716  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1726  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1736  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1746  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1756  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1766  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1776  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1786  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1796  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:17a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:17b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:17c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:17d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:17e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:17f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1806  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1816  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1826  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1836  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1846  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1856  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1866  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1876  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1886  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1896  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:18a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:18b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:18c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:18d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:18e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:18f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1906  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1916  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1926  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1936  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1946  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1956  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1966  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1976  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1986  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1996  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:19a6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:19b6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:19c6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:19d6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:19e6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:19f6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a06  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a16  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a26  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a36  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a46  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a56  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a66  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a76  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a86  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1a96  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1aa6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ab6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ac6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ad6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ae6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1af6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b06  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b16  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b26  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b36  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b46  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b56  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b66  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b76  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b86  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1b96  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ba6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1bb6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1bc6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1bd6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1be6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1bf6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c06  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c16  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c26  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c36  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c46  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c56  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c66  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c76  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c86  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1c96  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ca6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1cb6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1cc6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1cd6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ce6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1cf6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d06  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d16  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d26  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d36  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d46  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d56  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d66  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d76  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d86  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1d96  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1da6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1db6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1dc6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1dd6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1de6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1df6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e06  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e16  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e26  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e36  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e46  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e56  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e66  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e76  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e86  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1e96  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ea6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1eb6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ec6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ed6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ee6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1ef6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f06  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f16  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f26  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f36  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f46  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f56  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f66  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f76  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f86  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1f96  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1fa6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1fb6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1fc6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1fd6  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+CODE:1fe6  ff ff ff ff ff ff ff ff
