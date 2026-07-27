@@ -1,31 +1,87 @@
+
+; ======== FUNCTION reset_vector @ CODE:0000 ========
+reset_vector:
 CODE:0000  020a09    LJMP 0x0a09                   
+
+; ======== FUNCTION int0_vector @ CODE:0003 ========
+int0_vector:
 CODE:0003  020dac    LJMP 0x0dac                   
-CODE:0006  750a0e    MOV 0x0a,#0xe                 
+
+; ======== FUNCTION usb_ev_suspend @ CODE:0006 ========
+usb_ev_suspend:
+CODE:0006  750a0e    MOV 0x0a,#0xe                   ; XREF from CODE:0cbf
 CODE:0009  22        RET                           
-LAB_CODE_000a:
+
+; ======== FUNCTION int1_body_reti @ CODE:000a ========
+int1_body_reti:
 CODE:000a  32        RETI                            ; XREF from CODE:0013
+
+; ======== FUNCTION timer0_vector @ CODE:000b ========
+timer0_vector:
 CODE:000b  02101e    LJMP 0x101e                   
-LAB_CODE_000e:
+
+; ======== FUNCTION timer1_body_reti @ CODE:000e ========
+timer1_body_reti:
 CODE:000e  32        RETI                            ; XREF from CODE:001b
-LAB_CODE_000f:
+
+; ======== FUNCTION uart_body_reti @ CODE:000f ========
+uart_body_reti:
 CODE:000f  32        RETI                            ; XREF from CODE:0023
-CODE:0010  22        RET                           
-CODE:0011  22        RET                           
-CODE:0012  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0010 @ CODE:0010 ========
+CODE:0010  22        RET                             ; XREF from CODE:0c95
+
+; ======== FUNCTION FUN_CODE_0011 @ CODE:0011 ========
+CODE:0011  22        RET                             ; XREF from CODE:0c97
+
+; ======== FUNCTION FUN_CODE_0012 @ CODE:0012 ========
+CODE:0012  22        RET                             ; XREF from CODE:0c99
+
+; ======== FUNCTION int1_vector @ CODE:0013 ========
+int1_vector:
 CODE:0013  02000a    LJMP 0x000a                   
-CODE:0016  22        RET                           
-CODE:0017  22        RET                           
-CODE:0018  22        RET                           
-CODE:0019  22        RET                           
-CODE:001a  22        RET                           
+
+; ======== FUNCTION FUN_CODE_0016 @ CODE:0016 ========
+CODE:0016  22        RET                             ; XREF from CODE:0c9b
+
+; ======== FUNCTION FUN_CODE_0017 @ CODE:0017 ========
+CODE:0017  22        RET                             ; XREF from CODE:0c9d
+
+; ======== FUNCTION FUN_CODE_0018 @ CODE:0018 ========
+CODE:0018  22        RET                             ; XREF from CODE:0c9f
+
+; ======== FUNCTION FUN_CODE_0019 @ CODE:0019 ========
+CODE:0019  22        RET                             ; XREF from CODE:0ca1
+
+; ======== FUNCTION FUN_CODE_001a @ CODE:001a ========
+CODE:001a  22        RET                             ; XREF from CODE:0ca5
+
+; ======== FUNCTION timer1_vector @ CODE:001b ========
+timer1_vector:
 CODE:001b  02000e    LJMP 0x000e                   
-CODE:001e  22        RET                           
-CODE:001f  22        RET                           
-CODE:0020  22        RET                           
-CODE:0021  22        RET                           
-CODE:0022  22        RET                           
+
+; ======== FUNCTION FUN_CODE_001e @ CODE:001e ========
+CODE:001e  22        RET                             ; XREF from CODE:0ca7
+
+; ======== FUNCTION FUN_CODE_001f @ CODE:001f ========
+CODE:001f  22        RET                             ; XREF from CODE:0ca9
+
+; ======== FUNCTION FUN_CODE_0020 @ CODE:0020 ========
+CODE:0020  22        RET                             ; XREF from CODE:0cab
+
+; ======== FUNCTION FUN_CODE_0021 @ CODE:0021 ========
+CODE:0021  22        RET                             ; XREF from CODE:0cad
+
+; ======== FUNCTION FUN_CODE_0022 @ CODE:0022 ========
+CODE:0022  22        RET                             ; XREF from CODE:0caf
+
+; ======== FUNCTION uart_vector @ CODE:0023 ========
+uart_vector:
 CODE:0023  02000f    LJMP 0x000f                   
-CODE:0026  120b50    LCALL 0x0b50                  
+
+; ======== FUNCTION usb_ev_setup @ CODE:0026 ========
+usb_ev_setup:
+CODE:0026  120b50    LCALL 0x0b50                    ; XREF from CODE:0cb7
 CODE:0029  90ff68    MOV DPTR,#0xff68              
 CODE:002c  e0        MOVX A,@DPTR                  
 CODE:002d  4420      ORL A,#0x20                   
@@ -48,7 +104,9 @@ CODE:004c  603c      JZ 0x008a
 CODE:004e  2481      ADD A,#0x81                   
 CODE:0050  6003      JZ 0x0055                     
 CODE:0052  020118    LJMP 0x0118                   
-LAB_CODE_0055:
+
+; ======== FUNCTION setup_class_out_interface @ CODE:0055 ========
+setup_class_out_interface:
 CODE:0055  90ff29    MOV DPTR,#0xff29                ; XREF from CODE:0050
 CODE:0058  e0        MOVX A,@DPTR                  
 CODE:0059  7008      JNZ 0x0063                    
@@ -61,12 +119,16 @@ CODE:0063  750d02    MOV 0x0d,#0x2                   ; XREF from CODE:0059
 CODE:0066  d20b      SETB 0x0b                     
 CODE:0068  c20c      CLR 0x0c                      
 CODE:006a  22        RET                           
-LAB_CODE_006b:
+
+; ======== FUNCTION setup_class_out_endpoint @ CODE:006b ========
+setup_class_out_endpoint:
 CODE:006b  750d01    MOV 0x0d,#0x1                   ; XREF from CODE:0045
 CODE:006e  d20b      SETB 0x0b                     
 CODE:0070  c20c      CLR 0x0c                      
 CODE:0072  22        RET                           
-LAB_CODE_0073:
+
+; ======== FUNCTION setup_get_input_source @ CODE:0073 ========
+setup_get_input_source:
 CODE:0073  120b3e    LCALL 0x0b3e                    ; XREF from CODE:0049
 CODE:0076  302c08    JNB 0x2c,0x0081               
 CODE:0079  120b17    LCALL 0x0b17                  
@@ -79,7 +141,9 @@ CODE:0084  7401      MOV A,#0x1
 CODE:0086  f0        MOVX @DPTR,A                  
 LAB_CODE_0087:
 CODE:0087  020b45    LJMP 0x0b45                     ; XREF from CODE:007f
-LAB_CODE_008a:
+
+; ======== FUNCTION setup_get_sample_freq @ CODE:008a ========
+setup_get_sample_freq:
 CODE:008a  90ff2b    MOV DPTR,#0xff2b                ; XREF from CODE:004c
 CODE:008d  e0        MOVX A,@DPTR                  
 CODE:008e  6401      XRL A,#0x1                    
@@ -151,18 +215,25 @@ CODE:0105  120b36    LCALL 0x0b36                    ; XREF from CODE:0101
 CODE:0108  8003      SJMP 0x010d                   
 LAB_CODE_010a:
 CODE:010a  021009    LJMP 0x1009                     ; XREF from CODE:00e4
-LAB_CODE_010d:
+
+; ======== FUNCTION send_3byte_ep0_reply @ CODE:010d ========
+send_3byte_ep0_reply:
 CODE:010d  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:00b8,CODE:00e0,CODE:0108
 CODE:0110  7403      MOV A,#0x3                    
 CODE:0112  f0        MOVX @DPTR,A                  
 CODE:0113  c20b      CLR 0x0b                      
 CODE:0115  d20c      SETB 0x0c                     
 CODE:0117  22        RET                           
-LAB_CODE_0118:
+
+; ======== FUNCTION std_request_dispatch @ CODE:0118 ========
+std_request_dispatch:
 CODE:0118  90ff29    MOV DPTR,#0xff29                ; XREF from CODE:0052
 CODE:011b  e0        MOVX A,@DPTR                  
 CODE:011c  120f70    LCALL 0x0f70                  
-CODE:0144  90ff28    MOV DPTR,#0xff28              
+
+; ======== FUNCTION std_clear_feature @ CODE:0144 ========
+std_clear_feature:
+CODE:0144  90ff28    MOV DPTR,#0xff28                ; XREF from CODE:0122
 CODE:0147  e0        MOVX A,@DPTR                  
 CODE:0148  6402      XRL A,#0x2                    
 CODE:014a  700e      JNZ 0x015a                    
@@ -175,7 +246,10 @@ CODE:0157  c20c      CLR 0x0c
 CODE:0159  22        RET                           
 LAB_CODE_015a:
 CODE:015a  021009    LJMP 0x1009                     ; XREF from CODE:014a,CODE:0150
-CODE:015d  120b3e    LCALL 0x0b3e                  
+
+; ======== FUNCTION std_get_configuration @ CODE:015d ========
+std_get_configuration:
+CODE:015d  120b3e    LCALL 0x0b3e                    ; XREF from CODE:0131
 CODE:0160  300e08    JNB 0x0e,0x016b               
 CODE:0163  120b17    LCALL 0x0b17                  
 CODE:0166  7401      MOV A,#0x1                    
@@ -187,7 +261,10 @@ CODE:016e  e4        CLR A
 CODE:016f  f0        MOVX @DPTR,A                  
 LAB_CODE_0170:
 CODE:0170  020b45    LJMP 0x0b45                     ; XREF from CODE:0169
-CODE:0173  90ff2b    MOV DPTR,#0xff2b              
+
+; ======== FUNCTION std_get_descriptor @ CODE:0173 ========
+std_get_descriptor:
+CODE:0173  90ff2b    MOV DPTR,#0xff2b                ; XREF from CODE:012b
 CODE:0176  e0        MOVX A,@DPTR                  
 CODE:0177  b40110    CJNE A,#0x1,0x018a            
 CODE:017a  751905    MOV 0x19,#0x5                 
@@ -249,7 +326,10 @@ CODE:01e8  021009    LJMP 0x1009                     ; XREF from CODE:01b6
 LAB_CODE_01eb:
 CODE:01eb  120d6b    LCALL 0x0d6b                    ; XREF from CODE:0188,CODE:01ae,CODE:01e6
 CODE:01ee  020b77    LJMP 0x0b77                   
-CODE:01f1  200a03    JB 0x0a,0x01f7                
+
+; ======== FUNCTION std_get_interface @ CODE:01f1 ========
+std_get_interface:
+CODE:01f1  200a03    JB 0x0a,0x01f7                  ; XREF from CODE:0137
 CODE:01f4  300e35    JNB 0x0e,0x022c               
 LAB_CODE_01f7:
 CODE:01f7  90ff2c    MOV DPTR,#0xff2c                ; XREF from CODE:01f1
@@ -282,7 +362,10 @@ LAB_CODE_0229:
 CODE:0229  020b45    LJMP 0x0b45                     ; XREF from CODE:0210,CODE:0222
 LAB_CODE_022c:
 CODE:022c  021009    LJMP 0x1009                     ; XREF from CODE:01f4,CODE:01fe
-CODE:022f  120b3e    LCALL 0x0b3e                  
+
+; ======== FUNCTION std_get_status @ CODE:022f ========
+std_get_status:
+CODE:022f  120b3e    LCALL 0x0b3e                    ; XREF from CODE:011f
 CODE:0232  120b17    LCALL 0x0b17                  
 CODE:0235  e4        CLR A                         
 CODE:0236  f0        MOVX @DPTR,A                  
@@ -298,14 +381,20 @@ CODE:0247  f0        MOVX @DPTR,A
 CODE:0248  c20b      CLR 0x0b                      
 CODE:024a  d20c      SETB 0x0c                     
 CODE:024c  22        RET                           
-CODE:024d  750d05    MOV 0x0d,#0x5                 
+
+; ======== FUNCTION std_set_address @ CODE:024d ========
+std_set_address:
+CODE:024d  750d05    MOV 0x0d,#0x5                   ; XREF from CODE:0128
 CODE:0250  90ff2a    MOV DPTR,#0xff2a              
 CODE:0253  e0        MOVX A,@DPTR                  
 CODE:0254  f50e      MOV 0x0e,A                    
 CODE:0256  c20b      CLR 0x0b                      
 CODE:0258  c20c      CLR 0x0c                      
 CODE:025a  22        RET                           
-CODE:025b  90ff2a    MOV DPTR,#0xff2a              
+
+; ======== FUNCTION std_set_configuration @ CODE:025b ========
+std_set_configuration:
+CODE:025b  90ff2a    MOV DPTR,#0xff2a                ; XREF from CODE:0134
 CODE:025e  e0        MOVX A,@DPTR                  
 CODE:025f  d3        SETB CY                       
 CODE:0260  9401      SUBB A,#0x1                   
@@ -338,9 +427,18 @@ CODE:0291  c209      CLR 0x09
 LAB_CODE_0293:
 CODE:0293  750a01    MOV 0x0a,#0x1                   ; XREF from CODE:0288
 CODE:0296  020b5f    LJMP 0x0b5f                   
-CODE:0299  021009    LJMP 0x1009                   
-CODE:029c  021009    LJMP 0x1009                   
-CODE:029f  90ff2c    MOV DPTR,#0xff2c              
+
+; ======== FUNCTION std_set_descriptor_stall @ CODE:0299 ========
+std_set_descriptor_stall:
+CODE:0299  021009    LJMP 0x1009                     ; XREF from CODE:012e
+
+; ======== FUNCTION std_set_feature_stall @ CODE:029c ========
+std_set_feature_stall:
+CODE:029c  021009    LJMP 0x1009                     ; XREF from CODE:0125
+
+; ======== FUNCTION std_set_interface @ CODE:029f ========
+std_set_interface:
+CODE:029f  90ff2c    MOV DPTR,#0xff2c                ; XREF from CODE:013a
 CODE:02a2  e0        MOVX A,@DPTR                  
 CODE:02a3  d3        SETB CY                       
 CODE:02a4  9402      SUBB A,#0x2                   
@@ -377,11 +475,18 @@ LAB_CODE_02e1:
 CODE:02e1  020b5f    LJMP 0x0b5f                     ; XREF from CODE:02c8,CODE:02dc
 LAB_CODE_02e4:
 CODE:02e4  021009    LJMP 0x1009                     ; XREF from CODE:02a6,CODE:02ae,CODE:02b3
-CODE:02e7  021009    LJMP 0x1009                   
+
+; ======== FUNCTION std_synch_frame_stall @ CODE:02e7 ========
+std_synch_frame_stall:
+CODE:02e7  021009    LJMP 0x1009                     ; XREF from CODE:013d
+
+; ======== FUNCTION std_request_unknown_default @ CODE:02ea ========
+std_request_unknown_default:
 CODE:02ea  121009    LCALL 0x1009                  
 CODE:02ed  22        RET                           
 
-; ======== FUNCTION FUN_CODE_02ee @ CODE:02ee ========
+; ======== FUNCTION device_event_dispatch @ CODE:02ee ========
+device_event_dispatch:
 CODE:02ee  e50a      MOV A,0x0a                      ; XREF from CODE:0ada,CODE:0af9,CODE:0b0a
 CODE:02f0  14        DEC A                         
 CODE:02f1  b40e00    CJNE A,#0xe,0x02f4            
@@ -394,6 +499,9 @@ CODE:02fc  f8        MOV R0,A
 CODE:02fd  28        ADD A,R0                      
 CODE:02fe  28        ADD A,R0                      
 CODE:02ff  73        JMP @A+DPTR                   
+
+; ======== FUNCTION event_jump_table @ CODE:0300 ========
+event_jump_table:
 CODE:0300  02032a    LJMP 0x032a                   
 CODE:0303  020386    LJMP 0x0386                   
 CODE:0306  0203fd    LJMP 0x03fd                   
@@ -408,7 +516,9 @@ CODE:031e  0204c4    LJMP 0x04c4
 CODE:0321  020511    LJMP 0x0511                   
 CODE:0324  020518    LJMP 0x0518                   
 CODE:0327  020526    LJMP 0x0526                   
-LAB_CODE_032a:
+
+; ======== FUNCTION cmd1_apply_clock_mode @ CODE:032a ========
+cmd1_apply_clock_mode:
 CODE:032a  121001    LCALL 0x1001                    ; XREF from CODE:0300
 CODE:032d  90ffee    MOV DPTR,#0xffee              
 CODE:0330  e0        MOVX A,@DPTR                  
@@ -456,7 +566,9 @@ CODE:037d  120e62    LCALL 0x0e62
 LAB_CODE_0380:
 CODE:0380  120fea    LCALL 0x0fea                    ; XREF from CODE:035d,CODE:0363,CODE:0379
 CODE:0383  020564    LJMP 0x0564                   
-LAB_CODE_0386:
+
+; ======== FUNCTION cmd2_apply_iface1_alt @ CODE:0386 ========
+cmd2_apply_iface1_alt:
 CODE:0386  200a03    JB 0x0a,0x038c                  ; XREF from CODE:0303
 CODE:0389  300e4a    JNB 0x0e,0x03d6               
 LAB_CODE_038c:
@@ -514,7 +626,9 @@ CODE:03f4  74ff      MOV A,#0xff
 CODE:03f6  f0        MOVX @DPTR,A                  
 CODE:03f7  120fea    LCALL 0x0fea                  
 CODE:03fa  020564    LJMP 0x0564                   
-LAB_CODE_03fd:
+
+; ======== FUNCTION cmd3_apply_iface2_alt @ CODE:03fd ========
+cmd3_apply_iface2_alt:
 CODE:03fd  300e04    JNB 0x0e,0x0404                 ; XREF from CODE:0306
 CODE:0400  7f01      MOV R7,#0x1                   
 CODE:0402  8002      SJMP 0x0406                   
@@ -566,7 +680,9 @@ CODE:044b  121001    LCALL 0x1001
 LAB_CODE_044e:
 CODE:044e  120fea    LCALL 0x0fea                    ; XREF from CODE:0430,CODE:0446,CODE:0448
 CODE:0451  020564    LJMP 0x0564                   
-LAB_CODE_0454:
+
+; ======== FUNCTION cmd4_variantA_reapply_mode @ CODE:0454 ========
+cmd4_variantA_reapply_mode:
 CODE:0454  c22c      CLR 0x2c                        ; XREF from CODE:0309
 CODE:0456  d216      SETB 0x16                     
 CODE:0458  120e62    LCALL 0x0e62                  
@@ -574,7 +690,9 @@ CODE:045b  120f0c    LCALL 0x0f0c
 CODE:045e  af08      MOV R7,0x08                   
 CODE:0460  120728    LCALL 0x0728                  
 CODE:0463  020564    LJMP 0x0564                   
-LAB_CODE_0466:
+
+; ======== FUNCTION cmd5_variantB_set_mode1 @ CODE:0466 ========
+cmd5_variantB_set_mode1:
 CODE:0466  d22c      SETB 0x2c                       ; XREF from CODE:030c
 CODE:0468  c216      CLR 0x16                      
 CODE:046a  120e62    LCALL 0x0e62                  
@@ -582,11 +700,15 @@ CODE:046d  120f0c    LCALL 0x0f0c
 CODE:0470  7f01      MOV R7,#0x1                   
 CODE:0472  120728    LCALL 0x0728                  
 CODE:0475  020564    LJMP 0x0564                   
-LAB_CODE_0478:
+
+; ======== FUNCTION cmd6_set_cpt_mode1 @ CODE:0478 ========
+cmd6_set_cpt_mode1:
 CODE:0478  7f01      MOV R7,#0x1                     ; XREF from CODE:030f
 CODE:047a  120728    LCALL 0x0728                  
 CODE:047d  020564    LJMP 0x0564                   
-LAB_CODE_0480:
+
+; ======== FUNCTION cmd7_set_cpt_mode2_progchip @ CODE:0480 ========
+cmd7_set_cpt_mode2_progchip:
 CODE:0480  7f02      MOV R7,#0x2                     ; XREF from CODE:0312
 CODE:0482  120728    LCALL 0x0728                  
 CODE:0485  302c06    JNB 0x2c,0x048e               
@@ -598,7 +720,9 @@ CODE:0491  e4        CLR A
 CODE:0492  f52d      MOV 0x2d,A                    
 CODE:0494  120582    LCALL 0x0582                  
 CODE:0497  020564    LJMP 0x0564                   
-LAB_CODE_049a:
+
+; ======== FUNCTION cmd8_set_cpt_mode3_progchip @ CODE:049a ========
+cmd8_set_cpt_mode3_progchip:
 CODE:049a  7f03      MOV R7,#0x3                     ; XREF from CODE:0315
 CODE:049c  120728    LCALL 0x0728                  
 CODE:049f  302c06    JNB 0x2c,0x04a8               
@@ -609,15 +733,21 @@ CODE:04a8  752c23    MOV 0x2c,#0x23                  ; XREF from CODE:049f
 CODE:04ab  752d40    MOV 0x2d,#0x40                
 CODE:04ae  120582    LCALL 0x0582                  
 CODE:04b1  020564    LJMP 0x0564                   
-LAB_CODE_04b4:
+
+; ======== FUNCTION cmd9_set_cpt_mode4 @ CODE:04b4 ========
+cmd9_set_cpt_mode4:
 CODE:04b4  7f04      MOV R7,#0x4                     ; XREF from CODE:0318
 CODE:04b6  120728    LCALL 0x0728                  
 CODE:04b9  020564    LJMP 0x0564                   
-LAB_CODE_04bc:
+
+; ======== FUNCTION cmd10_set_cpt_mode5 @ CODE:04bc ========
+cmd10_set_cpt_mode5:
 CODE:04bc  7f05      MOV R7,#0x5                     ; XREF from CODE:031b
 CODE:04be  120728    LCALL 0x0728                  
 CODE:04c1  020564    LJMP 0x0564                   
-LAB_CODE_04c4:
+
+; ======== FUNCTION cmd11_eeprom_selftest @ CODE:04c4 ========
+cmd11_eeprom_selftest:
 CODE:04c4  202e03    JB 0x2e,0x04ca                  ; XREF from CODE:031e
 CODE:04c7  12080b    LCALL 0x080b                  
 LAB_CODE_04ca:
@@ -652,11 +782,15 @@ CODE:0508  ad2d      MOV R5,0x2d
 CODE:050a  af2c      MOV R7,0x2c                   
 CODE:050c  120c45    LCALL 0x0c45                  
 CODE:050f  8053      SJMP 0x0564                   
-LAB_CODE_0511:
+
+; ======== FUNCTION cmd12_set_cpt_mode1 @ CODE:0511 ========
+cmd12_set_cpt_mode1:
 CODE:0511  7f01      MOV R7,#0x1                     ; XREF from CODE:0321
 CODE:0513  120728    LCALL 0x0728                  
 CODE:0516  804c      SJMP 0x0564                   
-LAB_CODE_0518:
+
+; ======== FUNCTION evt0d_invalidate_boot_eeprom @ CODE:0518 ========
+evt0d_invalidate_boot_eeprom:
 CODE:0518  e4        CLR A                           ; XREF from CODE:0324
 CODE:0519  fb        MOV R3,A                      
 CODE:051a  fd        MOV R5,A                      
@@ -666,7 +800,9 @@ CODE:051f  90ffab    MOV DPTR,#0xffab
 CODE:0522  e4        CLR A                         
 CODE:0523  f0        MOVX @DPTR,A                  
 CODE:0524  803e      SJMP 0x0564                   
-LAB_CODE_0526:
+
+; ======== FUNCTION evt0e_usb_suspend_enter_and_resume @ CODE:0526 ========
+evt0e_usb_suspend_enter_and_resume:
 CODE:0526  a20e      MOV CY,0x0e                     ; XREF from CODE:0327
 CODE:0528  720a      ORL CY,0x0a                   
 CODE:052a  5038      JNC 0x0564                    
@@ -698,12 +834,15 @@ CODE:055d  90fffc    MOV DPTR,#0xfffc
 CODE:0560  e0        MOVX A,@DPTR                  
 CODE:0561  4480      ORL A,#0x80                   
 CODE:0563  f0        MOVX @DPTR,A                  
-LAB_CODE_0564:
+
+; ======== FUNCTION evt_dispatch_epilogue @ CODE:0564 ========
+evt_dispatch_epilogue:
 CODE:0564  e4        CLR A                           ; XREF from CODE:02f6,CODE:0383,CODE:03fa,CODE:0451,CODE:0463,CODE:0475,CODE:047d,CODE:048b
 CODE:0565  f50a      MOV 0x0a,A                    
 CODE:0567  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0568 @ CODE:0568 ========
+; ======== FUNCTION serial_ctl_write_04_41_then_12_00 @ CODE:0568 ========
+serial_ctl_write_04_41_then_12_00:
 CODE:0568  752c04    MOV 0x2c,#0x4                   ; XREF from CODE:0488,CODE:04a2
 CODE:056b  752d41    MOV 0x2d,#0x41                
 CODE:056e  ad2d      MOV R5,0x2d                   
@@ -716,7 +855,8 @@ CODE:057b  ad2d      MOV R5,0x2d
 CODE:057d  af2c      MOV R7,0x2c                   
 CODE:057f  020c45    LJMP 0x0c45                   
 
-; ======== FUNCTION FUN_CODE_0582 @ CODE:0582 ========
+; ======== FUNCTION serial_ctl_write_caller_pair_then_24_80 @ CODE:0582 ========
+serial_ctl_write_caller_pair_then_24_80:
 CODE:0582  ad2d      MOV R5,0x2d                     ; XREF from CODE:0494,CODE:04ae
 CODE:0584  af2c      MOV R7,0x2c                   
 CODE:0586  120c45    LCALL 0x0c45                  
@@ -726,7 +866,8 @@ CODE:058f  ad2d      MOV R5,0x2d
 CODE:0591  af2c      MOV R7,0x2c                   
 CODE:0593  020c45    LJMP 0x0c45                   
 
-; ======== FUNCTION FUN_CODE_0728 @ CODE:0728 ========
+; ======== FUNCTION audio_clock_mode_apply @ CODE:0728 ========
+audio_clock_mode_apply:
 CODE:0728  8f2e      MOV 0x2e,R7                     ; XREF from CODE:03ba,CODE:0426,CODE:0460,CODE:0472,CODE:047a,CODE:0482,CODE:049c,CODE:04b6
 CODE:072a  e4        CLR A                         
 CODE:072b  f52f      MOV 0x2f,A                    
@@ -841,7 +982,8 @@ CODE:0805  e52f      MOV A,0x2f
 CODE:0807  b40ff0    CJNE A,#0xf,0x07fa            
 CODE:080a  22        RET                           
 
-; ======== FUNCTION FUN_CODE_080b @ CODE:080b ========
+; ======== FUNCTION audio_path_reconfig_ext_chips @ CODE:080b ========
+audio_path_reconfig_ext_chips:
 CODE:080b  e4        CLR A                           ; XREF from CODE:0360,CODE:0392,CODE:0419,CODE:04c7
 CODE:080c  f525      MOV 0x25,A                    
 CODE:080e  f523      MOV 0x23,A                    
@@ -906,7 +1048,8 @@ CODE:08a0  af2e      MOV R7,0x2e
 CODE:08a2  120c45    LCALL 0x0c45                  
 CODE:08a5  22        RET                           
 
-; ======== FUNCTION FUN_CODE_08a6 @ CODE:08a6 ========
+; ======== FUNCTION extchip_write_reg4_zero @ CODE:08a6 ========
+extchip_write_reg4_zero:
 CODE:08a6  752e04    MOV 0x2e,#0x4                   ; XREF from CODE:0855,CODE:0861
 CODE:08a9  e4        CLR A                         
 CODE:08aa  f52f      MOV 0x2f,A                    
@@ -914,23 +1057,27 @@ CODE:08ac  ad2f      MOV R5,0x2f
 CODE:08ae  af2e      MOV R7,0x2e                   
 CODE:08b0  020c45    LJMP 0x0c45                   
 
-; ======== FUNCTION FUN_CODE_08b3 @ CODE:08b3 ========
+; ======== FUNCTION extchip_write_val05 @ CODE:08b3 ========
+extchip_write_val05:
 CODE:08b3  752f05    MOV 0x2f,#0x5                   ; XREF from CODE:088f,CODE:0895
 CODE:08b6  ad2f      MOV R5,0x2f                   
 CODE:08b8  af2e      MOV R7,0x2e                   
 CODE:08ba  020c45    LJMP 0x0c45                   
 
-; ======== FUNCTION FUN_CODE_08bd @ CODE:08bd ========
+; ======== FUNCTION extchip_write_2e_2f @ CODE:08bd ========
+extchip_write_2e_2f:
 CODE:08bd  ad2f      MOV R5,0x2f                     ; XREF from CODE:085e,CODE:086a
 CODE:08bf  af2e      MOV R7,0x2e                   
 CODE:08c1  020c45    LJMP 0x0c45                   
 
-; ======== FUNCTION FUN_CODE_08c4 @ CODE:08c4 ========
+; ======== FUNCTION extchip_write_2e_2f_dup @ CODE:08c4 ========
+extchip_write_2e_2f_dup:
 CODE:08c4  ad2f      MOV R5,0x2f                     ; XREF from CODE:0873,CODE:087c
 CODE:08c6  af2e      MOV R7,0x2e                   
 CODE:08c8  020c45    LJMP 0x0c45                   
 
-; ======== FUNCTION FUN_CODE_08cb @ CODE:08cb ========
+; ======== FUNCTION hw_master_init @ CODE:08cb ========
+hw_master_init:
 CODE:08cb  e4        CLR A                           ; XREF from CODE:0aad,CODE:0551
 CODE:08cc  f52e      MOV 0x2e,A                    
 CODE:08ce  f52f      MOV 0x2f,A                    
@@ -1017,7 +1164,8 @@ CODE:096a  f523      MOV 0x23,A
 CODE:096c  120e62    LCALL 0x0e62                  
 CODE:096f  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0970 @ CODE:0970 ========
+; ======== FUNCTION usb_ep_dma_init @ CODE:0970 ========
+usb_ep_dma_init:
 CODE:0970  90ffa9    MOV DPTR,#0xffa9                ; XREF from CODE:0ab0,CODE:0554
 CODE:0973  7442      MOV A,#0x42                   
 CODE:0975  f0        MOVX @DPTR,A                  
@@ -1098,7 +1246,8 @@ CODE:0a03  750cfe    MOV 0x0c,#0xfe
 CODE:0a06  f50a      MOV 0x0a,A                    
 CODE:0a08  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0a09 @ CODE:0a09 ========
+; ======== FUNCTION c51_startup @ CODE:0a09 ========
+c51_startup:
 CODE:0a09  787f      MOV R0,#0x7f                    ; XREF from CODE:0000
 CODE:0a0b  e4        CLR A                         
 LAB_CODE_0a0c:
@@ -1108,7 +1257,9 @@ CODE:0a0f  758133    MOV 0x81,#0x33
 CODE:0a12  020a50    LJMP 0x0a50                   
 LAB_CODE_0a15:
 CODE:0a15  020a95    LJMP 0x0a95                     ; XREF from CODE:0a57
-LAB_CODE_0a18:
+
+; ======== FUNCTION c51_init_interpreter @ CODE:0a18 ========
+c51_init_interpreter:
 CODE:0a18  e4        CLR A                           ; XREF from CODE:0a6e
 CODE:0a19  93        MOVC A,@A+DPTR                
 CODE:0a1a  a3        INC DPTR                      
@@ -1204,7 +1355,9 @@ CODE:0a8e  ca        XCH A,R2
 CODE:0a8f  dfe9      DJNZ R7,0x0a7a                
 CODE:0a91  dee7      DJNZ R6,0x0a7a                
 CODE:0a93  80be      SJMP 0x0a53                   
-LAB_CODE_0a95:
+
+; ======== FUNCTION main @ CODE:0a95 ========
+main:
 CODE:0a95  e4        CLR A                           ; XREF from CODE:0a15
 CODE:0a96  f527      MOV 0x27,A                    
 CODE:0a98  74ff      MOV A,#0xff                   
@@ -1273,12 +1426,14 @@ CODE:0b0f  80c2      SJMP 0x0ad3
 CODE:0b11  751bfa    MOV 0x1b,#0xfa                  ; XREF from CODE:0d2d,CODE:0d4a
 CODE:0b14  751c10    MOV 0x1c,#0x10                
 
-; ======== FUNCTION FUN_CODE_0b17 @ CODE:0b17 ========
+; ======== FUNCTION dptr_from_ep0_ptr @ CODE:0b17 ========
+dptr_from_ep0_ptr:
 CODE:0b17  851c82    MOV DPL,0x1c                    ; XREF from CODE:0079,CODE:0081,CODE:009d,CODE:00bf,CODE:00e7,CODE:0163,CODE:016b,CODE:0b9c
 CODE:0b1a  851b83    MOV DPH,0x1b                  
 CODE:0b1d  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b1e @ CODE:0b1e ========
+; ======== FUNCTION ep0_clear_stall_toggle_and_arm @ CODE:0b1e ========
+ep0_clear_stall_toggle_and_arm:
 CODE:0b1e  90ff68    MOV DPTR,#0xff68                ; XREF from CODE:0d67,CODE:0fe6
 CODE:0b21  e0        MOVX A,@DPTR                  
 CODE:0b22  54d7      ANL A,#0xd7                   
@@ -1287,7 +1442,8 @@ CODE:0b25  90ffa8    MOV DPTR,#0xffa8
 CODE:0b28  e0        MOVX A,@DPTR                  
 CODE:0b29  54d7      ANL A,#0xd7                   
 
-; ======== FUNCTION FUN_CODE_0b2b @ CODE:0b2b ========
+; ======== FUNCTION ep0_store_cnf_and_arm_both @ CODE:0b2b ========
+ep0_store_cnf_and_arm_both:
 CODE:0b2b  f0        MOVX @DPTR,A                    ; XREF from CODE:0036,CODE:1016,CODE:0fd5
 CODE:0b2c  90ff6b    MOV DPTR,#0xff6b              
 CODE:0b2f  e4        CLR A                         
@@ -1296,19 +1452,22 @@ CODE:0b31  90ffab    MOV DPTR,#0xffab
 CODE:0b34  f0        MOVX @DPTR,A                  
 CODE:0b35  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b36 @ CODE:0b36 ========
+; ======== FUNCTION ep0_buf_clear_byte @ CODE:0b36 ========
+ep0_buf_clear_byte:
 CODE:0b36  f582      MOV DPL,A                       ; XREF from CODE:00aa,CODE:00b5,CODE:00dd,CODE:0105,CODE:023f
 CODE:0b38  851b83    MOV DPH,0x1b                  
 CODE:0b3b  e4        CLR A                         
 CODE:0b3c  f0        MOVX @DPTR,A                  
 CODE:0b3d  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b3e @ CODE:0b3e ========
+; ======== FUNCTION ep0_ptr_set_in_buf @ CODE:0b3e ========
+ep0_ptr_set_in_buf:
 CODE:0b3e  751bfa    MOV 0x1b,#0xfa                  ; XREF from CODE:0073,CODE:0095,CODE:015d,CODE:0b8f,CODE:0200,CODE:022f
 CODE:0b41  751c18    MOV 0x1c,#0x18                
 CODE:0b44  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b45 @ CODE:0b45 ========
+; ======== FUNCTION ep0_send_1byte @ CODE:0b45 ========
+ep0_send_1byte:
 CODE:0b45  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:0087,CODE:0170,CODE:0229
 CODE:0b48  7401      MOV A,#0x1                    
 CODE:0b4a  f0        MOVX @DPTR,A                  
@@ -1316,7 +1475,8 @@ CODE:0b4b  c20b      CLR 0x0b
 CODE:0b4d  d20c      SETB 0x0c                     
 CODE:0b4f  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b50 @ CODE:0b50 ========
+; ======== FUNCTION ep0_clear_stall_both @ CODE:0b50 ========
+ep0_clear_stall_both:
 CODE:0b50  90ff68    MOV DPTR,#0xff68                ; XREF from CODE:0026,CODE:0152
 CODE:0b53  e0        MOVX A,@DPTR                  
 CODE:0b54  54f7      ANL A,#0xf7                   
@@ -1327,7 +1487,8 @@ CODE:0b5b  54f7      ANL A,#0xf7
 CODE:0b5d  f0        MOVX @DPTR,A                  
 CODE:0b5e  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b5f @ CODE:0b5f ========
+; ======== FUNCTION ep0_nack_both @ CODE:0b5f ========
+ep0_nack_both:
 CODE:0b5f  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:0296,CODE:02e1
 CODE:0b62  7480      MOV A,#0x80                   
 CODE:0b64  f0        MOVX @DPTR,A                  
@@ -1337,14 +1498,16 @@ CODE:0b69  c20b      CLR 0x0b
 CODE:0b6b  c20c      CLR 0x0c                      
 CODE:0b6d  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b6e @ CODE:0b6e ========
+; ======== FUNCTION code_read_byte_at_srcptr @ CODE:0b6e ========
+code_read_byte_at_srcptr:
 CODE:0b6e  851a82    MOV DPL,0x1a                    ; XREF from CODE:0180,CODE:01de,CODE:0b99
 CODE:0b71  851983    MOV DPH,0x19                  
 CODE:0b74  e4        CLR A                         
 CODE:0b75  93        MOVC A,@A+DPTR                
 CODE:0b76  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b77 @ CODE:0b77 ========
+; ======== FUNCTION ep0_in_start_transfer @ CODE:0b77 ========
+ep0_in_start_transfer:
 CODE:0b77  120b8c    LCALL 0x0b8c                    ; XREF from CODE:01ee,CODE:0fc7
 CODE:0b7a  90ff6b    MOV DPTR,#0xff6b              
 CODE:0b7d  e0        MOVX A,@DPTR                  
@@ -1352,7 +1515,8 @@ CODE:0b7e  547f      ANL A,#0x7f
 CODE:0b80  f0        MOVX @DPTR,A                  
 CODE:0b81  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b82 @ CODE:0b82 ========
+; ======== FUNCTION ep0_arm_zlp_and_out @ CODE:0b82 ========
+ep0_arm_zlp_and_out:
 CODE:0b82  90ffab    MOV DPTR,#0xffab                ; XREF from CODE:0f43,CODE:0d64
 CODE:0b85  e4        CLR A                         
 CODE:0b86  f0        MOVX @DPTR,A                  
@@ -1360,7 +1524,8 @@ CODE:0b87  90ff6b    MOV DPTR,#0xff6b
 CODE:0b8a  f0        MOVX @DPTR,A                  
 CODE:0b8b  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0b8c @ CODE:0b8c ========
+; ======== FUNCTION ep0_in_fill_chunk @ CODE:0b8c ========
+ep0_in_fill_chunk:
 CODE:0b8c  e4        CLR A                           ; XREF from CODE:0b77
 CODE:0b8d  f518      MOV 0x18,A                    
 CODE:0b8f  120b3e    LCALL 0x0b3e                  
@@ -1479,7 +1644,8 @@ CODE:0c42  80f5      SJMP 0x0c39
 LAB_CODE_0c44:
 CODE:0c44  22        RET                             ; XREF from CODE:0c3b
 
-; ======== FUNCTION FUN_CODE_0c45 @ CODE:0c45 ========
+; ======== FUNCTION cs8427_ctl_write @ CODE:0c45 ========
+cs8427_ctl_write:
 CODE:0c45  8f33      MOV 0x33,R7                     ; XREF from CODE:0889,CODE:08a2,CODE:07c9,CODE:0572,CODE:0586,CODE:04db,CODE:050c,CODE:08b0
 CODE:0c47  a905      MOV R1,0x05                   
 CODE:0c49  7c08      MOV R4,#0x8                   
@@ -1527,7 +1693,8 @@ CODE:0c8d  d22f      SETB 0x2f                       ; XREF from CODE:0c82
 CODE:0c8f  120e62    LCALL 0x0e62                  
 CODE:0c92  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0cdd @ CODE:0cdd ========
+; ======== FUNCTION i2c_eeprom_read_byte @ CODE:0cdd ========
+i2c_eeprom_read_byte:
 CODE:0cdd  90ffc0    MOV DPTR,#0xffc0                ; XREF from CODE:04e2,CODE:04f3
 CODE:0ce0  e0        MOVX A,@DPTR                  
 CODE:0ce1  54fc      ANL A,#0xfc                   
@@ -1570,7 +1737,10 @@ CODE:0d21  e0        MOVX A,@DPTR
 CODE:0d22  fe        MOV R6,A                      
 CODE:0d23  ff        MOV R7,A                      
 CODE:0d24  22        RET                           
-CODE:0d25  300b3f    JNB 0x0b,0x0d67               
+
+; ======== FUNCTION ep0_out_data_handler @ CODE:0d25 ========
+ep0_out_data_handler:
+CODE:0d25  300b3f    JNB 0x0b,0x0d67                 ; XREF from CODE:0c93
 CODE:0d28  e50d      MOV A,0x0d                    
 CODE:0d2a  b40118    CJNE A,#0x1,0x0d45            
 CODE:0d2d  120b11    LCALL 0x0b11                  
@@ -1608,7 +1778,8 @@ LAB_CODE_0d67:
 CODE:0d67  120b1e    LCALL 0x0b1e                    ; XREF from CODE:0d25
 CODE:0d6a  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0d6b @ CODE:0d6b ========
+; ======== FUNCTION ep0_clamp_len_to_wlength @ CODE:0d6b ========
+ep0_clamp_len_to_wlength:
 CODE:0d6b  90ff2f    MOV DPTR,#0xff2f                ; XREF from CODE:01eb
 CODE:0d6e  e0        MOVX A,@DPTR                  
 CODE:0d6f  ff        MOV R7,A                      
@@ -1655,7 +1826,8 @@ CODE:0da9  d20d      SETB 0x0d                       ; XREF from CODE:0d9a
 LAB_CODE_0dab:
 CODE:0dab  22        RET                             ; XREF from CODE:0d9d,CODE:0da7
 
-; ======== FUNCTION FUN_CODE_0dac @ CODE:0dac ========
+; ======== FUNCTION usb_int0_isr @ CODE:0dac ========
+usb_int0_isr:
 CODE:0dac  c0e0      PUSH A                          ; XREF from CODE:0003
 CODE:0dae  c0f0      PUSH B                        
 CODE:0db0  c083      PUSH DPH                      
@@ -1692,10 +1864,12 @@ CODE:0de6  d0f0      POP B
 CODE:0de8  d0e0      POP A                         
 CODE:0dea  32        RETI                          
 
-; ======== FUNCTION FUN_CODE_0deb @ CODE:0deb ========
+; ======== FUNCTION sfr_store_then_cpt_cfg_tail @ CODE:0deb ========
+sfr_store_then_cpt_cfg_tail:
 CODE:0deb  f0        MOVX @DPTR,A                    ; XREF from CODE:092e,CODE:07ac
 
-; ======== FUNCTION FUN_CODE_0dec @ CODE:0dec ========
+; ======== FUNCTION acg_set_freq_48k_family @ CODE:0dec ========
+acg_set_freq_48k_family:
 CODE:0dec  90ffe6    MOV DPTR,#0xffe6                ; XREF from CODE:081b,CODE:078e
 CODE:0def  74a8      MOV A,#0xa8                   
 CODE:0df1  f0        MOVX @DPTR,A                  
@@ -1714,7 +1888,8 @@ CODE:0e09  f0        MOVX @DPTR,A
 CODE:0e0a  90fff9    MOV DPTR,#0xfff9              
 CODE:0e0d  740f      MOV A,#0xf                    
 
-; ======== FUNCTION FUN_CODE_0e0f @ CODE:0e0f ========
+; ======== FUNCTION acg_commit_and_ctl @ CODE:0e0f ========
+acg_commit_and_ctl:
 CODE:0e0f  f0        MOVX @DPTR,A                    ; XREF from CODE:0782
 CODE:0e10  90ffe1    MOV DPTR,#0xffe1              
 CODE:0e13  7406      MOV A,#0x6                    
@@ -1731,12 +1906,14 @@ CODE:0e1b  90fff6    MOV DPTR,#0xfff6
 CODE:0e1e  f0        MOVX @DPTR,A                  
 CODE:0e1f  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0e20 @ CODE:0e20 ========
+; ======== FUNCTION queue_cs8427_reg4_val40 @ CODE:0e20 ========
+queue_cs8427_reg4_val40:
 CODE:0e20  753104    MOV 0x31,#0x4                   ; XREF from CODE:0788,CODE:0794,CODE:07c2
 CODE:0e23  753240    MOV 0x32,#0x40                
 CODE:0e26  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0e27 @ CODE:0e27 ========
+; ======== FUNCTION button_a_cycle_3state @ CODE:0e27 ========
+button_a_cycle_3state:
 CODE:0e27  20280c    JB 0x28,0x0e36                  ; XREF from CODE:0ef4
 CODE:0e2a  d228      SETB 0x28                     
 CODE:0e2c  d22a      SETB 0x2a                     
@@ -1771,7 +1948,8 @@ CODE:0e5f  c216      CLR 0x16
 LAB_CODE_0e61:
 CODE:0e61  22        RET                             ; XREF from CODE:0e5c
 
-; ======== FUNCTION FUN_CODE_0e62 @ CODE:0e62 ========
+; ======== FUNCTION shiftreg16_commit_p1_0_1_2 @ CODE:0e62 ========
+shiftreg16_commit_p1_0_1_2:
 CODE:0e62  7e08      MOV R6,#0x8                     ; XREF from CODE:0ae9,CODE:096c,CODE:037d,CODE:0818,CODE:0835,CODE:0842,CODE:084d,CODE:0852
 CODE:0e64  ad23      MOV R5,0x23                   
 CODE:0e66  d230      SETB 0x30                     
@@ -1809,7 +1987,8 @@ CODE:0e96  439002    ORL 0x90,#0x2                   ; XREF from CODE:0e8b
 CODE:0e99  5390fd    ANL 0x90,#0xfd                
 CODE:0e9c  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0e9d @ CODE:0e9d ========
+; ======== FUNCTION button_b_cycle_3state @ CODE:0e9d ========
+button_b_cycle_3state:
 CODE:0e9d  20290c    JB 0x29,0x0eac                  ; XREF from CODE:0f01
 CODE:0ea0  d229      SETB 0x29                     
 CODE:0ea2  d22b      SETB 0x2b                     
@@ -1843,7 +2022,8 @@ CODE:0ed2  c216      CLR 0x16
 LAB_CODE_0ed4:
 CODE:0ed4  22        RET                             ; XREF from CODE:0ecf
 
-; ======== FUNCTION FUN_CODE_0ed5 @ CODE:0ed5 ========
+; ======== FUNCTION p3_button_scan @ CODE:0ed5 ========
+p3_button_scan:
 CODE:0ed5  e4        CLR A                           ; XREF from CODE:0adf
 CODE:0ed6  fe        MOV R6,A                      
 CODE:0ed7  adb0      MOV R5,0xb0                   
@@ -1874,7 +2054,8 @@ CODE:0f07  8d20      MOV 0x20,R5                     ; XREF from CODE:0efa,CODE:
 CODE:0f09  af06      MOV R7,0x06                   
 CODE:0f0b  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0f0c @ CODE:0f0c ========
+; ======== FUNCTION shiftreg8_commit_p1_7_6_5 @ CODE:0f0c ========
+shiftreg8_commit_p1_7_6_5:
 CODE:0f0c  7e08      MOV R6,#0x8                     ; XREF from CODE:0ae6,CODE:0943,CODE:0964,CODE:03a2,CODE:03e8,CODE:045b,CODE:046d,CODE:04ff
 CODE:0f0e  ad22      MOV R5,0x22                   
 CODE:0f10  5390bf    ANL 0x90,#0xbf                
@@ -1906,7 +2087,10 @@ CODE:0f39  53907f    ANL 0x90,#0x7f                  ; XREF from CODE:0f32
 CODE:0f3c  439040    ORL 0x90,#0x40                
 CODE:0f3f  5390bf    ANL 0x90,#0xbf                
 CODE:0f42  22        RET                           
-CODE:0f43  120b82    LCALL 0x0b82                  
+
+; ======== FUNCTION usb_rstr_handler @ CODE:0f43 ========
+usb_rstr_handler:
+CODE:0f43  120b82    LCALL 0x0b82                    ; XREF from CODE:0cc1
 CODE:0f46  90ff9b    MOV DPTR,#0xff9b              
 CODE:0f49  f0        MOVX @DPTR,A                  
 CODE:0f4a  90ff63    MOV DPTR,#0xff63              
@@ -1931,7 +2115,8 @@ CODE:0f6c  749f      MOV A,#0x9f
 CODE:0f6e  f0        MOVX @DPTR,A                  
 CODE:0f6f  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0f70 @ CODE:0f70 ========
+; ======== FUNCTION switch_case_dispatch @ CODE:0f70 ========
+switch_case_dispatch:
 CODE:0f70  d083      POP DPH                         ; XREF from CODE:011c
 CODE:0f72  d082      POP DPL                       
 CODE:0f74  f8        MOV R0,A                      
@@ -1963,12 +2148,16 @@ CODE:0f92  a3        INC DPTR
 CODE:0f93  a3        INC DPTR                      
 CODE:0f94  80df      SJMP 0x0f75                   
 
-; ======== FUNCTION FUN_CODE_0f96 @ CODE:0f96 ========
+; ======== FUNCTION jmp_r2r1_trampoline @ CODE:0f96 ========
+jmp_r2r1_trampoline:
 CODE:0f96  8a83      MOV DPH,R2                      ; XREF from CODE:0dd6
 CODE:0f98  8982      MOV DPL,R1                    
 CODE:0f9a  e4        CLR A                         
 CODE:0f9b  73        JMP @A+DPTR                   
-CODE:0fc4  300b03    JNB 0x0b,0x0fca               
+
+; ======== FUNCTION usb_iep0_done_handler @ CODE:0fc4 ========
+usb_iep0_done_handler:
+CODE:0fc4  300b03    JNB 0x0b,0x0fca                 ; XREF from CODE:0ca3
 CODE:0fc7  020b77    LJMP 0x0b77                   
 LAB_CODE_0fca:
 CODE:0fca  300c0b    JNB 0x0c,0x0fd8                 ; XREF from CODE:0fc4
@@ -1989,7 +2178,8 @@ LAB_CODE_0fe6:
 CODE:0fe6  120b1e    LCALL 0x0b1e                    ; XREF from CODE:0fda
 CODE:0fe9  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0fea @ CODE:0fea ========
+; ======== FUNCTION ep0_arm_zlp_in_and_out @ CODE:0fea ========
+ep0_arm_zlp_in_and_out:
 CODE:0fea  90ff6b    MOV DPTR,#0xff6b                ; XREF from CODE:0380,CODE:03f7,CODE:044e
 CODE:0fed  e4        CLR A                         
 CODE:0fee  f0        MOVX @DPTR,A                  
@@ -1997,7 +2187,8 @@ CODE:0fef  90ffab    MOV DPTR,#0xffab
 CODE:0ff2  f0        MOVX @DPTR,A                  
 CODE:0ff3  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0ff4 @ CODE:0ff4 ========
+; ======== FUNCTION codec_port_cfg3_commit @ CODE:0ff4 ========
+codec_port_cfg3_commit:
 CODE:0ff4  f0        MOVX @DPTR,A                    ; XREF from CODE:034f,CODE:035a
 CODE:0ff5  90ffd5    MOV DPTR,#0xffd5              
 CODE:0ff8  f0        MOVX @DPTR,A                  
@@ -2007,14 +2198,16 @@ CODE:0ffd  4401      ORL A,#0x1
 CODE:0fff  f0        MOVX @DPTR,A                  
 CODE:1000  22        RET                           
 
-; ======== FUNCTION FUN_CODE_1001 @ CODE:1001 ========
+; ======== FUNCTION dma0_disable @ CODE:1001 ========
+dma0_disable:
 CODE:1001  90ffe8    MOV DPTR,#0xffe8                ; XREF from CODE:032a,CODE:03ee,CODE:044b
 CODE:1004  e0        MOVX A,@DPTR                  
 CODE:1005  547f      ANL A,#0x7f                   
 CODE:1007  f0        MOVX @DPTR,A                  
 CODE:1008  22        RET                           
 
-; ======== FUNCTION FUN_CODE_1009 @ CODE:1009 ========
+; ======== FUNCTION ep0_stall_both @ CODE:1009 ========
+ep0_stall_both:
 CODE:1009  90ff68    MOV DPTR,#0xff68                ; XREF from CODE:02ea,CODE:0092,CODE:010a,CODE:015a,CODE:01e8,CODE:022c,CODE:0264,CODE:0299
 CODE:100c  e0        MOVX A,@DPTR                  
 CODE:100d  4408      ORL A,#0x8                    
@@ -2027,34 +2220,64 @@ CODE:1019  c20b      CLR 0x0b
 CODE:101b  c20c      CLR 0x0c                      
 CODE:101d  22        RET                           
 
-; ======== FUNCTION FUN_CODE_101e @ CODE:101e ========
+; ======== FUNCTION timer0_isr_tick @ CODE:101e ========
+timer0_isr_tick:
 CODE:101e  c2af      CLR 0xaf                        ; XREF from CODE:000b
 CODE:1020  d220      SETB 0x20                     
 CODE:1022  758cce    MOV 0x8c,#0xce                
 CODE:1025  d2af      SETB 0xaf                     
 CODE:1027  32        RETI                          
 
-; ======== FUNCTION FUN_CODE_1028 @ CODE:1028 ========
+; ======== FUNCTION toggle_flag_bit1e @ CODE:1028 ========
+toggle_flag_bit1e:
 CODE:1028  301e03    JNB 0x1e,0x102e                 ; XREF from CODE:0ee7
 CODE:102b  c21e      CLR 0x1e                      
 CODE:102d  22        RET                           
 LAB_CODE_102e:
 CODE:102e  d21e      SETB 0x1e                       ; XREF from CODE:1028
 CODE:1030  22        RET                           
-CODE:1031  22        RET                           
-CODE:1032  22        RET                           
-CODE:1033  22        RET                           
-CODE:1034  22        RET                           
-CODE:1035  22        RET                           
-CODE:1036  22        RET                           
-CODE:1037  22        RET                           
-CODE:1038  22        RET                           
-CODE:1039  22        RET                           
-CODE:103a  22        RET                           
-CODE:103b  22        RET                           
-CODE:103c  22        RET                           
-CODE:103d  22        RET                           
-CODE:103e  22        RET                           
+
+; ======== FUNCTION FUN_CODE_1031 @ CODE:1031 ========
+CODE:1031  22        RET                             ; XREF from CODE:0cb1
+
+; ======== FUNCTION FUN_CODE_1032 @ CODE:1032 ========
+CODE:1032  22        RET                             ; XREF from CODE:0cb3
+
+; ======== FUNCTION FUN_CODE_1033 @ CODE:1033 ========
+CODE:1033  22        RET                             ; XREF from CODE:0cb9
+
+; ======== FUNCTION FUN_CODE_1034 @ CODE:1034 ========
+CODE:1034  22        RET                             ; XREF from CODE:0cbb
+
+; ======== FUNCTION FUN_CODE_1035 @ CODE:1035 ========
+CODE:1035  22        RET                             ; XREF from CODE:0cbd
+
+; ======== FUNCTION FUN_CODE_1036 @ CODE:1036 ========
+CODE:1036  22        RET                             ; XREF from CODE:0cc3
+
+; ======== FUNCTION FUN_CODE_1037 @ CODE:1037 ========
+CODE:1037  22        RET                             ; XREF from CODE:0cc5
+
+; ======== FUNCTION FUN_CODE_1038 @ CODE:1038 ========
+CODE:1038  22        RET                             ; XREF from CODE:0ccb
+
+; ======== FUNCTION FUN_CODE_1039 @ CODE:1039 ========
+CODE:1039  22        RET                             ; XREF from CODE:0ccd
+
+; ======== FUNCTION FUN_CODE_103a @ CODE:103a ========
+CODE:103a  22        RET                             ; XREF from CODE:0cd1
+
+; ======== FUNCTION FUN_CODE_103b @ CODE:103b ========
+CODE:103b  22        RET                             ; XREF from CODE:0cd3
+
+; ======== FUNCTION FUN_CODE_103c @ CODE:103c ========
+CODE:103c  22        RET                             ; XREF from CODE:0cd5
+
+; ======== FUNCTION FUN_CODE_103d @ CODE:103d ========
+CODE:103d  22        RET                             ; XREF from CODE:0cdb
+
+; ======== FUNCTION FUN_CODE_103e @ CODE:103e ========
+CODE:103e  22        RET                             ; XREF from CODE:0cb5,CODE:0cc7,CODE:0cc9,CODE:0ccf,CODE:0cd7,CODE:0cd9
 
 ; ======== GAPS (bytes not disassembled — data tables or unreached code) ========
 

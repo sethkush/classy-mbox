@@ -1,0 +1,198 @@
+# Call graph and reachability
+
+## Roots
+### Hardware vectors
+  CODE:0000  reset_vector
+  CODE:0003  int0_vector
+  CODE:000b  tf0_vector
+  CODE:0013  (no function)
+  CODE:001b  (no function)
+  CODE:0023  (no function)
+### Dispatch-table targets (55 entry points)
+  CODE:022f  std_get_status
+  CODE:0145  std_clear_feature
+  CODE:02ef  ep0_stall_both
+  CODE:029b  std_stall_unsupported
+  CODE:024d  std_set_address
+  CODE:0177  std_get_descriptor
+  CODE:015c  std_get_configuration
+  CODE:0259  std_set_configuration
+  CODE:01ed  std_get_interface
+  CODE:029d  std_set_interface
+  CODE:0336  FUN_CODE_0336
+  CODE:038a  FUN_CODE_038a
+  CODE:03fd  FUN_CODE_03fd
+  CODE:045a  FUN_CODE_045a
+  CODE:0469  FUN_CODE_0469
+  CODE:0478  FUN_CODE_0478
+  CODE:047d  FUN_CODE_047d
+  CODE:049f  FUN_CODE_049f
+  CODE:04c0  FUN_CODE_04c0
+  CODE:04c4  FUN_CODE_04c4
+  CODE:04c8  FUN_CODE_04c8
+  CODE:0517  FUN_CODE_0517
+  CODE:0525  FUN_CODE_0525
+  CODE:0cc7  oep0_int_handler
+  CODE:0010  FUN_CODE_0010
+  CODE:0011  FUN_CODE_0011
+  CODE:0012  FUN_CODE_0012
+  CODE:0016  FUN_CODE_0016
+  CODE:0017  FUN_CODE_0017
+  CODE:0018  FUN_CODE_0018
+  CODE:0019  FUN_CODE_0019
+  CODE:0f91  ep0_in_done_handler
+  CODE:001a  FUN_CODE_001a
+  CODE:001e  FUN_CODE_001e
+  CODE:001f  FUN_CODE_001f
+  CODE:0020  FUN_CODE_0020
+  CODE:0021  FUN_CODE_0021
+  CODE:0022  FUN_CODE_0022
+  CODE:1029  FUN_CODE_1029
+  CODE:102a  FUN_CODE_102a
+  CODE:1035  FUN_CODE_1035
+  CODE:0026  usb_setup_handler
+  CODE:102b  FUN_CODE_102b
+  CODE:0d58  sof_int_handler
+  CODE:102c  FUN_CODE_102c
+  CODE:0006  usb_susr_handler
+  CODE:0f64  usb_rstr_handler
+  CODE:102d  FUN_CODE_102d
+  CODE:102e  FUN_CODE_102e
+  CODE:102f  FUN_CODE_102f
+  CODE:1030  FUN_CODE_1030
+  CODE:1031  FUN_CODE_1031
+  CODE:1032  FUN_CODE_1032
+  CODE:1033  FUN_CODE_1033
+  CODE:1034  FUN_CODE_1034
+
+## Reachable from some root: 105 of 112
+
+## NOT reachable from any root
+Each of these is either dead code, or reached by a control-flow edge
+this model does not yet follow. Investigate before assuming dead.
+  CODE:000a  reti_stub_ie1   (xrefs: 1)
+  CODE:000e  reti_stub_tf1   (xrefs: 1)
+  CODE:000f  reti_stub_si   (xrefs: 1)
+  CODE:0100  thunk_stall_ep0   (xrefs: 1)
+  CODE:0103  ep0_arm_in_3bytes   (xrefs: 1)
+  CODE:010b  usb_std_request_dispatch   (xrefs: 1)
+  CODE:0247  ep0_arm_in_and_done   (xrefs: 3)
+  CODE:02e8  ep0_done_no_data   (xrefs: 4)
+  CODE:0939  keil_c_init_interpreter   (xrefs: 1)
+  CODE:0d0a  oep0_clear_stall_and_rearm   (xrefs: 1)
+
+total not-directly-reached: 10
+
+## Full call graph
+CODE:0000  reset_vector -> keil_c51_startup
+CODE:0003  int0_vector -> usb_isr_int0_vecdispatch
+CODE:0006  usb_susr_handler -> (leaf)
+CODE:000a  reti_stub_ie1 -> (leaf)
+CODE:000b  tf0_vector -> timer0_tick_isr
+CODE:000e  reti_stub_tf1 -> (leaf)
+CODE:000f  reti_stub_si -> (leaf)
+CODE:0010  FUN_CODE_0010 -> (leaf)
+CODE:0011  FUN_CODE_0011 -> (leaf)
+CODE:0012  FUN_CODE_0012 -> (leaf)
+CODE:0016  FUN_CODE_0016 -> (leaf)
+CODE:0017  FUN_CODE_0017 -> (leaf)
+CODE:0018  FUN_CODE_0018 -> (leaf)
+CODE:0019  FUN_CODE_0019 -> (leaf)
+CODE:001a  FUN_CODE_001a -> (leaf)
+CODE:001e  FUN_CODE_001e -> (leaf)
+CODE:001f  FUN_CODE_001f -> (leaf)
+CODE:0020  FUN_CODE_0020 -> (leaf)
+CODE:0021  FUN_CODE_0021 -> (leaf)
+CODE:0022  FUN_CODE_0022 -> (leaf)
+CODE:0026  usb_setup_handler -> ep0_clear_stall_both FUN_CODE_0b37 ep0_store_byte_and_arm_zlp ep0_buf_store_zero ep0_load_dptr
+CODE:0100  thunk_stall_ep0 -> (leaf)
+CODE:0103  ep0_arm_in_3bytes -> (leaf)
+CODE:010b  usb_std_request_dispatch -> (leaf)
+CODE:0145  std_clear_feature -> ep0_clear_stall_both
+CODE:015c  std_get_configuration -> FUN_CODE_0b37 ep0_load_dptr
+CODE:0177  std_get_descriptor -> ep0_clamp_len_to_wlength load_dptr_from_ptr19 ep0_in_stage_and_go
+CODE:01ed  std_get_interface -> FUN_CODE_0b37 ep0_load_dptr
+CODE:022f  std_get_status -> FUN_CODE_0b37 ep0_buf_store_zero ep0_load_dptr
+CODE:0247  ep0_arm_in_and_done -> (leaf)
+CODE:024d  std_set_address -> (leaf)
+CODE:0259  std_set_configuration -> FUN_CODE_0b2e
+CODE:029b  std_stall_unsupported -> (leaf)
+CODE:029d  std_set_interface -> (leaf)
+CODE:02e8  ep0_done_no_data -> (leaf)
+CODE:02ef  ep0_stall_both -> FUN_CODE_1001
+CODE:02f3  usb_deferred_action_dispatch -> (leaf)
+CODE:0336  FUN_CODE_0336 -> dma0_disable shiftreg_out16_p1 cport_cnf3_write_enable audio_hw_bringup
+CODE:038a  FUN_CODE_038a -> dma0_disable shiftreg_out16_p1 audio_clock_set_mode audio_hw_bringup shiftreg_out8_p1hi
+CODE:03fd  FUN_CODE_03fd -> dma0_disable audio_clock_set_mode audio_hw_bringup
+CODE:045a  FUN_CODE_045a -> shiftreg_out16_p1 shiftreg_out8_p1hi
+CODE:0469  FUN_CODE_0469 -> shiftreg_out16_p1 shiftreg_out8_p1hi
+CODE:0478  FUN_CODE_0478 -> (leaf)
+CODE:047d  FUN_CODE_047d -> cs8427_write_reg04_val41 stage_ctrl_pair_12_00 audio_clock_set_mode cs8427_write_shadowed
+CODE:049f  FUN_CODE_049f -> cs8427_write_reg04_val41 stage_ctrl_pair_12_00 audio_clock_set_mode cs8427_write_shadowed
+CODE:04c0  FUN_CODE_04c0 -> (leaf)
+CODE:04c4  FUN_CODE_04c4 -> (leaf)
+CODE:04c8  FUN_CODE_04c8 -> FUN_CODE_0c31 stage_ctrl_pair_12_00 i2c_eeprom_read_byte audio_clock_set_mode audio_hw_bringup i2c_eeprom_write3 shiftreg_out8_p1hi
+CODE:0517  FUN_CODE_0517 -> i2c_eeprom_write3
+CODE:0525  FUN_CODE_0525 -> hw_clock_codec_init usb_ep_dma_init shiftreg_out16_p1 shiftreg_out8_p1hi
+CODE:0567  cs8427_write_reg04_val41 -> FUN_CODE_0c31
+CODE:0575  cs8427_write_shadowed -> FUN_CODE_0c31
+CODE:070f  audio_clock_set_mode -> acg_both_synths_24576khz shiftreg_out16_p1 FUN_CODE_0c31 FUN_CODE_0ef4 acg2frq0_load_and_acgctl sfr_write_then_acg_program
+CODE:07ec  hw_clock_codec_init -> shiftreg_out16_p1 acg_dividers_div2 shiftreg_out8_p1hi sfr_write_then_acg_program
+CODE:0891  usb_ep_dma_init -> (leaf)
+CODE:092a  keil_c51_startup -> main_loop
+CODE:0939  keil_c_init_interpreter -> (leaf)
+CODE:09b6  audio_hw_bringup -> acg_both_synths_24576khz shiftreg_out16_p1 FUN_CODE_0c31 acg_dividers_div2
+CODE:0a3f  main_loop -> hw_clock_codec_init usb_ep_dma_init shiftreg_out16_p1 usb_deferred_action_dispatch p3_edge_poll_dispatch shiftreg_out8_p1hi
+CODE:0abb  ep0_in_send_chunk -> FUN_CODE_0b37 load_dptr_from_ptr19 ep0_load_dptr
+CODE:0b1f  FUN_CODE_0b1f -> (leaf)
+CODE:0b25  ep0_load_dptr -> (leaf)
+CODE:0b2c  ep0_store_byte_and_arm_zlp -> (leaf)
+CODE:0b2e  FUN_CODE_0b2e -> (leaf)
+CODE:0b37  FUN_CODE_0b37 -> (leaf)
+CODE:0b3e  ep0_clear_stall_both -> (leaf)
+CODE:0b4d  ep0_clear_stall_toggle -> (leaf)
+CODE:0b5b  ep0_buf_store_zero -> (leaf)
+CODE:0b63  ep0_in_stage_and_go -> ep0_in_send_chunk
+CODE:0b6e  load_dptr_from_ptr19 -> (leaf)
+CODE:0b75  ep0_flush_arm -> (leaf)
+CODE:0b7f  udiv16 -> (leaf)
+CODE:0bd4  jmp_via_r2r1 -> (leaf)
+CODE:0bda  i2c_eeprom_write3 -> (leaf)
+CODE:0c31  FUN_CODE_0c31 -> shiftreg_out16_p1
+CODE:0cc7  oep0_int_handler -> FUN_CODE_0b1f ep0_flush_arm
+CODE:0d0a  oep0_clear_stall_and_rearm -> ep0_store_byte_and_arm_zlp ep0_clear_stall_toggle
+CODE:0d11  i2c_eeprom_read_byte -> (leaf)
+CODE:0d58  sof_int_handler -> udiv16
+CODE:0d9e  ep0_clamp_len_to_wlength -> (leaf)
+CODE:0ddf  usb_isr_int0_vecdispatch -> jmp_via_r2r1
+CODE:0e1b  panel_state_cycle_A -> (leaf)
+CODE:0e56  shiftreg_out16_p1 -> (leaf)
+CODE:0e8f  panel_state_cycle_B -> (leaf)
+CODE:0ec7  sfr_write_then_acg_program -> (leaf)
+CODE:0ec8  acg_both_synths_24576khz -> (leaf)
+CODE:0ee8  acg2frq0_load_and_acgctl -> (leaf)
+CODE:0ef3  acg_dividers_div2 -> (leaf)
+CODE:0ef4  FUN_CODE_0ef4 -> (leaf)
+CODE:0efc  shiftreg_out8_p1hi -> (leaf)
+CODE:0f31  p3_edge_poll_dispatch -> panel_state_cycle_B panel_state_cycle_A toggle_bit1E_state
+CODE:0f64  usb_rstr_handler -> ep0_flush_arm
+CODE:0f91  ep0_in_done_handler -> ep0_store_byte_and_arm_zlp ep0_clear_stall_toggle ep0_in_stage_and_go
+CODE:0fe2  cport_cnf3_write_enable -> (leaf)
+CODE:0ff2  dma0_disable -> (leaf)
+CODE:0ffa  stage_ctrl_pair_12_00 -> (leaf)
+CODE:1001  FUN_CODE_1001 -> ep0_store_byte_and_arm_zlp
+CODE:1016  timer0_tick_isr -> (leaf)
+CODE:1020  toggle_bit1E_state -> (leaf)
+CODE:1029  FUN_CODE_1029 -> (leaf)
+CODE:102a  FUN_CODE_102a -> (leaf)
+CODE:102b  FUN_CODE_102b -> (leaf)
+CODE:102c  FUN_CODE_102c -> (leaf)
+CODE:102d  FUN_CODE_102d -> (leaf)
+CODE:102e  FUN_CODE_102e -> (leaf)
+CODE:102f  FUN_CODE_102f -> (leaf)
+CODE:1030  FUN_CODE_1030 -> (leaf)
+CODE:1031  FUN_CODE_1031 -> (leaf)
+CODE:1032  FUN_CODE_1032 -> (leaf)
+CODE:1033  FUN_CODE_1033 -> (leaf)
+CODE:1034  FUN_CODE_1034 -> (leaf)
+CODE:1035  FUN_CODE_1035 -> (leaf)
