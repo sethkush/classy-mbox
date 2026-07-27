@@ -407,3 +407,154 @@ BOOL DFU_WithOpenDevice(BOOL (^body)(IOUSBDeviceInterface **dev,
     (*dev)->Release(dev);
     return ok;
 }
+
+// ---------------------------------------------------------------------
+// Descriptor probe
+// ---------------------------------------------------------------------
+
+static void probeOne(IOUSBDeviceInterface **dev, const char *label,
+                     uint8_t type, uint8_t index, uint16_t langid,
+                     uint16_t wLength) {
+    uint8_t buf[256];
+    memset(buf, 0, sizeof buf);
+    if (wLength > sizeof buf) wLength = sizeof buf;
+
+    IOUSBDevRequest req = {
+        .bmRequestType = 0x80,              // D->H, standard, device
+        .bRequest      = 0x06,              // GET_DESCRIPTOR
+        .wValue        = (uint16_t)((type << 8) | index),
+        .wIndex        = langid,
+        .wLength       = wLength,
+        .pData         = buf,
+    };
+    IOReturn rc = (*dev)->DeviceRequest(dev, &req);
+
+    printf("  %-28s wLength=%-3u -> ", label, wLength);
+    if (rc != kIOReturnSuccess) {
+        printf("FAIL rc=0x%08x (%s)\n", rc,
+               rc == kIOReturnNotResponding ? "not responding" :
+               rc == kIOReturnTimeout       ? "timeout"        :
+               rc == kIOUSBPipeStalled      ? "STALL"          : "?");
+        return;
+    }
+    printf("OK %u byte(s):", req.wLenDone);
+    for (UInt32 i = 0; i < req.wLenDone && i < 32; i++) printf(" %02x", buf[i]);
+    if (req.wLenDone > 32) printf(" ...");
+    printf("\n");
+}
+
+// Probe-specific open. openMboxDevice() uses USBDeviceOpenSeize and
+// treats failure as fatal, which is right for flashing. Here the whole
+// point is to interrogate a device that may be in a degraded state, so
+// try Seize, then plain Open, and report exactly which succeeded —
+// "cannot even be opened" is itself a finding worth printing.
+static IOUSBDeviceInterface **openForProbe(NSError **error) {
+    CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
+    if (!match) return NULL;
+    io_iterator_t it = IO_OBJECT_NULL;
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return NULL;
+    io_service_t svc = IO_OBJECT_NULL, cand;
+    while ((cand = IOIteratorNext(it))) {
+        CFNumberRef vid = (CFNumberRef)IORegistryEntrySearchCFProperty(cand,
+            kIOServicePlane, CFSTR("idVendor"), NULL, kIORegistryIterateRecursively);
+        int v = 0;
+        if (vid) { CFNumberGetValue(vid, kCFNumberIntType, &v); CFRelease(vid); }
+        if (v == 0x0DBA) { svc = cand; break; }
+        IOObjectRelease(cand);
+    }
+    IOObjectRelease(it);
+    if (!svc) { if (error) *error = usbError(@"no 0x0DBA device present", -1); return NULL; }
+
+    IOCFPlugInInterface **plugin = NULL;
+    SInt32 score = 0;
+    kern_return_t kr = IOCreatePlugInInterfaceForService(svc,
+        kIOUSBDeviceUserClientTypeID, kIOCFPlugInInterfaceID, &plugin, &score);
+    IOObjectRelease(svc);
+    if (kr != KERN_SUCCESS || !plugin) {
+        if (error) *error = usbError(@"IOCreatePlugInInterface(device)", kr);
+        return NULL;
+    }
+    IOUSBDeviceInterface **dev = NULL;
+    HRESULT hr = (*plugin)->QueryInterface(plugin,
+        CFUUIDGetUUIDBytes(kIOUSBDeviceInterfaceID), (LPVOID*)&dev);
+    (*plugin)->Release(plugin);
+    if (hr || !dev) {
+        if (error) *error = usbError(@"QueryInterface(IOUSBDevice)", (IOReturn)hr);
+        return NULL;
+    }
+
+    IOReturn rc = (*dev)->USBDeviceOpenSeize(dev);
+    if (rc == kIOReturnSuccess) { printf("opened via USBDeviceOpenSeize\n\n"); return dev; }
+    printf("USBDeviceOpenSeize -> 0x%08x, retrying plain USBDeviceOpen\n", rc);
+
+    rc = (*dev)->USBDeviceOpen(dev);
+    if (rc == kIOReturnSuccess) { printf("opened via USBDeviceOpen\n\n"); return dev; }
+    printf("USBDeviceOpen      -> 0x%08x\n", rc);
+    printf("\nNeither open succeeded. 0xe00002d8 is kIOReturnNotReady, which\n");
+    printf("macOS returns for a device it has enumerated but not brought to a\n");
+    printf("usable state — consistent with the device being UNCONFIGURED.\n\n");
+    (*dev)->Release(dev);
+    if (error) *error = usbError(@"could not open device", rc);
+    return NULL;
+}
+
+BOOL DFU_DescriptorProbe(NSError **error) {
+    IOUSBDeviceInterface **dev = openForProbe(error);
+    if (!dev) return NO;
+
+    printf("=== DESCRIPTOR PROBE ===\n");
+    printf("Walking the same GET_DESCRIPTOR sequence a host issues during\n");
+    printf("enumeration. A STALL or short reply pinpoints which request the\n");
+    printf("firmware mishandles.\n\n");
+
+    // Isolation test: issue the failing request FIRST, on a freshly
+    // opened device, before any other transfer. If it succeeds here but
+    // fails later in the sequence, the fault is accumulated EP0 state,
+    // not the request itself.
+    printf("ISOLATION — failing request issued first:\n");
+    probeOne(dev, "STRING 1 (mfr, 18) FIRST", 0x03, 1, 0x0409, 18);
+    printf("\n");
+
+    printf("Device descriptor:\n");
+    probeOne(dev, "DEVICE (first 8)",        0x01, 0, 0x0000, 8);
+    probeOne(dev, "DEVICE (full 18)",        0x01, 0, 0x0000, 18);
+    probeOne(dev, "DEVICE (over-ask 64)",    0x01, 0, 0x0000, 64);
+
+    printf("\nConfiguration descriptor:\n");
+    probeOne(dev, "CONFIG (header 9)",       0x02, 0, 0x0000, 9);
+    probeOne(dev, "CONFIG (full 18)",        0x02, 0, 0x0000, 18);
+    probeOne(dev, "CONFIG (over-ask 64)",    0x02, 0, 0x0000, 64);
+
+    printf("\nString descriptors:\n");
+    probeOne(dev, "STRING 0 (langid, 4)",    0x03, 0, 0x0000, 4);
+    probeOne(dev, "STRING 0 (over-ask 255)", 0x03, 0, 0x0000, 255);
+    probeOne(dev, "STRING 1 (mfr, 2)",       0x03, 1, 0x0409, 2);
+    probeOne(dev, "STRING 1 (mfr, 8)",       0x03, 1, 0x0409, 8);
+    probeOne(dev, "STRING 1 (mfr, 9)",       0x03, 1, 0x0409, 9);
+    probeOne(dev, "STRING 1 (mfr, 16)",      0x03, 1, 0x0409, 16);
+    probeOne(dev, "STRING 1 (mfr, 17)",      0x03, 1, 0x0409, 17);
+    probeOne(dev, "STRING 1 (mfr, 18 exact)",0x03, 1, 0x0409, 18);
+    probeOne(dev, "STRING 1 (mfr, 255)",     0x03, 1, 0x0409, 255);
+    probeOne(dev, "STRING 2 (product, 2)",   0x03, 2, 0x0409, 2);
+    probeOne(dev, "STRING 2 (product, 255)", 0x03, 2, 0x0409, 255);
+
+    printf("\nConfiguration state:\n");
+    UInt8 cfg = 0xFF;
+    IOReturn rc = (*dev)->GetConfiguration(dev, &cfg);
+    printf("  GetConfiguration -> rc=0x%08x value=%u%s\n", rc, cfg,
+           (rc == kIOReturnSuccess && cfg == 0) ? "  (UNCONFIGURED)" : "");
+
+    printf("\nAttempting SetConfiguration(1)...\n");
+    rc = (*dev)->SetConfiguration(dev, 1);
+    printf("  SetConfiguration(1) -> rc=0x%08x %s\n", rc,
+           rc == kIOReturnSuccess ? "OK" : "FAILED");
+    if (rc == kIOReturnSuccess) {
+        cfg = 0xFF;
+        (*dev)->GetConfiguration(dev, &cfg);
+        printf("  GetConfiguration now -> %u\n", cfg);
+    }
+
+    (*dev)->USBDeviceClose(dev);
+    (*dev)->Release(dev);
+    return YES;
+}

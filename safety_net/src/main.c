@@ -298,11 +298,13 @@ const unsigned char __code ConfigDesc[18] = {
     9, 0x04, 0, 0, 0, 0xFF, 0x00, 0x00, 0,
 };
 
+/* Sizes are explicit so a mismatch between the array and its bLength
+ * byte becomes a compile error rather than a wire-level hang. */
 const unsigned char __code StringLang[4] = { 4, 0x03, 0x09, 0x04 };
-const unsigned char __code StringMfr[]   = {
+const unsigned char __code StringMfr[18]   = {
     18, 0x03, 'D',0,'i',0,'g',0,'i',0,'S',0,'a',0,'f',0,'e',0
 };
-const unsigned char __code StringProduct[] = {
+const unsigned char __code StringProduct[18] = {
     18, 0x03, 'M',0,'B',0,'O',0,'X',0,'-',0,'S',0,'A',0,'F',0
 };
 
@@ -559,9 +561,43 @@ static void handle_setup(void)
                     case 0x03:
                         STAGE(18);                            /* String */
                         switch (wVL) {
-                            case 0: reply_desc(StringLang, 4);            return;
-                            case 1: reply_desc(StringMfr, StringMfr[0]);  return;
-                            case 2: reply_desc(StringProduct, StringProduct[0]); return;
+                            /* Pass LITERAL lengths, never `Arr[0]`.
+                             *
+                             * Host probe 2026-07-27 (mboxflash --descdump):
+                             * DevDesc and ConfigDesc — called with a
+                             * literal 18 — return all 18 bytes correctly
+                             * at every wLength. The string descriptors,
+                             * called as reply_desc(StringMfr,
+                             * StringMfr[0]), delivered only 16 bytes and
+                             * then went silent:
+                             *
+                             *   wLength  2 ->  2 OK      wLength 17 -> TIMEOUT
+                             *   wLength  8 ->  8 OK      wLength 18 -> TIMEOUT
+                             *   wLength  9 ->  9 OK      wLength 255-> TIMEOUT
+                             *   wLength 16 -> 16 OK
+                             *
+                             * Every one of those is what you get if the
+                             * reply is capped at 16: at wLength 17+ the
+                             * device sends 8+8 and stops, and because 16
+                             * is a whole number of 8-byte packets there is
+                             * no short packet to terminate the transfer,
+                             * so the host waits forever. Confirmed
+                             * deterministic and reproducible with the
+                             * request issued first on a freshly opened
+                             * device, so it is not stale EP0 state.
+                             *
+                             * The arrays themselves are correct — the link
+                             * map has _StringMfr 0x06E9 and
+                             * _StringProduct 0x06FB, 18 bytes apart, and
+                             * the device does send 0x12 as the bLength
+                             * byte. The symptom is proven; the exact SDCC
+                             * mechanism behind the runtime `Arr[0]` read
+                             * is NOT, so this matches the call pattern
+                             * that demonstrably works rather than
+                             * theorising about the compiler. */
+                            case 0: reply_desc(StringLang, 4);      return;
+                            case 1: reply_desc(StringMfr, 18);      return;
+                            case 2: reply_desc(StringProduct, 18);  return;
                         }
                         break;
                 }

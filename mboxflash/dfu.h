@@ -94,4 +94,14 @@ BOOL DFU_WithOpenDevice(BOOL (^body)(IOUSBDeviceInterface **dev,
 NSString *DFU_StateName(DFUState s);
 NSString *DFU_StatusName(uint8_t bStatus);
 
+// Host-side descriptor probe. Opens any VID 0x0DBA device and walks the
+// standard GET_DESCRIPTOR sequence a host performs during enumeration,
+// printing the raw bytes and the IOReturn for each step.
+//
+// Exists because the interesting failures happen AFTER the device is on
+// the bus, where macOS has already given up quietly and ioreg only shows
+// the absence of a property. Asking the device directly costs no reflash
+// and no SDA short — the firmware under test is running and reachable.
+BOOL DFU_DescriptorProbe(NSError **error);
+
 #endif

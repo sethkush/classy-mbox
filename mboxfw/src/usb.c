@@ -163,20 +163,42 @@ static void handle_get_descriptor(void)
     unsigned char type  = wValueH;
     unsigned char index = wValueL;
 
+    /* LENGTHS ARE COMPILE-TIME CONSTANTS — never a runtime `Arr[0]` read.
+     *
+     * safety_net used reply_desc(StringMfr, StringMfr[0]) and delivered
+     * only 16 of 18 bytes, then went silent. Host probe 2026-07-27
+     * (mboxflash --descdump) against the running firmware:
+     *
+     *   wLength  2 ->  2 OK      wLength 17 -> TIMEOUT
+     *   wLength  9 ->  9 OK      wLength 18 -> TIMEOUT
+     *   wLength 16 -> 16 OK      wLength 255-> TIMEOUT
+     *
+     * i.e. the reply was capped at 16 bytes, and because 16 is a whole
+     * number of 8-byte packets there is no short packet to terminate the
+     * transfer, so the host waits forever. The same firmware's device and
+     * config descriptors — called with a literal length — returned all 18
+     * bytes correctly at every wLength. Reproducible with the request
+     * issued first on a freshly opened device, so not stale EP0 state.
+     *
+     * The arrays are correct (link map confirms the sizes, and the device
+     * sends the right bLength byte on the wire). The symptom is proven;
+     * the SDCC mechanism behind the runtime read is not. Use the call
+     * pattern that demonstrably works.
+     *
+     * mboxfw had this on the DEVICE descriptor too, which would break
+     * enumeration at the very first request. */
     switch (type) {
         case USB_DT_DEVICE:
-            stage_reply(AppDevDesc, AppDevDesc[0]);
+            stage_reply(AppDevDesc, APP_DEV_DESC_LEN);
             break;
         case USB_DT_CONFIG:
-            /* wTotalLength is at bytes [2..3] of the config descriptor. */
-            stage_reply(AppConfigDesc,
-                        AppConfigDesc[2] | ((unsigned int)AppConfigDesc[3] << 8));
+            stage_reply(AppConfigDesc, APP_CFG_TOTAL_LEN);
             break;
         case USB_DT_STRING:
             switch (index) {
-                case 0:  stage_reply(AppStringLang,    AppStringLang[0]);    break;
-                case 1:  stage_reply(AppStringMfr,     AppStringMfr[0]);     break;
-                case 2:  stage_reply(AppStringProduct, AppStringProduct[0]); break;
+                case 0:  stage_reply(AppStringLang,    APP_STRING_LANG_LEN);  break;
+                case 1:  stage_reply(AppStringMfr,     APP_STRING_MFR_LEN); break;
+                case 2:  stage_reply(AppStringProduct, APP_STRING_PRODUCT_LEN); break;
                 default: reply_stall(); break;
             }
             break;

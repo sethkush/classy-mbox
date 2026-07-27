@@ -170,6 +170,12 @@ static int cmd_enter_dfu(void) {
     return 0;
 }
 
+static int cmd_descdump(void) {
+    NSError *err = nil;
+    if (!DFU_DescriptorProbe(&err)) die(@"descriptor probe failed", err);
+    return 0;
+}
+
 static int cmd_parse(const char *path) {
     NSError *err = nil;
     NSData *blob = [NSData dataWithContentsOfFile:@(path) options:0 error:&err];
@@ -826,7 +832,8 @@ int main(int argc, const char *argv[]) {
         if (argc < 2) {
             fprintf(stderr,
                 "usage: mboxflash --probe | --enter-dfu | --dfu-status | --parse PATH | --scan PATH\n"
-                "        | --flash-check PATH | --flash PATH | --dump PATH | --validate PATH\n");
+                "        | --flash-check PATH | --flash PATH | --dump PATH | --validate PATH\n"
+                "        | --descdump\n");
             return 2;
         }
         NSString *cmd = @(argv[1]);
@@ -842,6 +849,7 @@ int main(int argc, const char *argv[]) {
         }
         else if ([cmd isEqualToString:@"--probe"])     return cmd_probe();
         else if ([cmd isEqualToString:@"--enter-dfu"]) return cmd_enter_dfu();
+        else if ([cmd isEqualToString:@"--descdump"]) return cmd_descdump();
         else if ([cmd isEqualToString:@"--parse"] && argc >= 3) return cmd_parse(argv[2]);
         else if ([cmd isEqualToString:@"--scan"]  && argc >= 3) return cmd_scan(argv[2]);
         else if ([cmd isEqualToString:@"--dfu-status"]) return cmd_dfu_status();

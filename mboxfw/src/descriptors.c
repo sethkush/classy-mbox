@@ -18,7 +18,7 @@
 #include "usb.h"
 
 /* --- Device descriptor ------------------------------------------------ */
-const unsigned char __code AppDevDesc[18] = {
+const unsigned char __code AppDevDesc[APP_DEV_DESC_LEN] = {
     18,                     /* bLength */
     USB_DT_DEVICE,          /* bDescriptorType */
     0x10, 0x01,             /* bcdUSB = 1.10 */
@@ -42,11 +42,11 @@ const unsigned char __code AppDevDesc[18] = {
  * host will parse it.
  */
 
-/* Total length = sum of every descriptor below. Recomputed by hand — if
- * you edit any part of the bundle, update this constant. */
-#define CFG_TOTAL_LEN   (9 + 9 + 10 + 12 + 12 + 9 + 9 \
-                          + 9 + 9 + 7 + 14 + 9 + 7 \
-                          + 9 + 9 + 7 + 14 + 9 + 7)
+/* Total length = sum of every descriptor below. Defined in usb.h so
+ * usb.c's stage_reply() call uses the same constant — it previously
+ * derived the length by reading AppConfigDesc[2..3] at runtime, which is
+ * the pattern that broke string descriptors on hardware. */
+#define CFG_TOTAL_LEN   APP_CFG_TOTAL_LEN
 
 const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
 
@@ -201,17 +201,17 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
 };
 
 /* --- String descriptors --------------------------------------------- */
-const unsigned char __code AppStringLang[4] = {
+const unsigned char __code AppStringLang[APP_STRING_LANG_LEN] = {
     4, USB_DT_STRING,
     0x09, 0x04              /* English (US) */
 };
 
-const unsigned char __code AppStringMfr[] = {
+const unsigned char __code AppStringMfr[APP_STRING_MFR_LEN] = {
     22, USB_DT_STRING,
     'D',0,'i',0,'g',0,'i',0,'d',0,'e',0,'s',0,'i',0,'g',0,'n',0
 };
 
-const unsigned char __code AppStringProduct[] = {
+const unsigned char __code AppStringProduct[APP_STRING_PRODUCT_LEN] = {
     26, USB_DT_STRING,
     'M',0,'b',0,'o',0,'x',0,' ',0,'(',0,'c',0,'l',0,'a',0,'s',0,'s',0,'c',0
 };

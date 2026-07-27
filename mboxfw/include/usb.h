@@ -77,4 +77,26 @@
  * Bump slightly for the adaptive-endpoint slew allowance. */
 #define AUDIO_MAX_PACKET_LEN   294
 
+
+/* --- Descriptor lengths ---------------------------------------------
+ *
+ * Shared by descriptors.c (which sizes the arrays) and usb.c (which
+ * passes them to stage_reply). Single definition so the two can never
+ * drift apart.
+ *
+ * These MUST be compile-time constants at the stage_reply call sites.
+ * Passing a runtime `Arr[0]` read instead caused safety_net to deliver
+ * only 16 of 18 bytes of a string descriptor and then hang the transfer
+ * — see the block comment in usb.c handle_get_descriptor(). */
+#define APP_DEV_DESC_LEN        18
+#define APP_STRING_LANG_LEN     4
+#define APP_STRING_MFR_LEN      22   /* 2 + 2*10 "Digidesign"   */
+#define APP_STRING_PRODUCT_LEN  26   /* 2 + 2*12 "Mbox (classc" */
+
+/* Total configuration-bundle length. Sum of every descriptor in
+ * descriptors.c, in host-parse order. Edit both together. */
+#define APP_CFG_TOTAL_LEN   (9 + 9 + 10 + 12 + 12 + 9 + 9 \
+                              + 9 + 9 + 7 + 14 + 9 + 7 \
+                              + 9 + 9 + 7 + 14 + 9 + 7)
+
 #endif /* MBOXFW_USB_H */
