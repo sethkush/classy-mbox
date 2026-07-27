@@ -121,19 +121,15 @@ void main(void)
     usb_init();
     CANARY(1, CANARY_USB);
 
-    /* BISECT 2026-07-26: strip everything after usb_init to isolate.
-     * LED observation on prior flash proved code reaches P1=0 in hw_init
-     * but never enumerates. Skipping hw_init + cs8427 + codec to test
-     * whether usb_init alone gets us on the bus. */
-    /* hw_init(); */
+    hw_init();
     CANARY(2, CANARY_HW);
 
-    /* check_boot_dfu_button(); */
+    check_boot_dfu_button();
 
-    /* cs8427_boot_init(); */
+    cs8427_boot_init();
     CANARY(3, CANARY_CS8427);
 
-    /* codec_init(); */
+    codec_init();
     /* CANARY_CODEC written into slot 2 to overwrite HW canary — once
      * we've reached here, all four phases before EA=1 are done. Reading
      * XDATA[0xFA02] on a stuck device tells you exactly which init

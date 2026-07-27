@@ -330,16 +330,48 @@ static void handle_setup(void)
                 g_pending_address = wValueL;
                 reply_zero_length();
                 break;
+            case REQ_GET_STATUS: {
+                /* USB 2.0 §9.4.5: 2 bytes for every recipient. Bus-powered,
+                 * no remote wakeup, no halt support => both bytes zero.
+                 * macOS IOUSBFamily issues this during enumeration, so it
+                 * MUST be answered. */
+                unsigned char st[2];
+                st[0] = 0; st[1] = 0;
+                stage_immediate(st, 2);
+                break;
+            }
+            case REQ_CLEAR_FEATURE:
+            case REQ_SET_FEATURE:
+                /* No features are supported (no remote wakeup, and the iso
+                 * streaming endpoints cannot halt per USB 2.0 §5.6.4).
+                 * Acknowledge rather than stall — a stall here makes some
+                 * hosts abandon the device. */
+                reply_zero_length();
+                break;
+            case REQ_GET_CONFIG:
+                stage_immediate(&g_configured, 1);
+                break;
             default:
-                /* Delegate the long tail of standard requests (GET_STATUS,
-                 * CLEAR_FEATURE, SET_FEATURE, GET_CONFIG, SYNCH_FRAME, ...)
-                 * to the TAS1020A boot ROM's standard-request handler at
-                 * 0x2F00. Rev 20 relies on the same fallback (its 0x0118
-                 * shim ends in `ljmp 0x2f00`), so anything the boot ROM
-                 * can do for Digi it can do for us. Using lcall (not ljmp)
-                 * so the boot ROM's terminating RET returns cleanly into
-                 * our function epilogue instead of unwinding our stack. */
-                __asm__("lcall #0x2f00");
+                /* Everything else (SET_DESCRIPTOR, SYNCH_FRAME, reserved
+                 * codes) is optional: STALL is the spec-correct response.
+                 *
+                 * DO NOT reintroduce `lcall #0x2f00` here. That was present
+                 * until 2026-07-26, justified by a comment claiming "Rev 20
+                 * relies on the same fallback (its 0x0118 shim ends in ljmp
+                 * 0x2f00)". That claim was fabricated. The bytes 02 2F 00 at
+                 * Rev 20 0x011F are not an instruction at all — they are the
+                 * first entry of its standard-request dispatch table
+                 * (BE16 handler 0x022F, bRequest 0x00 = GET_STATUS), which
+                 * runs to 0x0140 and covers all 11 standard requests
+                 * in-firmware. Rev 20 never delegates to the boot ROM.
+                 * Verified by decoding firmware_stock/rev20_firmware_code.bin
+                 * directly; see firmware_stock/disasm/rev20_ANNOTATED.md.
+                 *
+                 * On mboxfw the call was fatal: our image ends at 0x0C7D, so
+                 * 0x2F00 is ~8.8 KB past it. Any standard request that fell
+                 * through to the default case executed unmapped memory and
+                 * killed the CPU mid-enumeration. */
+                reply_stall();
                 break;
         }
     } else if (reqtype == 0x20) {
