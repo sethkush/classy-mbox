@@ -50,14 +50,21 @@ void hw_init(void)
                          * RMW because boot ROM's UtilResetCPU already
                          * did MEMCFG |= SDW_BIT; we're just being
                          * idempotent. Reference: TI Utils.c UtilResetCPU. */
-    DMACTL0   = 0x0D;
-    CPTCNF4   = 0xE5;
-    CPTCNF3   = 0xAC;
-    CPTCNF2   = 0x03;
-    CPTCNF1   = 0x50;
-    CPTBRTX   = 0x25;
-    CPTBRRX   = 0xAC;
-    CPTCTL    = 0x03;
+    /* Codec-port config. Addresses and values verified byte-for-byte
+     * against both stock images by static scan (see the SFR tables in
+     * firmware_stock/disasm/rev2{0,2}_STARTUP_TRACE.md). The register
+     * names used here previously did not match TI's and have been
+     * corrected; the addresses written are unchanged. */
+    CPTCNF1   = 0x0D;   /* 0xFFE0 — stock writes 0x0D */
+    CPTCNF2   = 0xE5;   /* 0xFFDF — stock writes 0xE5 */
+    CPTCNF3   = 0xAC;   /* 0xFFDE — stock writes 0xAC */
+    CPTCNF4   = 0x03;   /* 0xFFDD — stock writes 0x03 */
+    CPTSTA    = 0x50;   /* 0xFFDC — stock writes 0x50 */
+    CPTRXCNF2 = 0x25;   /* 0xFFD6 — stock writes 0x25 */
+    CPTRXCNF3 = 0xAC;   /* 0xFFD5 — stock writes 0xAC */
+    /* 0xFFD4: both stock images write 0x01 here. mboxfw wrote 0x03 — the
+     * only address+value divergence in the whole codec-port block. */
+    CPTRXCNF4 = 0x01;
     /* GLOBCTL bit 0 = CPTEN (codec port enable), NOT USB engine —
      * verified against TI RomBoot.c:33 "GLOBCTL = 0x04; // 12Mclk,
      * Ext int off, LPWR on, CODEC is off". The USB engine is

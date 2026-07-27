@@ -166,16 +166,24 @@
 /* (I²C peripheral aliases defined above with correct bit map) */
 
 /* C-port (I²S master to codec and CS8427) */
-#define CPTCTL      XDATA(0xFFD4)
-#define CPTBRRX     XDATA(0xFFD5)
-#define CPTBRTX     XDATA(0xFFD6)
-#define CPTCNF1     XDATA(0xFFDC)
-#define CPTCNF2     XDATA(0xFFDD)
+/* Codec-port registers, names per TI Reg_stc1.h.
+ *
+ * These were previously named CPTCTL / CPTBRRX / CPTBRTX / CPTCNF1-4 and
+ * were WRONG — the labels did not correspond to TI's at any of these
+ * addresses, and CPTCNF1-4 in particular were reversed. The addresses and
+ * values were right (transcribed correctly from Rev 20 by address), so the
+ * writes landed where they should; only the names lied. Renamed to match
+ * TI so the next person comparing against a trace is not misled. */
+#define CPTRXCNF4   XDATA(0xFFD4)
+#define CPTRXCNF3   XDATA(0xFFD5)
+#define CPTRXCNF2   XDATA(0xFFD6)
+#define CPTSTA      XDATA(0xFFDC)
+#define CPTCNF4     XDATA(0xFFDD)
 #define CPTCNF3     XDATA(0xFFDE)
-#define CPTCNF4     XDATA(0xFFDF)
+#define CPTCNF2     XDATA(0xFFDF)
+#define CPTCNF1     XDATA(0xFFE0)
 
 /* DMA channels — channel 0 = playback, channel 2 = capture (per Rev 20) */
-#define DMACTL0     XDATA(0xFFE0)
 #define DMASRC0_L   XDATA(0xFFE5)
 #define DMASRC0_M   XDATA(0xFFE6)
 #define DMASRC0_H   XDATA(0xFFE7)
