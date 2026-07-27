@@ -115,8 +115,40 @@ static int cmd_probe(void) {
                 bcd >> 8, bcd & 0xff);
         else if (bcd == 0x0100) fprintf(stdout, "mboxfw v1.0 — custom)\n");
         else fprintf(stdout, "unknown 0x%04x)\n", bcd);
-        printf("\nTo flash: hold a front-panel source button while plugging the Mbox in,\n");
-        printf("or short EEPROM SDA during power-up. Device re-enumerates in DFU mode.\n");
+        // ORDER MATTERS — this reflects what actually works on hardware,
+        // not what the docs imply.
+        //
+        // 1. BUTTON HOLD is the working path on stock firmware. Hold a
+        //    front-panel source button while plugging in. Confirmed
+        //    repeatedly on this unit by Seth; it is the primary way this
+        //    device gets into DFU.
+        //
+        // 2. --enter-dfu (Digi class request bmReq 0x21 / bReq 0x00 /
+        //    wValue 0x000A) has NEVER been made to work here. The request
+        //    is accepted but the device does not drop to DFU. Do not
+        //    present it as the normal route.
+        //
+        // 3. SDA short is the last resort, and lands in bulletproof DFU
+        //    (0xFFFF:0xFFFE) which persists headers only — hence the
+        //    two-stage bootstrap.
+        //
+        // Caveat worth keeping visible: the button-hold mechanism is NOT
+        // located in Rev 20's application code. rev20_STARTUP_TRACE.md
+        // shows its boot path only setting P3 = 0xFF for the input
+        // pull-ups, and p3_button_scan (0x0ED5) runs from the main loop
+        // for source cycling. So the trigger most likely lives in the
+        // boot ROM, which we have not traced for it. Our most-relied-on
+        // recovery path is the one we understand least — see
+        // rev20_boot_rom_audit.md.
+        //
+        // BRICK_LOG.md entries reporting "button-hold did nothing" are
+        // all about BRICKED mboxfw, whose broken I2C driver made every
+        // software recovery path fail. They say nothing about stock
+        // firmware. An earlier version of this hint got that backwards.
+        printf("\nTo flash: hold a front-panel source button while plugging the Mbox\n");
+        printf("in. Device re-enumerates in DFU mode. Then `mboxflash --probe`.\n");
+        printf("\nFallback if that fails: short EEPROM SDA during power-up to reach\n");
+        printf("bulletproof DFU (0xFFFF:0xFFFE), then use the two-stage bootstrap.\n");
         return 0;
     }
     fprintf(stderr, "Digi device present but PID=0x%04x is unrecognized (bcdDevice=0x%04x)\n", pid, bcd);
