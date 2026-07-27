@@ -102,10 +102,10 @@ void reti_stub_si(void)
 
 
 /* ================================================================
- * FUN_CODE_0010 @ CODE:0010
+ * vecint_oep1_noop @ CODE:0010
  * ============================================================== */
 
-void FUN_CODE_0010(void)
+void vecint_oep1_noop(void)
 
 {
   return;
@@ -114,10 +114,10 @@ void FUN_CODE_0010(void)
 
 
 /* ================================================================
- * FUN_CODE_0011 @ CODE:0011
+ * vecint_oep2_noop @ CODE:0011
  * ============================================================== */
 
-void FUN_CODE_0011(void)
+void vecint_oep2_noop(void)
 
 {
   return;
@@ -126,10 +126,10 @@ void FUN_CODE_0011(void)
 
 
 /* ================================================================
- * FUN_CODE_0012 @ CODE:0012
+ * vecint_oep3_noop @ CODE:0012
  * ============================================================== */
 
-void FUN_CODE_0012(void)
+void vecint_oep3_noop(void)
 
 {
   return;
@@ -138,10 +138,10 @@ void FUN_CODE_0012(void)
 
 
 /* ================================================================
- * FUN_CODE_0016 @ CODE:0016
+ * vecint_oep4_noop @ CODE:0016
  * ============================================================== */
 
-void FUN_CODE_0016(void)
+void vecint_oep4_noop(void)
 
 {
   return;
@@ -150,10 +150,10 @@ void FUN_CODE_0016(void)
 
 
 /* ================================================================
- * FUN_CODE_0017 @ CODE:0017
+ * vecint_oep5_noop @ CODE:0017
  * ============================================================== */
 
-void FUN_CODE_0017(void)
+void vecint_oep5_noop(void)
 
 {
   return;
@@ -162,10 +162,10 @@ void FUN_CODE_0017(void)
 
 
 /* ================================================================
- * FUN_CODE_0018 @ CODE:0018
+ * vecint_oep6_noop @ CODE:0018
  * ============================================================== */
 
-void FUN_CODE_0018(void)
+void vecint_oep6_noop(void)
 
 {
   return;
@@ -174,10 +174,10 @@ void FUN_CODE_0018(void)
 
 
 /* ================================================================
- * FUN_CODE_0019 @ CODE:0019
+ * vecint_oep7_noop @ CODE:0019
  * ============================================================== */
 
-void FUN_CODE_0019(void)
+void vecint_oep7_noop(void)
 
 {
   return;
@@ -186,10 +186,10 @@ void FUN_CODE_0019(void)
 
 
 /* ================================================================
- * FUN_CODE_001a @ CODE:001a
+ * vecint_iep1_noop @ CODE:001a
  * ============================================================== */
 
-void FUN_CODE_001a(void)
+void vecint_iep1_noop(void)
 
 {
   return;
@@ -198,10 +198,10 @@ void FUN_CODE_001a(void)
 
 
 /* ================================================================
- * FUN_CODE_001e @ CODE:001e
+ * vecint_iep2_noop @ CODE:001e
  * ============================================================== */
 
-void FUN_CODE_001e(void)
+void vecint_iep2_noop(void)
 
 {
   return;
@@ -210,10 +210,10 @@ void FUN_CODE_001e(void)
 
 
 /* ================================================================
- * FUN_CODE_001f @ CODE:001f
+ * vecint_iep3_noop @ CODE:001f
  * ============================================================== */
 
-void FUN_CODE_001f(void)
+void vecint_iep3_noop(void)
 
 {
   return;
@@ -222,10 +222,10 @@ void FUN_CODE_001f(void)
 
 
 /* ================================================================
- * FUN_CODE_0020 @ CODE:0020
+ * vecint_iep4_noop @ CODE:0020
  * ============================================================== */
 
-void FUN_CODE_0020(void)
+void vecint_iep4_noop(void)
 
 {
   return;
@@ -234,10 +234,10 @@ void FUN_CODE_0020(void)
 
 
 /* ================================================================
- * FUN_CODE_0021 @ CODE:0021
+ * vecint_iep5_noop @ CODE:0021
  * ============================================================== */
 
-void FUN_CODE_0021(void)
+void vecint_iep5_noop(void)
 
 {
   return;
@@ -246,10 +246,10 @@ void FUN_CODE_0021(void)
 
 
 /* ================================================================
- * FUN_CODE_0022 @ CODE:0022
+ * vecint_iep6_noop @ CODE:0022
  * ============================================================== */
 
-void FUN_CODE_0022(void)
+void vecint_iep6_noop(void)
 
 {
   return;
@@ -275,14 +275,14 @@ void usb_setup_handler(void)
   _1_5 = 0;
   xfer_len_hi = xfer_len_lo;
   puVar2 = (undefined1 *)0xff28;
-  if (DAT_EXTMEM_ff28 == '\"') {
+  if (SETPACK_bmRequestType == '\"') {
     BANK1_R5 = 1;
     _1_3 = 1;
     _1_4 = 0;
     return;
   }
-  if (DAT_EXTMEM_ff28 == -0x5f) {
-    FUN_CODE_0b37();
+  if (SETPACK_bmRequestType == -0x5f) {
+    ep0_in_buf_ptr_load();
     if (_5_4 == '\0') {
       ep0_load_dptr();
       *puVar2 = 1;
@@ -296,10 +296,10 @@ void usb_setup_handler(void)
     _1_4 = 1;
     return;
   }
-  if (DAT_EXTMEM_ff28 == -0x5e) {
+  if (SETPACK_bmRequestType == -0x5e) {
     puVar2 = (undefined1 *)0xff2b;
-    if (DAT_EXTMEM_ff2b == '\x01') {
-      FUN_CODE_0b37();
+    if (SETPACK_wValueH == '\x01') {
+      ep0_in_buf_ptr_load();
       if (clock_mode_id == '\x01') {
         ep0_load_dptr();
         *puVar2 = 0;
@@ -350,8 +350,8 @@ void usb_setup_handler(void)
     }
   }
   else {
-    if (DAT_EXTMEM_ff28 == '!') {
-      if (DAT_EXTMEM_ff29 != 0) {
+    if (SETPACK_bmRequestType == '!') {
+      if (SETPACK_bRequest != 0) {
         xfer_len_hi = xfer_len_lo;
         BANK1_R5 = 2;
         _1_3 = 1;
@@ -364,15 +364,15 @@ void usb_setup_handler(void)
       _1_4 = 0;
       return;
     }
-    if ((DAT_EXTMEM_ff29 < 0xd) << 7 < '\0') {
+    if ((SETPACK_bRequest < 0xd) << 7 < '\0') {
                     /* WARNING: Could not recover jumptable at 0x011d. Too many branches */
                     /* WARNING: Treating indirect jump as call */
-      (*(code *)((ushort)(DAT_EXTMEM_ff29 * '\x03') + 0x11e))();
+      (*(code *)((ushort)(SETPACK_bRequest * '\x03') + 0x11e))();
       return;
     }
   }
 ep0_stall_both:
-  FUN_CODE_1001();
+  ep0_stall_both_clear_phase_flags();
   return;
 }
 
@@ -387,7 +387,7 @@ ep0_stall_both:
 void thunk_stall_ep0(void)
 
 {
-  FUN_CODE_1001();
+  ep0_stall_both_clear_phase_flags();
   return;
 }
 
@@ -419,13 +419,13 @@ void ep0_arm_in_3bytes(void)
 void usb_std_request_dispatch(void)
 
 {
-  if (0xc < DAT_EXTMEM_ff29) {
-    FUN_CODE_1001();
+  if (0xc < SETPACK_bRequest) {
+    ep0_stall_both_clear_phase_flags();
     return;
   }
                     /* WARNING: Could not recover jumptable at 0x011d. Too many branches */
                     /* WARNING: Treating indirect jump as call */
-  (*(code *)((ushort)(DAT_EXTMEM_ff29 * '\x03') + 0x11e))();
+  (*(code *)((ushort)(SETPACK_bRequest * '\x03') + 0x11e))();
   return;
 }
 
@@ -440,13 +440,13 @@ void usb_std_request_dispatch(void)
 void std_clear_feature(void)
 
 {
-  if ((DAT_EXTMEM_ff28 == '\x02') && (DAT_EXTMEM_ff2c == '\0')) {
+  if ((SETPACK_bmRequestType == '\x02') && (SETPACK_wIndexL == '\0')) {
     ep0_clear_stall_both();
     _1_3 = 0;
     _1_4 = 0;
     return;
   }
-  FUN_CODE_1001();
+  ep0_stall_both_clear_phase_flags();
   return;
 }
 
@@ -461,7 +461,7 @@ void std_clear_feature(void)
 void std_get_configuration(undefined1 *param_1)
 
 {
-  FUN_CODE_0b37();
+  ep0_in_buf_ptr_load();
   if (_1_6 == '\0') {
     ep0_load_dptr();
     *param_1 = 0;
@@ -491,12 +491,12 @@ void std_get_descriptor(void)
   short sVar2;
   
   puVar1 = (undefined1 *)0xff2b;
-  if (DAT_EXTMEM_ff2b == '\x01') {
+  if (SETPACK_wValueH == '\x01') {
     BANK3_R1 = 5;
     BANK3_R2 = 0x7d;
   }
   else {
-    if ((DAT_EXTMEM_ff2b == '\x02') && (sVar2 = -0xd6, DAT_EXTMEM_ff2a == '\0')) {
+    if ((SETPACK_wValueH == '\x02') && (sVar2 = -0xd6, SETPACK_wValueL == '\0')) {
       BANK3_R1 = 6;
       BANK3_R2 = 0x57;
       load_dptr_from_ptr19();
@@ -504,20 +504,20 @@ void std_get_descriptor(void)
       xfer_len_hi = *(undefined1 *)(sVar2 + 3);
       goto LAB_CODE_01e6;
     }
-    if (DAT_EXTMEM_ff2b != '\x03') {
-      FUN_CODE_1001();
+    if (SETPACK_wValueH != '\x03') {
+      ep0_stall_both_clear_phase_flags();
       return;
     }
-    if (DAT_EXTMEM_ff2a == '\0') {
+    if (SETPACK_wValueL == '\0') {
       BANK3_R1 = 6;
       BANK3_R2 = 0x8d;
     }
-    if (DAT_EXTMEM_ff2a == '\x01') {
+    if (SETPACK_wValueL == '\x01') {
       BANK3_R1 = 6;
       BANK3_R2 = 0x91;
     }
     puVar1 = (undefined1 *)0xff2a;
-    if (DAT_EXTMEM_ff2a == '\x02') {
+    if (SETPACK_wValueL == '\x02') {
       BANK3_R1 = 6;
       BANK3_R2 = 0xaf;
     }
@@ -546,17 +546,17 @@ void std_get_interface(char param_1)
   undefined1 *puVar2;
   
   if ((_1_2 == '\x01') || (_1_6 != '\0')) {
-    pcVar1 = &DAT_EXTMEM_ff2c;
-    param_1 = DAT_EXTMEM_ff2c - 3;
-    if (DAT_EXTMEM_ff2c < 3) {
-      FUN_CODE_0b37();
+    pcVar1 = &SETPACK_wIndexL;
+    param_1 = SETPACK_wIndexL - 3;
+    if (SETPACK_wIndexL < 3) {
+      ep0_in_buf_ptr_load();
       if ((*pcVar1 == '\x01') && (_1_0 != '\0')) {
         ep0_load_dptr();
         *pcVar1 = '\x01';
       }
       else {
         puVar2 = &DAT_CODE_ff2c;
-        if ((DAT_EXTMEM_ff2c == 2) && (_1_1 != '\0')) {
+        if ((SETPACK_wIndexL == 2) && (_1_1 != '\0')) {
           ep0_load_dptr();
           *puVar2 = 2;
         }
@@ -571,7 +571,7 @@ void std_get_interface(char param_1)
       return;
     }
   }
-  FUN_CODE_1001(param_1);
+  ep0_stall_both_clear_phase_flags(param_1);
   return;
 }
 
@@ -586,7 +586,7 @@ void std_get_interface(char param_1)
 void std_get_status(undefined1 *param_1)
 
 {
-  FUN_CODE_0b37();
+  ep0_in_buf_ptr_load();
   ep0_load_dptr();
   *param_1 = 0;
   BANK3_R6 = BANK3_R6 + '\x01';
@@ -629,7 +629,7 @@ void std_set_address(void)
 
 {
   BANK1_R5 = 5;
-  pending_addr = DAT_EXTMEM_ff2a;
+  pending_addr = SETPACK_wValueL;
   _1_3 = 0;
   _1_4 = 0;
   return;
@@ -646,30 +646,30 @@ void std_set_address(void)
 void std_set_configuration(void)
 
 {
-  if (1 < DAT_EXTMEM_ff2a) {
-    FUN_CODE_1001(DAT_EXTMEM_ff2a - 2);
+  if (1 < SETPACK_wValueL) {
+    ep0_stall_both_clear_phase_flags(SETPACK_wValueL - 2);
     return;
   }
-  if (DAT_EXTMEM_ff2a == 0) {
+  if (SETPACK_wValueL == 0) {
     _1_2 = 0;
     _1_6 = 0;
     _1_0 = 0;
     _1_1 = 0;
   }
-  if (DAT_EXTMEM_ff2a == 1) {
+  if (SETPACK_wValueL == 1) {
     _1_2 = 0;
     _1_6 = 1;
     _1_0 = 0;
     _1_1 = 0;
   }
-  if (DAT_EXTMEM_ff2a == 2) {
+  if (SETPACK_wValueL == 2) {
     _1_2 = 0;
     _1_6 = 1;
     _1_0 = 0;
     _1_1 = 0;
   }
   pending_action = 1;
-  FUN_CODE_0b2e(0x80);
+  ep0_set_both_dcnt(0x80);
   _1_3 = 0;
   _1_4 = 0;
   return;
@@ -686,7 +686,7 @@ void std_set_configuration(void)
 void std_stall_unsupported(void)
 
 {
-  FUN_CODE_1001();
+  ep0_stall_both_clear_phase_flags();
   return;
 }
 
@@ -703,17 +703,17 @@ void std_set_interface(void)
 {
   byte bVar1;
   
-  bVar1 = DAT_EXTMEM_ff2c - 3;
-  if (((DAT_EXTMEM_ff2c < 3) && (bVar1 = DAT_EXTMEM_ff2a - 2, DAT_EXTMEM_ff2a < 2)) &&
+  bVar1 = SETPACK_wIndexL - 3;
+  if (((SETPACK_wIndexL < 3) && (bVar1 = SETPACK_wValueL - 2, SETPACK_wValueL < 2)) &&
      ((_1_2 == '\x01' || (_1_6 != '\0')))) {
-    if (DAT_EXTMEM_ff2c == 1) {
-      _1_0 = DAT_EXTMEM_ff2a != 0;
+    if (SETPACK_wIndexL == 1) {
+      _1_0 = SETPACK_wValueL != 0;
       pending_action = 2;
     }
     else {
-      bVar1 = DAT_EXTMEM_ff2c;
-      if (DAT_EXTMEM_ff2c != 2) goto ep0_stall_both;
-      _1_1 = DAT_EXTMEM_ff2a != 0;
+      bVar1 = SETPACK_wIndexL;
+      if (SETPACK_wIndexL != 2) goto ep0_stall_both;
+      _1_1 = SETPACK_wValueL != 0;
       pending_action = 3;
     }
     IEPDCNTX0 = 0x80;
@@ -723,7 +723,7 @@ void std_set_interface(void)
     return;
   }
 ep0_stall_both:
-  FUN_CODE_1001(bVar1);
+  ep0_stall_both_clear_phase_flags(bVar1);
   return;
 }
 
@@ -754,7 +754,7 @@ void ep0_done_no_data(void)
 void ep0_stall_both(void)
 
 {
-  FUN_CODE_1001();
+  ep0_stall_both_clear_phase_flags();
   return;
 }
 
@@ -785,10 +785,10 @@ void usb_deferred_action_dispatch(void)
 
 
 /* ================================================================
- * FUN_CODE_0336 @ CODE:0336
+ * cmd1_apply_clock_mode @ CODE:0336
  * ============================================================== */
 
-void FUN_CODE_0336(void)
+void cmd1_apply_clock_mode(void)
 
 {
   byte bVar1;
@@ -828,10 +828,10 @@ void FUN_CODE_0336(void)
 
 
 /* ================================================================
- * FUN_CODE_038a @ CODE:038a
+ * cmd2_apply_iface1_alt @ CODE:038a
  * ============================================================== */
 
-void FUN_CODE_038a(void)
+void cmd2_apply_iface1_alt(void)
 
 {
   if (((_1_2 == '\x01') || (_1_6 != '\0')) && (_1_0 != '\0')) {
@@ -877,10 +877,10 @@ void FUN_CODE_038a(void)
 
 
 /* ================================================================
- * FUN_CODE_03fd @ CODE:03fd
+ * cmd3_apply_iface2_alt @ CODE:03fd
  * ============================================================== */
 
-void FUN_CODE_03fd(void)
+void cmd3_apply_iface2_alt(void)
 
 {
   if ((_1_2 == '\0' && _1_6 == '\0') || (_1_1 == '\0')) {
@@ -906,10 +906,10 @@ void FUN_CODE_03fd(void)
 
 
 /* ================================================================
- * FUN_CODE_045a @ CODE:045a
+ * cmd4_reapply_current_clock_mode @ CODE:045a
  * ============================================================== */
 
-void FUN_CODE_045a(void)
+void cmd4_reapply_current_clock_mode(void)
 
 {
   _5_4 = 0;
@@ -924,10 +924,10 @@ void FUN_CODE_045a(void)
 
 
 /* ================================================================
- * FUN_CODE_0469 @ CODE:0469
+ * cmd5_set_clock_mode1_altbits @ CODE:0469
  * ============================================================== */
 
-void FUN_CODE_0469(void)
+void cmd5_set_clock_mode1_altbits(void)
 
 {
   _5_4 = 1;
@@ -942,10 +942,10 @@ void FUN_CODE_0469(void)
 
 
 /* ================================================================
- * FUN_CODE_0478 @ CODE:0478
+ * cmd6_12_set_clock_mode1 @ CODE:0478
  * ============================================================== */
 
-void FUN_CODE_0478(void)
+void cmd6_12_set_clock_mode1(void)
 
 {
   audio_clock_set_mode(1);
@@ -956,25 +956,25 @@ void FUN_CODE_0478(void)
 
 
 /* ================================================================
- * FUN_CODE_047d @ CODE:047d
+ * cmd7_set_clock_mode2_prog_spdif @ CODE:047d
  * ============================================================== */
 
-void FUN_CODE_047d(void)
+void cmd7_set_clock_mode2_prog_spdif(void)
 
 {
   audio_clock_set_mode(2);
   if (_5_4 == '\0') {
-    DAT_INTMEM_2c = 0x23;
-    DAT_INTMEM_2d = 0;
+    cs_reg_shadow = 0x23;
+    cs_val_shadow = 0;
     cs8427_write_shadowed();
-    DAT_INTMEM_2c = 0x24;
-    DAT_INTMEM_2d = 0x80;
+    cs_reg_shadow = 0x24;
+    cs_val_shadow = 0x80;
   }
   else {
     cs8427_write_reg04_val41();
     stage_ctrl_pair_12_00();
   }
-  FUN_CODE_0c31(DAT_INTMEM_2d,DAT_INTMEM_2c);
+  spi3wire_write_3bytes(cs_val_shadow,cs_reg_shadow);
   pending_action = 0;
   return;
 }
@@ -982,25 +982,25 @@ void FUN_CODE_047d(void)
 
 
 /* ================================================================
- * FUN_CODE_049f @ CODE:049f
+ * cmd8_set_clock_mode3_prog_spdif @ CODE:049f
  * ============================================================== */
 
-void FUN_CODE_049f(void)
+void cmd8_set_clock_mode3_prog_spdif(void)
 
 {
   audio_clock_set_mode(3);
   if (_5_4 == '\0') {
-    DAT_INTMEM_2c = 0x23;
-    DAT_INTMEM_2d = 0x40;
+    cs_reg_shadow = 0x23;
+    cs_val_shadow = 0x40;
     cs8427_write_shadowed();
-    DAT_INTMEM_2c = 0x24;
-    DAT_INTMEM_2d = 0x80;
+    cs_reg_shadow = 0x24;
+    cs_val_shadow = 0x80;
   }
   else {
     cs8427_write_reg04_val41();
     stage_ctrl_pair_12_00();
   }
-  FUN_CODE_0c31(DAT_INTMEM_2d,DAT_INTMEM_2c);
+  spi3wire_write_3bytes(cs_val_shadow,cs_reg_shadow);
   pending_action = 0;
   return;
 }
@@ -1008,10 +1008,10 @@ void FUN_CODE_049f(void)
 
 
 /* ================================================================
- * FUN_CODE_04c0 @ CODE:04c0
+ * cmd9_set_clock_mode4 @ CODE:04c0
  * ============================================================== */
 
-void FUN_CODE_04c0(void)
+void cmd9_set_clock_mode4(void)
 
 {
   audio_clock_set_mode(4);
@@ -1022,10 +1022,10 @@ void FUN_CODE_04c0(void)
 
 
 /* ================================================================
- * FUN_CODE_04c4 @ CODE:04c4
+ * cmd10_set_clock_mode5 @ CODE:04c4
  * ============================================================== */
 
-void FUN_CODE_04c4(void)
+void cmd10_set_clock_mode5(void)
 
 {
   audio_clock_set_mode(5);
@@ -1036,10 +1036,10 @@ void FUN_CODE_04c4(void)
 
 
 /* ================================================================
- * FUN_CODE_04c8 @ CODE:04c8
+ * cmd11_eeprom_selftest @ CODE:04c8
  * ============================================================== */
 
-void FUN_CODE_04c8(void)
+void cmd11_eeprom_selftest(void)
 
 {
   byte bVar1;
@@ -1049,22 +1049,22 @@ void FUN_CODE_04c8(void)
   }
   _5_5 = 1;
   audio_clock_set_mode(3);
-  DAT_INTMEM_2c = 4;
-  DAT_INTMEM_2d = 0x41;
-  FUN_CODE_0c31(0x41,4);
+  cs_reg_shadow = 4;
+  cs_val_shadow = 0x41;
+  spi3wire_write_3bytes(0x41,4);
   bVar1 = 0x1f;
   i2c_eeprom_read_byte(0xff);
-  DAT_INTMEM_2c = bVar1 ^ 0xff;
+  cs_reg_shadow = bVar1 ^ 0xff;
   bVar1 = 0x1f;
-  i2c_eeprom_write3(DAT_INTMEM_2c);
+  i2c_eeprom_write3(cs_reg_shadow);
   i2c_eeprom_read_byte(0xff);
-  if (bVar1 == DAT_INTMEM_2c) {
+  if (bVar1 == cs_reg_shadow) {
     _2_6 = 0;
   }
-  DAT_INTMEM_2d = bVar1;
+  cs_val_shadow = bVar1;
   shiftreg_out8_p1hi();
   stage_ctrl_pair_12_00();
-  FUN_CODE_0c31(DAT_INTMEM_2d,DAT_INTMEM_2c);
+  spi3wire_write_3bytes(cs_val_shadow,cs_reg_shadow);
   pending_action = 0;
   return;
 }
@@ -1072,10 +1072,10 @@ void FUN_CODE_04c8(void)
 
 
 /* ================================================================
- * FUN_CODE_0517 @ CODE:0517
+ * cmd13_invalidate_boot_eeprom @ CODE:0517
  * ============================================================== */
 
-void FUN_CODE_0517(void)
+void cmd13_invalidate_boot_eeprom(void)
 
 {
   i2c_eeprom_write3(0,0,0);
@@ -1087,17 +1087,17 @@ void FUN_CODE_0517(void)
 
 
 /* ================================================================
- * FUN_CODE_0525 @ CODE:0525
+ * cmd14_usb_suspend_and_resume @ CODE:0525
  * ============================================================== */
 
-void FUN_CODE_0525(void)
+void cmd14_usb_suspend_and_resume(void)
 
 {
   byte bVar1;
   
   if ((char)((_1_6 & 1 | _1_2) << 7) < '\0') {
     ACGCTL = ACGCTL & 0x3f;
-    DAT_INTMEM_25 = 0;
+    ctrl_latch_byte_b = 0;
     ctrl_img_B0 = 0;
     shiftreg_out16_p1();
     ctrl_img_A = 0xff;
@@ -1129,9 +1129,9 @@ void FUN_CODE_0525(void)
 void cs8427_write_reg04_val41(void)
 
 {
-  DAT_INTMEM_2c = 4;
-  DAT_INTMEM_2d = 0x41;
-  FUN_CODE_0c31(0x41,4);
+  cs_reg_shadow = 4;
+  cs_val_shadow = 0x41;
+  spi3wire_write_3bytes(0x41,4);
   return;
 }
 
@@ -1146,7 +1146,7 @@ void cs8427_write_reg04_val41(void)
 void cs8427_write_shadowed(void)
 
 {
-  FUN_CODE_0c31(DAT_INTMEM_2d,DAT_INTMEM_2c);
+  spi3wire_write_3bytes(cs_val_shadow,cs_reg_shadow);
   return;
 }
 
@@ -1164,18 +1164,18 @@ void audio_clock_set_mode(char param_1)
   short sVar1;
   
   delay_lo = 0;
-  DAT_INTMEM_30 = 0;
+  busy_delay_ctr_lo = 0;
   _3_2 = 0;
   _3_3 = 0;
   mode_param = param_1;
   shiftreg_out16_p1();
-  FUN_CODE_0ef4(0xffe2);
+  acg_both_dctl_write_0x10(0xffe2);
   if (mode_param == '\x02') {
     ACGFRQ1 = 0x4b;
     ACGFRQ2 = 0x6a;
     ACGFRQ0 = 0x20;
-    DMATSH3 = 0x4b;
-    DMACTL3 = 0x6a;
+    ACG2FRQ1 = 0x4b;
+    ACG2FRQ2 = 0x6a;
     acg2frq0_load_and_acgctl(0x20);
     clock_mode_id = 2;
   }
@@ -1188,8 +1188,8 @@ void audio_clock_set_mode(char param_1)
       if (mode_param == '\x01') {
         ACGCTL = 0xd;
         clock_mode_id = 1;
-        DAT_INTMEM_31 = 4;
-        DAT_INTMEM_32 = 0x41;
+        pending_serial_reg = 4;
+        pending_serial_val = 0x41;
       }
       goto LAB_CODE_07a6;
     }
@@ -1198,16 +1198,16 @@ void audio_clock_set_mode(char param_1)
     sVar1 = -0x4f;
     sfr_write_then_acg_program(GLOBCTL | 1);
     *(undefined1 *)(sVar1 + 1) = 0;
-    DMATSL2 = 0x10;
+    ACG2DCTL = 0x10;
     _3_0 = 1;
     _3_1 = 1;
     shiftreg_out16_p1();
     clock_mode_id = 5;
   }
-  DAT_INTMEM_31 = 4;
-  DAT_INTMEM_32 = 0x40;
+  pending_serial_reg = 4;
+  pending_serial_val = 0x40;
 LAB_CODE_07a6:
-  FUN_CODE_0c31(DAT_INTMEM_32,DAT_INTMEM_31);
+  spi3wire_write_3bytes(pending_serial_val,pending_serial_reg);
   ACGCTL = ACGCTL | 0xc0;
   IEPDCNTX1 = 0;
   IEPDCNTY1 = 0;
@@ -1219,13 +1219,13 @@ LAB_CODE_07a6:
   _3_3 = 1;
   shiftreg_out16_p1();
   delay_lo = '\0';
-  DAT_INTMEM_30 = '\0';
+  busy_delay_ctr_lo = '\0';
   do {
-    DAT_INTMEM_30 = DAT_INTMEM_30 + '\x01';
-    if (DAT_INTMEM_30 == '\0') {
+    busy_delay_ctr_lo = busy_delay_ctr_lo + '\x01';
+    if (busy_delay_ctr_lo == '\0') {
       delay_lo = delay_lo + '\x01';
     }
-  } while ((DAT_INTMEM_30 != -1) || (delay_lo != '\x0f'));
+  } while ((busy_delay_ctr_lo != -1) || (delay_lo != '\x0f'));
   return;
 }
 
@@ -1266,7 +1266,7 @@ void hw_clock_codec_init(void)
   CPTCNF2 = 0xe5;
   CPTCNF3 = 0xac;
   CPTCNF4 = 3;
-  CPTCTL = 0x50;
+  CPTSTA = 0x50;
   CPTRXCNF2 = 0x25;
   CPTRXCNF3 = 0xac;
   sfr_write_then_acg_program(3,0xffd4);
@@ -1292,7 +1292,7 @@ void hw_clock_codec_init(void)
   _2_3 = 0;
   _3_6 = 0;
   shiftreg_out8_p1hi();
-  DAT_INTMEM_25 = 0;
+  ctrl_latch_byte_b = 0;
   ctrl_img_B0 = 0;
   shiftreg_out16_p1();
   return;
@@ -1366,7 +1366,7 @@ void keil_c51_startup(void)
   byte *pbVar7;
   byte *pbVar8;
   
-  puVar2 = &DAT_INTMEM_7f;
+  puVar2 = &iram_clear_top;
   do {
     *puVar2 = 0;
     puVar2 = puVar2 + -1;
@@ -1539,7 +1539,7 @@ void audio_hw_bringup(void)
 {
   char cVar1;
   
-  DAT_INTMEM_25 = 0;
+  ctrl_latch_byte_b = 0;
   ctrl_img_B0 = 0;
   _5_6 = 1;
   cVar1 = -1;
@@ -1573,16 +1573,16 @@ void audio_hw_bringup(void)
   shiftreg_out16_p1();
   _5_7 = 1;
   shiftreg_out16_p1();
-  FUN_CODE_0c31(0,4);
-  FUN_CODE_0c31(0x10,0x13);
-  FUN_CODE_0c31(0,4);
-  FUN_CODE_0c31(0x40,4);
-  FUN_CODE_0c31(1,1);
-  FUN_CODE_0c31(0x20,2);
-  FUN_CODE_0c31(0xc,3);
-  FUN_CODE_0c31(5,5);
-  FUN_CODE_0c31(5,6);
-  FUN_CODE_0c31(0xff,0x11);
+  spi3wire_write_3bytes(0,4);
+  spi3wire_write_3bytes(0x10,0x13);
+  spi3wire_write_3bytes(0,4);
+  spi3wire_write_3bytes(0x40,4);
+  spi3wire_write_3bytes(1,1);
+  spi3wire_write_3bytes(0x20,2);
+  spi3wire_write_3bytes(0xc,3);
+  spi3wire_write_3bytes(5,5);
+  spi3wire_write_3bytes(5,6);
+  spi3wire_write_3bytes(0xff,0x11);
   return;
 }
 
@@ -1601,16 +1601,17 @@ void main_loop(byte param_1)
   
   p3_1_latch = '\0';
   startup_delay_ctr = 0xff;
-  DAT_INTMEM_29 = -1;
-  DAT_INTMEM_2a = 0;
-  DAT_INTMEM_2b = 0x10;
+  startup_delay_ctr_lo = -1;
+  unread_init_const_a = 0;
+  unread_init_const_b = 0x10;
   EA = 0;
   USBIMSK = 0;
   _4_2 = 0;
   hw_clock_codec_init();
   usb_ep_dma_init();
-  while (cVar1 = DAT_INTMEM_29, (byte)-(((DAT_INTMEM_29 == '\0') << 7) >> 7) <= startup_delay_ctr) {
-    DAT_INTMEM_29 = DAT_INTMEM_29 + -1;
+  while (cVar1 = startup_delay_ctr_lo,
+        (byte)-(((startup_delay_ctr_lo == '\0') << 7) >> 7) <= startup_delay_ctr) {
+    startup_delay_ctr_lo = startup_delay_ctr_lo + -1;
     if (cVar1 == '\0') {
       startup_delay_ctr = startup_delay_ctr - 1;
     }
@@ -1657,7 +1658,7 @@ void ep0_in_send_chunk(undefined1 *param_1)
   undefined1 uVar1;
   
   pkt_bytecount = 0;
-  FUN_CODE_0b37();
+  ep0_in_buf_ptr_load();
   do {
     if ((xfer_len_lo == '\0') << 7 < '\0') break;
     load_dptr_from_ptr19(xfer_len_lo + -1);
@@ -1696,10 +1697,10 @@ void ep0_in_send_chunk(undefined1 *param_1)
 
 
 /* ================================================================
- * FUN_CODE_0b1f @ CODE:0b1f
+ * ep0_out_buf_ptr_load @ CODE:0b1f
  * ============================================================== */
 
-void FUN_CODE_0b1f(void)
+void ep0_out_buf_ptr_load(void)
 
 {
   BANK3_R5 = 0xfa;
@@ -1741,10 +1742,10 @@ void ep0_store_byte_and_arm_zlp(undefined1 param_1,undefined1 *param_2)
 
 
 /* ================================================================
- * FUN_CODE_0b2e @ CODE:0b2e
+ * ep0_set_both_dcnt @ CODE:0b2e
  * ============================================================== */
 
-void FUN_CODE_0b2e(undefined1 param_1)
+void ep0_set_both_dcnt(undefined1 param_1)
 
 {
   IEPDCNTX0 = param_1;
@@ -1755,10 +1756,10 @@ void FUN_CODE_0b2e(undefined1 param_1)
 
 
 /* ================================================================
- * FUN_CODE_0b37 @ CODE:0b37
+ * ep0_in_buf_ptr_load @ CODE:0b37
  * ============================================================== */
 
-void FUN_CODE_0b37(void)
+void ep0_in_buf_ptr_load(void)
 
 {
   BANK3_R5 = 0xfa;
@@ -1974,7 +1975,7 @@ void i2c_eeprom_write3(undefined1 param_1)
   char cVar4;
   char cVar5;
   
-  bVar2 = I2CSTA;
+  bVar2 = I2CCTL;
   I2CADR = 0xa0;
   cVar3 = '\0';
   cVar5 = -1;
@@ -1986,10 +1987,10 @@ void i2c_eeprom_write3(undefined1 param_1)
     cVar5 = cVar4;
   } while (cVar4 != '\0' || cVar3 != '\0');
   do {
-  } while ((I2CSTA >> 3 & 1) == 0);
+  } while ((I2CCTL >> 3 & 1) == 0);
   do {
-  } while ((I2CSTA >> 3 & 1) == 0);
-  I2CSTA = I2CSTA & 0xfc | 1;
+  } while ((I2CCTL >> 3 & 1) == 0);
+  I2CCTL = I2CCTL & 0xfc | 1;
   I2CDATO = param_1;
   while ((bVar2 & 8) != 8) {
     cVar3 = -1;
@@ -2009,10 +2010,10 @@ void i2c_eeprom_write3(undefined1 param_1)
 
 
 /* ================================================================
- * FUN_CODE_0c31 @ CODE:0c31
+ * spi3wire_write_3bytes @ CODE:0c31
  * ============================================================== */
 
-void FUN_CODE_0c31(void)
+void spi3wire_write_3bytes(void)
 
 {
   char cVar1;
@@ -2073,7 +2074,7 @@ void oep0_int_handler(char *param_1)
   
   if (_1_3 != '\0') {
     if (BANK1_R5 == '\x01') {
-      FUN_CODE_0b1f();
+      ep0_out_buf_ptr_load();
       cVar1 = *param_1;
       if (cVar1 == 'D') {
         pending_action = 7;
@@ -2086,7 +2087,7 @@ void oep0_int_handler(char *param_1)
       }
     }
     if (BANK1_R5 == '\x02') {
-      FUN_CODE_0b1f();
+      ep0_out_buf_ptr_load();
       if (*param_1 == '\x01') {
         pending_action = 4;
       }
@@ -2133,15 +2134,15 @@ undefined1 i2c_eeprom_read_byte(void)
 
 {
   do {
-  } while ((I2CSTA >> 3 & 1) == 0);
+  } while ((I2CCTL >> 3 & 1) == 0);
   do {
-  } while ((I2CSTA >> 3 & 1) == 0);
+  } while ((I2CCTL >> 3 & 1) == 0);
   BANK0_R6 = BANK0_R6 | 1;
   I2CADR = 0xa0;
   I2CDATO = 0;
-  I2CSTA = I2CSTA & 0xfc | 2;
+  I2CCTL = I2CCTL & 0xfc | 2;
   do {
-  } while (-1 < (char)I2CSTA);
+  } while (-1 < (char)I2CCTL);
   return I2CDATI;
 }
 
@@ -2193,16 +2194,16 @@ byte ep0_clamp_len_to_wlength(void)
 {
   byte bVar1;
   
-  if ((DAT_EXTMEM_ff2f + 1 <= xfer_len_hi) ||
-     ((DAT_EXTMEM_ff2f == xfer_len_hi && (DAT_EXTMEM_ff2e + 1 <= xfer_len_lo)))) {
-    xfer_len_lo = DAT_EXTMEM_ff2e;
-    xfer_len_hi = DAT_EXTMEM_ff2f;
+  if ((SETPACK_wLengthH + 1 <= xfer_len_hi) ||
+     ((SETPACK_wLengthH == xfer_len_hi && (SETPACK_wLengthL + 1 <= xfer_len_lo)))) {
+    xfer_len_lo = SETPACK_wLengthL;
+    xfer_len_hi = SETPACK_wLengthH;
     _1_5 = 0;
   }
-  bVar1 = xfer_len_lo - DAT_EXTMEM_ff2e;
-  if (((xfer_len_lo < DAT_EXTMEM_ff2e) << 7 < '\0') ||
-     ((bVar1 = DAT_EXTMEM_ff2e, DAT_EXTMEM_ff2e == xfer_len_lo &&
-      (bVar1 = xfer_len_hi - DAT_EXTMEM_ff2f, xfer_len_hi < DAT_EXTMEM_ff2f)))) {
+  bVar1 = xfer_len_lo - SETPACK_wLengthL;
+  if (((xfer_len_lo < SETPACK_wLengthL) << 7 < '\0') ||
+     ((bVar1 = SETPACK_wLengthL, SETPACK_wLengthL == xfer_len_lo &&
+      (bVar1 = xfer_len_hi - SETPACK_wLengthH, xfer_len_hi < SETPACK_wLengthH)))) {
     _1_5 = 1;
   }
   return bVar1;
@@ -2320,7 +2321,7 @@ void shiftreg_out16_p1(void)
     _6_0 = 0;
     bVar2 = false;
     cVar4 = '\b';
-    bVar5 = DAT_INTMEM_25;
+    bVar5 = ctrl_latch_byte_b;
   }
   bVar5 = P1;
   P1 = bVar5 | 2;
@@ -2390,9 +2391,9 @@ void sfr_write_then_acg_program(undefined1 param_1,undefined1 *param_2)
   ACGFRQ1 = 0xa8;
   ACGFRQ2 = 0x61;
   ACGFRQ0 = 0xf;
-  DMATSH3 = 0xa8;
-  DMACTL3 = 0x61;
-  DMATSL3 = 0xf;
+  ACG2FRQ1 = 0xa8;
+  ACG2FRQ2 = 0x61;
+  ACG2FRQ0 = 0xf;
   ACGCTL = 6;
   return;
 }
@@ -2411,9 +2412,9 @@ void acg_both_synths_24576khz(void)
   ACGFRQ1 = 0xa8;
   ACGFRQ2 = 0x61;
   ACGFRQ0 = 0xf;
-  DMATSH3 = 0xa8;
-  DMACTL3 = 0x61;
-  DMATSL3 = 0xf;
+  ACG2FRQ1 = 0xa8;
+  ACG2FRQ2 = 0x61;
+  ACG2FRQ0 = 0xf;
   ACGCTL = 6;
   return;
 }
@@ -2429,7 +2430,7 @@ void acg_both_synths_24576khz(void)
 void acg2frq0_load_and_acgctl(undefined1 param_1)
 
 {
-  DMATSL3 = param_1;
+  ACG2FRQ0 = param_1;
   ACGCTL = 6;
   return;
 }
@@ -2446,21 +2447,21 @@ void acg_dividers_div2(short param_1)
 
 {
   *(undefined1 *)(param_1 + 1) = 0x10;
-  DMATSL2 = 0x10;
+  ACG2DCTL = 0x10;
   return;
 }
 
 
 
 /* ================================================================
- * FUN_CODE_0ef4 @ CODE:0ef4
+ * acg_both_dctl_write_0x10 @ CODE:0ef4
  * ============================================================== */
 
-void FUN_CODE_0ef4(undefined1 *param_1)
+void acg_both_dctl_write_0x10(undefined1 *param_1)
 
 {
   *param_1 = 0x10;
-  DMATSL2 = 0x10;
+  ACG2DCTL = 0x10;
   return;
 }
 
@@ -2650,18 +2651,18 @@ void dma0_disable(void)
 void stage_ctrl_pair_12_00(void)
 
 {
-  DAT_INTMEM_2c = 0x12;
-  DAT_INTMEM_2d = 0;
+  cs_reg_shadow = 0x12;
+  cs_val_shadow = 0;
   return;
 }
 
 
 
 /* ================================================================
- * FUN_CODE_1001 @ CODE:1001
+ * ep0_stall_both_clear_phase_flags @ CODE:1001
  * ============================================================== */
 
-void FUN_CODE_1001(void)
+void ep0_stall_both_clear_phase_flags(void)
 
 {
   IEPCNF0 = IEPCNF0 | 8;
@@ -2711,10 +2712,10 @@ void toggle_bit1E_state(void)
 
 
 /* ================================================================
- * FUN_CODE_1029 @ CODE:1029
+ * vecint_iep7_noop @ CODE:1029
  * ============================================================== */
 
-void FUN_CODE_1029(void)
+void vecint_iep7_noop(void)
 
 {
   return;
@@ -2723,10 +2724,10 @@ void FUN_CODE_1029(void)
 
 
 /* ================================================================
- * FUN_CODE_102a @ CODE:102a
+ * vecint_stpow_noop @ CODE:102a
  * ============================================================== */
 
-void FUN_CODE_102a(void)
+void vecint_stpow_noop(void)
 
 {
   return;
@@ -2735,10 +2736,10 @@ void FUN_CODE_102a(void)
 
 
 /* ================================================================
- * FUN_CODE_102b @ CODE:102b
+ * vecint_psof_noop @ CODE:102b
  * ============================================================== */
 
-void FUN_CODE_102b(void)
+void vecint_psof_noop(void)
 
 {
   return;
@@ -2747,10 +2748,10 @@ void FUN_CODE_102b(void)
 
 
 /* ================================================================
- * FUN_CODE_102c @ CODE:102c
+ * vecint_resr_noop @ CODE:102c
  * ============================================================== */
 
-void FUN_CODE_102c(void)
+void vecint_resr_noop(void)
 
 {
   return;
@@ -2759,10 +2760,10 @@ void FUN_CODE_102c(void)
 
 
 /* ================================================================
- * FUN_CODE_102d @ CODE:102d
+ * vecint_cprx_noop @ CODE:102d
  * ============================================================== */
 
-void FUN_CODE_102d(void)
+void vecint_cprx_noop(void)
 
 {
   return;
@@ -2771,10 +2772,10 @@ void FUN_CODE_102d(void)
 
 
 /* ================================================================
- * FUN_CODE_102e @ CODE:102e
+ * vecint_cptx_noop @ CODE:102e
  * ============================================================== */
 
-void FUN_CODE_102e(void)
+void vecint_cptx_noop(void)
 
 {
   return;
@@ -2783,10 +2784,10 @@ void FUN_CODE_102e(void)
 
 
 /* ================================================================
- * FUN_CODE_102f @ CODE:102f
+ * vecint_slot1c_noop @ CODE:102f
  * ============================================================== */
 
-void FUN_CODE_102f(void)
+void vecint_slot1c_noop(void)
 
 {
   return;
@@ -2795,10 +2796,10 @@ void FUN_CODE_102f(void)
 
 
 /* ================================================================
- * FUN_CODE_1030 @ CODE:1030
+ * vecint_slot1d_noop @ CODE:1030
  * ============================================================== */
 
-void FUN_CODE_1030(void)
+void vecint_slot1d_noop(void)
 
 {
   return;
@@ -2807,10 +2808,10 @@ void FUN_CODE_1030(void)
 
 
 /* ================================================================
- * FUN_CODE_1031 @ CODE:1031
+ * vecint_slot1f_noop @ CODE:1031
  * ============================================================== */
 
-void FUN_CODE_1031(void)
+void vecint_slot1f_noop(void)
 
 {
   return;
@@ -2819,10 +2820,10 @@ void FUN_CODE_1031(void)
 
 
 /* ================================================================
- * FUN_CODE_1032 @ CODE:1032
+ * vecint_slot20_noop @ CODE:1032
  * ============================================================== */
 
-void FUN_CODE_1032(void)
+void vecint_slot20_noop(void)
 
 {
   return;
@@ -2831,10 +2832,10 @@ void FUN_CODE_1032(void)
 
 
 /* ================================================================
- * FUN_CODE_1033 @ CODE:1033
+ * vecint_slot21_noop @ CODE:1033
  * ============================================================== */
 
-void FUN_CODE_1033(void)
+void vecint_slot21_noop(void)
 
 {
   return;
@@ -2843,10 +2844,10 @@ void FUN_CODE_1033(void)
 
 
 /* ================================================================
- * FUN_CODE_1034 @ CODE:1034
+ * vecint_no_int_noop @ CODE:1034
  * ============================================================== */
 
-void FUN_CODE_1034(void)
+void vecint_no_int_noop(void)
 
 {
   return;
@@ -2855,10 +2856,10 @@ void FUN_CODE_1034(void)
 
 
 /* ================================================================
- * FUN_CODE_1035 @ CODE:1035
+ * vecint_shared_noop_11_1a_1b @ CODE:1035
  * ============================================================== */
 
-void FUN_CODE_1035(void)
+void vecint_shared_noop_11_1a_1b(void)
 
 {
   return;

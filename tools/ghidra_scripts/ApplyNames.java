@@ -81,6 +81,22 @@ public class ApplyNames extends GhidraScript {
         }
         println("IRAM variables named: " + ir);
 
+        // ---- named XDATA locations not covered by the SFR map (SETPACK etc) ----
+        Map<String, String> xd   = j.getOrDefault("xdata", new HashMap<>());
+        Map<String, String> xcmt = j.getOrDefault("xcmt",  new HashMap<>());
+        AddressSpace extmem = currentProgram.getAddressFactory().getAddressSpace("EXTMEM");
+        int xn = 0;
+        if (extmem != null) {
+            for (Map.Entry<String, String> e : xd.entrySet()) {
+                Address a = extmem.getAddress(Long.parseLong(e.getKey(), 16));
+                createLabel(a, e.getValue(), true, SourceType.USER_DEFINED);
+                String c = xcmt.get(e.getKey());
+                if (c != null && !c.isEmpty()) setEOLComment(a, c);
+                xn++;
+            }
+        }
+        println("XDATA locations named: " + xn);
+
         // ---- reachability / call graph ----
         PrintWriter out = new PrintWriter(new FileWriter(args[1]));
         out.println("# Call graph and reachability");

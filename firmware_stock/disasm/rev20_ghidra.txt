@@ -28,51 +28,64 @@ CODE:000e  32        RETI                            ; XREF from CODE:001b
 uart_body_reti:
 CODE:000f  32        RETI                            ; XREF from CODE:0023
 
-; ======== FUNCTION FUN_CODE_0010 @ CODE:0010 ========
+; ======== FUNCTION vecint_oep1_noop @ CODE:0010 ========
+vecint_oep1_noop:
 CODE:0010  22        RET                             ; XREF from CODE:0c95
 
-; ======== FUNCTION FUN_CODE_0011 @ CODE:0011 ========
+; ======== FUNCTION vecint_oep2_noop @ CODE:0011 ========
+vecint_oep2_noop:
 CODE:0011  22        RET                             ; XREF from CODE:0c97
 
-; ======== FUNCTION FUN_CODE_0012 @ CODE:0012 ========
+; ======== FUNCTION vecint_oep3_noop @ CODE:0012 ========
+vecint_oep3_noop:
 CODE:0012  22        RET                             ; XREF from CODE:0c99
 
 ; ======== FUNCTION int1_vector @ CODE:0013 ========
 int1_vector:
 CODE:0013  02000a    LJMP 0x000a                   
 
-; ======== FUNCTION FUN_CODE_0016 @ CODE:0016 ========
+; ======== FUNCTION vecint_oep4_noop @ CODE:0016 ========
+vecint_oep4_noop:
 CODE:0016  22        RET                             ; XREF from CODE:0c9b
 
-; ======== FUNCTION FUN_CODE_0017 @ CODE:0017 ========
+; ======== FUNCTION vecint_oep5_noop @ CODE:0017 ========
+vecint_oep5_noop:
 CODE:0017  22        RET                             ; XREF from CODE:0c9d
 
-; ======== FUNCTION FUN_CODE_0018 @ CODE:0018 ========
+; ======== FUNCTION vecint_oep6_noop @ CODE:0018 ========
+vecint_oep6_noop:
 CODE:0018  22        RET                             ; XREF from CODE:0c9f
 
-; ======== FUNCTION FUN_CODE_0019 @ CODE:0019 ========
+; ======== FUNCTION vecint_oep7_noop @ CODE:0019 ========
+vecint_oep7_noop:
 CODE:0019  22        RET                             ; XREF from CODE:0ca1
 
-; ======== FUNCTION FUN_CODE_001a @ CODE:001a ========
+; ======== FUNCTION vecint_iep1_noop @ CODE:001a ========
+vecint_iep1_noop:
 CODE:001a  22        RET                             ; XREF from CODE:0ca5
 
 ; ======== FUNCTION timer1_vector @ CODE:001b ========
 timer1_vector:
 CODE:001b  02000e    LJMP 0x000e                   
 
-; ======== FUNCTION FUN_CODE_001e @ CODE:001e ========
+; ======== FUNCTION vecint_iep2_noop @ CODE:001e ========
+vecint_iep2_noop:
 CODE:001e  22        RET                             ; XREF from CODE:0ca7
 
-; ======== FUNCTION FUN_CODE_001f @ CODE:001f ========
+; ======== FUNCTION vecint_iep3_noop @ CODE:001f ========
+vecint_iep3_noop:
 CODE:001f  22        RET                             ; XREF from CODE:0ca9
 
-; ======== FUNCTION FUN_CODE_0020 @ CODE:0020 ========
+; ======== FUNCTION vecint_iep4_noop @ CODE:0020 ========
+vecint_iep4_noop:
 CODE:0020  22        RET                             ; XREF from CODE:0cab
 
-; ======== FUNCTION FUN_CODE_0021 @ CODE:0021 ========
+; ======== FUNCTION vecint_iep5_noop @ CODE:0021 ========
+vecint_iep5_noop:
 CODE:0021  22        RET                             ; XREF from CODE:0cad
 
-; ======== FUNCTION FUN_CODE_0022 @ CODE:0022 ========
+; ======== FUNCTION vecint_iep6_noop @ CODE:0022 ========
+vecint_iep6_noop:
 CODE:0022  22        RET                             ; XREF from CODE:0caf
 
 ; ======== FUNCTION uart_vector @ CODE:0023 ========
@@ -1422,7 +1435,8 @@ LAB_CODE_0b0d:
 CODE:0b0d  c220      CLR 0x20                        ; XREF from CODE:0afc,CODE:0b01
 CODE:0b0f  80c2      SJMP 0x0ad3                   
 
-; ======== FUNCTION FUN_CODE_0b11 @ CODE:0b11 ========
+; ======== FUNCTION dptr_to_ep0_out_buf @ CODE:0b11 ========
+dptr_to_ep0_out_buf:
 CODE:0b11  751bfa    MOV 0x1b,#0xfa                  ; XREF from CODE:0d2d,CODE:0d4a
 CODE:0b14  751c10    MOV 0x1c,#0x10                
 
@@ -1583,7 +1597,8 @@ CODE:0beb  d20c      SETB 0x0c
 LAB_CODE_0bed:
 CODE:0bed  22        RET                             ; XREF from CODE:0bd6,CODE:0bda
 
-; ======== FUNCTION FUN_CODE_0bee @ CODE:0bee ========
+; ======== FUNCTION i2c_eeprom_write_byte @ CODE:0bee ========
+i2c_eeprom_write_byte:
 CODE:0bee  ae05      MOV R6,0x05                     ; XREF from CODE:04ee,CODE:051c
 CODE:0bf0  90ffc0    MOV DPTR,#0xffc0              
 CODE:0bf3  e0        MOVX A,@DPTR                  
@@ -1896,10 +1911,12 @@ CODE:0e13  7406      MOV A,#0x6
 CODE:0e15  f0        MOVX @DPTR,A                  
 CODE:0e16  22        RET                           
 
-; ======== FUNCTION FUN_CODE_0e17 @ CODE:0e17 ========
+; ======== FUNCTION acg_dptr_inc_then_set_both_dctl_10 @ CODE:0e17 ========
+acg_dptr_inc_then_set_both_dctl_10:
 CODE:0e17  a3        INC DPTR                        ; XREF from CODE:0931,CODE:081e
 
-; ======== FUNCTION FUN_CODE_0e18 @ CODE:0e18 ========
+; ======== FUNCTION acg_set_both_dctl_10 @ CODE:0e18 ========
+acg_set_both_dctl_10:
 CODE:0e18  7410      MOV A,#0x10                     ; XREF from CODE:0739
 CODE:0e1a  f0        MOVX @DPTR,A                  
 CODE:0e1b  90fff6    MOV DPTR,#0xfff6              
@@ -2237,46 +2254,60 @@ LAB_CODE_102e:
 CODE:102e  d21e      SETB 0x1e                       ; XREF from CODE:1028
 CODE:1030  22        RET                           
 
-; ======== FUNCTION FUN_CODE_1031 @ CODE:1031 ========
+; ======== FUNCTION vecint_iep7_noop @ CODE:1031 ========
+vecint_iep7_noop:
 CODE:1031  22        RET                             ; XREF from CODE:0cb1
 
-; ======== FUNCTION FUN_CODE_1032 @ CODE:1032 ========
+; ======== FUNCTION vecint_stpow_noop @ CODE:1032 ========
+vecint_stpow_noop:
 CODE:1032  22        RET                             ; XREF from CODE:0cb3
 
-; ======== FUNCTION FUN_CODE_1033 @ CODE:1033 ========
+; ======== FUNCTION vecint_psof_noop @ CODE:1033 ========
+vecint_psof_noop:
 CODE:1033  22        RET                             ; XREF from CODE:0cb9
 
-; ======== FUNCTION FUN_CODE_1034 @ CODE:1034 ========
+; ======== FUNCTION vecint_sof_noop @ CODE:1034 ========
+vecint_sof_noop:
 CODE:1034  22        RET                             ; XREF from CODE:0cbb
 
-; ======== FUNCTION FUN_CODE_1035 @ CODE:1035 ========
+; ======== FUNCTION vecint_resr_noop @ CODE:1035 ========
+vecint_resr_noop:
 CODE:1035  22        RET                             ; XREF from CODE:0cbd
 
-; ======== FUNCTION FUN_CODE_1036 @ CODE:1036 ========
+; ======== FUNCTION vecint_cprx_noop @ CODE:1036 ========
+vecint_cprx_noop:
 CODE:1036  22        RET                             ; XREF from CODE:0cc3
 
-; ======== FUNCTION FUN_CODE_1037 @ CODE:1037 ========
+; ======== FUNCTION vecint_cptx_noop @ CODE:1037 ========
+vecint_cptx_noop:
 CODE:1037  22        RET                             ; XREF from CODE:0cc5
 
-; ======== FUNCTION FUN_CODE_1038 @ CODE:1038 ========
+; ======== FUNCTION vecint_slot1c_noop @ CODE:1038 ========
+vecint_slot1c_noop:
 CODE:1038  22        RET                             ; XREF from CODE:0ccb
 
-; ======== FUNCTION FUN_CODE_1039 @ CODE:1039 ========
+; ======== FUNCTION vecint_slot1d_noop @ CODE:1039 ========
+vecint_slot1d_noop:
 CODE:1039  22        RET                             ; XREF from CODE:0ccd
 
-; ======== FUNCTION FUN_CODE_103a @ CODE:103a ========
+; ======== FUNCTION vecint_slot1f_noop @ CODE:103a ========
+vecint_slot1f_noop:
 CODE:103a  22        RET                             ; XREF from CODE:0cd1
 
-; ======== FUNCTION FUN_CODE_103b @ CODE:103b ========
+; ======== FUNCTION vecint_slot20_noop @ CODE:103b ========
+vecint_slot20_noop:
 CODE:103b  22        RET                             ; XREF from CODE:0cd3
 
-; ======== FUNCTION FUN_CODE_103c @ CODE:103c ========
+; ======== FUNCTION vecint_slot21_noop @ CODE:103c ========
+vecint_slot21_noop:
 CODE:103c  22        RET                             ; XREF from CODE:0cd5
 
-; ======== FUNCTION FUN_CODE_103d @ CODE:103d ========
+; ======== FUNCTION vecint_no_int_noop @ CODE:103d ========
+vecint_no_int_noop:
 CODE:103d  22        RET                             ; XREF from CODE:0cdb
 
-; ======== FUNCTION FUN_CODE_103e @ CODE:103e ========
+; ======== FUNCTION vecint_shared_noop_11_1a_1b @ CODE:103e ========
+vecint_shared_noop_11_1a_1b:
 CODE:103e  22        RET                             ; XREF from CODE:0cb5,CODE:0cc7,CODE:0cc9,CODE:0ccf,CODE:0cd7,CODE:0cd9
 
 ; ======== GAPS (bytes not disassembled — data tables or unreached code) ========
