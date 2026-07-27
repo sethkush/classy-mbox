@@ -117,36 +117,55 @@ BOOL DFU_SendEnterDFURequest(io_service_t unused, NSError **error) {
     IOUSBDeviceInterface **dev = openMboxDevice(error);
     if (!dev) return NO;
 
-    IOUSBInterfaceInterface **iface = openMboxInterface(dev, 0, error);
-    if (!iface) {
-        (*dev)->USBDeviceClose(dev);
-        (*dev)->Release(dev);
-        return NO;
-    }
-
     IOUSBDevRequest req = {
-        .bmRequestType = 0x21,     // Class, H→D, to Interface
+        .bmRequestType = 0x21,     // Class, H->D, to Interface
         .bRequest      = 0x00,
         .wValue        = 0x000A,
         .wIndex        = 0x0000,   // interface 0
         .wLength       = 0,
         .pData         = NULL,
     };
-    IOReturn rc = (*iface)->ControlRequest(iface, 0, &req);
+
+    // Send on the DEFAULT CONTROL PIPE via the device interface, NOT by
+    // opening interface 0.
+    //
+    // "Recipient = interface" is a field inside the SETUP packet; it does
+    // not require the host to have claimed that interface. Opening it
+    // does, and an interface only exists once a configuration has been
+    // set. Our firmware is reachable long before that — indeed the whole
+    // point of the DFU trigger is to work on a device that is not
+    // usefully configured.
+    //
+    // Set a configuration first. An interface-recipient request is
+    // validated by IOUSBHostFamily against the device's known interfaces,
+    // and an unconfigured device has none — macOS then fails the request
+    // with a synthesised stall without ever putting it on the wire.
+    // SetConfiguration(1) is known to succeed on this device (see
+    // --descdump), and configuring is harmless if it already is.
+    UInt8 curCfg = 0;
+    if ((*dev)->GetConfiguration(dev, &curCfg) != kIOReturnSuccess || curCfg == 0) {
+        IOReturn crc = (*dev)->SetConfiguration(dev, 1);
+        fprintf(stderr, "  SetConfiguration(1) -> 0x%08x\n", crc);
+    }
+
+    // This was why --enter-dfu "never worked": the old code called
+    // openMboxInterface(dev, 0) first and failed with
+    // kIOUSBInterfaceNotFound (0xe000404f) on an unconfigured device, so
+    // the class request never reached the firmware at all. The firmware's
+    // handler was fine. Every SDA short taken to get into DFU was paid to
+    // work around a host-side bug.
+    IOReturn rc = (*dev)->DeviceRequest(dev, &req);
+
     if (rc != kIOReturnSuccess) {
-        (*iface)->USBInterfaceClose(iface);
-        (*iface)->Release(iface);
         (*dev)->USBDeviceClose(dev);
         (*dev)->Release(dev);
-        if (error) *error = usbError(@"enter-DFU class request (via iface 0)", rc);
+        if (error) *error = usbError(@"enter-DFU class request (default control pipe)", rc);
         return NO;
     }
 
     // Standard USB DFU 1.0: after DFU_DETACH (bRequest=0), the host must
     // issue a bus reset to actually trigger the mode transition. Otherwise
     // the device sits in appDETACH state indefinitely.
-    (*iface)->USBInterfaceClose(iface);
-    (*iface)->Release(iface);
     fprintf(stderr, "  DFU_DETACH accepted, issuing bus reset...\n");
     IOReturn rrc = (*dev)->USBDeviceReEnumerate(dev, 0);
     (*dev)->USBDeviceClose(dev);

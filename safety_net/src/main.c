@@ -526,8 +526,31 @@ static void handle_setup(void)
     unsigned char wVL   = SETPACK_WVAL_L;
     unsigned char wVH   = SETPACK_WVAL_H;
 
-    /* Digi DFU class trigger — highest priority path. */
-    if (bmReq == 0x21 && bReq == 0x00 && wVL == 0x0A && wVH == 0x00) {
+    /* Digi DFU class trigger — highest priority path.
+     *
+     * Accept BOTH recipients: 0x21 (class, interface — what Rev 20 and
+     * the Digidesign updater use) and 0x20 (class, device).
+     *
+     * 2026-07-27: --enter-dfu against the enumerated safety_net returns
+     * kIOUSBPipeStalled (0xe000404f), and the device keeps running, so
+     * handle_dfu_trigger() never fired. Two candidate explanations, not
+     * yet separated: macOS refuses to put an interface-recipient request
+     * on the wire for a device whose interfaces it has not published (it
+     * publishes none here — see ioreg), or the firmware sees it and
+     * falls through to stall(). Setting a configuration first did not
+     * help. Accepting 0x20 costs one comparison and removes the
+     * recipient question entirely.
+     *
+     * STAGE(20) fires on ANY class request (bmReq bits 6:5 == 01) with
+     * bReq == 0, whether or not wValue matches. If the canary shows 20
+     * after an --enter-dfu attempt, the request reached the firmware and
+     * the wValue test is what failed; if it stays at 19, macOS never
+     * delivered it and the fix belongs on the host side. That single bit
+     * of evidence is what the next flash buys. */
+    if ((bmReq & 0x60) == 0x20 && bReq == 0x00) STAGE(20);
+
+    if ((bmReq == 0x21 || bmReq == 0x20) &&
+        bReq == 0x00 && wVL == 0x0A && wVH == 0x00) {
         handle_dfu_trigger();
         return;
     }

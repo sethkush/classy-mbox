@@ -433,11 +433,28 @@ static void handle_setup(void)
         /* Class request — recipient determines handler */
         if (recip == 0x02) {          /* endpoint recipient */
             handle_class_endpoint_request();
-        } else if (recip == 0x01) {   /* interface recipient */
-            /* Digi custom enter-DFU: bReq=0x00, wValue=0x000A on iface 0.
-             * Match Rev 20's mboxflash --enter-dfu path exactly. */
-            if (bReq == 0x00 && wValueL == 0x0A && wValueH == 0x00
-                             && wIndexL == 0x00 && wIndexH == 0x00) {
+        } else if (recip == 0x01 || recip == 0x00) {  /* interface OR device */
+            /* Digi custom enter-DFU: bReq=0x00, wValue=0x000A.
+             *
+             * Accept recipient = device (0x00) as well as interface
+             * (0x01), and do not require wIndex == 0.
+             *
+             * The DFU trigger is the ONLY escape from a soft-brick that
+             * does not involve opening the case and shorting EEPROM SDA
+             * to ground during power-up. Being strict here buys nothing
+             * and costs a disassembly session with a screwdriver, so the
+             * match is deliberately permissive: any class request with
+             * bReq=0 and wValue=0x000A means "get me into DFU".
+             *
+             * 2026-07-27: --enter-dfu against enumerated safety_net gets
+             * kIOUSBPipeStalled and the device keeps running, so the
+             * handler never fired. Unresolved whether macOS declines to
+             * send an interface-recipient request to a device whose
+             * interfaces it has not published, or the firmware sees it
+             * and falls through. Widening the match removes one of those
+             * possibilities for free. Rev 20 and the Digidesign updater
+             * use 0x21/wIndex 0, which still matches. */
+            if (bReq == 0x00 && wValueL == 0x0A && wValueH == 0x00) {
                 handle_digi_enter_dfu();
             } else {
                 /* TODO: feature-unit volume/mute if we add them */
