@@ -162,8 +162,6 @@ LAB_CODE_0118:
 CODE:0118  90ff29    MOV DPTR,#0xff29                ; XREF from CODE:0052
 CODE:011b  e0        MOVX A,@DPTR                  
 CODE:011c  120f70    LCALL 0x0f70                  
-CODE:011f  022f00    LJMP 0x2f00                   
-CODE:0143  ea        MOV A,R2                      
 CODE:0144  90ff28    MOV DPTR,#0xff28              
 CODE:0147  e0        MOVX A,@DPTR                  
 CODE:0148  6402      XRL A,#0x2                    
@@ -2060,10 +2058,10 @@ CODE:103e  22        RET
 
 ; ======== GAPS (bytes not disassembled — data tables or unreached code) ========
 
-; GAP CODE:0122 (33 bytes):
-CODE:0122  01 44 01 02 9c 03 02 4d 05 01 73 06 02 99 07 01
-CODE:0132  5d 08 02 5b 09 01 f1 0a 02 9f 0b 02 e7 0c 00 00
-CODE:0142  02
+; GAP CODE:011f (37 bytes):
+CODE:011f  02 2f 00 01 44 01 02 9c 03 02 4d 05 01 73 06 02
+CODE:012f  99 07 01 5d 08 02 5b 09 01 f1 0a 02 9f 0b 02 e7
+CODE:013f  0c 00 00 02 ea
 
 ; GAP CODE:0596 (402 bytes):
 CODE:0596  12 01 10 01 00 00 00 08 ba 0d 00 10 20 00 01 02
