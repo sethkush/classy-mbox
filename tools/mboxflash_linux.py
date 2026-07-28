@@ -231,16 +231,42 @@ def validate(path, quiet=False):
 
 # ------------------------------------------------------------- device layer
 
+# Address of the unit to operate on, as (bus, address), or None for "the
+# only one on the bus". Set from --addr.
+#
+# Two Mboxes now share a host, and in DFU BOTH enumerate as ffff:fffe with
+# no serial number and nothing else to tell them apart. usb.core.find()
+# returns the first match, so flashing twice in a row would write the same
+# unit twice and silently leave the other one dark. Ambiguity is a hard
+# error here rather than a warning: a wrong guess costs a 2 km round trip.
+TARGET_ADDR = None
+
+
+def _matches(dev):
+    return TARGET_ADDR is None or (dev.bus, dev.address) == TARGET_ADDR
+
+
+def _find_all(vid, pid):
+    return [d for d in usb.core.find(find_all=True, idVendor=vid, idProduct=pid)
+            if _matches(d)]
+
+
 def find_device(require_dfu=True):
     require_usb()
-    for vid, pid, label in DFU_DEVICES:
-        dev = usb.core.find(idVendor=vid, idProduct=pid)
-        if dev is not None:
-            return dev, vid, pid, label
+    candidates = [(vid, pid, label) for vid, pid, label in DFU_DEVICES]
     if not require_dfu:
-        dev = usb.core.find(idVendor=AUDIO_DEVICE[0], idProduct=AUDIO_DEVICE[1])
-        if dev is not None:
-            return dev, AUDIO_DEVICE[0], AUDIO_DEVICE[1], "audio-mode"
+        candidates.append((AUDIO_DEVICE[0], AUDIO_DEVICE[1], "audio-mode"))
+    for vid, pid, label in candidates:
+        devs = _find_all(vid, pid)
+        if len(devs) > 1:
+            listing = "\n".join("    bus %d addr %d  (--addr %d:%d)"
+                                % (d.bus, d.address, d.bus, d.address)
+                                for d in devs)
+            sys.exit("AMBIGUOUS: %d devices at %04x:%04x. In DFU both units\n"
+                     "look identical, so pick one explicitly:\n%s"
+                     % (len(devs), vid, pid, listing))
+        if devs:
+            return devs[0], vid, pid, label
     return None, None, None, None
 
 
@@ -301,6 +327,16 @@ def dfu_clear_status(dev):
 # ------------------------------------------------------------------ commands
 
 def cmd_probe(_args):
+    require_usb()
+    seen = [(v, p, l, d) for v, p, l in
+            DFU_DEVICES + [(AUDIO_DEVICE[0], AUDIO_DEVICE[1], "audio-mode")]
+            for d in usb.core.find(find_all=True, idVendor=v, idProduct=p)]
+    if len(seen) > 1:
+        print("%d Mbox units on the bus:" % len(seen))
+        for v, p, l, d in seen:
+            print("  %04x:%04x  %-16s bus %d addr %d   --addr %d:%d"
+                  % (v, p, l, d.bus, d.address, d.bus, d.address))
+        print()
     dev, vid, pid, label = find_device(require_dfu=False)
     if dev is None:
         print("no Mbox on the bus (looked for ffff:fffe, 0dba:1001, 0dba:1000)")
@@ -520,7 +556,15 @@ def main():
     p = sub.add_parser("flash", help="write an image to the EEPROM over DFU")
     p.add_argument("image")
     p.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    for _p in sub.choices.values():
+        _p.add_argument("--addr", metavar="BUS:ADDR", default=None,
+                        help="target one unit when several are on the bus, "
+                             "e.g. --addr 2:8 (see lsusb)")
     args = ap.parse_args()
+    if getattr(args, "addr", None):
+        global TARGET_ADDR
+        _b, _a = args.addr.split(":")
+        TARGET_ADDR = (int(_b), int(_a))
     return {"probe": cmd_probe, "validate": cmd_validate,
             "info": cmd_info, "flash": cmd_flash}[args.cmd](args)
 

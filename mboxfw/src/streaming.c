@@ -61,50 +61,54 @@ void streaming_set_rate(unsigned long hz)
     ACGDCTL  = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E18 */
     ACG2DCTL = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E1B */
 
-    /* Adaptive clock generator — Rev 20's mode-3 program, which is the one
-     * its SET_INTERFACE path actually uses.
+    /* Adaptive clock generator.
      *
-     * Rev 20's rate/clock dispatcher `fcn.0x0728` takes a mode in r7 and has
-     * five branches. Both of its stream-start call sites pass mode 3
-     * (0x03CA and 0x0436, the capture and playback SET_INTERFACE handlers),
-     * which lands at 0x07A0 → `lcall 0x0DEC`. Modes 1/2/4/5 come from other
-     * request handlers. We previously copied the mode-2 branch for 48 kHz
-     * and the mode-1 branch for 44.1 kHz — neither is what runs when a
-     * stream starts.
+     * Rev 20's rate/clock dispatcher `fcn.0x0728` takes a mode in r7. Its
+     * two stream-start call sites pass mode 3 (0x03CA capture, 0x0436
+     * playback); modes 1/2/4/5 come from other request handlers. Mode 2 and
+     * mode 3 differ ONLY in the 24-bit frequency word — both end at the
+     * shared tail 0x0E0F..0x0E16, which writes ACGCTL = 0x06.
      *
-     * The consequence was not a wrong clock, it was NO clock. The mode-2
-     * branch writes only the frequency words and leaves ACGCTL to the common
-     * tail's `|= 0xC0`, giving ACGCTL = 0xC0 — and bit 2 of ACGCTL is DIVEN,
-     * the divide-by-I / divide-by-M enable (datasheet §6.5.3.11). With DIVEN
-     * clear and both MCLKO selects at 00b (acg_clk after ÷M), neither master
-     * clock output runs, so the codec is never clocked, no I2S frame ever
-     * arrives at the C-port, the DMA never clears the NACK flag in
-     * IEPDCNTX/Y — and per datasheet §2.2.7.4.1, "if an isochronous in token
-     * is received when there is no new data to be output ... the UBM will
-     * respond to the isochronous in request with a NULL packet." That is
-     * precisely the zero-length packet usbmon measured. Telemetry read
-     * ACGCTL back as exactly 0xC0, confirming DIVEN was off.
+     * ACGCTL bit 2 is DIVEN, the divide-by-I / divide-by-M enable
+     * (datasheet §6.5.3.11, block diagram Figure 2-1). Every build before
+     * 2026-07-28 left ACGCTL at 0xC0 with DIVEN clear, so the ÷M circuit was
+     * off, neither MCLKO output ran, the codec was never clocked, no I2S
+     * frame reached the C-port, and the DMA never cleared the NACK flag in
+     * IEPDCNTX/Y. Per datasheet §2.2.7.4.1: "if an isochronous in token is
+     * received when there is no new data to be output ... the UBM will
+     * respond to the isochronous in request with a NULL packet" — precisely
+     * the zero-length packets usbmon measured. Telemetry read ACGCTL back as
+     * exactly 0xC0, confirming DIVEN was off.
      *
-     * Mode 3 writes ACGCTL = 0x06 first: DIVEN set, MCLKO1 ← acg_clk (÷M),
-     * MCLKO2 ← acg2_clk (÷M). The tail's `|= 0xC0` then enables both outputs,
-     * landing on 0xC6.
+     * WHICH FREQUENCY WORD, measured rather than reasoned. Flashing mode 3's
+     * word (0x0F/0xA8/0x61) and reading IEPDCNTX1 live during capture gave a
+     * rock-steady 0x60: NACK clear, DCNTX = 96 samples per USB frame. That is
+     * exactly double the 48 a stock unit delivers, and 96 × 6 B = 576 B
+     * overflowed the endpoint, so every frame came back -75 EOVERFLOW. So
+     * mode 3 is the 96 kHz program and mode 2 is 48 kHz. Rev 20 passing mode
+     * 3 at SET_INTERFACE is its power-on default, not its 48 kHz setting —
+     * the host's SET_CUR(sample rate) selects the mode afterwards.
      *
-     * UNRESOLVED: this configures the ACG identically for both rates, which
-     * is what Rev 20 does at stream start. Where Rev 20 differentiates 44.1
-     * from 48 is not yet traced — the codec-state bits below are the only
-     * rate-dependent thing we do. That is a PITCH question; settle it by
-     * measuring a loopback, not by guessing at the two constants. */
-    ACG1FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DFE */
-    ACG1FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0E04 */
-    ACG1FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E0A */
-    ACG2FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0E10 */
-    ACG2FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0E16 */
-    ACG2FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E1C */
-    ACGCTL   = 0x06;  /* Rev 20 fcn.0x0DEC @ 0x0E22 — DIVEN + ACG sources */
-
+     * The pre-2026-07-28 code had the right word here and the wrong ACGCTL;
+     * the first version of this fix corrected ACGCTL and broke the word. */
     if (hz == 48000UL) {
+        ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0771 mode-2 (48 kHz) */
+        ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0774 */
+        ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077A */
+        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0780 */
+        ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0786 */
+        ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x078C */
+        ACGCTL   = 0x06;  /* Rev 20 fcn.0x0E0F @ 0x0E10 — DIVEN + ACG srcs */
+
         g_codec_state_23 |= (unsigned char)0x0C;   /* 48 kHz codec bits */
     } else {
+        /* 44.1 kHz — Rev 20's mode 1 writes no frequency word at all and
+         * uses ACGCTL = 0x0D: DIVEN set, but both MCLKO selects at x1b, so
+         * the clock comes from MCLKI after ÷I (the external input) rather
+         * than a synthesizer. UNTESTED on hardware; 48 kHz is the rate under
+         * measurement right now. */
+        ACGCTL = 0x0D;    /* Rev 20 fcn.0x0728 @ 0x075F */
+
         g_codec_state_23 &= (unsigned char)~0x0C;  /* 44.1 kHz codec bits */
     }
 
