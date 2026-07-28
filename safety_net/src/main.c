@@ -421,11 +421,39 @@ static void reply_desc(const __code unsigned char *src, unsigned int len)
     desc_left = total - chunk;
 }
 
+/* Raised by handle_dfu_trigger in ISR context, consumed by dfu_service in
+ * main-loop context. volatile: the two sides sit across an interrupt. */
+static volatile __data unsigned char g_dfu_pending = 0;
+
 static void handle_dfu_trigger(void)
 {
     reply_zlp();
-    /* Delay for the status-stage to complete on the wire. */
+    /* Defer everything else to the main loop.
+     *
+     * This function runs inside the INT0 ISR. Doing the I2C signature
+     * writes and RESET_TO_BOOT_ROM() here hangs the CPU — observed on
+     * hardware 2026-07-27: the device stopped answering every control
+     * transfer and stayed dead until a power cycle. The reset macro flips
+     * MEMCFG.SDW and ljmps to 0x8000 with a live interrupt frame on the
+     * stack, and the I2C bit-banging runs far longer than an ISR should.
+     *
+     * The signature writes DID land that time (the device came back in
+     * bulletproof-DFU), so the hang is in or after the reset macro. */
+    g_dfu_pending = 1;
+}
+
+/* Main-loop half of the DFU trigger. Never returns once one is pending. */
+static void dfu_service(void)
+{
+    if (!g_dfu_pending) return;
+    g_dfu_pending = 0;
+
+    /* Delay for the status-stage to complete on the wire. Interrupts are
+     * still on here, so the ISR ships the ZLP while we spin. */
     { unsigned int i; for (i = 0; i < 0xC000; i++) { } }
+    /* No interrupt may fire past this point: the signature writes and the
+     * memory-map flip must not interleave with USB servicing. */
+    EA = 0;
     /* Best-effort invalidate: write 0x00 over signature bytes at
      * EEPROM offset 2 and 3. If either write fails, we still enter
      * boot ROM — same state as before, no worse. */
@@ -918,7 +946,7 @@ void main(void)
 #ifdef CANARY
     canary_blink_forever();   /* never returns */
 #else
-    for (;;) { }
+    for (;;) { dfu_service(); }
 #endif
 }
 
