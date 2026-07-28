@@ -12,6 +12,7 @@
 #include "buttons.h"
 #include "mux.h"
 #include "eeprom.h"
+#include "telemetry.h"
 
 extern void hw_init(void);
 extern void usb_init(void);
@@ -214,10 +215,12 @@ void main(void)
     /* usb_init() configures endpoints and buffers but does NOT attach.
      * Ordering below mirrors both stock firmwares exactly. */
     usb_init();
+    tlm_phases |= TLM_PHASE_USB_INIT;
     CANARY(1, CANARY_USB);
     STAGE(2);
 
     hw_init();
+    tlm_phases |= TLM_PHASE_HW_INIT;
     CANARY(2, CANARY_HW);
     STAGE(3);
 
@@ -229,6 +232,7 @@ void main(void)
     EA = 1;
     STAGE(5);
     usb_attach();
+    tlm_phases |= TLM_PHASE_ATTACH;
     STAGE(6);
     CANARY(5, CANARY_LOOP);
 
@@ -241,10 +245,12 @@ void main(void)
      *
      * Move these back above the attach once both are hardware-proven. */
     cs8427_boot_init();
+    tlm_phases |= TLM_PHASE_CS8427;
     CANARY(3, CANARY_CS8427);
     STAGE(7);
 
     codec_init();
+    tlm_phases |= TLM_PHASE_CODEC;
     CANARY(4, CANARY_CODEC);
     STAGE(8);
 
@@ -256,7 +262,11 @@ void main(void)
     canary_blink_forever();
 #endif
 
+    tlm_phases |= TLM_PHASE_MAIN_LOOP;
     for (;;) {
+        /* Liveness: a changing counter distinguishes "running but silent"
+         * from "wedged", which no static value can. */
+        TLM_INC16(tlm_loop_count);
         /* USB is serviced from isr_int0 ONLY — see isr.c. Calling
          * usb_service() here as well would let the ISR re-enter it while
          * the loop is part-way through, and SDCC gives non-reentrant

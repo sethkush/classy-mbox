@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""Read mboxfw telemetry over EP0. See mboxfw/TELEMETRY.md for the block map.
+
+    sudo ./mbox_telemetry.py            # dump all blocks
+    sudo ./mbox_telemetry.py --reset    # zero the counters
+    sudo ./mbox_telemetry.py --ep0-test # measure EP0 continuation loss
+
+Every read is a single 8-byte EP0 packet, deliberately: the defect under
+investigation is the multi-packet continuation path, so the instrument must
+not depend on it.
+"""
+import argparse, struct, sys
+
+try:
+    import usb.core
+except ImportError:
+    sys.exit("pyusb not installed:  pip3 install pyusb")
+
+VID, PID = 0x0DBA, 0x1000
+REQ_READ, REQ_RESET = 0x10, 0x11
+
+PHASES = [(0x01, "usb_init"), (0x02, "hw_init"), (0x04, "attach"),
+          (0x08, "cs8427"), (0x10, "codec"), (0x20, "main_loop")]
+
+
+def dev():
+    d = usb.core.find(idVendor=VID, idProduct=PID)
+    if d is None:
+        sys.exit("no mboxfw on the bus (looked for %04x:%04x)" % (VID, PID))
+    return d
+
+
+def read_block(d, i):
+    r = d.ctrl_transfer(0xC0, REQ_READ, i, 0, 8, 2000)
+    if len(r) != 8:
+        raise IOError("block %d returned %d bytes, expected 8" % (i, len(r)))
+    return bytes(r)
+
+
+def dump(d):
+    b = [read_block(d, i) for i in range(5)]
+
+    bid, stage, phases, loops, rstr = struct.unpack("<HBBHH", b[0])
+    print("build 0x%04x  stage %d  loop_count %d  bus_resets %d" % (bid, stage, loops, rstr))
+    print("  phases: " + " ".join(n for m, n in PHASES if phases & m) or "  phases: (none)")
+
+    setups, iep0, chunks, drains = struct.unpack("<HHHH", b[1])
+    print("EP0: setups=%d iep0_ints=%d chunks=%d drains=%d" % (setups, iep0, chunks, drains))
+    if chunks and iep0 < chunks - 1:
+        print("  !! iep0_ints < chunks-1 — interrupts are being LOST")
+    if chunks > drains:
+        print("  .. %d transfer(s) started but never drained" % (chunks - drains))
+
+    bmreq, breq, wval, widx, wlen = struct.unpack("<BBHHH", b[2])
+    print("last SETUP: bmReq=0x%02x bReq=0x%02x wValue=0x%04x wIndex=0x%04x wLength=%d"
+          % (bmreq, breq, wval, widx, wlen))
+
+    print("VECINT: setup=%d iep0=%d oep0=%d rstr=%d none=%d other=%d" % tuple(b[3][:6]))
+
+    ee, cs, co, stalls = b[4][:4]
+    print("periph: eeprom=0x%02x cs8427=0x%02x codec=0x%02x  stalls=%d" % (ee, cs, co, stalls))
+
+
+def ep0_test(d, trials=40):
+    """Cross-check the device's own chunk counter against host-visible success.
+
+    This is the measurement the VECINT fix has to pass. For an N-packet
+    reply the device should push N chunks per successful transfer; a
+    shortfall means it stopped being asked."""
+    print("%-28s %-6s %-9s %s" % ("transfer", "pkts", "host ok", "device chunks"))
+    for label, wv, wlen, pk in [("DEVICE  wLen=8",  0x0100,  8, 1),
+                                ("DEVICE  wLen=18", 0x0100, 18, 3),
+                                ("CONFIG  wLen=64", 0x0200, 64, 8)]:
+        d.ctrl_transfer(0x40, REQ_RESET, 0, 0, None, 2000)
+        ok = 0
+        for _ in range(trials):
+            try:
+                d.ctrl_transfer(0x80, 0x06, wv, 0, wlen, 400)
+                ok += 1
+            except Exception:
+                pass
+        chunks = struct.unpack("<HHHH", read_block(d, 1))[2]
+        expect = ok * pk
+        flag = "" if chunks >= expect else "   <-- SHORTFALL, packets lost"
+        print("%-28s %-6d %2d/%-6d %d (expect >= %d)%s"
+              % (label, pk, ok, trials, chunks, expect, flag))
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--reset", action="store_true", help="zero the counters")
+    ap.add_argument("--ep0-test", action="store_true", help="measure EP0 continuation loss")
+    a = ap.parse_args()
+    d = dev()
+    if a.reset:
+        d.ctrl_transfer(0x40, REQ_RESET, 0, 0, None, 2000)
+        print("counters cleared")
+        return 0
+    if a.ep0_test:
+        ep0_test(d)
+        return 0
+    dump(d)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

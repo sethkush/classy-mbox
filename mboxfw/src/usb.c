@@ -21,6 +21,7 @@
 #include "usb.h"
 #include "streaming.h"
 #include "eeprom.h"
+#include "telemetry.h"
 
 /* LED progress canary — see the ladder in main.c. Stages 10-17 live on
  * the USB side; g_stage is defined there. */
@@ -39,7 +40,9 @@ extern volatile __data unsigned char g_stalls;
 extern volatile __data unsigned char g_chunks;
 #define STAGE(n) do { if ((unsigned char)(n) > g_stage) g_stage = (n); } while (0)
 #else
-#define STAGE(n) do { } while (0)
+/* Non-canary build: the stage ladder still feeds telemetry block 0, so the
+ * high-water mark is readable over USB without the LED diagnostic build. */
+#define STAGE(n) do { if ((unsigned char)(n) > tlm_stage) tlm_stage = (n); } while (0)
 #endif
 
 /* Descriptor tables from descriptors.c */
@@ -118,6 +121,7 @@ static void reply_stall(void)
      * safety_net carried the identical bug and fixed it; porting that
      * fix here. Reference: TI hwMacro.h:9-10, STALLInEp0/STALLOutEp0,
      * both `|= 0x08`. */
+    TLM_INC8(tlm_stalls);
     IEPCNF0 |= 0x08;
     OEPCNF0 |= 0x08;
 }
@@ -180,7 +184,8 @@ static void push_reply_chunk(void)
     }
     g_ep0_reply_src       += n;
     g_ep0_reply_remaining -= n;
-    if (g_ep0_reply_remaining == 0) STAGE(19);
+    TLM_INC16(tlm_chunks);
+    if (g_ep0_reply_remaining == 0) { STAGE(19); TLM_INC16(tlm_drains); }
     IEPBCTX0 = n;   /* hand the packet to the hardware */
 }
 
@@ -449,6 +454,34 @@ static void handle_setup(void)
      * means. See safety_net/EP0_DIFF_vs_REV20.md §5. */
     g_ep0_reply_remaining = 0;
 
+    /* Record the SETUP before dispatching, so a request that wedges us is
+     * still visible in telemetry block 2 afterwards. */
+    tlm_last_bmreq   = bmReq;
+    tlm_last_breq    = bReq;
+    tlm_last_wvalue  = ((unsigned int)wValueH << 8) | wValueL;
+    tlm_last_windex  = ((unsigned int)wIndexH << 8) | wIndexL;
+    tlm_last_wlength = ((unsigned int)wLenH   << 8) | wLenL;
+
+    /* Vendor requests (telemetry) are handled first and unconditionally.
+     * They must keep working even when everything else is broken — that is
+     * their entire purpose. DEVICE recipient, so no interface claim is
+     * needed and snd-usb-audio cannot intercept them. */
+    if (reqtype == 0x40) {
+        if (bReq == TLM_REQ_READ && (bmReq & 0x80)) {
+            unsigned char blk[TLM_BLOCK_SIZE];
+            (void)tlm_read_block(wValueL, blk);
+            /* Always exactly one 8-byte packet — never the multi-packet
+             * continuation path, which is the thing under investigation. */
+            stage_immediate(blk, TLM_BLOCK_SIZE);
+        } else if (bReq == TLM_REQ_RESET && !(bmReq & 0x80)) {
+            tlm_reset_counters();
+            reply_zero_length();
+        } else {
+            reply_stall();
+        }
+        return;
+    }
+
     if (reqtype == 0x00) {
         /* Standard request */
         switch (bReq) {
@@ -652,7 +685,14 @@ void usb_service(void)
     unsigned char vec = VECINT;
 
     switch (vec) {
+        case VEC_NONE:  TLM_INC8(tlm_vec_none);  break;
+        default:        break;
+    }
+
+    switch (vec) {
         case VEC_SETUP:
+            TLM_INC8(tlm_vec_setup);
+            TLM_INC16(tlm_setup_count);
             handle_setup();
             /* Firmware-initiated ACK of the SETUP by clearing VECINT. */
             VECINT = 0;
@@ -689,6 +729,8 @@ void usb_service(void)
              * engEp0TxDone(), so the vector is acknowledged before the
              * next packet is armed. */
             VECINT = 0;
+            TLM_INC8(tlm_vec_iep0);
+            TLM_INC16(tlm_iep0_count);
             if (g_pending_address != 0xFF) {
                 /* 16 = deferred address actually applied. */
                 STAGE(16);
@@ -715,6 +757,7 @@ void usb_service(void)
             break;
 
         case VEC_OEP0:
+            TLM_INC8(tlm_vec_oep0);
             /* Host sent data (or status stage). Nothing to do for the
              * requests we handle so far — just acknowledge. TI UsbEng.c
              * engEx0(): `case OEP0_INT: VECINT=0; engEp0RxDone();` —
@@ -723,6 +766,8 @@ void usb_service(void)
             break;
 
         case VEC_RSTR:
+            TLM_INC8(tlm_vec_rstr);
+            TLM_INC16(tlm_rstr_count);
             /* USB bus reset. Per TAS1020B datasheet §6.5.1.4, bus reset
              * CLEARS FEN — the UBM then ignores all USB transactions
              * until FEN is set again. Re-arm EP0 config (also cleared
