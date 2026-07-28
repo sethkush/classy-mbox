@@ -1,4 +1,31 @@
-# ramloader — a RAM-resident image loader for the Mbox 1
+# ramloader — NOT VIABLE (settled 2026-07-27)
+
+> **Conclusion first: this cannot be built.** A running image cannot write
+> program RAM, so no resident loader can stage a payload. Open question 2
+> below was the gating one and it resolved negative. The rest of this
+> document is kept for the verified constraints, which remain useful.
+>
+> **Why:** MEMCFG.SDW selects between two memory configurations — datasheet
+> §6.5.7.5: SDW is "set to a 1 by the MCU to switch the MCU memory
+> configuration from boot loader mode to normal operating mode. This must
+> occur after completion of the download of the application program code by
+> the boot ROM." In boot-loader mode (SDW=0) the 6 KB program RAM is
+> reachable as data — that is how the boot ROM's `dfuCopy((byte xdata *)
+> bufferAddr, ...)` writes it. In normal operating mode (SDW=1), where all
+> our code runs, §2.1.10 says the program RAM is "mapped to the program
+> memory space" and "the total external data memory space available is 1.5K
+> bytes" — only the endpoint blocks, USB buffers and memory-mapped registers
+> at 0xF8xx-0xFFxx. Program RAM is simply not addressable as data.
+>
+> Flipping SDW to reach it unmaps the running code, the same trap that makes
+> RESET_TO_BOOT_ROM() unfixable.
+>
+> **Therefore: one power cycle buys exactly one image. That is a hard floor.**
+> Iteration has to come from making that single image maximally informative —
+> instrumentation reported over USB, which we can query remotely without
+> reloading — not from reloading it.
+
+## Original design (superseded)
 
 ## Why
 
@@ -120,6 +147,6 @@ payload, the EP0 fix is correct.** No separate experiment needed.
 
 ## Status
 
-Design only. Nothing built or flashed. Question 2 is the gating one: if program
-RAM cannot be written via `movx` from the running image, this approach does not
-work and the fallback is one payload per trip.
+**Abandoned.** Question 2 resolved negative — see the note at the top. Nothing was
+built, which is the point: the question was settled from the datasheet for the
+cost of a few greps rather than 2 KB of firmware and a wasted trip.
