@@ -130,9 +130,21 @@ Missing any item = do not flash.
 
 ## 7. Flashing from bulletproof-DFU REQUIRES two-stage bootstrap
 
-**If the device is in bulletproof-DFU (VID 0xFFFF PID 0xFFFE — entered
-via SDA-short), NOTHING you download reaches the EEPROM. Not the code,
-not even the header.**
+**CORRECTED 2026-07-28 — read this first.** `ffff:fffe` is only the boot
+ROM's DEFAULT DFU descriptor set. It is shown for BOTH DFU targets and
+says NOTHING about which is active. The earlier claim in this section —
+that ffff:fffe means RAM-target and nothing reaches the EEPROM — is wrong.
+
+The target comes from `dataType` (RomBoot.c:60-66). A **zeroed signature**
+leaves `dataType` at 0x00 (eepromExist wipes the struct first), which is
+neither UNEXIST nor DEVICE_TYPE, so the target is **TARGET_EEPROM** and
+downloads write the EEPROM normally. Only a genuinely unreadable EEPROM —
+a real SDA short holding I2C down — gives UNEXIST -> TARGET_RAM.
+
+Proven on hardware: after a supposed "RAM load" of mboxfw, a true 10-second
+cold boot came up running mboxfw from EEPROM with telemetry counters reset.
+
+The RAM-target discussion below still applies to a REAL SDA short.
 
 CORRECTED 2026-07-27. This section previously claimed bulletproof-DFU
 "only persists the 18-byte EEPROM header". That is false, and it cost a

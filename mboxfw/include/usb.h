@@ -55,7 +55,22 @@
 
 /* Device / vendor IDs — reuse Digi's so macOS still identifies as Mbox */
 #define MBOX_VID               0x0DBA
+/* Overridable at build time: `make MBOX_PID=0x2000`.
+ *
+ * Linux's snd-usb-audio matches a composite quirk on VID:PID 0dba:1000
+ * (sound/usb/quirks-table.h) and applies hardcoded fixed streams WITHOUT
+ * parsing our descriptors — so a fully class-compliant device still gets
+ * hijacked and probe fails -22. That quirk exists for Digidesign's original
+ * non-class-compliant firmware; we inherit a workaround for a problem we
+ * deliberately do not have.
+ *
+ * Building with a PID outside the quirk table makes Linux treat us as the
+ * generic UAC1 device we are, which is the honest test of class compliance.
+ * Do NOT reshape the descriptors to satisfy the quirk instead — that would
+ * make the firmware less standard, not more. */
+#ifndef MBOX_PID
 #define MBOX_PID               0x1000
+#endif
 #define MBOX_BCD_DEVICE        0x0100  /* our custom-fw v1.0 */
 
 /* Endpoint addresses */
