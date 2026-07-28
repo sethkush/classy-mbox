@@ -451,28 +451,45 @@ def cmd_flash(args):
     # the real metadata writes already committed in dfuDnloadData when
     # dataRemain hit 0 (UsbDfu.c:1004-1014), so cap the sleep at 200 ms and
     # re-poll rather than hanging for half an hour.
+    # Reaching the manifest phase is MANDATORY, and is the only proof the
+    # boot ROM considers the download complete. UsbDfu.c:520-537: the
+    # zero-length terminator from dfuDNLOAD_IDLE goes to dfuMANIFEST_SYNC
+    # *only* if loadStatus == DFU_LOAD_COMPLETED; otherwise it goes to
+    # dfuERROR/errNOTDONE. loadStatus only becomes COMPLETED when
+    # dataRemain hits 0 (UsbDfu.c:1013). So "no manifest" means the boot
+    # ROM received fewer payload bytes than the header promised.
+    #
+    # This matters enormously in RAM mode, because loadStatus is also what
+    # the bus reset dispatches on (UsbDfu.c:698-722):
+    #   DFU_LOAD_COMPLETED -> ROM_APP_RUNNING, the RAM image is launched
+    #   default            -> dfuERROR + errPOR, image is NOT launched
+    # Resetting without a manifest therefore throws the download away. That
+    # is exactly what happened on 2026-07-27: 58/58 blocks "OK", no
+    # manifest, bus reset, errPOR, RAM image never ran.
     state = None
-    settled = False
+    reached_manifest = False
     for _ in range(100):
         st, poll_ms, state, _ = dfu_get_status_retry(dev)
-        if state in (dfuMANIFEST_WAIT_RESET, dfuIDLE):
-            settled = True
+        if state in (dfuMANIFEST_SYNC, dfuMANIFEST, dfuMANIFEST_WAIT_RESET, dfuIDLE):
+            reached_manifest = True
             break
         if state == dfuERROR:
-            print("dfuERROR during manifest: %s" % status_name(st), file=sys.stderr)
+            print("dfuERROR after terminator: %s" % status_name(st), file=sys.stderr)
+            if st == 9:   # errNOTDONE
+                print("errNOTDONE => the boot ROM got fewer payload bytes than the\n"
+                      "header's payloadSize. The image was NOT accepted. Not resetting.",
+                      file=sys.stderr)
             return 1
-        # dfuDNLOAD_IDLE that never advances is the NORMAL outcome here: the
-        # boot ROM commits chksum/dataType/payloadSize during dfuDnloadData
-        # the moment dataRemain hits 0 (UsbDfu.c:1004-1014), so by the time
-        # the zero-length terminator arrives there is nothing left to
-        # manifest and the state machine simply stays put. Observed on
-        # hardware 2026-07-27. Report it accurately rather than calling it
-        # "manifest complete".
         if state == dfuDNLOAD_IDLE:
-            break
+            print("still dfuDNLOAD_IDLE after the zero-length terminator — the boot ROM\n"
+                  "did not accept the download as complete. Not resetting (a reset here\n"
+                  "would discard it and report errPOR).", file=sys.stderr)
+            return 1
         time.sleep(min(poll_ms or 200, 200) / 1000.0)
-    print("download committed. Final state: %s%s"
-          % (state_name(state), "" if settled else "  (no manifest phase — see note in source)"))
+    if not reached_manifest:
+        print("never reached the manifest phase — not resetting.", file=sys.stderr)
+        return 1
+    print("manifest reached. Final state: %s" % state_name(state))
 
     # The boot ROM's dfuSetup loop only exits when RSTR_INT fires
     # (UsbDfu.c:697-704), so without a bus reset it sits in DFU forever and

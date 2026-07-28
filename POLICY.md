@@ -131,13 +131,59 @@ Missing any item = do not flash.
 ## 7. Flashing from bulletproof-DFU REQUIRES two-stage bootstrap
 
 **If the device is in bulletproof-DFU (VID 0xFFFF PID 0xFFFE — entered
-via SDA-short), you CANNOT flash a dataType=0x01 image directly.**
-Bulletproof-DFU only persists the 18-byte EEPROM header, not the code
-region. A single-stage flash from bulletproof-DFU leaves the chip with
-a valid header pointing at an unwritten code region → boot ROM fails
-validation on cold boot → device re-enters bulletproof-DFU → silent
-USB. See BRICK_LOG 2026-07-25 for the multi-hour hunt that finally
-pinned this down.
+via SDA-short), NOTHING you download reaches the EEPROM. Not the code,
+not even the header.**
+
+CORRECTED 2026-07-27. This section previously claimed bulletproof-DFU
+"only persists the 18-byte EEPROM header". That is false, and it cost a
+1 km trip and an SDA short to disprove. The boot ROM picks its DFU
+target from the EEPROM dataType it managed to read (RomBoot.c:60-66):
+
+```c
+if ((dataType == EEPROM_UNEXIST) || (dataType == EEPROM_DEVICE_TYPE))
+    dfuSetup(DFU_TARGET_RAM, 0);      // <-- SDA short lands HERE
+else
+    dfuSetup(DFU_TARGET_EEPROM, 0);   // <-- app-DFU
+```
+
+An SDA short makes `I2CAccess()` fail, so `eepromExist()` sets
+`dataType = EEPROM_UNEXIST` (Eeprom.c:113-117) and the target becomes
+**RAM**. In `dfuDnloadData()` (UsbDfu.c:966-980) TARGET_RAM does a plain
+`dfuCopy()` into RAM; only TARGET_EEPROM calls `dfuEepromCopy()`. So
+every DFU_DNLOAD block is faithfully accepted — every block reports OK —
+and lands in volatile RAM. A replug wipes it.
+
+**Bulletproof-DFU is a RAM loader, not a flasher.** Its purpose is to
+run a downloaded image, which then does the EEPROM work itself.
+
+**Launching the RAM image is conditional and easy to get wrong.** On the
+bus reset, the boot ROM dispatches on `loadStatus` (UsbDfu.c:698-722):
+
+| loadStatus | outcome |
+|---|---|
+| `DFU_LOAD_COMPLETED` | `ROM_APP_RUNNING` — RAM image runs |
+| anything else | `dfuERROR` + `errPOR` — image discarded |
+
+`loadStatus` only becomes `DFU_LOAD_COMPLETED` when `dataRemain` hits 0
+(UsbDfu.c:1013), and the zero-length terminator only advances to
+`dfuMANIFEST_SYNC` if it is already COMPLETED — otherwise `dfuERROR` +
+`errNOTDONE` (UsbDfu.c:520-537).
+
+**So: reaching the manifest phase is the only proof the download took.
+Never issue the bus reset without it.** On 2026-07-27 a bootstrap flash
+reported 58/58 blocks OK, never reached manifest, was bus-reset anyway,
+and returned `errPOR` — the RAM image never ran.
+
+Also note `DFU_ABORT` and `DFU_CLRSTATUS` both reset `loadStatus` to
+`DFU_LOAD_NOT` when target != EEPROM (UsbDfu.c:594, 610). Do not issue
+either one mid-download in RAM mode.
+
+**Corollary — the SDA short is the WRONG recovery path.** What actually
+yields a flashable app-DFU is a *readable* EEPROM whose dataType is
+neither APPCODE nor UNEXIST/DEVICE — e.g. a zeroed signature, which
+makes `eepromExist()` leave dataType at 0 and select TARGET_EEPROM.
+That is what `eeprom_invalidate_signature()` produces, and it is why the
+button-hold path reaches app-DFU while the short does not.
 
 **Correct sequence (do all steps in order):**
 1. SDA-short → device enters bulletproof-DFU (verify with
