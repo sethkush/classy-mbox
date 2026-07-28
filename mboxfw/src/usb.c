@@ -22,6 +22,21 @@
 #include "streaming.h"
 #include "eeprom.h"
 
+/* LED progress canary — see the ladder in main.c. Stages 10-17 live on
+ * the USB side; g_stage is defined there. */
+#ifdef CANARY_LED
+extern volatile __data unsigned char g_stage;
+/* Last bRequest seen in a SETUP, and a count of stalls issued. The stage
+ * ladder is a monotonic maximum, so it cannot say WHICH request is
+ * failing — only how far the best case got. These two are reported as
+ * separate blink groups after the stage. */
+extern volatile __data unsigned char g_last_breq;
+extern volatile __data unsigned char g_stalls;
+#define STAGE(n) do { if ((unsigned char)(n) > g_stage) g_stage = (n); } while (0)
+#else
+#define STAGE(n) do { } while (0)
+#endif
+
 /* Descriptor tables from descriptors.c */
 extern const __code unsigned char AppDevDesc[];
 extern const __code unsigned char AppConfigDesc[];
@@ -86,9 +101,20 @@ static __data unsigned int          g_ep0_reply_remaining = 0;
 
 static void reply_stall(void)
 {
-    /* Rev 20 stalls EP0 by clearing bits in IEPCNF0 & 0xD7. We mirror. */
-    IEPCNF0 &= 0xD7;
-    OEPCNF0 &= 0xD7;
+#ifdef CANARY_LED
+    if (g_stalls < 99) g_stalls++;
+#endif
+    /* STALL is bit 3; it must be OR'd IN, not masked out.
+     *
+     * This previously read `IEPCNF0 &= 0xD7`, which CLEARS bit 5 (TOGGLE)
+     * and bit 3 (STALL) — the exact opposite of stalling. The endpoint
+     * was left un-stalled with its toggle reset, so an unsupported
+     * request got no handshake at all and the host simply timed out.
+     * safety_net carried the identical bug and fixed it; porting that
+     * fix here. Reference: TI hwMacro.h:9-10, STALLInEp0/STALLOutEp0,
+     * both `|= 0x08`. */
+    IEPCNF0 |= 0x08;
+    OEPCNF0 |= 0x08;
 }
 
 static void reply_zero_length(void)
@@ -132,6 +158,10 @@ static void stage_immediate(const unsigned char *bytes, unsigned char len)
  * each IEP0-done interrupt until g_ep0_reply_remaining hits zero. */
 static void push_reply_chunk(void)
 {
+    /* 18 = a chunk was pushed; 19 = the transfer drained completely.
+     * Together these show how far into a long multi-packet reply we get
+     * before stalling. */
+    STAGE(18);
     __xdata unsigned char *dst = (__xdata unsigned char *)EP0_IN_BUF_ADDR;
     unsigned char n = (g_ep0_reply_remaining > EP0_MAX_PACKET)
                           ? EP0_MAX_PACKET
@@ -142,6 +172,7 @@ static void push_reply_chunk(void)
     }
     g_ep0_reply_src       += n;
     g_ep0_reply_remaining -= n;
+    if (g_ep0_reply_remaining == 0) STAGE(19);
     IEPBCTX0 = n;   /* hand the packet to the hardware */
 }
 
@@ -189,9 +220,16 @@ static void handle_get_descriptor(void)
      * enumeration at the very first request. */
     switch (type) {
         case USB_DT_DEVICE:
+            STAGE(14);
             stage_reply(AppDevDesc, APP_DEV_DESC_LEN);
             break;
         case USB_DT_CONFIG:
+            /* 17 = config descriptor requested. This is the big one:
+             * 180 bytes = 23 EP0 packets, versus 18 bytes / 3 packets for
+             * the device descriptor. safety_net never had a descriptor
+             * anywhere near this size, so the deep continuation path has
+             * never actually been exercised on hardware. */
+            STAGE(17);
             stage_reply(AppConfigDesc, APP_CFG_TOTAL_LEN);
             break;
         case USB_DT_STRING:
@@ -210,6 +248,7 @@ static void handle_get_descriptor(void)
 
 static void handle_set_configuration(void)
 {
+    STAGE(20);   /* enumeration essentially complete */
     g_configured = wValueL;
     reply_zero_length();
 }
@@ -345,6 +384,38 @@ static void handle_setup(void)
 {
     unsigned char reqtype = bmReq & 0x60;   /* mask off type field */
     unsigned char recip   = bmReq & 0x1F;
+#ifdef CANARY_LED
+    g_last_breq = bReq;
+#endif
+
+    /* EP0 SETUP PROLOGUE — ported from safety_net, which is proven to
+     * enumerate on this hardware. mboxfw had none of this.
+     *
+     * TI engEp0SetupDone (UsbEng.c:223-228) opens with exactly these two
+     * pairs: STALLClrInEp0/STALLClrOutEp0 then TOGGLEInEp0Data/
+     * TOGGLEOutEp0Data (hwMacro.h:27-28, 46-47).
+     *
+     * STALL-clear: once any unsupported request has stalled EP0, the
+     * STALL bit stays set and every later response stalls too, wedging
+     * enumeration permanently.
+     *
+     * TOGGLE=1: the first data or status packet of a control transfer
+     * must be DATA1 (datasheet p.30, Control Read Setup step 2). The
+     * bus-reset handler sets IEPCNF0 = 0x84, which leaves TOGGLE (bit 5)
+     * CLEAR — so without this every post-reset reply goes out as DATA0,
+     * the host discards it, retries, and gives up. Silent device.
+     *
+     * safety_net's comment records these two lines together fixing
+     * exactly the "flash succeeds, firmware runs, nothing on USB"
+     * symptom on 2026-07-23. mboxfw shows the same symptom: canary
+     * stage 16, last bRequest 5 (SET_ADDRESS), zero stalls, no
+     * descriptor ever staged. */
+    /* TI UsbEng.c engEp0SetupDone — STALLClrInEp0 / STALLClrOutEp0 */
+    IEPCNF0 &= (unsigned char)~0x08;
+    OEPCNF0 &= (unsigned char)~0x08;
+    /* TI UsbEng.c engEp0SetupDone — TOGGLEInEp0Data / TOGGLEOutEp0Data */
+    IEPCNF0 |= 0x20;
+    OEPCNF0 |= 0x20;
 
     /* ABANDON ANY IN-FLIGHT CONTROL TRANSFER.
      *
@@ -382,6 +453,7 @@ static void handle_setup(void)
                  * the STATUS stage (zero-length IN packet) completes. Stage
                  * that reply here and defer the USBFADR write to the
                  * VEC_IEP0 completion in usb_service() below. */
+                STAGE(15);
                 g_pending_address = wValueL;
                 reply_zero_length();
                 break;
@@ -579,22 +651,35 @@ void usb_service(void)
             break;
 
         case VEC_IEP0:
-            /* Previous IN packet ACKed; push next chunk if any. */
+            /* Ordering and cleanup ported from safety_net.
+             *
+             * USB 2.0 §9.4.6: a pending SET_ADDRESS takes effect only
+             * AFTER its zero-length IN status stage completes. VEC_IEP0
+             * firing means the host ACKed that packet, so latch USBFADR
+             * now and the next transaction lands at the new address. */
+            if (g_pending_address != 0xFF) {
+                /* 16 = deferred address actually applied. */
+                STAGE(16);
+                /* TI UsbEng.c engEp0TxDone — deferred SET_ADDRESS latch;
+                 * Rev 20 fcn.0x0F91 @ 0x0FAD writes USBFADR here too. */
+                USBFADR = g_pending_address;
+                g_pending_address = 0xFF;
+            }
+
             if (g_ep0_reply_remaining) {
                 push_reply_chunk();
             } else {
-                /* End of data phase — arm zero-length OUT status stage. */
-                OEPBCTX0 = 0;
-                /* USB 2.0 §9.4.6: a pending SET_ADDRESS takes effect
-                 * only AFTER its zero-length IN status stage completes.
-                 * VEC_IEP0 firing with no remaining reply means the
-                 * host ACKed the status packet — safe to latch USBFADR
-                 * now, so the next transaction lands at the new addr. */
-                if (g_pending_address != 0xFF) {
-                    USBFADR = g_pending_address;
-                    g_pending_address = 0xFF;
-                }
+                /* Transfer complete. Rev 20's EP0 cleanup at 0x0B30:
+                 * clear TOGGLE + STALL and zero the IN count, priming
+                 * EP0 for the next SETUP. mboxfw omitted this entirely,
+                 * leaving stale toggle/stall state across transfers. */
+                IEPCNF0 &= 0xD7;   /* clear bit 5 TOGGLE + bit 3 STALL */
+                OEPCNF0 &= 0xD7;
+                IEPBCTX0 = 0;
             }
+            /* Re-arm EP0 OUT on EVERY IN completion, not just at end of
+             * transfer — safety_net does this unconditionally. */
+            OEPBCTX0 = 0;
             VECINT = 0;
             break;
 

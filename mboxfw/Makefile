@@ -8,6 +8,14 @@ CC      = sdcc
 TARGET  = mboxfw
 BUILD   = build
 INC     = -Iinclude
+# LED progress canary. `make CANARY_LED=1` builds the diagnostic image
+# that blinks how far execution reached on the front panel; the default
+# build is unchanged. See the ladder in src/main.c.
+CANARY_LED ?= 0
+ifeq ($(CANARY_LED),1)
+EXTRA_CFLAGS += -DCANARY_LED
+endif
+
 CFLAGS  = -mmcs51 --model-small --std-c99 --opt-code-size $(INC)
 LDFLAGS = -mmcs51 --model-small --code-size 0x1F00 --xram-size 0x1000
 
@@ -22,7 +30,7 @@ $(BUILD)/$(TARGET)_flasher.bin: $(BUILD)/$(TARGET).ihx
 	python3 ../tools/wrap_hex.py $< -o $@
 
 $(BUILD)/%.rel: src/%.c | $(BUILD)
-	$(CC) -c $(CFLAGS) -o $@ $<
+	$(CC) -c $(CFLAGS) $(EXTRA_CFLAGS) -o $@ $<
 
 $(BUILD)/$(TARGET).ihx: $(RELS)
 	$(CC) $(LDFLAGS) -o $@ $(RELS)

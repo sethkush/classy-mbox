@@ -10,6 +10,7 @@
 #include "cs8427.h"
 #include "codec.h"
 #include "buttons.h"
+#include "mux.h"
 #include "eeprom.h"
 
 extern void hw_init(void);
@@ -92,6 +93,97 @@ void isr_timer2(void)  __interrupt(5);
 #define CANARY_CODEC    0xA5   /* codec_init returned */
 #define CANARY_LOOP     0xA6   /* about to enter main polling loop */
 
+/* --- LED progress canary (diagnostic build: make CANARY_LED=1) -------
+ *
+ * The XDATA canary above is only readable over USB, which is useless
+ * when USB is the thing that is broken. This one reports through the
+ * front panel instead. It is what located the EP0 desync in safety_net
+ * in two cycles after weeks of guessing.
+ *
+ * Stage ladder, blinked as TENS long flashes then UNITS short ones:
+ *
+ *    1  main() entered            10  usb_isr fired at all
+ *    2  usb_init returned         11  VECINT gave a real source
+ *    3  hw_init returned          12  VEC_RSTR seen
+ *    4  boot-DFU button checked   13  VEC_SETUP seen
+ *    5  EA = 1                    14  GET_DESCRIPTOR(Device) served
+ *    6  usb_attach returned       15  SET_ADDRESS received
+ *    7  cs8427_boot_init returned 16  USBFADR written
+ *    8  codec_init returned       17  SET_CONFIGURATION received
+ *    9  main loop entered
+ *
+ * Output is the 8-bit panel latch (P1.7 data / P1.5 clk / P1.6 latch),
+ * toggled between 0xFF (all six source LEDs off) and 0xF6 (the two mic
+ * LEDs on) — the two bytes Rev 20's own hw_init writes, so the control
+ * lines 0x22.6/.7 stay high throughout and no new hardware state is
+ * created. See firmware_stock/disasm/PANEL_LEDS.md.
+ *
+ * 2026-07-27 baseline being investigated: mboxfw drives the panel to the
+ * two-mic state and holds, which means hw_init completed, yet the device
+ * is entirely absent from USB — not even a half-enumerated entry. Stages
+ * 6 through 9 bracket whether usb_attach actually ran and whether the
+ * audio init after it wedges. */
+#ifdef CANARY_LED
+
+#define PANEL_DARK 0xFF
+#define PANEL_LIT  0xF6
+
+volatile __data unsigned char g_stage = 0;
+volatile __data unsigned char g_last_breq = 0xEE;  /* 0xEE = no SETUP yet */
+volatile __data unsigned char g_stalls = 0;
+#define STAGE(n) do { if ((unsigned char)(n) > g_stage) g_stage = (n); } while (0)
+
+static void canary_delay(unsigned char units)
+{
+    unsigned char u;
+    volatile unsigned int i;
+    for (u = 0; u < units; u++)
+        for (i = 0; i < 1500; i++) { }
+}
+
+/* Blink one value as TENS long flashes then UNITS short ones. */
+static void canary_emit(unsigned char n)
+{
+    unsigned char k, tens = n / 10, units = n % 10;
+    for (k = 0; k < tens; k++) {
+        mux_write(PANEL_LIT);  canary_delay(24);
+        mux_write(PANEL_DARK); canary_delay(10);
+    }
+    for (k = 0; k < units; k++) {
+        mux_write(PANEL_LIT);  canary_delay(6);
+        mux_write(PANEL_DARK); canary_delay(10);
+    }
+}
+
+/* Report THREE numbers per cycle, separated by medium gaps, with a long
+ * gap before the sequence repeats:
+ *
+ *   1st group — g_stage      how far the best case got
+ *   2nd group — g_last_breq  bRequest of the most recent SETUP (decimal)
+ *   3rd group — g_stalls     how many requests we answered with STALL
+ *
+ * The stage ladder alone is a monotonic maximum and cannot say WHICH
+ * request is failing. g_last_breq answers that directly: 6 = the host is
+ * still asking for descriptors, 5 = it never got past SET_ADDRESS, 9 =
+ * it reached SET_CONFIGURATION. g_stalls says whether we are actively
+ * rejecting things or simply never replying. */
+static void canary_blink_forever(void)
+{
+    g_phantom_48v = 0;            /* never assert the unverified 0x23.6 */
+    for (;;) {
+        canary_emit(g_stage);
+        canary_delay(40);
+        canary_emit(g_last_breq);
+        canary_delay(40);
+        canary_emit(g_stalls);
+        canary_delay(110);
+    }
+}
+
+#else
+#define STAGE(n) do { } while (0)
+#endif /* CANARY_LED */
+
 void main(void)
 {
     /* DISCONNECT FIRST — defensive against boot-ROM-leftover USBCTL state.
@@ -109,21 +201,27 @@ void main(void)
      * escape hatch still works if either of those hangs. */
 
     CANARY(0, CANARY_MAIN);
+    STAGE(1);
 
     /* usb_init() configures endpoints and buffers but does NOT attach.
      * Ordering below mirrors both stock firmwares exactly. */
     usb_init();
     CANARY(1, CANARY_USB);
+    STAGE(2);
 
     hw_init();
     CANARY(2, CANARY_HW);
+    STAGE(3);
 
     check_boot_dfu_button();
+    STAGE(4);
 
     /* Interrupts on, then attach — the Rev 20 order (SETB EA at 0x0ACA,
      * USBCTL |= 0x80 at 0x0AD2, two instructions apart). */
     EA = 1;
+    STAGE(5);
     usb_attach();
+    STAGE(6);
     CANARY(5, CANARY_LOOP);
 
     /* Audio bring-up runs AFTER the attach. Rev 20 does it before, but
@@ -136,9 +234,19 @@ void main(void)
      * Move these back above the attach once both are hardware-proven. */
     cs8427_boot_init();
     CANARY(3, CANARY_CS8427);
+    STAGE(7);
 
     codec_init();
     CANARY(4, CANARY_CODEC);
+    STAGE(8);
+
+    STAGE(9);
+#ifdef CANARY_LED
+    /* Diagnostic build: blink the stage instead of polling buttons.
+     * buttons_poll() also drives the panel latch, so the two would
+     * fight over it. USB is serviced from the ISR either way. */
+    canary_blink_forever();
+#endif
 
     for (;;) {
         /* USB is serviced from isr_int0 ONLY — see isr.c. Calling
