@@ -29,7 +29,18 @@ flasher: $(BUILD)/$(TARGET)_flasher.bin
 $(BUILD)/$(TARGET)_flasher.bin: $(BUILD)/$(TARGET).ihx
 	python3 ../tools/wrap_hex.py $< -o $@
 
-$(BUILD)/%.rel: src/%.c | $(BUILD)
+# Objects depend on EVERY header, not just their own .c.
+#
+# Without this, editing a header silently leaves stale .rel files in the
+# build and the linked image does not match the source. On 2026-07-28 that
+# shipped an image whose TLM_BUILD_ID still read 0x0002 after the constant
+# had been bumped to 0x0003 -- defeating the one counter whose entire job is
+# to prove which build is running. A coarse wildcard rebuilds a little more
+# than strictly necessary; this firmware takes seconds to compile, and a
+# binary that disagrees with its source costs a flash cycle to discover.
+HDRS = $(wildcard include/*.h)
+
+$(BUILD)/%.rel: src/%.c $(HDRS) | $(BUILD)
 	$(CC) -c $(CFLAGS) $(EXTRA_CFLAGS) -o $@ $<
 
 $(BUILD)/$(TARGET).ihx: $(RELS)

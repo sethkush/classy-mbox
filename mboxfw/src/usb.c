@@ -500,6 +500,13 @@ static void handle_setup(void)
         } else if (bReq == TLM_REQ_RESET && !(bmReq & 0x80)) {
             tlm_reset_counters();
             reply_zero_length();
+        } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
+            /* Same latch as the Digi class request; see
+             * handle_digi_enter_dfu(). This alias exists because the class
+             * request is interface-recipient and becomes undeliverable once
+             * a host driver claims the interface. */
+            reply_zero_length();
+            g_dfu_request_pending = 1;
         } else {
             reply_stall();
         }

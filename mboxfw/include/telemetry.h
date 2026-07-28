@@ -25,6 +25,13 @@
  * the enter-DFU request silently never arrived on 2026-07-27. */
 #define TLM_REQ_READ     0x10   /* bmRequestType 0xC0, wValue = block index */
 #define TLM_REQ_RESET    0x11   /* bmRequestType 0x40, clears the counters  */
+/* Enter-DFU, DEVICE recipient. The Digi class request at interface
+ * recipient CANNOT be delivered once snd-usb-audio has claimed the audio
+ * interfaces — the host stack rejects it with EBUSY before it reaches the
+ * device (observed 2026-07-28 against a bound card). The escape hatch is
+ * the last thing that should stop working when a driver is attached, so it
+ * gets a device-recipient alias for exactly the reason stated above. */
+#define TLM_REQ_ENTER_DFU 0x12  /* bmRequestType 0x40, invalidate + halt   */
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */

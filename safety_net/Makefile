@@ -45,7 +45,11 @@ $(BUILD)/$(TARGET)_flasher.bin: $(BUILD)/$(TARGET).ihx
 $(BUILD)/$(TARGET)_bootstrap.bin: $(BUILD)/$(TARGET).ihx
 	python3 ../tools/wrap_hex.py $< -o $@ --data-type 0x03
 
-$(BUILD)/%.rel: src/%.c | $(BUILD)
+# Header dependencies -- see the same fix and its rationale in
+# mboxfw/Makefile. safety_net carried the identical hole.
+HDRS = $(wildcard include/*.h)
+
+$(BUILD)/%.rel: src/%.c $(HDRS) | $(BUILD)
 	$(CC) -c $(CFLAGS) -o $@ $<
 
 $(BUILD)/$(TARGET).ihx: $(RELS)
