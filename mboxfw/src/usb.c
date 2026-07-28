@@ -314,16 +314,62 @@ static void handle_get_interface(void)
  * and I don't want to add un-testable code paths without hardware access.
  * Once added, a successful flash restores the signature bytes.
  */
+/* Set by handle_digi_enter_dfu (ISR context), consumed by usb_dfu_service
+ * (main-loop context). `volatile` because the two sides are on opposite
+ * ends of an interrupt. */
+volatile unsigned char g_dfu_entry_pending = 0;
+
+/* handle_digi_enter_dfu runs inside the INT0 ISR, so it does NOTHING here
+ * except acknowledge the request and raise a flag.
+ *
+ * The previous version did the busy-wait, the I²C signature writes and
+ * RESET_TO_BOOT_ROM() inline, from ISR context. On hardware that hung the
+ * CPU: the device stopped answering all control transfers, and after a
+ * power cycle it came back as mboxfw with the EEPROM signature still
+ * intact — so it died before the I²C writes completed, or inside the
+ * reset macro itself. Both are explained by doing this from an interrupt:
+ * RESET_TO_BOOT_ROM flips MEMCFG.SDW and ljmps to 0x8000 with a live
+ * interrupt frame on the stack, and the I²C bit-banging is far longer
+ * than any ISR has a right to run.
+ *
+ * The boot-time button path (check_boot_dfu_button in main.c) does the
+ * identical work and DOES reach the boot ROM — the difference is that it
+ * runs before EA=1 with no ISR in flight. Deferring to the main loop puts
+ * this path in that same clean context. */
 static void handle_digi_enter_dfu(void)
 {
     reply_zero_length();
-    /* Give the status stage a chance to complete on the wire before we
-     * yank the CPU out from under it. Polling loop; ~a few dozen
-     * milliseconds at 12 MHz — enough for one USB frame. */
+    g_dfu_entry_pending = 1;
+}
+
+/* usb_dfu_service — main-loop half of the DFU trigger. Call from the main
+ * loop; returns immediately unless a request is pending, and never returns
+ * at all once one is. */
+void usb_dfu_service(void)
+{
+    if (!g_dfu_entry_pending) {
+        return;
+    }
+    g_dfu_entry_pending = 0;
+
+    /* Let the status stage finish on the wire before we take the CPU away
+     * from it. Polling loop; ~a few dozen milliseconds at 12 MHz — more
+     * than one USB frame. Interrupts are still on here, so the ISR ships
+     * the ZLP while we spin. */
     {
         unsigned int i;
         for (i = 0; i < 0xC000; i++) { }
     }
+
+    /* From here on no interrupt may fire: the signature-invalidation and
+     * the memory-map flip must not be interleaved with USB servicing. */
+    EA = 0;
+
+    /* Drop off the bus so the host sees a clean disconnect rather than a
+     * device that stops answering mid-transaction. USBCTL is boot-ROM-owned;
+     * read-modify-write only — POLICY §2. Rev 20 clears CONN the same way
+     * when it tears the connection down. */
+    USBCTL &= (unsigned char)~USBCTL_CONN;
 
     /* Bulletproof-recovery path — invalidate the EEPROM header signature
      * so the boot ROM drops to DFU (0xFFFF:0xFFFE) on the next power-on

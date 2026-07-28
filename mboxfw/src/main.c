@@ -17,6 +17,9 @@ extern void hw_init(void);
 extern void usb_init(void);
 extern void usb_attach(void);
 extern void usb_service(void);
+/* Main-loop half of the over-the-wire DFU trigger — see usb.c. Never
+ * returns once a DFU request has been received. */
+extern void usb_dfu_service(void);
 
 /*
  * Boot-time DFU escape hatch — mirrors Rev 20's "hold source-1 while
@@ -174,6 +177,11 @@ static void canary_blink_forever(void)
 {
     g_phantom_48v = 0;            /* never assert the unverified 0x23.6 */
     for (;;) {
+        /* The canary build never reaches main()'s loop, so the DFU
+         * trigger has to be serviced from here too — otherwise a
+         * diagnostic build is one that cannot be recovered over the
+         * wire, which is exactly backwards. */
+        usb_dfu_service();
         canary_emit(g_stage);
         canary_delay(40);
         canary_emit(g_last_breq);
@@ -261,6 +269,7 @@ void main(void)
          * the EP0 transfer state. Rev 20 has the same division of
          * labour: its INT0 handler dispatches USB, its main loop handles
          * deferred panel/codec actions. */
+        usb_dfu_service();
         buttons_poll();
     }
 }
