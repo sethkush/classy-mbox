@@ -32,6 +32,11 @@ extern volatile __data unsigned char g_stage;
  * separate blink groups after the stage. */
 extern volatile __data unsigned char g_last_breq;
 extern volatile __data unsigned char g_stalls;
+/* EP0 IN packets pushed since the last SETUP. The config descriptor is
+ * 180 bytes = 23 packets; the device descriptor is 18 = 3. Reporting the
+ * count distinguishes "the long reply truncated" from "the long reply was
+ * never requested", which the monotonic stage ladder cannot. */
+extern volatile __data unsigned char g_chunks;
 #define STAGE(n) do { if ((unsigned char)(n) > g_stage) g_stage = (n); } while (0)
 #else
 #define STAGE(n) do { } while (0)
@@ -158,6 +163,9 @@ static void stage_immediate(const unsigned char *bytes, unsigned char len)
  * each IEP0-done interrupt until g_ep0_reply_remaining hits zero. */
 static void push_reply_chunk(void)
 {
+#ifdef CANARY_LED
+    if (g_chunks < 99) g_chunks++;
+#endif
     /* 18 = a chunk was pushed; 19 = the transfer drained completely.
      * Together these show how far into a long multi-packet reply we get
      * before stalling. */
@@ -416,6 +424,9 @@ static void handle_setup(void)
     /* TI UsbEng.c engEp0SetupDone — TOGGLEInEp0Data / TOGGLEOutEp0Data */
     IEPCNF0 |= 0x20;
     OEPCNF0 |= 0x20;
+#ifdef CANARY_LED
+    g_chunks = 0;      /* per-transfer count */
+#endif
 
     /* ABANDON ANY IN-FLIGHT CONTROL TRANSFER.
      *

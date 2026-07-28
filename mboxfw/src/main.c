@@ -131,6 +131,7 @@ void isr_timer2(void)  __interrupt(5);
 volatile __data unsigned char g_stage = 0;
 volatile __data unsigned char g_last_breq = 0xEE;  /* 0xEE = no SETUP yet */
 volatile __data unsigned char g_stalls = 0;
+volatile __data unsigned char g_chunks = 0;
 #define STAGE(n) do { if ((unsigned char)(n) > g_stage) g_stage = (n); } while (0)
 
 static void canary_delay(unsigned char units)
@@ -161,6 +162,8 @@ static void canary_emit(unsigned char n)
  *   1st group — g_stage      how far the best case got
  *   2nd group — g_last_breq  bRequest of the most recent SETUP (decimal)
  *   3rd group — g_stalls     how many requests we answered with STALL
+ *   4th group — g_chunks     EP0 IN packets pushed for the LAST reply
+ *                            (3 = device descriptor, 23 = full config)
  *
  * The stage ladder alone is a monotonic maximum and cannot say WHICH
  * request is failing. g_last_breq answers that directly: 6 = the host is
@@ -176,6 +179,8 @@ static void canary_blink_forever(void)
         canary_emit(g_last_breq);
         canary_delay(40);
         canary_emit(g_stalls);
+        canary_delay(40);
+        canary_emit(g_chunks);
         canary_delay(110);
     }
 }

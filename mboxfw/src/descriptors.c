@@ -57,7 +57,10 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     1,                      /* bConfigurationValue */
     0,                      /* iConfiguration */
     USB_CFG_BUS_POWERED,    /* bmAttributes */
-    250,                    /* bMaxPower × 2mA = 500 mA (matches Rev 20) */
+    240,   /* bMaxPower 240 = 480 mA — matches stock Rev 20 exactly
+            * (config descriptor at rev20 image 0x05A8). We asked for 250
+            * (500 mA); stock enumerates on this hub at 240, so align and
+            * remove the variable. */                    /* bMaxPower × 2mA = 500 mA (matches Rev 20) */
 
     /* ---- Interface 0: AudioControl (9 bytes) ---- */
     9, USB_DT_INTERFACE,
