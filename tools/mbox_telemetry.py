@@ -16,7 +16,10 @@ try:
 except ImportError:
     sys.exit("pyusb not installed:  pip3 install pyusb")
 
-VID, PID = 0x0DBA, 0x1000
+VID = 0x0DBA
+# 0x1000 is the original PID; 0x2000 is the quirk-free build (see
+# verify_descriptors.py for why). Try each so one tool covers both.
+PIDS = (0x2000, 0x1000, 0x1001)
 REQ_READ, REQ_RESET = 0x10, 0x11
 
 PHASES = [(0x01, "usb_init"), (0x02, "hw_init"), (0x04, "attach"),
@@ -24,9 +27,13 @@ PHASES = [(0x01, "usb_init"), (0x02, "hw_init"), (0x04, "attach"),
 
 
 def dev():
-    d = usb.core.find(idVendor=VID, idProduct=PID)
+    d = None
+    for _pid in PIDS:
+        d = usb.core.find(idVendor=VID, idProduct=_pid)
+        if d is not None:
+            break
     if d is None:
-        sys.exit("no mboxfw on the bus (looked for %04x:%04x)" % (VID, PID))
+        sys.exit("no mboxfw on the bus (looked for 0dba:2000/1000/1001)")
     return d
 
 
