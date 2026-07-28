@@ -80,37 +80,49 @@ void streaming_set_rate(unsigned long hz)
      * the zero-length packets usbmon measured. Telemetry read ACGCTL back as
      * exactly 0xC0, confirming DIVEN was off.
      *
-     * WHICH FREQUENCY WORD, measured rather than reasoned. Flashing mode 3's
-     * word (0x0F/0xA8/0x61) and reading IEPDCNTX1 live during capture gave a
-     * rock-steady 0x60: NACK clear, DCNTX = 96 samples per USB frame. That is
-     * exactly double the 48 a stock unit delivers, and 96 × 6 B = 576 B
-     * overflowed the endpoint, so every frame came back -75 EOVERFLOW. So
-     * mode 3 is the 96 kHz program and mode 2 is 48 kHz. Rev 20 passing mode
-     * 3 at SET_INTERFACE is its power-on default, not its 48 kHz setting —
-     * the host's SET_CUR(sample rate) selects the mode afterwards.
+     * WHICH FREQUENCY WORD, measured rather than reasoned. A paired
+     * experiment on two units, same host, same instant, one variable:
      *
-     * The pre-2026-07-28 code had the right word here and the wrong ACGCTL;
-     * the first version of this fix corrected ACGCTL and broke the word. */
+     *   mode-2 word (0x6A/0x4B/0x20)  ->  DCNTX = 88 samples per USB frame
+     *   mode-3 word (0x61/0xA8/0x0F)  ->  DCNTX = 96
+     *
+     * Both were exactly double a standard rate (88.2 = 2 x 44.1, 96 = 2 x
+     * 48), because CPTRXCNF4 was set to DIVB2 = ÷2 where stock's boot init
+     * uses ÷4 — see the long comment in hw_init.c. With ÷4 restored:
+     *
+     *   mode 3 -> 48 kHz      mode 2 -> 44.1 kHz
+     *
+     * which is consistent with Rev 20 passing mode 3 at SET_INTERFACE: 48
+     * kHz is its default, and the host's SET_CUR selects a mode afterwards.
+     *
+     * This mapping has been wrong twice in this file, in both directions,
+     * and each time the reasoning sounded fine. It is now anchored to a
+     * measured sample count rather than to which Rev 20 branch looked most
+     * relevant. If a rate ever comes out wrong again, read DCNTX first.
+     */
     if (hz == 48000UL) {
-        ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0771 mode-2 (48 kHz) */
-        ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0774 */
-        ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077A */
-        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0780 */
-        ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0786 */
-        ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x078C */
-        ACGCTL   = 0x06;  /* Rev 20 fcn.0x0E0F @ 0x0E10 — DIVEN + ACG srcs */
+        ACG1FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DEC — mode 3, 48 kHz */
+        ACG1FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0DF2 */
+        ACG1FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0DF8 */
+        ACG2FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DFE */
+        ACG2FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0E04 */
+        ACG2FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E0A */
 
         g_codec_state_23 |= (unsigned char)0x0C;   /* 48 kHz codec bits */
     } else {
-        /* 44.1 kHz — Rev 20's mode 1 writes no frequency word at all and
-         * uses ACGCTL = 0x0D: DIVEN set, but both MCLKO selects at x1b, so
-         * the clock comes from MCLKI after ÷I (the external input) rather
-         * than a synthesizer. UNTESTED on hardware; 48 kHz is the rate under
-         * measurement right now. */
-        ACGCTL = 0x0D;    /* Rev 20 fcn.0x0728 @ 0x075F */
+        ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 — mode 2, 44.1 kHz */
+        ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
+        ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
+        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0789 */
+        ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0783 */
+        ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x078F */
 
         g_codec_state_23 &= (unsigned char)~0x0C;  /* 44.1 kHz codec bits */
     }
+    /* Shared by both rates: Rev 20's modes 2 and 3 both end at the tail
+     * 0x0E0F..0x0E16, which writes ACGCTL = 0x06 (DIVEN + both MCLKO
+     * sourced from their synthesizers after ÷M). */
+    ACGCTL = 0x06;        /* Rev 20 @ 0x0E10 */
 
     /* Common tail — same for both rates. Rev 20 fcn.0x0728 0x07C4-0x07FF.
      *

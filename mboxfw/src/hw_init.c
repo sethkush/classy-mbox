@@ -62,9 +62,30 @@ void hw_init(void)
     CPTSTA    = 0x50;   /* 0xFFDC — stock writes 0x50 */
     CPTRXCNF2 = 0x25;   /* 0xFFD6 — stock writes 0x25 */
     CPTRXCNF3 = 0xAC;   /* 0xFFD5 — stock writes 0xAC */
-    /* 0xFFD4: both stock images write 0x01 here. mboxfw wrote 0x03 — the
-     * only address+value divergence in the whole codec-port block. */
-    CPTRXCNF4 = 0x01;
+    /* CPTRXCNF4 — DIVB2(2:0), the divider from MCLKO2 to SCLK2, which is
+     * the I2S RECEIVE bit clock (datasheet §6.5.4.13; block diagram
+     * Figure 2-1). Encoding: 001b = ÷2, 010b = ÷3, 011b = ÷4.
+     *
+     * This read 0x01 (÷2) between 2026-07-26 and 2026-07-28, changed from
+     * 0x03 on the note "both stock images write 0x01 here. mboxfw wrote
+     * 0x03 — the only address+value divergence in the whole codec-port
+     * block." That note was true and incomplete. Both stock images write
+     * this address TWICE, with different values in different contexts:
+     *
+     *   boot init  Rev 20 @0x0929, Rev 22 @0x084A:  0x03   (÷4)
+     *   mode 5     Rev 20 @0x07A0, Rev 22 @0x077E:  0x01   (÷2)
+     *
+     * hw_init mirrors stock's BOOT init, so 0x03 is the value that belongs
+     * here. 0x01 belongs to the mode-5 branch (I2S "1 OUT and 1 IN at
+     * different frequencies"), which mboxfw does not implement.
+     *
+     * Halving this divider doubles the receive frame rate, and that is
+     * precisely what hardware measured: IEPDCNTX1 read a steady DCNTX of 96
+     * samples per USB frame where stock delivers 48, and 88 where stock
+     * would deliver 44. Both exactly 2x. Restoring ÷4 restores 48 kHz and
+     * 44.1 kHz. Verified by byte-scanning both stock images for every
+     * `90 ff d4` (mov dptr,#0xFFD4) rather than trusting one disassembly. */
+    CPTRXCNF4 = 0x03;   /* Rev 20 fcn.0x08CB @ 0x0929 */
     /* GLOBCTL bit 0 = CPTEN (codec port enable), NOT USB engine —
      * verified against TI RomBoot.c:33 "GLOBCTL = 0x04; // 12Mclk,
      * Ext int off, LPWR on, CODEC is off". The USB engine is

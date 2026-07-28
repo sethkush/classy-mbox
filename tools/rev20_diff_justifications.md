@@ -74,7 +74,7 @@ name.
 | 0xffee | and_not | 0x7f | rev20 | RESOLVED 2026-07-28 — DMAEN clear on capture stop, emitted by `streaming_capture_enable(0)`. Rev 20 does it at 0x033F and 0x03F1. |
 | 0xffef | assign | 0x80 | rev20 | RESOLVED — DMATSH1, same encoding as DMATSH0 above. Cite: rev20_flat.asm 0x09EC. |
 | 0xfff0 | assign | 0x03 | rev20 | RESOLVED — DMATSL1, same encoding as DMATSL0 above. Cite: rev20_flat.asm 0x09E6. |
-| 0xffe5 | assign | 0x61 | rev20 | SAFE_OMIT — ACG1FRQ2, part of the 24-bit clock word in Rev 20's **mode-3** branch (`fcn.0x0DEC`, true entry verified by hand-decoding the raw bytes; radare's listing of this region is misaligned by two bytes and its addresses should not be trusted). mboxfw briefly emitted this on 2026-07-28 and now writes the **mode-2** word (0x6a/0x4b/0x20) instead. MEASURED: mode 3's word produces 96 kHz — IEPDCNTX1 read a steady DCNTX = 96 samples per USB frame during capture, exactly double the 48 a stock unit delivers. Mode 2 is the 48 kHz program. Modes 2 and 3 are otherwise identical: both fall into the shared tail at 0x0E0F which writes ACGCTL = 0x06. |
+| 0xffe5 | assign | 0x61 | rev20 | RESOLVED 2026-07-28 — mboxfw emits this as its **48 kHz** word. ACG1FRQ2, from Rev 20's mode-3 branch (`fcn.0x0DEC`, true entry verified by hand-decoding the raw bytes; radare's listing of this region is misaligned by two bytes and its addresses should not be trusted). Formerly SAFE_OMIT'd on the reading that mode 3 meant 96 kHz — it does not; it measured 96 only because CPTRXCNF4 halved the receive divider. See 0xffd4. Original text follows: ACG1FRQ2, part of the 24-bit clock word in Rev 20's **mode-3** branch (`fcn.0x0DEC`, true entry verified by hand-decoding the raw bytes; radare's listing of this region is misaligned by two bytes and its addresses should not be trusted). mboxfw briefly emitted this on 2026-07-28 and now writes the **mode-2** word (0x6a/0x4b/0x20) instead. MEASURED: mode 3's word produces 96 kHz — IEPDCNTX1 read a steady DCNTX = 96 samples per USB frame during capture, exactly double the 48 a stock unit delivers. Mode 2 is the 48 kHz program. Modes 2 and 3 are otherwise identical: both fall into the shared tail at 0x0E0F which writes ACGCTL = 0x06. |
 | 0xffe6 | assign | 0xa8 | rev20 | SAFE_OMIT — ACG1FRQ1, mode-3 (96 kHz) word. See 0xffe5. |
 | 0xffe7 | assign | 0x0f | rev20 | SAFE_OMIT — ACG1FRQ0, mode-3 (96 kHz) word. See 0xffe5. |
 | 0xfff7 | assign | 0x61 | rev20 | SAFE_OMIT — ACG2FRQ2, mode-3 (96 kHz) word. See 0xffe5. |
@@ -330,7 +330,7 @@ sections above.
 | 0xffc1 | assign | 0xff | mboxfw | JUSTIFIED — dummy trigger byte for I²C read per TI I2c.c:102. |
 | 0xffc3 | assign | 0xa1 | mboxfw | JUSTIFIED — EEPROM 7-bit address 0x50 shifted + R/W=1 read. Rev 20 runtime-computes same value. |
 | 0xffc3 | runtime | - | rev20 | FALSE_POSITIVE — Rev 20 side of same. |
-| 0xffd4 | assign | 0x01 | rev20 | SAFE_OMIT — CPTCTL runtime mode-switch value. mboxfw uses boot value 0x03 (matches Rev 20 boot init per NOTES §"Master boot init"). |
+| 0xffd4-OLD | assign | 0x01 | rev20 | SAFE_OMIT — CPTCTL runtime mode-switch value. mboxfw uses boot value 0x03 (matches Rev 20 boot init per NOTES §"Master boot init"). |
 | 0xffd4 | assign | 0x03 | mboxfw | JUSTIFIED — CPTCTL boot value matches Rev 20 fcn.0x08CB per NOTES. |
 | 0xffd5 | runtime | - | rev20 | FALSE_POSITIVE — CPTBRRX 0xAC, both firmwares write same terminal value. |
 | 0xffe2 | assign | 0x00 | mboxfw | JUSTIFIED — Rev-20-empirical DMACTL2 halt at start of streaming_set_rate (task #71 patch). Rev 20 does same via fcn.0x0E18. |
@@ -350,3 +350,4 @@ sections above.
 | 0xfffd | or | 0xe5 | mboxfw | JUSTIFIED — TI engUsbInit UsbEng.c line 647 uses exactly 0xE5. |
 | 0xffff | assign | 0x00 | rev20 | FALSE_POSITIVE — USBFADR clear on bus reset. mboxfw does same in VEC_RSTR / usb_init. |
 | 0xff9a | assign | 0x50 | rev20 | ⚠ BLOCKER-REV20-SIDE — Rev 20 boot init @ 0x09BD writes OEPBSIZ2=0x50 (640B buffer). mboxfw's 0x20 (256B) is undersize for 48kHz. See BLOCKER note. |
+| 0xffd4 | assign | 0x01 | rev20 | SAFE_OMIT — CPTRXCNF4 DIVB2 = ÷2, written by Rev 20's mode-5 branch @0x07A0 (Rev 22 @0x077E). mboxfw does not implement mode 5 (I2S "1 OUT and 1 IN at different frequencies"). hw_init mirrors stock's BOOT init, which writes 0x03 (÷4) at Rev 20 @0x0929 / Rev 22 @0x084A. Taking the mode-5 value here between 2026-07-26 and 2026-07-28 doubled the capture sample rate — measured DCNTX = 96 samples/USB-frame against stock's 48. |

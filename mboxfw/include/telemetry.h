@@ -35,7 +35,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0009   /* 0009: mode-2 (48 kHz) ACG word + DIVEN */
+#define TLM_BUILD_ID     0x000A   /* 000A: CPTRXCNF4 DIVB2=4, rate words swapped */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01
