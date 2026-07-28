@@ -48,8 +48,11 @@ def dump(d):
     print("EP0: setups=%d iep0_ints=%d chunks=%d drains=%d" % (setups, iep0, chunks, drains))
     if chunks and iep0 < chunks - 1:
         print("  !! iep0_ints < chunks-1 — interrupts are being LOST")
-    if chunks > drains:
-        print("  .. %d transfer(s) started but never drained" % (chunks - drains))
+    # NB: chunks counts PACKETS, drains counts TRANSFERS - different units, so
+    # chunks-drains is meaningless. An earlier version subtracted them and
+    # reported a bogus "transfers never drained" count.
+    if drains:
+        print("  avg %.1f packets per completed transfer" % (chunks / drains))
 
     bmreq, breq, wval, widx, wlen = struct.unpack("<BBHHH", b[2])
     print("last SETUP: bmReq=0x%02x bReq=0x%02x wValue=0x%04x wIndex=0x%04x wLength=%d"
