@@ -13,22 +13,14 @@
 # The standing annotations are kept below the entry list instead, so a
 # re-baseline cannot silently erase them.
 #
-# RE-BASELINED 2026-07-28 (second time today), 82 -> 80 entries, for the
-# DMA-enable fix. Reviewed diff:
-#   + 0xff67 / 0xff9f runtime (IEPBCTY1 / OEPBCTY2) — Rev 20 fcn.0x0728
-#     @ 0x07EA and 0x07F2 clear both the X and Y buffer counts in the
-#     streaming tail. We previously cleared X and then zeroed the buffer
-#     SIZE registers instead of Y, which is not what Rev 20 does.
-#   + 0xffe8 / 0xffee or 0x80, and_not 0x7f — DMAEN set/clear on the two
-#     real DMA channel control registers. This is the fix: the firmware
-#     had never once set DMAEN, so the capture endpoint buffer was never
-#     filled and every isochronous IN packet came back zero-length.
-#   - 0xff62 / 0xff9a runtime — the IEPBSIZ1 = 0 / OEPBSIZ2 = 0 writes
-#     removed by the same change. The `assign 0x40` forms that program
-#     the real buffer size remain.
-#   - 0xffe5/e6/e7 and 0xfff7/f8/f9 assign 0x61,0xa8,0x0f — the dead
-#     dma_program_48k() helper, deleted. It was never called, and its
-#     name asserted a rate mapping the live code contradicts.
+# RE-BASELINED 2026-07-28 (third time today), for the ACG clock fix. The
+# diff is a straight swap of Rev 20's mode-2/mode-1 clock-generator program
+# for its mode-3 one, which is what Rev 20's own SET_INTERFACE path uses:
+#   0xffe1 assign 0x0d -> 0x06   ACGCTL: mode-1 value replaced by mode-3's,
+#     which sets DIVEN (bit 2). DIVEN was clear in every prior build, so the
+#     divide-by-M circuit was off and neither MCLK output ran.
+#   0xffe5/e6/e7 and 0xfff7/f8/f9 assign 0x6a,0x4b,0x20 -> 0x61,0xa8,0x0f
+#     ACG1FRQ / ACG2FRQ frequency words, mode-2 values replaced by mode-3's.
 
 0xff2e  rmw       -       # usb
 0xff60  assign    0x00    # streaming,usb
@@ -83,12 +75,12 @@
 0xffde  assign    0xac    # hw_init
 0xffdf  assign    0xe5    # hw_init
 0xffe0  assign    0x0d    # hw_init
-0xffe1  assign    0x0d    # streaming
+0xffe1  assign    0x06    # streaming
 0xffe1  or        0xc0    # streaming
 0xffe2  assign    0x10    # streaming
-0xffe5  assign    0x6a    # streaming
-0xffe6  assign    0x4b    # streaming
-0xffe7  assign    0x20    # streaming
+0xffe5  assign    0x61    # streaming
+0xffe6  assign    0xa8    # streaming
+0xffe7  assign    0x0f    # streaming
 0xffe8  and_not   0x7f    # streaming
 0xffe8  assign    0x02    # hw_init
 0xffe8  or        0x80    # streaming
@@ -101,9 +93,9 @@
 0xfff0  assign    0x03    # hw_init
 0xfff6  assign    0x10    # streaming
 0xfff6  runtime   -       # streaming
-0xfff7  assign    0x6a    # streaming
-0xfff8  assign    0x4b    # streaming
-0xfff9  assign    0x20    # streaming
+0xfff7  assign    0x61    # streaming
+0xfff8  assign    0xa8    # streaming
+0xfff9  assign    0x0f    # streaming
 0xfffc  assign    0x00    # main
 0xfffc  or        0x80    # usb
 0xfffc  or        0xc0    # usb

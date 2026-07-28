@@ -21,20 +21,30 @@ Categories `diff_vs_rev20.py` surfaces:
 TI's `Reg_stc1.h` and Rev 20's empirical usage disagree about several
 addresses in the 0xFFE0-0xFFF9 range:
 
-| Addr | TI Reg_stc1.h | Rev-20 empirical (what firmware treats it as) |
-|------|---------------|------------------------------------------------|
-| 0xFFE0 | CPTCNF1 | DMACTL0 |
-| 0xFFE1 | ACGCTL | DMACTL1 |
-| 0xFFE2 | ACGDCTL | DMACTL2 |
-| 0xFFE5..7 | ACGFRQ2..0 | DMASRC0_L/M/H |
-| 0xFFF6 | ACG2DCTL | (part of streaming-tail write) |
-| 0xFFF7..9 | ACG2FRQ2..0 | DMASRC2_L/M/H |
+**RESOLVED 2026-07-28. There was never a disagreement.** The "Rev-20
+empirical" column below was not empirical: nobody observed Rev 20 treating
+these as DMA registers. The names were invented in early RE, and every
+later reader took the table's existence as evidence that two naming schemes
+were in play. TI's names are simply correct, and the datasheet confirms
+each one:
 
-Rev 20's behavior is authoritative for what these addresses *do* on
-this silicon (it boots + streams audio successfully). mboxfw's regs.h
-uses the Rev-20-empirical names for consistency with existing RE work;
-the TI names are noted here so future readers know the naming
-disagreement exists. Justifications below cite by address, not name.
+| Addr | Correct name | Datasheet | Invented name (WRONG, do not use) |
+|------|--------------|-----------|-----------------------------------|
+| 0xFFE0 | CPTCNF1 | §6.5.4.1 | DMACTL0 |
+| 0xFFE1 | ACGCTL | §6.5.3.11 | DMACTL1 |
+| 0xFFE2 | ACG1DCTL | §6.5.3.10 | DMACTL2 |
+| 0xFFE5..7 | ACG1FRQ2..0 | §6.5.3.1-3 | DMASRC0_L/M/H |
+| 0xFFF6 | ACG2DCTL | §6.5.3.9 | — |
+| 0xFFF7..9 | ACG2FRQ2..0 | §6.5.3.6-8 | DMASRC2_L/M/H |
+
+The real DMA registers are at 0xFFE8-0xFFF4 (§6.5.2) and are a disjoint
+set of addresses. The cost of the fiction was two bugs that took three
+hardware flashes to find: `ACGCTL |= 0xC0` was believed to arm the DMA
+channels (it does not — DMAEN is bit 7 of 0xFFE8/0xFFEE, which no build
+ever wrote), and the mode-2 clock program left ACGCTL's DIVEN bit clear,
+so no master clock reached the codec. Both produced zero-length
+isochronous packets. Justifications below cite by address AND correct
+name.
 
 ## Justifications
 
@@ -51,10 +61,9 @@ disagreement exists. Justifications below cite by address, not name.
 | 0xff2c | rmw | - | rev20 | STATIC-ANALYSIS NOISE — SETPACK_WIDX_L read-only. |
 | 0xff2c | assign | 0x00 | rev20 | STATIC-ANALYSIS NOISE. |
 | 0xffe1 | assign | 0x0d | rev20 | RESOLVED 2026-07-28 — mboxfw emits this (`streaming.c` 44.1 branch). CORRECTED: 0xFFE1 is **ACGCTL**, the adaptive clock generator control register (TI Reg_stc1.h; datasheet §6.5.3.11), NOT a DMA register. This row previously called it "Rev-20-empirical DMACTL1" and claimed skipping it meant "DMA never armed → no audio". The register name was invented and the causal claim was wrong. Cite: rev20_flat.asm 0x075F. |
-| 0xffe1 | assign | 0x06 | rev20 | SAFE_OMIT — ACGCTL value for Rev 20's mode-3 (S/PDIF slave) branch @ 0x07A0. mboxfw has no S/PDIF-slave clock mode; class-compliant UAC1 with an internal clock is the whole target. Revisit only if S/PDIF input is added. |
 | 0xffe1 | and_not | 0x3f | rev20 | SAFE_OMIT — RMW inside `fcn.0x0728` preserving the upper ACGCTL bits. mboxfw writes ACGCTL with a plain assign in the 44.1 branch and an `\|= 0xC0` in the tail; the intermediate mask only matters on the mode-3 path we do not implement. |
 | 0xffe1 | or | 0xc0 | rev20 | RESOLVED 2026-07-28 — mboxfw emits this in the streaming tail. CORRECTED: these are ACGCTL bits 6-7, not a DMA arm. The old text ("arms DMA channels 0+1", "without this the streaming EPs stay configured but not running") was the load-bearing error behind the zero-length-isoc bug: the write was present, so the DMA looked armed, while DMAEN on 0xFFE8/0xFFEE had never been set. Cite: rev20_flat.asm 0x07DE. |
-| 0xffe2 | assign | 0x10 | rev20 | **MUST_ADD** — Rev-20-empirical DMACTL2. Rev 20 uses this to halt (=0) then arm capture DMA. Value 0x10 shows in the mode-1 configure path per scanner. Cite: rev20_dynamic_reconfig.md §2 "prelude" line `DMACTL2 = 0` (via fcn.0x0E18). Included in same patch. |
+| 0xffe2 | assign | 0x10 | rev20 | RESOLVED — ACGDCTL (TI Reg_stc1.h; datasheet §6.5.3.10), the ACG1 divider control. mboxfw emits it in `streaming_set_rate()`. This row previously called it "Rev-20-empirical DMACTL2" used "to halt (=0) then arm capture DMA", citing a `DMACTL2 = 0` line in rev20_dynamic_reconfig.md §2. Rev 20 never writes 0x00 there; `fcn.0x0E18` writes 0x10 to both ACGDCTL and ACG2DCTL. |
 | 0xffe8 | assign | 0x02 | rev20 | RESOLVED — DMACTL0 (datasheet §6.5.2.3). 0x02 = DMAEN 0, EPDIR 0 (OUT), EPNUM 2 → channel 0 serves EP2 OUT, i.e. playback. mboxfw `hw_init.c` writes the same. Cite: rev20_flat.asm 0x09F2. |
 | 0xffe8 | or | 0x80 | rev20 | RESOLVED 2026-07-28 — bit 7 is **DMAEN** (datasheet §6.5.2.3), not "probably auto-reload or start". mboxfw now sets it in `streaming_playback_enable()`. Rev 20 sets it at 0x03DF and 0x043B, after enabling OEPCNF2, and clears it at 0x1013. |
 | 0xffe8 | and_not | 0x7f | rev20 | RESOLVED 2026-07-28 — the clear half of the same DMAEN RMW, emitted by `streaming_playback_enable(0)`. Not a "mask of the low bits before the OR": SDCC renders `x &= ~0x80` as `and_not 0x7f`. |
@@ -65,12 +74,13 @@ disagreement exists. Justifications below cite by address, not name.
 | 0xffee | and_not | 0x7f | rev20 | RESOLVED 2026-07-28 — DMAEN clear on capture stop, emitted by `streaming_capture_enable(0)`. Rev 20 does it at 0x033F and 0x03F1. |
 | 0xffef | assign | 0x80 | rev20 | RESOLVED — DMATSH1, same encoding as DMATSH0 above. Cite: rev20_flat.asm 0x09EC. |
 | 0xfff0 | assign | 0x03 | rev20 | RESOLVED — DMATSL1, same encoding as DMATSL0 above. Cite: rev20_flat.asm 0x09E6. |
-| 0xffe5 | assign | 0x61 | rev20 | SAFE_OMIT — ACG1FRQ2 (datasheet §6.5.3.3), low byte of the 0x0FA861 clock word Rev 20 loads in its `fcn.0x0DEC` tail. mboxfw emitted this only from the dead `dma_program_48k()` helper, deleted 2026-07-28; the helper was never called and its name asserted a rate mapping the live code contradicts. Which of 0x0FA861 / 0x204B6A belongs to which rate is an open **pitch** question, to be settled by loopback measurement, not by keeping uncalled code. |
-| 0xffe6 | assign | 0xa8 | rev20 | SAFE_OMIT — ACG1FRQ1, middle byte of the same word. See 0xffe5. |
-| 0xffe7 | assign | 0x0f | rev20 | SAFE_OMIT — ACG1FRQ0, high byte of the same word. See 0xffe5. |
-| 0xfff7 | assign | 0x61 | rev20 | SAFE_OMIT — ACG2FRQ2, the clock-generator-2 copy of the same word. See 0xffe5. |
-| 0xfff8 | assign | 0xa8 | rev20 | SAFE_OMIT — ACG2FRQ1. See 0xffe5. |
-| 0xfff9 | assign | 0x0f | rev20 | SAFE_OMIT — ACG2FRQ0. See 0xffe5. |
+| 0xffe5 | assign | 0x6a | rev20 | SAFE_OMIT — ACG1FRQ2, part of the 24-bit clock word Rev 20 writes in its **mode-2** branch (`fcn.0x0728` @ 0x0777). mboxfw emitted this until 2026-07-28 and now writes Rev 20's **mode-3** word (0x61/0xa8/0x0f) instead, because mode 3 is what Rev 20's own SET_INTERFACE handlers pass (r7 = 3 at 0x03CA and 0x0436). Mode 2 is reached from a different request handler we do not implement. |
+| 0xffe6 | assign | 0x4b | rev20 | SAFE_OMIT — ACG1FRQ1, mode-2 word. See 0xffe5. |
+| 0xffe7 | assign | 0x20 | rev20 | SAFE_OMIT — ACG1FRQ0, mode-2 word. See 0xffe5. |
+| 0xfff7 | assign | 0x6a | rev20 | SAFE_OMIT — ACG2FRQ2, mode-2 word. See 0xffe5. |
+| 0xfff8 | assign | 0x4b | rev20 | SAFE_OMIT — ACG2FRQ1, mode-2 word. See 0xffe5. |
+| 0xfff9 | assign | 0x20 | rev20 | SAFE_OMIT — ACG2FRQ0, mode-2 word. See 0xffe5. |
+| 0xffe1 | assign | 0x06 | streaming.c | JUSTIFIED — ACGCTL, Rev 20 `fcn.0x0DEC` @ 0x0E22, the mode-3 program. 0x06 = DIVEN (bit 2) set, MCLKO1 <- acg_clk after /M, MCLKO2 <- acg2_clk after /M (datasheet 6.5.3.11). The common tail's `\|= 0xC0` then enables both outputs, giving 0xC6. **DIVEN is the fix**: every build before 2026-07-28 left ACGCTL at 0xC0 with DIVEN clear, so the /M divider never ran, the codec was never clocked, no I2S frame reached the C-port, and per datasheet 2.2.7.4.1 the UBM answered every isochronous IN token with a NULL packet. Telemetry read ACGCTL back as exactly 0xC0. |
 | 0xfff6 | assign | 0x10 | rev20 | **MUST_ADD** — Rev 20's `fcn.0x0728` common streaming tail writes 0x10 here. Per TI Reg_stc1.h:70 this is ACG2DCTL (Audio Clock Generator 2 divider control). The pending-review table misnamed it as IEPBBAX2 (which is actually 0xFF59). Rev 20 uses this to seed the second clock generator during stream re-arm. Cite: rev20_dynamic_reconfig.md §3 "Common ... tail" bullet 1 (`XDATA[0xFFF6] = 0x10`). Included in patch. |
 | 0xfff6 | runtime | - | rev20 | **MUST_ADD** — same register, second write with computed value. Reflected in the same reconfig site. Included in patch. |
 | 0xff60 | assign | 0x00 | usb.c/streaming.c | **FALSE_POSITIVE** for the "changed" diff. mboxfw writes 0 in `usb_init` (streaming dormant) and 0xC5 in `streaming_playback_enable`. Rev 20 writes 0xC5 via a runtime path that the scanner tags as "runtime -". Both firmwares end at IEPCNF1=0xC5 on stream arm. No behavioral difference — same final register value, same trigger. Scanner artifact. |

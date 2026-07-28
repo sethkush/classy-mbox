@@ -61,24 +61,50 @@ void streaming_set_rate(unsigned long hz)
     ACGDCTL  = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E18 */
     ACG2DCTL = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E1B */
 
-    if (hz == 48000UL) {
-        /* mode 2 — 48 kHz internal. All 6 writes: Rev 20 fcn.0x0728
-         * @ 0x0771 mode-2 branch. See rev20_dynamic_reconfig.md §3. */
-        ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
-        ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 */
-        ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
-        ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0783 */
-        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0789 */
-        ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x078F */
+    /* Adaptive clock generator — Rev 20's mode-3 program, which is the one
+     * its SET_INTERFACE path actually uses.
+     *
+     * Rev 20's rate/clock dispatcher `fcn.0x0728` takes a mode in r7 and has
+     * five branches. Both of its stream-start call sites pass mode 3
+     * (0x03CA and 0x0436, the capture and playback SET_INTERFACE handlers),
+     * which lands at 0x07A0 → `lcall 0x0DEC`. Modes 1/2/4/5 come from other
+     * request handlers. We previously copied the mode-2 branch for 48 kHz
+     * and the mode-1 branch for 44.1 kHz — neither is what runs when a
+     * stream starts.
+     *
+     * The consequence was not a wrong clock, it was NO clock. The mode-2
+     * branch writes only the frequency words and leaves ACGCTL to the common
+     * tail's `|= 0xC0`, giving ACGCTL = 0xC0 — and bit 2 of ACGCTL is DIVEN,
+     * the divide-by-I / divide-by-M enable (datasheet §6.5.3.11). With DIVEN
+     * clear and both MCLKO selects at 00b (acg_clk after ÷M), neither master
+     * clock output runs, so the codec is never clocked, no I2S frame ever
+     * arrives at the C-port, the DMA never clears the NACK flag in
+     * IEPDCNTX/Y — and per datasheet §2.2.7.4.1, "if an isochronous in token
+     * is received when there is no new data to be output ... the UBM will
+     * respond to the isochronous in request with a NULL packet." That is
+     * precisely the zero-length packet usbmon measured. Telemetry read
+     * ACGCTL back as exactly 0xC0, confirming DIVEN was off.
+     *
+     * Mode 3 writes ACGCTL = 0x06 first: DIVEN set, MCLKO1 ← acg_clk (÷M),
+     * MCLKO2 ← acg2_clk (÷M). The tail's `|= 0xC0` then enables both outputs,
+     * landing on 0xC6.
+     *
+     * UNRESOLVED: this configures the ACG identically for both rates, which
+     * is what Rev 20 does at stream start. Where Rev 20 differentiates 44.1
+     * from 48 is not yet traced — the codec-state bits below are the only
+     * rate-dependent thing we do. That is a PITCH question; settle it by
+     * measuring a loopback, not by guessing at the two constants. */
+    ACG1FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DFE */
+    ACG1FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0E04 */
+    ACG1FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E0A */
+    ACG2FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0E10 */
+    ACG2FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0E16 */
+    ACG2FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E1C */
+    ACGCTL   = 0x06;  /* Rev 20 fcn.0x0DEC @ 0x0E22 — DIVEN + ACG sources */
 
+    if (hz == 48000UL) {
         g_codec_state_23 |= (unsigned char)0x0C;   /* 48 kHz codec bits */
     } else {
-        /* mode 1 — 44.1 kHz internal.
-         * Rev 20 (rev20_flat.asm 0x075F) does NOT write the ACG frequency
-         * words here; it writes only ACGCTL = 0x0D and relies on the
-         * power-on ACG defaults. */
-        ACGCTL = 0x0D;    /* Rev 20 fcn.0x0728 @ 0x075F */
-
         g_codec_state_23 &= (unsigned char)~0x0C;  /* 44.1 kHz codec bits */
     }
 
