@@ -114,4 +114,8 @@
                               + 9 + 9 + 7 + 14 + 9 + 7 \
                               + 9 + 9 + 7 + 14 + 9 + 7)
 
+/* Set by the Digi enter-DFU class request handler, consumed by main().
+ * See handle_digi_enter_dfu() in usb.c for why the work is deferred. */
+extern volatile __data unsigned char g_dfu_request_pending;
+
 #endif /* MBOXFW_USB_H */

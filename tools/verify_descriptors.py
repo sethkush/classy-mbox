@@ -120,10 +120,18 @@ def check_device(desc, r):
     # can't find the device and recovery via --enter-dfu is impossible.
     if vid != 0x0DBA:
         r.err(f"idVendor = 0x{vid:04X}, must be 0x0DBA (Digidesign)")
-    # Two legal PIDs: 0x1000 runtime audio, 0x1001 app-DFU. Anything
-    # else breaks the host-side driver bind + our own probe path.
-    if pid not in (0x1000, 0x1001):
-        r.err(f"idProduct = 0x{pid:04X}, must be 0x1000 or 0x1001")
+    # Legal PIDs: 0x1000 runtime audio, 0x1001 app-DFU, 0x2000 quirk-free.
+    #
+    # 0x2000 exists because Linux's snd-usb-audio carries a composite quirk
+    # keyed on 0dba:1000 (sound/usb/quirks-table.h). It applies a hardcoded
+    # fixed-stream table BEFORE parsing any descriptors, so a correct UAC1
+    # device is rejected with -22 no matter what it declares. Only 0dba:1000
+    # is quirked; 0x2000 takes the generic parser path.
+    #
+    # Safe on our side: mboxflash probes on VID 0x0DBA, and both flashers
+    # find the device at any PID under that VID, so recovery is unaffected.
+    if pid not in (0x1000, 0x1001, 0x2000):
+        r.err(f"idProduct = 0x{pid:04X}, must be 0x1000, 0x1001 or 0x2000")
     r.note(f"bMaxPacketSize0 = {desc[7]}")
     if desc[7] not in (8, 16, 32, 64):
         r.err(f"bMaxPacketSize0 = {desc[7]}, must be 8/16/32/64")

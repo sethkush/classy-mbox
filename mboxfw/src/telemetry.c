@@ -33,6 +33,9 @@ volatile __data unsigned char tlm_eeprom_ok     = 0xFF;  /* 0xFF = not run */
 volatile __data unsigned char tlm_cs8427_status = 0xFF;
 volatile __data unsigned char tlm_codec_status  = 0xFF;
 
+volatile __data unsigned char tlm_p1_boot = 0xFF;  /* 0xFF = not sampled */
+volatile __data unsigned char tlm_p3_boot = 0xFF;
+
 /* Little-endian 16-bit store, matching how the host unpacks the blocks. */
 static void put16(unsigned char *p, unsigned int v)
 {
@@ -99,7 +102,13 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[1] = tlm_cs8427_status;
         out[2] = tlm_codec_status;
         out[3] = tlm_stalls;
-        out[4] = 0; out[5] = 0; out[6] = 0; out[7] = 0;
+        /* Bytes 4-5 are LIVE port reads, sampled at the moment the host
+         * asks. Hold the button while reading block 4 and compare against
+         * the boot samples in 6-7 to see which bit actually moves. */
+        out[4] = P1;
+        out[5] = P3;
+        out[6] = tlm_p1_boot;
+        out[7] = tlm_p3_boot;
         return 1;
 
     default:

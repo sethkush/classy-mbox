@@ -28,7 +28,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0001
+#define TLM_BUILD_ID     0x0002   /* 0002: DFU trigger restored, P1/P3 telemetry */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01
@@ -70,6 +70,18 @@ extern volatile __data unsigned char tlm_vec_other;
 extern volatile __data unsigned char tlm_eeprom_ok;
 extern volatile __data unsigned char tlm_cs8427_status;
 extern volatile __data unsigned char tlm_codec_status;
+
+/* Port state sampled in main() before hw_init() touches the pins.
+ *
+ * NOVEL — reason: settles the boot-DFU button question empirically. The
+ * claim that source-1 reads on P3.3 is an RE inference off Rev 20 and has
+ * never been confirmed; check_boot_dfu_button() has never once fired. A
+ * live read plus this boot-time sample tells us which bit actually moves
+ * when the user holds the button, instead of another guess costing a
+ * power cycle. Nothing in the boot ROM or Rev 20 records port state, so
+ * there is no reference behaviour to copy here. */
+extern volatile __data unsigned char tlm_p1_boot;
+extern volatile __data unsigned char tlm_p3_boot;
 
 /* Saturating increments — a counter that wraps mid-experiment reads as a
  * smaller number than reality and would silently corrupt a measurement. */

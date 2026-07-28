@@ -17,6 +17,7 @@ set -eu
 IHX="${1:-mboxfw/build/mboxfw.ihx}"
 RST="${IHX%.ihx}"
 RST="$(dirname "$IHX")/main.rst"
+MAP="${IHX%.ihx}.map"
 if [[ ! -f "$IHX" ]]; then
     echo "not found: $IHX" >&2
     exit 2
@@ -26,13 +27,23 @@ if [[ ! -f "$RST" ]]; then
     exit 2
 fi
 
-# Extract the address of the post-init main loop entry (SDCC labels it
-# 00102$: — the sjmp target at the end of main).  This shifts every time
-# we add/remove init calls, so we always resolve it from the .rst.
-LOOP_ENTRY=$(grep -m1 '00102[$]:' "$RST" | awk '{print "0x"$1}')
+# Break on _buttons_poll, which is called ONLY from the main loop, so
+# reaching it proves every init call returned.
+#
+# This used to grep the .rst for SDCC's `00102$:` label. That broke on
+# 2026-07-28: SDCC renumbers its internal labels whenever the shape of
+# main() changes, the label vanished, and the gate had been failing
+# silently ever since — a gate anchored to a compiler-generated name is
+# not anchored to anything. A linker symbol from the .map is stable
+# across codegen changes and says what we actually mean.
+if [[ ! -f "$MAP" ]]; then
+    echo "not found: $MAP (needed to resolve the main-loop symbol)" >&2
+    exit 2
+fi
+LOOP_ENTRY=$(awk '$3 == "_buttons_poll" { print "0x" $2 }' "$MAP" | head -1)
 
 if [[ -z "$LOOP_ENTRY" ]]; then
-    echo "could not locate 00102\$ (loop entry) in $RST" >&2
+    echo "could not resolve _buttons_poll in $MAP" >&2
     exit 2
 fi
 

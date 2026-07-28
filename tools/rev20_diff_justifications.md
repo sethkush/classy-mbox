@@ -296,6 +296,8 @@ sections above.
 | 0xff9b | runtime | - | rev20 | FALSE_POSITIVE — OEPDCNTX2 reset on stream (dis)arm, both firmwares do it. |
 | 0xffa8 | and_not | 0xf7 | rev20 | SAFE_OMIT — mirror of 0xff68 for OEPCNF0. |
 | 0xffa8 | assign | 0x84 | rev20 | FALSE_POSITIVE — Rev 20 arrives at OEPCNF0=0x84 via runtime OR; mboxfw assigns directly. Same terminal. |
+| 0xffa8 | or | 0x08 | mboxfw | JUSTIFIED — `OEPCNF0` STALL (bit 3) set on EP0 OUT, the mirror of the 0xff68 row above. Rev 20 sets the same bit on the same condition; mboxfw reaches it through `reply_stall()` rather than an inline per-transaction dispatch. Same terminal state. |
+| 0xffa8 | or | 0x20 | mboxfw | JUSTIFIED — `OEPCNF0` TOGGLE (bit 5), data-toggle management for EP0 OUT. Mirror of the 0xff68 row. Required for multi-packet OUT continuations to stay in sequence. |
 | 0xffa8 | runtime | - | mboxfw | FALSE_POSITIVE — mboxfw runtime path (`& 0xD7` in reply_stall). Rev 20 does similar bit-clear. |
 | 0xffaa | assign | 0x01 | mboxfw | JUSTIFIED — mirror of 0xff6a, EP0 OUT 8-byte size. |
 | 0xffaa | runtime | - | rev20 | FALSE_POSITIVE — Rev 20 side. |

@@ -13,6 +13,7 @@
 #include "mux.h"
 #include "eeprom.h"
 #include "telemetry.h"
+#include "usb.h"        /* g_dfu_request_pending */
 
 extern void hw_init(void);
 extern void usb_init(void);
@@ -205,6 +206,17 @@ void main(void)
      * boot-ROM-owned SFR — POLICY §2 carve-out A. */
     USBCTL = 0;
 
+    /* Sample the ports BEFORE hw_init() drives any of them, so a host
+     * comparing these against the live reads in block 4 can tell a button
+     * press from our own pin configuration.
+     *
+     * NOVEL — reason: the "source-1 button reads on P3.3" mapping is an RE
+     * inference that has never fired in practice, and there is no reference
+     * firmware behaviour to copy — neither Rev 20 nor the boot ROM records
+     * port state anywhere. Reads only; no pin is driven. */
+    tlm_p1_boot = P1;
+    tlm_p3_boot = P3;
+
     /* check_boot_dfu_button() runs after hw_init so P3 pull-ups are set
      * before the button is sampled, and before cs8427/codec init so the
      * escape hatch still works if either of those hangs. */
@@ -275,5 +287,36 @@ void main(void)
          * labour: its INT0 handler dispatches USB, its main loop handles
          * deferred panel/codec actions. */
         buttons_poll();
+
+        /* Enter-DFU, deferred here from the class-request handler so the
+         * zero-length status packet drains before we spend ~30 ms in I2C
+         * program-cycle waits. See handle_digi_enter_dfu() in usb.c. */
+        if (g_dfu_request_pending) {
+            /* Drop off the bus first: the signature write is the point of
+             * no return for this image, and a device that answers SETUPs
+             * after it has decided to halt is worse than one that is
+             * plainly gone. Same reasoning and same SFR as sigkill's
+             * main(). Intentional assignment to a boot-ROM-owned SFR —
+             * POLICY §2 carve-out A.
+             *
+             * NOVEL — reason: no reference firmware disconnects mid-run,
+             * because none of them invalidate their own signature; the
+             * write itself is byte-identical to the top-of-main
+             * disconnect at Rev 20 fcn.0x08e2 @ 0x08e5. */
+            USBCTL = 0;
+            EA = 0;
+
+            /* Twice, for the same reason sigkill does: a failed write
+             * leaves the signature intact, which costs one replug and
+             * nothing else. */
+            (void)eeprom_invalidate_signature();
+            (void)eeprom_invalidate_signature();
+
+            /* Halt. NOT RESET_TO_BOOT_ROM() — clearing MEMCFG.SDW from
+             * program RAM unmaps the running code (see regs.h). The
+             * replug the user performs next IS the power cycle, and the
+             * boot ROM then reads a bad signature and enters DFU. */
+            for (;;) { }
+        }
     }
 }

@@ -52,6 +52,11 @@ extern const __code unsigned char AppStringLang[];
 extern const __code unsigned char AppStringMfr[];
 extern const __code unsigned char AppStringProduct[];
 
+/* Enter-DFU request latch. Written from ISR context (the SETUP handler),
+ * read and cleared by main(); volatile so SDCC cannot cache the main-loop
+ * test across iterations. */
+volatile __data unsigned char g_dfu_request_pending = 0;
+
 /* Current USB device state — updated by SET_CONFIGURATION / SET_INTERFACE. */
 static __data unsigned char g_configured = 0;
 static __data unsigned char g_alt_playback = 0;   /* alt setting on interface 1 */
@@ -319,10 +324,12 @@ static void handle_get_interface(void)
  * and I don't want to add un-testable code paths without hardware access.
  * Once added, a successful flash restores the signature bytes.
  */
-/* The Digi enter-DFU class request is ACKed and otherwise ignored.
+/* The Digi enter-DFU class request: ACK now, invalidate the EEPROM
+ * signature from the main loop, then halt. The user's next power cycle
+ * lands in boot-ROM DFU.
  *
  * There is NO software path from a running image back to the boot ROM on
- * this part, so a working DFU trigger cannot be written:
+ * this part, so this handler cannot "reset into DFU":
  *
  *   - MEMCFG.SDW must be cleared to remap the boot ROM at 0x0000, but any
  *     code clearing it from program RAM unmaps ITSELF mid-routine. TI's
@@ -334,17 +341,25 @@ static void handle_get_interface(void)
  *   - Stock Rev 20 has no such path either. Its only MEMCFG write is at
  *     0x08E6 and SETS SDW; there is no `ljmp 0x8000` anywhere in the image.
  *
- * Reaching DFU is therefore: invalidate the EEPROM signature, then power
- * cycle. Two "fixes" were written for this handler on 2026-07-27 (move the
- * work out of the ISR, in both mboxfw and safety_net) before the mechanism
- * was understood; both were dead code against an impossible operation and
- * were removed rather than left looking plausible.
+ * So the operation is: zero the signature, halt, let the user replug. That
+ * is exactly the sequence sigkill performed from RAM on 2026-07-28, which
+ * is the only proof on record that these I2C writes reach the part.
  *
- * ACK rather than STALL so a host tool probing for the request gets a clean
- * answer instead of a pipe error. */
+ * DEFERRED to the main loop, deliberately. Four eeprom_wr() calls are ~30 ms
+ * of program-cycle waits; running them here would block EP0 through the
+ * status stage and past the host's timeout, so the host would record the
+ * request as failed even though it took effect. Setting a flag lets the
+ * zero-length status packet drain first. This is NOT the discredited
+ * 2026-07-27 "move it out of the ISR" fix — that one deferred a
+ * RESET_TO_BOOT_ROM() which could never work at any priority level. What is
+ * deferred here is an I2C write, which works fine from the main loop.
+ *
+ * Shipping mboxfw without this on 2026-07-28 left a running image with no
+ * escape hatch and cost a physical SDA short to recover (BRICK_LOG). */
 static void handle_digi_enter_dfu(void)
 {
     reply_zero_length();
+    g_dfu_request_pending = 1;
 }
 
 
