@@ -135,12 +135,29 @@ unsigned char eeprom_smoke_test(void)
 
 unsigned char eeprom_invalidate_signature(void)
 {
-    /* Header signature at offset 0x0002 = 0x12, offset 0x0003 = 0x34.
-     * Zero both. Boot ROM's eepromExist reads signatures[0] first — if
-     * it isn't 0x12, boot ROM tries word-address mode; either way our
-     * zero'd signature bytes fail eepromCheckFirmware and boot ROM
-     * enters dfuSetup(DFU_TARGET_RAM/EEPROM) instead of loading us. */
-    if (!eeprom_write_byte(0x00, 0x02, 0x00)) return 0;
-    if (!eeprom_write_byte(0x00, 0x03, 0x00)) return 0;
+    /* Zero the header CHECKSUM at offset 0x0000, and nothing else.
+     *
+     * eepromExist() reads the header and calls eepromCheckFirmware(); a
+     * checksum that does not add up sets dataType = EEPROM_INVALID, which
+     * is neither APPCODE nor UNEXIST/DEVICE_TYPE, so RomBoot.c:60-66
+     * selects DFU_TARGET_EEPROM. We land in DFU and the EEPROM stays
+     * writable.
+     *
+     * DO NOT go back to zeroing the signature bytes at offsets 2-3. That
+     * also reaches DFU, but from that state the boot ROM cannot PROGRAM
+     * the EEPROM: block 0 of a download returns errPROG and the ROM then
+     * hangs in an I2C wait. Reproduced deterministically twice on
+     * 2026-07-28 from a clean dfuIDLE, and it cost an SDA short plus a
+     * RAM-resident flasher to recover. The chip itself is fine — a
+     * bit-banged write to it succeeded minutes earlier — so it is
+     * specifically the boot ROM's dfuEepromCopy that fails once the
+     * signature is gone.
+     *
+     * The checksum rule is sum(header[1..17]) mod 256 == header[0]
+     * (Eeprom.c eepromCheckFirmware, "computed by adding bytes"). For the
+     * image we ship that sum is 0x96, so writing 0x00 reliably fails it.
+     * The function name is kept for callers; what it invalidates is the
+     * header, which is what actually matters. */
+    if (!eeprom_write_byte(0x00, 0x00, 0x00)) return 0;
     return 1;
 }
