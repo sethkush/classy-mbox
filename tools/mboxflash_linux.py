@@ -452,15 +452,27 @@ def cmd_flash(args):
     # dataRemain hit 0 (UsbDfu.c:1004-1014), so cap the sleep at 200 ms and
     # re-poll rather than hanging for half an hour.
     state = None
+    settled = False
     for _ in range(100):
         st, poll_ms, state, _ = dfu_get_status_retry(dev)
         if state in (dfuMANIFEST_WAIT_RESET, dfuIDLE):
+            settled = True
             break
         if state == dfuERROR:
             print("dfuERROR during manifest: %s" % status_name(st), file=sys.stderr)
             return 1
+        # dfuDNLOAD_IDLE that never advances is the NORMAL outcome here: the
+        # boot ROM commits chksum/dataType/payloadSize during dfuDnloadData
+        # the moment dataRemain hits 0 (UsbDfu.c:1004-1014), so by the time
+        # the zero-length terminator arrives there is nothing left to
+        # manifest and the state machine simply stays put. Observed on
+        # hardware 2026-07-27. Report it accurately rather than calling it
+        # "manifest complete".
+        if state == dfuDNLOAD_IDLE:
+            break
         time.sleep(min(poll_ms or 200, 200) / 1000.0)
-    print("manifest complete. Final state: %s" % state_name(state))
+    print("download committed. Final state: %s%s"
+          % (state_name(state), "" if settled else "  (no manifest phase — see note in source)"))
 
     # The boot ROM's dfuSetup loop only exits when RSTR_INT fires
     # (UsbDfu.c:697-704), so without a bus reset it sits in DFU forever and
