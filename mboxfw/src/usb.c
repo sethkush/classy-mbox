@@ -314,81 +314,32 @@ static void handle_get_interface(void)
  * and I don't want to add un-testable code paths without hardware access.
  * Once added, a successful flash restores the signature bytes.
  */
-/* Set by handle_digi_enter_dfu (ISR context), consumed by usb_dfu_service
- * (main-loop context). `volatile` because the two sides are on opposite
- * ends of an interrupt. */
-volatile unsigned char g_dfu_entry_pending = 0;
-
-/* handle_digi_enter_dfu runs inside the INT0 ISR, so it does NOTHING here
- * except acknowledge the request and raise a flag.
+/* The Digi enter-DFU class request is ACKed and otherwise ignored.
  *
- * The previous version did the busy-wait, the I²C signature writes and
- * RESET_TO_BOOT_ROM() inline, from ISR context. On hardware that hung the
- * CPU: the device stopped answering all control transfers, and after a
- * power cycle it came back as mboxfw with the EEPROM signature still
- * intact — so it died before the I²C writes completed, or inside the
- * reset macro itself. Both are explained by doing this from an interrupt:
- * RESET_TO_BOOT_ROM flips MEMCFG.SDW and ljmps to 0x8000 with a live
- * interrupt frame on the stack, and the I²C bit-banging is far longer
- * than any ISR has a right to run.
+ * There is NO software path from a running image back to the boot ROM on
+ * this part, so a working DFU trigger cannot be written:
  *
- * The boot-time button path (check_boot_dfu_button in main.c) does the
- * identical work and DOES reach the boot ROM — the difference is that it
- * runs before EA=1 with no ISR in flight. Deferring to the main loop puts
- * this path in that same clean context. */
+ *   - MEMCFG.SDW must be cleared to remap the boot ROM at 0x0000, but any
+ *     code clearing it from program RAM unmaps ITSELF mid-routine. TI's
+ *     UtilResetBootCPU is immune only because Utils.SRC links it at 0x8003,
+ *     inside the ROM (see the warning on RESET_TO_BOOT_ROM in regs.h).
+ *   - USBCTL.FRSTE does not help: the datasheet states a USB-reset function
+ *     reset leaves "the shadow the ROM (SDW) and the USB function connect
+ *     (CONT) bits" untouched, so the MCU restarts into this same image.
+ *   - Stock Rev 20 has no such path either. Its only MEMCFG write is at
+ *     0x08E6 and SETS SDW; there is no `ljmp 0x8000` anywhere in the image.
+ *
+ * Reaching DFU is therefore: invalidate the EEPROM signature, then power
+ * cycle. Two "fixes" were written for this handler on 2026-07-27 (move the
+ * work out of the ISR, in both mboxfw and safety_net) before the mechanism
+ * was understood; both were dead code against an impossible operation and
+ * were removed rather than left looking plausible.
+ *
+ * ACK rather than STALL so a host tool probing for the request gets a clean
+ * answer instead of a pipe error. */
 static void handle_digi_enter_dfu(void)
 {
     reply_zero_length();
-    g_dfu_entry_pending = 1;
-}
-
-/* usb_dfu_service — main-loop half of the DFU trigger. Call from the main
- * loop; returns immediately unless a request is pending, and never returns
- * at all once one is. */
-void usb_dfu_service(void)
-{
-    if (!g_dfu_entry_pending) {
-        return;
-    }
-    g_dfu_entry_pending = 0;
-
-    /* Let the status stage finish on the wire before we take the CPU away
-     * from it. Polling loop; ~a few dozen milliseconds at 12 MHz — more
-     * than one USB frame. Interrupts are still on here, so the ISR ships
-     * the ZLP while we spin. */
-    {
-        unsigned int i;
-        for (i = 0; i < 0xC000; i++) { }
-    }
-
-    /* From here on no interrupt may fire: the signature-invalidation and
-     * the memory-map flip must not be interleaved with USB servicing. */
-    EA = 0;
-
-    /* Drop off the bus so the host sees a clean disconnect rather than a
-     * device that stops answering mid-transaction. USBCTL is boot-ROM-owned;
-     * read-modify-write only — POLICY §2. Rev 20 clears CONN the same way
-     * when it tears the connection down. */
-    USBCTL &= (unsigned char)~USBCTL_CONN;
-
-    /* Bulletproof-recovery path — invalidate the EEPROM header signature
-     * so the boot ROM drops to DFU (0xFFFF:0xFFFE) on the next power-on
-     * instead of re-loading mboxfw. Uses a scratch-byte round-trip as a
-     * failsafe: if the I²C driver is broken (couldn't test the code
-     * pre-flash), we do NOT touch the signature — we just warm-reset,
-     * which lands us right back at mboxfw. That's the same state as
-     * before the DFU request, so we're never worse off than the "no
-     * bulletproof recovery" firmware. */
-    if (eeprom_smoke_test()) {
-        (void)eeprom_invalidate_signature();
-    }
-    /* Whether or not we invalidated, re-enter boot ROM. Plain `ljmp 0`
-     * with SDW=1 restarts mboxfw (RAM at 0x0000) — the invalidated
-     * signature would only take effect on next power cycle, and any
-     * USB interrupt firing after signature-invalidation would race the
-     * jump. RESET_TO_BOOT_ROM masks INT0, flips SDW, and jumps into
-     * boot ROM at 0x8000. See regs.h. */
-    RESET_TO_BOOT_ROM();
 }
 
 

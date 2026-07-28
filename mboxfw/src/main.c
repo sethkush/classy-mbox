@@ -17,25 +17,27 @@ extern void hw_init(void);
 extern void usb_init(void);
 extern void usb_attach(void);
 extern void usb_service(void);
-/* Main-loop half of the over-the-wire DFU trigger — see usb.c. Never
- * returns once a DFU request has been received. */
-extern void usb_dfu_service(void);
 
 /*
- * Boot-time DFU escape hatch — mirrors Rev 20's "hold source-1 while
- * plugging in → DFU" behavior. Runs BEFORE hw_init so it works even
- * when USB is completely broken. If P3.3 is held low continuously for
- * ~50 ms after reset, invalidate the EEPROM signature and warm-reset.
- * Next boot lands in boot-ROM bulletproof DFU (0xFFFF:0xFFFE), no
- * hardware disassembly required.
+ * Boot-time DFU escape hatch — hold source-1 while plugging in.
  *
- * This is the SECOND independent software recovery path (the first is
- * mboxflash --enter-dfu → handle_digi_enter_dfu). This one gates on a
- * physical button rather than a USB class request, so it works even
- * when enumeration itself is dead.
+ * Runs before EA=1 and before usb_attach. If P3.3 is held low across the
+ * whole sample window, zero the EEPROM signature so the boot ROM finds no
+ * valid image on the NEXT power-on and comes up in DFU.
  *
- * A glancing touch during plug-in should NOT trigger — the check
- * requires the button to stay low across the full 50 ms sample window.
+ * It then halts rather than resetting. RESET_TO_BOOT_ROM() cannot work —
+ * clearing MEMCFG.SDW from program RAM unmaps the running code (see the
+ * warning in regs.h), and no software path back to the boot ROM exists on
+ * this part: FRSTE leaves SDW and CONT set (datasheet), and stock Rev 20
+ * has no such path either. Reaching DFU is always "invalidate the
+ * signature, then power cycle".
+ *
+ * Halting is the honest behaviour: the device never attaches, the host
+ * sees nothing, and the user replugs — which is precisely the power cycle
+ * the sequence requires.
+ *
+ * A glancing touch during plug-in does NOT trigger: the button must stay
+ * low across the full window.
  */
 static void check_boot_dfu_button(void)
 {
@@ -48,10 +50,8 @@ static void check_boot_dfu_button(void)
         if (eeprom_smoke_test()) {
             (void)eeprom_invalidate_signature();
         }
-        /* Re-enter boot ROM immediately. Plain `ljmp 0` with SDW=1
-         * restarts mboxfw (RAM at 0x0000) — the invalidated signature
-         * would only take effect on next power cycle. See regs.h. */
-        RESET_TO_BOOT_ROM();
+        /* Never attach; wait for the user to replug. */
+        for (;;) { }
     }
 }
 
@@ -177,11 +177,6 @@ static void canary_blink_forever(void)
 {
     g_phantom_48v = 0;            /* never assert the unverified 0x23.6 */
     for (;;) {
-        /* The canary build never reaches main()'s loop, so the DFU
-         * trigger has to be serviced from here too — otherwise a
-         * diagnostic build is one that cannot be recovered over the
-         * wire, which is exactly backwards. */
-        usb_dfu_service();
         canary_emit(g_stage);
         canary_delay(40);
         canary_emit(g_last_breq);
@@ -269,7 +264,6 @@ void main(void)
          * the EP0 transfer state. Rev 20 has the same division of
          * labour: its INT0 handler dispatches USB, its main loop handles
          * deferred panel/codec actions. */
-        usb_dfu_service();
         buttons_poll();
     }
 }

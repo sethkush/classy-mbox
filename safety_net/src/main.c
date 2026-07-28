@@ -421,81 +421,34 @@ static void reply_desc(const __code unsigned char *src, unsigned int len)
     desc_left = total - chunk;
 }
 
-/* Raised by handle_dfu_trigger in ISR context, consumed by dfu_service in
- * main-loop context. volatile: the two sides sit across an interrupt. */
-static volatile __data unsigned char g_dfu_pending = 0;
-
+/* Digi enter-DFU class request: ACK it, and do nothing else.
+ *
+ * No software path exists from a running image back to the boot ROM on
+ * this part, so this request cannot do what its name says:
+ *   - MEMCFG.SDW must be cleared to remap the boot ROM at 0x0000, but code
+ *     clearing it from program RAM unmaps ITSELF mid-routine. TI's
+ *     UtilResetBootCPU survives only because Utils.SRC links it at 0x8003,
+ *     inside the ROM.
+ *   - USBCTL.FRSTE does not help: per the datasheet a USB-reset function
+ *     reset leaves "the shadow the ROM (SDW) and the USB function connect
+ *     (CONT) bits" untouched, so the MCU restarts into this same image.
+ *   - Stock Rev 20 has no path either — its only MEMCFG write SETS SDW at
+ *     0x08E6, and the image contains no `ljmp 0x8000`.
+ *
+ * The previous version wrote the EEPROM signature and called
+ * RESET_TO_BOOT_ROM() from ISR context; on 2026-07-27 that hung the CPU
+ * dead 1 km away. The signature writes DID land, which is why the device
+ * now reaches bulletproof-DFU on any power cycle with no SDA short. A
+ * "defer it to the main loop" fix was written and then NOT shipped once
+ * the address-mapping cause was understood — it would have hung the same.
+ *
+ * Signature invalidation belongs on a path where halting is acceptable,
+ * not on a USB request the host is waiting on. */
 static void handle_dfu_trigger(void)
 {
     reply_zlp();
-    /* Defer everything else to the main loop.
-     *
-     * This function runs inside the INT0 ISR. Doing the I2C signature
-     * writes and RESET_TO_BOOT_ROM() here hangs the CPU — observed on
-     * hardware 2026-07-27: the device stopped answering every control
-     * transfer and stayed dead until a power cycle. The reset macro flips
-     * MEMCFG.SDW and ljmps to 0x8000 with a live interrupt frame on the
-     * stack, and the I2C bit-banging runs far longer than an ISR should.
-     *
-     * The signature writes DID land that time (the device came back in
-     * bulletproof-DFU), so the hang is in or after the reset macro. */
-    g_dfu_pending = 1;
 }
 
-/* Main-loop half of the DFU trigger. Never returns once one is pending. */
-static void dfu_service(void)
-{
-    if (!g_dfu_pending) return;
-    g_dfu_pending = 0;
-
-    /* Delay for the status-stage to complete on the wire. Interrupts are
-     * still on here, so the ISR ships the ZLP while we spin. */
-    { unsigned int i; for (i = 0; i < 0xC000; i++) { } }
-    /* No interrupt may fire past this point: the signature writes and the
-     * memory-map flip must not interleave with USB servicing. */
-    EA = 0;
-    /* Best-effort invalidate: write 0x00 over signature bytes at
-     * EEPROM offset 2 and 3. If either write fails, we still enter
-     * boot ROM — same state as before, no worse. */
-    (void)eeprom_wr(0x00, 0x02, 0x00);
-    (void)eeprom_wr(0x00, 0x03, 0x00);
-    /* Re-enter boot ROM to make the invalidated signature take effect
-     * NOW, not on next power cycle. Byte-for-byte match to TI
-     * Utils.SRC UtilResetBootCPU (lines 119-160): mask interrupts,
-     * SDW-confirm ON, flip SDW off, SDW-confirm OFF, ljmp 0x8000.
-     *
-     * The `clr ea` is load-bearing: without it, any USB interrupt
-     * firing between the SDW-clearing `movx @dptr,a` and the `ljmp`
-     * vectors to 0x0003 with the memory map already flipped — CPU
-     * sees BOOT ROM at 0x0003 instead of our ISR handler and jumps
-     * into undefined boot-ROM bytes. Fork audit 2026-07-24 second
-     * pass caught this after first-pass patch shipped without EA
-     * disable.
-     *
-     * USBCTL SDW-confirm bracket (bit 0) matches TI hygiene — even
-     * though boot ROM re-inits USB from scratch, the datasheet
-     * describes SDW-confirm as a required handshake with the USB
-     * engine's shadow view.
-     *
-     * Without any of this, `ljmp 0` with SDW=1 restarts safety_net
-     * (we jump back into our own reset vector in RAM) — the
-     * invalidated signature is only checked on next physical power
-     * cycle, so the DFU trigger becomes a "please unplug" instruction. */
-    __asm__("clr  ea");                        /* mask INT0 before SDW flip */
-    __asm__("mov  dptr,#0xFFFC");   /* USBCTL */
-    __asm__("movx a,@dptr");
-    __asm__("orl  a,#0x01");                   /* SDW-confirm ON */
-    __asm__("movx @dptr,a");
-    __asm__("mov  dptr,#0xFFB0");   /* MEMCFG */
-    __asm__("movx a,@dptr");
-    __asm__("anl  a,#0xFE");                   /* clear SDW bit 0 */
-    __asm__("movx @dptr,a");
-    __asm__("mov  dptr,#0xFFFC");   /* USBCTL */
-    __asm__("movx a,@dptr");
-    __asm__("anl  a,#0xFE");                   /* SDW-confirm OFF */
-    __asm__("movx @dptr,a");
-    __asm__("ljmp 0x8000");
-}
 
 static void handle_setup(void)
 {
@@ -946,7 +899,7 @@ void main(void)
 #ifdef CANARY
     canary_blink_forever();   /* never returns */
 #else
-    for (;;) { dfu_service(); }
+    for (;;) { }
 #endif
 }
 

@@ -17,7 +17,7 @@ CANARY ?= 1
 ifeq ($(CANARY),1)
 CFLAGS += -DCANARY
 endif
-LDFLAGS = -mmcs51 --model-small --code-size 0x1F00 --xram-size 0x1000
+LDFLAGS = -mmcs51 --model-small --code-size 0x1780 --xram-size 0x1000
 
 SRCS = src/main.c
 RELS = $(SRCS:src/%.c=$(BUILD)/%.rel)
