@@ -17,7 +17,7 @@
 #define MBOXFW_TELEMETRY_H
 
 #define TLM_BLOCK_SIZE   8
-#define TLM_NUM_BLOCKS   5
+#define TLM_NUM_BLOCKS   6
 
 /* Vendor requests. DEVICE recipient, NOT interface: snd-usb-audio claims
  * the audio interfaces, and an interface-recipient request then fails with
@@ -35,7 +35,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0003   /* 0003: SET_CUR sample rate read in the OUT data stage */
+#define TLM_BUILD_ID     0x0004   /* 0004: isoc streaming telemetry (block 5) */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01
@@ -89,6 +89,21 @@ extern volatile __data unsigned char tlm_codec_status;
  * there is no reference behaviour to copy here. */
 extern volatile __data unsigned char tlm_p1_boot;
 extern volatile __data unsigned char tlm_p3_boot;
+
+/* Isochronous streaming (block 5).
+ *
+ * NOVEL — reason: streaming.c assumes the TAS1020B DMA engine shuttles audio
+ * between the C-port and USB packet memory autonomously, which is why the
+ * IEP1/OEP2 vectors are unhandled and streaming_sof() is a no-op. That
+ * assumption has never been tested and arecord fails with -EIO. These
+ * counters separate the three candidates: no SOF means we are not seeing
+ * frames at all; SOF but no IEP1 means the host is not transacting or the
+ * endpoint is not armed; IEP1 firing means the endpoint IS transacting and
+ * the problem is upstream in the I2S/codec path. No reference firmware
+ * records this, so there is nothing to copy. */
+extern volatile __data unsigned int  tlm_sof_count;
+extern volatile __data unsigned char tlm_vec_iep1;
+extern volatile __data unsigned char tlm_vec_oep2;
 
 /* Saturating increments — a counter that wraps mid-experiment reads as a
  * smaller number than reality and would silently corrupt a measurement. */

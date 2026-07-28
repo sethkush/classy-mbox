@@ -70,6 +70,12 @@ def dump(d):
     ee, cs, co, stalls = b[4][:4]
     print("periph: eeprom=0x%02x cs8427=0x%02x codec=0x%02x  stalls=%d" % (ee, cs, co, stalls))
 
+    b5 = read_block(d, 5)
+    sof = b5[0] | (b5[1] << 8)
+    print("isoc: sof=%d iep1=%d oep2=%d" % (sof, b5[2], b5[3]))
+    print("  live IEPCNF1=0x%02x OEPCNF2=0x%02x IEPBCTX1=0x%02x OEPBCTX2=0x%02x"
+          % (b5[4], b5[5], b5[6], b5[7]))
+
 
 def ep0_test(d, trials=40):
     """Cross-check the device's own chunk counter against host-visible success.

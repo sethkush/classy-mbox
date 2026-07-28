@@ -852,7 +852,31 @@ void usb_service(void)
             break;
 
         case VEC_SOF:
+            TLM_INC16(tlm_sof_count);
             streaming_sof();
+            VECINT = 0;
+            break;
+
+        case VEC_IEP1:
+            /* Capture (EP1 IN) transaction complete. Counting only — the
+             * DMA engine is supposed to refill the buffer autonomously
+             * (see streaming_sof()). If this counter moves while arecord
+             * still fails, that assumption holds and the fault is upstream
+             * in the I2S/codec path; if it never moves, the endpoint is
+             * not transacting at all. The default case was already
+             * clearing VECINT for these vectors, so splitting them out
+             * changes nothing but the counting. */
+            TLM_INC8(tlm_vec_iep1);
+            /* TI UsbEng.c usbIntrHandler — every vector case writes
+             * VECINT = 0 before returning, or the source stays asserted
+             * and the ISR re-fires immediately (datasheet §6.5.7.3). */
+            VECINT = 0;
+            break;
+
+        case VEC_OEP2:
+            /* Playback (EP2 OUT) transaction complete. Same reasoning. */
+            TLM_INC8(tlm_vec_oep2);
+            /* TI UsbEng.c usbIntrHandler — clears VECINT in every case. */
             VECINT = 0;
             break;
 

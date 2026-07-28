@@ -33,6 +33,10 @@ volatile __data unsigned char tlm_eeprom_ok     = 0xFF;  /* 0xFF = not run */
 volatile __data unsigned char tlm_cs8427_status = 0xFF;
 volatile __data unsigned char tlm_codec_status  = 0xFF;
 
+volatile __data unsigned int  tlm_sof_count = 0;
+volatile __data unsigned char tlm_vec_iep1  = 0;
+volatile __data unsigned char tlm_vec_oep2  = 0;
+
 volatile __data unsigned char tlm_p1_boot = 0xFF;  /* 0xFF = not sampled */
 volatile __data unsigned char tlm_p3_boot = 0xFF;
 
@@ -111,6 +115,19 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[7] = tlm_p3_boot;
         return 1;
 
+    case 5:
+        /* Isochronous streaming state. Bytes 4-7 are LIVE register reads,
+         * so a host can watch the endpoint config and byte counts change
+         * (or fail to) while arecord is running. */
+        put16(&out[0], tlm_sof_count);
+        out[2] = tlm_vec_iep1;
+        out[3] = tlm_vec_oep2;
+        out[4] = IEPCNF1;
+        out[5] = OEPCNF2;
+        out[6] = IEPBCTX1;
+        out[7] = OEPBCTX2;
+        return 1;
+
     default:
         /* Clean sentinel rather than a stall, so a host walking blocks
          * until it runs out gets a defined answer. */
@@ -133,6 +150,9 @@ void tlm_reset_counters(void)
     tlm_vec_rstr  = 0;
     tlm_vec_none  = 0;
     tlm_vec_other = 0;
+    tlm_sof_count = 0;
+    tlm_vec_iep1  = 0;
+    tlm_vec_oep2  = 0;
     /* tlm_stage, tlm_phases, tlm_loop_count and the peripheral results are
      * deliberately NOT cleared: they describe how this boot went, not the
      * current experiment, and clearing them would destroy the only record
