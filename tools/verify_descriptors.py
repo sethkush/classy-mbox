@@ -128,10 +128,17 @@ def check_device(desc, r):
     # device is rejected with -22 no matter what it declares. Only 0dba:1000
     # is quirked; 0x2000 takes the generic parser path.
     #
+    # 0x2001 is the SECOND development unit. Two Mboxes now share one host,
+    # and every replug is a 2 km round trip for the person doing it, so the
+    # units run different candidate builds simultaneously and get compared
+    # against each other. Distinct PIDs are what keep "which card is which"
+    # from being a guess: same-PID units would differ only by bus address,
+    # which is not stable across replugs.
+    #
     # Safe on our side: mboxflash probes on VID 0x0DBA, and both flashers
     # find the device at any PID under that VID, so recovery is unaffected.
-    if pid not in (0x1000, 0x1001, 0x2000):
-        r.err(f"idProduct = 0x{pid:04X}, must be 0x1000, 0x1001 or 0x2000")
+    if pid not in (0x1000, 0x1001, 0x2000, 0x2001):
+        r.err(f"idProduct = 0x{pid:04X}, must be 0x1000, 0x1001, 0x2000 or 0x2001")
     r.note(f"bMaxPacketSize0 = {desc[7]}")
     if desc[7] not in (8, 16, 32, 64):
         r.err(f"bMaxPacketSize0 = {desc[7]}, must be 8/16/32/64")

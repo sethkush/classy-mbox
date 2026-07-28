@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Read mboxfw telemetry over EP0. See mboxfw/TELEMETRY.md for the block map.
 
-    sudo ./mbox_telemetry.py            # dump all blocks
-    sudo ./mbox_telemetry.py --reset    # zero the counters
-    sudo ./mbox_telemetry.py --ep0-test # measure EP0 continuation loss
+    sudo ./mbox_telemetry.py             # dump all blocks
+    sudo ./mbox_telemetry.py --pid 0x2001  # target the second unit
+    sudo ./mbox_telemetry.py --reset     # zero the counters
+    sudo ./mbox_telemetry.py --ep0-test  # measure EP0 continuation loss
 
 Every read is a single 8-byte EP0 packet, deliberately: the defect under
 investigation is the multi-packet continuation path, so the instrument must
@@ -19,22 +20,34 @@ except ImportError:
 VID = 0x0DBA
 # 0x1000 is the original PID; 0x2000 is the quirk-free build (see
 # verify_descriptors.py for why). Try each so one tool covers both.
-PIDS = (0x2000, 0x1000, 0x1001)
+# 0x2001 is the second development unit. With two Mboxes on one host,
+# "first device found" silently picks whichever enumerated first, so any
+# measurement taken without --pid is attributable to the wrong unit half
+# the time. Pass --pid whenever both are plugged in.
+PIDS = (0x2000, 0x2001, 0x1000, 0x1001)
 REQ_READ, REQ_RESET = 0x10, 0x11
 
 PHASES = [(0x01, "usb_init"), (0x02, "hw_init"), (0x04, "attach"),
           (0x08, "cs8427"), (0x10, "codec"), (0x20, "main_loop")]
 
 
-def dev():
-    d = None
-    for _pid in PIDS:
-        d = usb.core.find(idVendor=VID, idProduct=_pid)
-        if d is not None:
-            break
-    if d is None:
-        sys.exit("no mboxfw on the bus (looked for 0dba:2000/1000/1001)")
-    return d
+def dev(pid=None):
+    if pid is not None:
+        d = usb.core.find(idVendor=VID, idProduct=pid)
+        if d is None:
+            sys.exit("no device at 0dba:%04x" % pid)
+        return d
+    found = [(p, x) for p in PIDS
+             for x in [usb.core.find(idVendor=VID, idProduct=p)] if x]
+    if not found:
+        sys.exit("no mboxfw on the bus (looked for 0dba:%s)"
+                 % "/".join("%04x" % p for p in PIDS))
+    if len(found) > 1:
+        sys.exit("AMBIGUOUS: %d units on the bus (%s). Pass --pid to say "
+                 "which one you mean." % (len(found),
+                 ", ".join("0dba:%04x" % p for p, _ in found)))
+    print("targeting 0dba:%04x" % found[0][0], file=sys.stderr)
+    return found[0][1]
 
 
 def read_block(d, i):
@@ -115,8 +128,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--reset", action="store_true", help="zero the counters")
     ap.add_argument("--ep0-test", action="store_true", help="measure EP0 continuation loss")
+    ap.add_argument("--pid", type=lambda v: int(v, 0), default=None,
+                    help="target a specific unit, e.g. 0x2000 or 0x2001")
     a = ap.parse_args()
-    d = dev()
+    d = dev(a.pid)
     if a.reset:
         d.ctrl_transfer(0x40, REQ_RESET, 0, 0, None, 2000)
         print("counters cleared")
