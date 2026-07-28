@@ -248,7 +248,31 @@
  * effect only on next physical power cycle — turning any "trigger DFU"
  * path into a "please unplug" instruction. Fork audit 2026-07-24.
  *
- * Never returns. */
+ * Never returns.
+ *
+ * !!! BROKEN — DO NOT USE. Diagnosed 2026-07-27. !!!
+ *
+ * This macro cannot work inlined into our own code. TI Utils.SRC states
+ * twice, at lines 112 and 172, that UtilResetBootCPU must be
+ * "compile w #pragma SRC and link w code segment 8003h" — i.e. the
+ * routine executes from INSIDE THE BOOT ROM at 0x8003.
+ *
+ * That is load-bearing. Clearing MEMCFG.SDW swaps the shadow ROM in over
+ * 0x0000.., so any code performing the flip from RAM unmaps ITSELF: the
+ * instruction fetch after `movx @dptr,a` comes from boot-ROM bytes at the
+ * current PC instead of our code. TI's copy is immune only because it
+ * sits at 0x8xxx, which the swap does not touch.
+ *
+ * Observed: every caller of this macro hangs the CPU dead — safety_net's
+ * DFU trigger (2026-07-27) and mboxfw's before it. Both were previously
+ * blamed on ISR context; that was wrong. Moving the call to the main loop
+ * does NOT help, because the defect is the execution address, not the
+ * interrupt state.
+ *
+ * A correct version has to hand control to the boot ROM BEFORE flipping
+ * SDW — but the entry address of UtilResetBootCPU on real Mbox silicon is
+ * unverified (the boot ROM has never been dumped; our TI reference is a
+ * third-party GitHub copy). Do not guess an address here. */
 #define RESET_TO_BOOT_ROM() do { \
     __asm__("clr  ea");                                     \
     __asm__("mov  dptr,#0xFFFC");                           \
