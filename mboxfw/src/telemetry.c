@@ -131,6 +131,32 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[7] = (unsigned char)((tlm_last_iface << 4) | (tlm_last_alt & 0x0F));
         return 1;
 
+    case 6:
+        /* DMA and C-port live state — the isoc data source.
+         *
+         * SOF fires and the endpoints are enabled, but tlm_vec_iep1 stays
+         * 0: the device never returns a packet for an IN token. For
+         * isochronous there is no NAK, so that means the endpoint buffer
+         * is never filled. streaming_set_rate() arms IEPBCTX1 = 0 and
+         * relies on the DMA engine to fill it from the C-port; this block
+         * shows whether either half is actually running.
+         *
+         * DMACTL1 bits 6-7 are the arm bits (Rev 20 fcn.0x0728 @ 0x07E0
+         * writes |= 0xC0). CPTSTA is the C-port status.
+         *
+         * CAUTION: if CPTSTA has clear-on-read bits, reading it here
+         * consumes them. Reads are only issued when a host explicitly
+         * asks for block 6, never in the normal path. */
+        out[0] = DMACTL1;
+        out[1] = CPTSTA;
+        out[2] = CPTCNF1;
+        out[3] = ACGDCTL;
+        out[4] = IEPCNF1;
+        out[5] = IEPBCTX1;
+        out[6] = IEPBSIZ1;
+        out[7] = OEPBCTX2;
+        return 1;
+
     default:
         /* Clean sentinel rather than a stall, so a host walking blocks
          * until it runs out gets a defined answer. */
@@ -156,6 +182,7 @@ void tlm_reset_counters(void)
     tlm_sof_count = 0;
     tlm_vec_iep1  = 0;
     tlm_vec_oep2  = 0;
+    tlm_alt_seen  = 0;   /* per-experiment, so a reset isolates one run */
     /* tlm_stage, tlm_phases, tlm_loop_count and the peripheral results are
      * deliberately NOT cleared: they describe how this boot went, not the
      * current experiment, and clearing them would destroy the only record

@@ -78,6 +78,12 @@ def dump(d):
           % (b5[4], b5[5], (seen >> 0) & 1, (seen >> 1) & 1))
     print("  last SET_INTERFACE: iface=%d alt=%d" % (b5[7] >> 4, b5[7] & 0x0F))
 
+    b6 = read_block(d, 6)
+    print("dma/cport: DMACTL1=0x%02x (armed=%d) CPTSTA=0x%02x CPTCNF1=0x%02x ACGDCTL=0x%02x"
+          % (b6[0], 1 if (b6[0] & 0xC0) == 0xC0 else 0, b6[1], b6[2], b6[3]))
+    print("  IEPCNF1=0x%02x IEPBCTX1=0x%02x IEPBSIZ1=0x%02x OEPBCTX2=0x%02x"
+          % (b6[4], b6[5], b6[6], b6[7]))
+
 
 def ep0_test(d, trials=40):
     """Cross-check the device's own chunk counter against host-visible success.
