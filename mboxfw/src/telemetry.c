@@ -141,16 +141,20 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
          * relies on the DMA engine to fill it from the C-port; this block
          * shows whether either half is actually running.
          *
-         * DMACTL1 bits 6-7 are the arm bits (Rev 20 fcn.0x0728 @ 0x07E0
-         * writes |= 0xC0). CPTSTA is the C-port status.
+         * NOTE: bytes 0-1 used to read XDATA(0xFFE1) under the name
+         * DMACTL1 and treat 0xC0 there as proof the DMA was armed. 0xFFE1
+         * is ACGCTL, a clock-generator register; the reading was real but
+         * meant nothing about DMA. The real channel control registers are
+         * DMACTL0 (0xFFE8) and DMACTL1 (0xFFEE), and bit 7 (DMAEN) is the
+         * bit that matters. Expect 0x89 / 0x82 while streaming.
          *
          * CAUTION: if CPTSTA has clear-on-read bits, reading it here
          * consumes them. Reads are only issued when a host explicitly
          * asks for block 6, never in the normal path. */
-        out[0] = DMACTL1;
-        out[1] = CPTSTA;
-        out[2] = CPTCNF1;
-        out[3] = ACGDCTL;
+        out[0] = DMACTL1;   /* capture channel — bit 7 = DMAEN */
+        out[1] = DMACTL0;   /* playback channel */
+        out[2] = CPTSTA;
+        out[3] = ACGCTL;
         out[4] = IEPCNF1;
         out[5] = IEPBCTX1;
         out[6] = IEPBSIZ1;

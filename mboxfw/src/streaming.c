@@ -24,44 +24,18 @@
 static __data unsigned long stream_rate = 48000UL;
 
 /*
- * DMA source constants decoded from Rev 20's fcn.0x0728 mode-dispatch
- * (rev20_flat.asm around 0x074d..0x079c) plus its 48 kHz tail at
- * 0x0DFE..0x0E28. Two distinct value sets are written to DMASRC0 and
- * DMASRC2 depending on which mode the clock-source switcher enters:
+ * The two 24-bit constants Rev 20 loads (0x0F_A861 at fcn.0x0DEC/0x0DFE,
+ * 0x20_4B6A at fcn.0x0728 @ 0x0771) are ADAPTIVE CLOCK GENERATOR frequency
+ * words — ACG1FRQ2/1/0 at 0xFFE5-7 and ACG2FRQ2/1/0 at 0xFFF7-9, per TI
+ * Reg_stc1.h and datasheet §6.5.3. They were previously named DMASRC0/2
+ * here, which was invented; there is no DMA source register on this part.
+ * The two dead helpers dma_program_48k()/dma_program_44k1() that wrapped
+ * them are deleted — they were never called, and their names asserted a
+ * rate mapping that the live code below contradicts.
  *
- *   mode 3 tail (fcn.0x0DEC / 0x0DFE): DMASRC = 0x0F_A861
- *   mode 2       (fcn.0x0728 @ 0x075f): DMASRC = 0x20_4B6A
- *
- * The mapping of Rev 20's internal "mode" number → sample rate is:
- *   RAM[0x0A] = 7  →  44.1 kHz internal (see NOTES.md class-SET handler)
- *   RAM[0x0A] = 8  →  48   kHz internal
- * The full dispatch chain from RAM[0x0A] → fcn.0x0728 is deep enough that
- * we're taking it on the balance of evidence rather than fully traced:
- * the 48 kHz path (mode 3 tail) has been sanity-checked against my
- * earlier RE, so 44.1 kHz is the other one (mode 2's 0x20_4B6A). If audio
- * comes out pitched WRONG at 44.1 on first flash, swap the two calls
- * below — that's the fastest way to falsify the assumption.
+ * Which constant belongs to which rate is still unsettled and is a PITCH
+ * question, not a data-flow one; settle it with a loopback measurement.
  */
-static void dma_program_48k(void)
-{
-    DMASRC0_L = 0x61;
-    DMASRC0_M = 0xA8;
-    DMASRC0_H = 0x0F;
-    DMASRC2_L = 0x61;
-    DMASRC2_M = 0xA8;
-    DMASRC2_H = 0x0F;
-}
-
-static void dma_program_44k1(void)
-{
-    DMASRC0_L = 0x6A;
-    DMASRC0_M = 0x4B;
-    DMASRC0_H = 0x20;
-    DMASRC2_L = 0x6A;
-    DMASRC2_M = 0x4B;
-    DMASRC2_H = 0x20;
-}
-
 void streaming_set_rate(unsigned long hz)
 {
     stream_rate = hz;
@@ -90,43 +64,49 @@ void streaming_set_rate(unsigned long hz)
     if (hz == 48000UL) {
         /* mode 2 — 48 kHz internal. All 6 writes: Rev 20 fcn.0x0728
          * @ 0x0771 mode-2 branch. See rev20_dynamic_reconfig.md §3. */
-        DMASRC0_L = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0771 */
-        DMASRC0_M = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0773 */
-        DMASRC0_H = 0x20;  /* Rev 20 fcn.0x0728 @ 0x0775 */
-        DMASRC2_L = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 */
-        DMASRC2_M = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0779 */
-        DMASRC2_H = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077B */
+        ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
+        ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 */
+        ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
+        ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0783 */
+        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0789 */
+        ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x078F */
 
         g_codec_state_23 |= (unsigned char)0x0C;   /* 48 kHz codec bits */
     } else {
         /* mode 1 — 44.1 kHz internal.
-         * Rev 20 (rev20_flat.asm 0x075F) does NOT write DMASRC0/2 here;
-         * it writes only DMACTL1 = 0x0D and relies on the power-on
-         * DMASRC defaults (which happen to be the 44.1 constants).
-         * Cite: rev20_dynamic_reconfig.md §3 row "44.1k mode 1"
-         * ("mode 1 does NOT write DMASRC").
-         * Rev 20 fcn.0x0728 @ 0x075F writes 0x0D to Rev-20-empirical
-         * DMACTL1. */
-        XDATA(0xFFE1) = 0x0D;             /* Rev-20 DMACTL1 mode-1 */
+         * Rev 20 (rev20_flat.asm 0x075F) does NOT write the ACG frequency
+         * words here; it writes only ACGCTL = 0x0D and relies on the
+         * power-on ACG defaults. */
+        ACGCTL = 0x0D;    /* Rev 20 fcn.0x0728 @ 0x075F */
 
         g_codec_state_23 &= (unsigned char)~0x0C;  /* 44.1 kHz codec bits */
     }
 
-    /* Common tail — same for both rates.
-     * Cite: rev20_dynamic_reconfig.md §3 "Common streaming tail"
-     * (rev20_flat.asm 0x07C5-0x0803). Bullets:
-     *   1. ACG2DCTL seed for second clock generator
-     *   2. Zero EP BCTX/BSIZ (Rev 20 clears these on stream re-arm)
-     *   3. Enable both streaming EPs (0xC5 = enable + ISO + buffer valid)
-     *   4. Arm DMA channels 0+1 via DMACTL1 |= 0xC0 (bit 6 + bit 7) */
-    XDATA(0xFFF6) = 0x10;   /* TI ACG2DCTL — Rev 20 fcn.0x0728 @ 0x07C5 */
-    IEPBCTX1 = 0;           /* Rev 20 fcn.0x0728 tail — clear stream EPs */
-    IEPBSIZ1 = 0;           /* Rev 20 fcn.0x0728 tail */
-    OEPBCTX2 = 0;           /* Rev 20 fcn.0x0728 tail */
-    OEPBSIZ2 = 0;           /* Rev 20 fcn.0x0728 tail */
-    IEPCNF1  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07EA — enable EP1 IN */
-    OEPCNF2  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07F0 — enable EP2 OUT */
-    XDATA(0xFFE1) |= 0xC0;  /* Rev 20 fcn.0x0728 @ 0x07E0 — arm DMA 0+1 */
+    /* Common tail — same for both rates. Rev 20 fcn.0x0728 0x07C4-0x07FF.
+     *
+     * Rev 20 clears the four BYTE-COUNT registers (X and Y buffer counts
+     * for both streaming endpoints) and nothing else. It does NOT touch
+     * IEPBSIZ1/OEPBSIZ2 — those are the buffer SIZE registers, programmed
+     * once in streaming_capture_enable()/streaming_playback_enable().
+     * This code used to zero the SIZE registers instead of the Y counts,
+     * which left whichever endpoint was already streaming with a
+     * zero-length buffer if a SET_CUR(sample rate) arrived after
+     * SET_INTERFACE. Rev 20 sets BBAX/BSIZ exactly once at 0x09B1-0x09C6
+     * and never again. */
+    ACG2DCTL = 0x10;        /* Rev 20 fcn.0x0728 @ 0x07C4 */
+    IEPBCTX1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07E5 */
+    IEPBCTY1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07EA */
+    OEPBCTX2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07EE */
+    OEPBCTY2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07F2 */
+    IEPCNF1  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07F6 — enable EP1 IN */
+    OEPCNF2  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07FC — enable EP2 OUT */
+    /* ACGCTL bits 6-7, NOT a DMA arm. The old comment here claimed this
+     * armed DMA channels 0+1; 0xFFE1 is the adaptive clock generator
+     * control register (datasheet §6.5.3.11). The DMA channels are enabled
+     * per-endpoint in streaming_capture_enable()/streaming_playback_enable()
+     * via DMACTL1/DMACTL0 bit 7, which is what Rev 20 does at 0x03CF and
+     * 0x03DF. */
+    ACGCTL |= 0xC0;         /* Rev 20 fcn.0x0728 @ 0x07DE */
 
     /* Codec-side state commit. On real silicon fcn.0x0E74 is dead
      * code (codec self-configures from I²S clocks — see NOTES.md),
@@ -136,15 +116,46 @@ void streaming_set_rate(unsigned long hz)
     codec_commit();
 }
 
+/*
+ * Enabling a streaming endpoint has TWO halves, and until 2026-07-28 this
+ * firmware only did the first one.
+ *
+ *   1. Configure and enable the USB endpoint (BBAX/BSIZ/BCTX + xEPCNF).
+ *   2. Set DMAEN (bit 7) in that endpoint's DMA channel control register,
+ *      so the DMA engine actually moves bytes between the C-port and the
+ *      endpoint buffer.
+ *
+ * Without (2) the endpoint is enabled and answers every IN token, but its
+ * buffer is never filled, so the device returns a ZERO-LENGTH isochronous
+ * packet each frame. That is exactly what usbmon measured on 2026-07-28
+ * (ours: 0 bytes/frame; a stock Rev 18 unit on the same host: 288).
+ *
+ * Channel-to-endpoint mapping is fixed by the EPDIR/EPNUM fields hw_init
+ * programs (see regs.h):
+ *   DMACTL0 = 0x02 → OUT, EP2 → playback
+ *   DMACTL1 = 0x09 → IN,  EP1 → capture
+ * Rev 20 sets bit 7 of each at SET_INTERFACE time and clears it on stop:
+ * capture at 0x03CF (set) / 0x033F and 0x03F1 (clear), playback at 0x03DF
+ * and 0x043B (set) / 0x1013 (clear). We mirror that per-direction rather
+ * than arming both channels together, so a host streaming in one direction
+ * only does not leave the other channel running.
+ */
 void streaming_playback_enable(unsigned char on)
 {
     if (on) {
         OEPBBAX2 = EP_BBAX(EP2_OUT_BUF_ADDR);
         OEPBSIZ2 = EP_BSIZE(EP_AUDIO_BUF_SIZE);
         OEPBCTX2 = 0;
-        /* Rev 20 writes 0xC5 = enable + isochronous + buffer valid. */
+        /* 0xC5 = IEPEN | ISO | BPS field 5 (6 bytes per sample, i.e.
+         * stereo 24-bit) per datasheet §6.4.4.6.2. */
         OEPCNF2  = 0xC5;
+        /* Rev 20 fcn.0x0398 @ 0x03DF — DMACTL0 |= DMAEN, after the
+         * endpoint is enabled. Datasheet §6.5.2.3: "before enabling the
+         * DMA channel, all other DMA channel configuration bits must be
+         * set to the desired value." */
+        DMACTL0 |= DMA_EN;
     } else {
+        DMACTL0 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x1013 @ 0x1013 */
         OEPCNF2  = 0;
     }
 }
@@ -155,8 +166,12 @@ void streaming_capture_enable(unsigned char on)
         IEPBBAX1 = EP_BBAX(EP1_IN_BUF_ADDR);
         IEPBSIZ1 = EP_BSIZE(EP_AUDIO_BUF_SIZE);
         IEPBCTX1 = 0;
+        /* 0xC5 = IEPEN | ISO | BPS field 5 (6 bytes per sample) per
+         * datasheet §6.4.4.6.2. Rev 20 fcn.0x0398 @ 0x03C4 */
         IEPCNF1  = 0xC5;
+        DMACTL1 |= DMA_EN; /* Rev 20 fcn.0x0398 @ 0x03CF */
     } else {
+        DMACTL1 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x0330 @ 0x033F */
         IEPCNF1  = 0;
     }
 }

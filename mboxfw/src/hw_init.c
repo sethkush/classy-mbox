@@ -92,13 +92,22 @@ void hw_init(void)
      * channels are configured, not two") and rev20_dynamic_reconfig.md
      * §3 "Common streaming tail". Names cited by address per the
      * regs.h naming caveat (Rev-20 vs TI Reg_stc1.h disagree). */
-    /* Rev 20 fcn.0x08CB @ 0x0912-0x092A — six DMA-channel init bytes. */
-    XDATA(0xFFE8) = 0x02;
-    XDATA(0xFFE9) = 0x80;
-    XDATA(0xFFEA) = 0x03;
-    XDATA(0xFFEE) = 0x09;
-    XDATA(0xFFEF) = 0x80;
-    XDATA(0xFFF0) = 0x03;
+    /* Rev 20 fcn.0x08CB @ 0x0912-0x092A — six DMA-channel init bytes.
+     * Same addresses and values as before; only the names changed, from
+     * raw XDATA() to the TI/datasheet names now in regs.h.
+     * DMACTL0 = 0x02: EPDIR=0 (OUT) + EPNUM=2  → EP2 OUT, playback.
+     * DMACTL1 = 0x09: EPDIR=1 (IN)  + EPNUM=1  → EP1 IN,  capture.
+     * DMATSH  = 0x80: BPTS=10b = 3 bytes per time slot.
+     * DMATSL  = 0x03: time slots 0 and 1 → 2 channels × 3 B = 6 B/sample.
+     * DMAEN (bit 7) is deliberately NOT set here — the channels are
+     * enabled per direction at SET_INTERFACE time in streaming.c, which
+     * is what Rev 20 does. */
+    DMACTL0 = 0x02;   /* Rev 20 fcn.0x08CB @ 0x09F2 */
+    DMATSH0 = 0x80;   /* Rev 20 fcn.0x08CB @ 0x09E0 */
+    DMATSL0 = 0x03;   /* Rev 20 fcn.0x08CB @ 0x09DA */
+    DMACTL1 = 0x09;   /* Rev 20 fcn.0x08CB @ 0x09F8 */
+    DMATSH1 = 0x80;   /* Rev 20 fcn.0x08CB @ 0x09EC */
+    DMATSL1 = 0x03;   /* Rev 20 fcn.0x08CB @ 0x09E6 */
 
     /* -------- Initial mux state -------- */
     g_mux_state  = 0x00;

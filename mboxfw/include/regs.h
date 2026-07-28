@@ -104,11 +104,13 @@
 #define IEPBBAX1    XDATA(0xFF61)
 #define IEPBSIZ1    XDATA(0xFF62)
 #define IEPBCTX1    XDATA(0xFF63)
+#define IEPBCTY1    XDATA(0xFF67)   /* Y buffer count — IEPCNFn + 7 */
 
 #define OEPCNF2     XDATA(0xFF98)   /* audio playback (host → device) */
 #define OEPBBAX2    XDATA(0xFF99)
 #define OEPBSIZ2    XDATA(0xFF9A)
 #define OEPBCTX2    XDATA(0xFF9B)
+#define OEPBCTY2    XDATA(0xFF9F)   /* Y buffer count — OEPCNFn + 7 */
 
 /* USB setup-packet block (SETPACK, 8 bytes at 0xFF28-0xFF2F) */
 #define SETPACK_BMREQ  XDATA(0xFF28)
@@ -183,11 +185,52 @@
 #define CPTCNF2     XDATA(0xFFDF)
 #define CPTCNF1     XDATA(0xFFE0)
 
-/* DMA channels — channel 0 = playback, channel 2 = capture (per Rev 20) */
-#define DMASRC0_L   XDATA(0xFFE5)
-#define DMASRC0_M   XDATA(0xFFE6)
-#define DMASRC0_H   XDATA(0xFFE7)
-#define DMACTL1     XDATA(0xFFE1)
+/* Adaptive clock generator 1. These are NOT DMA registers.
+ *
+ * 0xFFE1 was named DMACTL1 here and 0xFFE5-7 were named DMASRC0_L/M/H.
+ * All four names were invented; TI Reg_stc1.h calls them ACGCTL and
+ * ACG1FRQ2/1/0, and the datasheet §6.5.3.11 / §6.5.3.1-3 agrees. This is
+ * the same class of error already documented below for 0xFFE2, and it had
+ * the same consequence: streaming.c wrote `DMACTL1 |= 0xC0` believing it
+ * armed the two DMA channels, when it was setting clock-generator enable
+ * bits. The real DMA channels were never enabled, so the capture endpoint
+ * buffer was never filled and every isochronous IN packet came back
+ * zero-length (measured with usbmon 2026-07-28 against a stock Rev 18
+ * unit delivering 288 B/frame).
+ *
+ * The 24-bit values written to ACG1FRQ/ACG2FRQ (0x204B6A, 0x0FA861) are
+ * clock-generator frequency words, not DMA source addresses. */
+#define ACGCTL      XDATA(0xFFE1)   /* TI Reg_stc1.h; datasheet §6.5.3.11 */
+#define ACG1FRQ2    XDATA(0xFFE5)   /* TI Reg_stc1.h; datasheet §6.5.3.3 */
+#define ACG1FRQ1    XDATA(0xFFE6)   /* TI Reg_stc1.h; datasheet §6.5.3.2 */
+#define ACG1FRQ0    XDATA(0xFFE7)   /* TI Reg_stc1.h; datasheet §6.5.3.1 */
+
+/* The real DMA channel registers (datasheet §6.5.2, Table "MCU memory-
+ * mapped registers" at FFE8h-FFF4h).
+ *
+ * DMACTL bits (§6.5.2.3): 7=DMAEN 6=HSKEN 5:4=rsvd 3=EPDIR 2:0=EPNUM.
+ *   Rev 20 boot writes DMACTL0 = 0x02 → EPDIR=0 (OUT), EPNUM=2 → EP2 OUT,
+ *   i.e. channel 0 is PLAYBACK; and DMACTL1 = 0x09 → EPDIR=1 (IN),
+ *   EPNUM=1 → EP1 IN, i.e. channel 1 is CAPTURE. Neither has DMAEN set at
+ *   boot; Rev 20 sets bit 7 at SET_INTERFACE time and clears it on stop.
+ * DMATSH bits (§6.5.2.2): 7:6=BPTS (bytes per time slot, 10b = 3 bytes),
+ *   5:0=TSL(13:8). DMATSL (§6.5.2.1) = TSL(7:0).
+ *   Rev 20 writes DMATSH=0x80, DMATSL=0x03 on both channels: 3 bytes per
+ *   slot on time slots 0 and 1 = 6 bytes per audio sample = stereo 24-bit,
+ *   which matches IEPCNF1 = 0xC5 (ISO, BPS field = 5 → 6 bytes/sample) and
+ *   the 288 B/frame stock delivers at 48 kHz. */
+#define DMACTL0     XDATA(0xFFE8)   /* playback  — EP2 OUT */
+#define DMATSH0     XDATA(0xFFE9)
+#define DMATSL0     XDATA(0xFFEA)
+#define DMABCNT0L   XDATA(0xFFEB)   /* read-only, updated every SOF */
+#define DMABCNT0H   XDATA(0xFFEC)
+#define DMACTL1     XDATA(0xFFEE)   /* capture — EP1 IN */
+#define DMATSH1     XDATA(0xFFEF)
+#define DMATSL1     XDATA(0xFFF0)
+#define DMABCNT1L   XDATA(0xFFF3)
+#define DMABCNT1H   XDATA(0xFFF4)
+
+#define DMA_EN      0x80            /* DMACTLn bit 7 = DMAEN */
 
 /* 0xFFE2 and 0xFFF6-0xFFF9 are NOT DMA registers. TI Reg_stc1.h names
  * them as the adaptive clock generators. Earlier revisions of this file
@@ -208,12 +251,10 @@
 #define ACG2FRQ1    XDATA(0xFFF8)   /* TI Reg_stc1.h */
 #define ACG2FRQ0    XDATA(0xFFF9)   /* TI Reg_stc1.h */
 
-/* Compatibility aliases for the three ACG2FRQ bytes, kept because the
- * streaming code writes them as a 24-bit frequency word (0x204B6A) and
- * reads better under the old names in that context. Same addresses. */
-#define DMASRC2_L   ACG2FRQ2
-#define DMASRC2_M   ACG2FRQ1
-#define DMASRC2_H   ACG2FRQ0
+/* The DMASRC0_x and DMASRC2_x aliases that used to live here are gone.
+ * They named clock-generator frequency bytes as DMA source pointers and
+ * were the proximate cause of the zero-length-isoc bug; see the ACGCTL
+ * block above. Use ACG1FRQn / ACG2FRQn. */
 
 /* Bit-bang GPIO helpers on P1 — see NOTES.md for pin map.
  * P1.0/1/2 = codec, P1.3/4 = CS8427 I²C, P1.5/6/7 = input mux shift-reg.

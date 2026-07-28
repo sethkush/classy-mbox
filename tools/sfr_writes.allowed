@@ -9,38 +9,34 @@
 # generated from a working image would have flagged that
 # specific tuple as a diff before flash.
 #
-# RE-BASELINED 2026-07-28, 68 -> 82 entries. The manifest had drifted
-# several commits behind: --update had never been run since the endpoint
-# and DMA work landed, so the gate was permanently red and therefore
-# catching nothing. Each of the 14 added tuples traces to a completed,
-# reviewed task, and all 14 are emitted by the HEAD build as well as the
-# working tree (verified by diffing the emitted sets of both builds):
+# NOTE: --update rewrites this file and DROPS per-entry annotations.
+# The standing annotations are kept below the entry list instead, so a
+# re-baseline cannot silently erase them.
 #
-#   0xff68/0xffa8 (IEPCNF0/OEPCNF0) and_not 0xf7, or 0x08, or 0x20,
-#     assign 0x84, runtime — EP0 STALL set/clear (bit 3) and data-toggle
-#     (bit 5) from reply_stall() and the EP0 continuation path, plus the
-#     UBME|DBUF configuration. Task #40 (SET_INTERFACE alt gating) and
-#     the EP0 ordering fix.
-#   0xffb2 (VECINT) runtime — the EP0 race fix: VECINT is now cleared
-#     with a computed value at the TOP of each vector case, before the
-#     next packet is armed (TI UsbEng.c engEx0, case IEP0_INT).
-#   0xffd4 (CPTRXCNF4) assign 0x01, was 0x03 — hw_init.
-#   0xffe2 (ACGDCTL) assign 0x10, was 0x00 — task #71, DMA arm writes.
-#   0xfff6 (ACG2DCTL) runtime — same patch.
-#   0xfffc (USBCTL) or 0x80 — see the annotated block below.
-#   0xffff (USBFADR) assign 0x00 — address cleared on bus reset,
-#     task #44 (VEC_RSTR handler).
-#
-# NOTE: the two writes this replaced (0xffd4 assign 0x03, 0xffe2 assign
-# 0x00) are genuinely no longer emitted; they were superseded, not lost.
+# RE-BASELINED 2026-07-28 (second time today), 82 -> 80 entries, for the
+# DMA-enable fix. Reviewed diff:
+#   + 0xff67 / 0xff9f runtime (IEPBCTY1 / OEPBCTY2) — Rev 20 fcn.0x0728
+#     @ 0x07EA and 0x07F2 clear both the X and Y buffer counts in the
+#     streaming tail. We previously cleared X and then zeroed the buffer
+#     SIZE registers instead of Y, which is not what Rev 20 does.
+#   + 0xffe8 / 0xffee or 0x80, and_not 0x7f — DMAEN set/clear on the two
+#     real DMA channel control registers. This is the fix: the firmware
+#     had never once set DMAEN, so the capture endpoint buffer was never
+#     filled and every isochronous IN packet came back zero-length.
+#   - 0xff62 / 0xff9a runtime — the IEPBSIZ1 = 0 / OEPBSIZ2 = 0 writes
+#     removed by the same change. The `assign 0x40` forms that program
+#     the real buffer size remain.
+#   - 0xffe5/e6/e7 and 0xfff7/f8/f9 assign 0x61,0xa8,0x0f — the dead
+#     dma_program_48k() helper, deleted. It was never called, and its
+#     name asserted a rate mapping the live code contradicts.
 
 0xff2e  rmw       -       # usb
 0xff60  assign    0x00    # streaming,usb
 0xff60  assign    0xc5    # streaming
 0xff61  assign    0x60    # streaming
 0xff62  assign    0x40    # streaming
-0xff62  runtime   -       # streaming
 0xff63  assign    0x00    # streaming
+0xff67  runtime   -       # streaming
 0xff68  and_not   0xd7    # usb
 0xff68  and_not   0xf7    # usb
 0xff68  assign    0x84    # usb
@@ -56,9 +52,9 @@
 0xff98  runtime   -       # streaming,usb
 0xff99  assign    0xa0    # streaming
 0xff9a  assign    0x40    # streaming
-0xff9a  runtime   -       # streaming
 0xff9b  assign    0x00    # streaming
 0xff9b  runtime   -       # streaming
+0xff9f  runtime   -       # streaming
 0xffa8  and_not   0xd7    # usb
 0xffa8  and_not   0xf7    # usb
 0xffa8  assign    0x84    # usb
@@ -90,47 +86,55 @@
 0xffe1  assign    0x0d    # streaming
 0xffe1  or        0xc0    # streaming
 0xffe2  assign    0x10    # streaming
-0xffe5  assign    0x61    # streaming
 0xffe5  assign    0x6a    # streaming
 0xffe6  assign    0x4b    # streaming
-0xffe6  assign    0xa8    # streaming
-0xffe7  assign    0x0f    # streaming
 0xffe7  assign    0x20    # streaming
+0xffe8  and_not   0x7f    # streaming
 0xffe8  assign    0x02    # hw_init
+0xffe8  or        0x80    # streaming
 0xffe9  assign    0x80    # hw_init
 0xffea  assign    0x03    # hw_init
+0xffee  and_not   0x7f    # streaming
 0xffee  assign    0x09    # hw_init
+0xffee  or        0x80    # streaming
 0xffef  assign    0x80    # hw_init
 0xfff0  assign    0x03    # hw_init
 0xfff6  assign    0x10    # streaming
 0xfff6  runtime   -       # streaming
-0xfff7  assign    0x61    # streaming
 0xfff7  assign    0x6a    # streaming
 0xfff8  assign    0x4b    # streaming
-0xfff8  assign    0xa8    # streaming
-0xfff9  assign    0x0f    # streaming
 0xfff9  assign    0x20    # streaming
-# USBCTL — three writes, all intentional and cited:
+0xfffc  assign    0x00    # main
+0xfffc  or        0x80    # usb
+0xfffc  or        0xc0    # usb
+0xfffd  or        0xf5    # usb
+0xffff  assign    0x00    # usb
+0xffff  runtime   -       # usb
+
+# ---------------------------------------------------------------------
+# Standing annotations (kept below the entries so `--update` can't drop
+# them; the parser ignores comment lines wherever they appear).
+#
+# USBCTL (0xfffc) — three writes, all intentional and cited:
 #   assign 0x00 (main.c): defensive disconnect at top of main(), and the
 #     same write in the deferred enter-DFU path before the signature is
 #     invalidated. POLICY §2 carve-out A. Matches Rev 20 disasm 0x08E5
-#     (master init) and safety_net's top-of-main disconnect. No-op on the
-#     expected boot paths (post-DFU-manifest USBCTL=0, cold boot USBCTL=0).
+#     (master init) and safety_net's top-of-main disconnect.
 #   or 0x80 (usb.c): CONN alone at cold init — mirrors Rev 20 0x0AE2.
 #   or 0xC0 (usb.c): RMW attach — CONN + FEN together. FEN required per
 #     datasheet §6.5.1.4 ("UBM ignores all USB transactions" when FEN=0).
 #     usb_init is called at boot and re-called from VEC_RSTR, so both
-#     paths reliably set FEN. Rev 20 splits this the same way: |=0x80 at
-#     cold init 0x0AE2 and |=0xC0 in the RSTR handler at 0x0F72.
-0xfffc  assign    0x00    # main
-0xfffc  or        0x80    # usb
-0xfffc  or        0xc0    # usb
-# USBIMSK — 0xF5 = RSTR|SUSR|RESR|SOF|SETUP|STPOW (datasheet §6.5.1.3:
-#   7=RSTR 6=SUSR 5=RESR 4=SOF 3=PSOF 2=SETUP 1=rsvd 0=STPOW).
-#   Was 0xE5, the same set without SOF. Telemetry block 5 measured
+#     paths reliably set FEN. Rev 20 splits this the same way.
+#
+# USBIMSK (0xfffd) — 0xF5 = RSTR|SUSR|RESR|SOF|SETUP|STPOW (datasheet
+#   §6.5.1.3: 7=RSTR 6=SUSR 5=RESR 4=SOF 3=PSOF 2=SETUP 1=rsvd 0=STPOW).
+#   Was 0xE5, the same set without SOF, and telemetry block 5 measured
 #   tlm_sof_count == 0 on hardware because of it. Rev 20 uses 0x9F, which
-#   also enables SOF; we keep SUSR/RESR that Rev 20 omits, and still leave
-#   PSOF masked.
-0xfffd  or        0xf5    # usb
-0xffff  assign    0x00    # usb
-0xffff  runtime   -       # usb
+#   also enables SOF; we keep SUSR/RESR that Rev 20 omits, and still
+#   leave PSOF masked.
+#
+# 0xffe8 / 0xffee are DMACTL0 / DMACTL1 (datasheet §6.5.2.3), the real
+#   DMA channel control registers. 0xffe1 is ACGCTL, a clock-generator
+#   register — it is NOT a DMA register, despite the name this repo used
+#   for it until 2026-07-28. Writing 0xC0 to 0xffe1 does not arm any DMA
+#   channel; DMAEN is bit 7 of 0xffe8/0xffee.
