@@ -57,6 +57,23 @@ extern const __code unsigned char AppStringProduct[];
  * test across iterations. */
 volatile __data unsigned char g_dfu_request_pending = 0;
 
+/* Pending EP0 control-OUT data stage.
+ *
+ * A host-to-device class request with wLength > 0 carries its payload in an
+ * OUT packet that has NOT arrived when the SETUP is dispatched. The handler
+ * must therefore record what to do and return without replying; the work
+ * happens in VEC_OEP0 once the data is in the buffer.
+ *
+ * TI UsbEng.c engEp0RxDone does exactly this: on USB_WRITE_EVENT it waits
+ * for xferStatus == ENG_RX_COMPLETE before calling usbProtocolHandler(),
+ * i.e. the class request is serviced from the OUT-completion interrupt, not
+ * from the SETUP. mboxfw parsed the buffer at SETUP time and so read stale
+ * bytes — which is why every SET_CUR SamplingFrequency stalled and Linux
+ * logged "cannot set freq 48000 to ep 0x2" once it started binding. */
+#define EP0_OUT_NONE            0
+#define EP0_OUT_SET_SAMPLE_FREQ 1
+static __data unsigned char g_ep0_out_pending = EP0_OUT_NONE;
+
 /* Current USB device state — updated by SET_CONFIGURATION / SET_INTERFACE. */
 static __data unsigned char g_configured = 0;
 static __data unsigned char g_alt_playback = 0;   /* alt setting on interface 1 */
@@ -373,23 +390,11 @@ static void handle_class_endpoint_request(void)
         return;
     }
     if (bReq == UAC_SET_CUR) {
-        /* Host sending 3-byte sample rate as 24-bit LE (UAC1 §5.2.2.1.1).
-         * Rev 20 cheats by reading only src[0] — works for 44100/48000
-         * because their low bytes (0x44/0x80) are unique, but silently
-         * accepts nonsense like 300 kHz. We parse the full 24-bit value
-         * and STALL anything not in our supported rate list so the host
-         * gets an unambiguous "no" rather than a broken pipe. */
-        __xdata unsigned char *src = (__xdata unsigned char *)EP0_OUT_BUF_ADDR;
-        unsigned long rate = (unsigned long)src[0]
-                           | ((unsigned long)src[1] << 8)
-                           | ((unsigned long)src[2] << 16);
-        if (rate == 44100UL || rate == 48000UL) {
-            g_sample_rate = rate;
-            streaming_set_rate(rate);
-            reply_zero_length();
-        } else {
-            reply_stall();
-        }
+        /* The 3-byte rate is still in flight. Record the pending data
+         * stage and return WITHOUT replying — no status, no stall. The
+         * rate is applied in VEC_OEP0 when the OUT packet lands. See the
+         * g_ep0_out_pending block above for the reference this follows. */
+        g_ep0_out_pending = EP0_OUT_SET_SAMPLE_FREQ;
     } else if (bReq == UAC_GET_CUR) {
         /* Reply with current sample rate as 3-byte LE (UAC1 §5.2.2.1.1). */
         unsigned char rate_bytes[3];
@@ -468,6 +473,10 @@ static void handle_setup(void)
      * reply_zero_length() did not — so it is fixed here by the same
      * means. See safety_net/EP0_DIFF_vs_REV20.md §5. */
     g_ep0_reply_remaining = 0;
+    /* A new SETUP supersedes any data stage the previous one was waiting
+     * for. Without this a stale flag would make the NEXT status packet be
+     * misread as sample-rate bytes. */
+    g_ep0_out_pending = EP0_OUT_NONE;
 
     /* Record the SETUP before dispatching, so a request that wedges us is
      * still visible in telemetry block 2 afterwards. */
@@ -652,6 +661,7 @@ void usb_init(void)
     g_alt_playback = 0;
     g_alt_capture  = 0;
     g_ep0_reply_remaining = 0;
+    g_ep0_out_pending = EP0_OUT_NONE;
 
     /* Settle before attach. Rev 20 (rev20_flat.asm 0x0AC5-0x0AD8) runs a
      * ~65k-iter outer loop between finishing peripheral init and enabling
@@ -773,11 +783,36 @@ void usb_service(void)
 
         case VEC_OEP0:
             TLM_INC8(tlm_vec_oep0);
-            /* Host sent data (or status stage). Nothing to do for the
-             * requests we handle so far — just acknowledge. TI UsbEng.c
-             * engEx0(): `case OEP0_INT: VECINT=0; engEp0RxDone();` —
-             * vector cleared first, same as IEP0 above. */
+            /* Host sent data (or status stage). TI UsbEng.c engEx0():
+             * `case OEP0_INT: VECINT=0; engEp0RxDone();` — vector cleared
+             * first, same as IEP0 above. */
             VECINT = 0;
+
+            /* Data stage of a control-OUT class request. Read the buffer
+             * BEFORE anything re-arms the endpoint, or the bytes can be
+             * overwritten by the next packet. */
+            if (g_ep0_out_pending == EP0_OUT_SET_SAMPLE_FREQ) {
+                __xdata unsigned char *src =
+                    (__xdata unsigned char *)EP0_OUT_BUF_ADDR;
+                /* 3-byte sample rate, 24-bit LE (UAC1 §5.2.2.1.1).
+                 * Rev 20 cheats by reading only src[0] — that works for
+                 * 44100/48000 because their low bytes (0x44/0x80) are
+                 * unique, but silently accepts nonsense like 300 kHz. We
+                 * parse the full 24-bit value and STALL anything outside
+                 * the rate list our descriptors advertise, so the host
+                 * gets an unambiguous "no" rather than a broken pipe. */
+                unsigned long rate = (unsigned long)src[0]
+                                   | ((unsigned long)src[1] << 8)
+                                   | ((unsigned long)src[2] << 16);
+                g_ep0_out_pending = EP0_OUT_NONE;
+                if (rate == 44100UL || rate == 48000UL) {
+                    g_sample_rate = rate;
+                    streaming_set_rate(rate);
+                    reply_zero_length();   /* status stage */
+                } else {
+                    reply_stall();
+                }
+            }
             break;
 
         case VEC_RSTR:
@@ -802,6 +837,7 @@ void usb_service(void)
             USBCTL |= (USBCTL_CONN | USBCTL_FEN);
             g_pending_address = 0xFF;
             g_ep0_reply_remaining = 0;
+            g_ep0_out_pending = EP0_OUT_NONE;
             g_configured = 0;
             g_alt_playback = 0;
             g_alt_capture = 0;

@@ -28,7 +28,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0002   /* 0002: DFU trigger restored, P1/P3 telemetry */
+#define TLM_BUILD_ID     0x0003   /* 0003: SET_CUR sample rate read in the OUT data stage */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01
