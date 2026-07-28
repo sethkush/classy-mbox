@@ -92,7 +92,8 @@ def build_eeprom_header(payload_size: int,
                         vid: int = 0x0DBA,
                         pid: int = 0x1001,
                         max_power_mA: int = 500,
-                        data_type: int = 0x01) -> bytes:
+                        data_type: int = 0x01,
+                        attribute: int = 0x02) -> bytes:
     """
     Build the 18-byte TAS1020A EEPROM_HEADER_STRUCT.
     Fields (per TI's ROM/eeprom.h):
@@ -119,7 +120,7 @@ def build_eeprom_header(payload_size: int,
         0x01, 0x01,  # productVersion, FirmwareVersion
         0x04,        # usbAttribute
         max_power_mA // 2,
-        0x02,        # attribute
+        attribute,   # attribute (0x02 = EEPROM_HEADER_OVERWRITE)
         32,          # wPageSize
         data_type,   # dataType (0x01=APPCODE, 0x03=APPCODE_UPDATING bootstrap)
         0x00,        # rPageSize
@@ -190,6 +191,13 @@ def main() -> int:
                     help="output flasher-payload .bin")
     ap.add_argument("--vid", type=lambda s: int(s, 0), default=0x0DBA)
     ap.add_argument("--pid", type=lambda s: int(s, 0), default=0x1001)
+    ap.add_argument("--attribute", type=lambda s: int(s, 0), default=0x02,
+                    help="EEPROM header attribute byte. 0x02 = EEPROM_HEADER_OVERWRITE, which "
+                         "makes the boot ROM write the header to EEPROM over I2C on the FIRST "
+                         "download block (UsbDfu.c dfuDnloadHeader) REGARDLESS of target. Use "
+                         "0x00 for a RAM-target image so no I2C is needed: a shorted boot "
+                         "leaves ROM_EEPROM_WORD_ACCESS_MODE undetermined (Eeprom.c:113-117 "
+                         "returns early), so that write fails with errPROG.")
     ap.add_argument("--max-power-mA", type=int, default=500)
     ap.add_argument("--data-type", type=lambda s: int(s, 0), default=0x01,
                     help="EEPROM header dataType: 0x01=APPCODE (normal), "
@@ -210,7 +218,8 @@ def main() -> int:
     header = build_eeprom_header(len(code),
                                  vid=args.vid, pid=args.pid,
                                  max_power_mA=args.max_power_mA,
-                                 data_type=args.data_type)
+                                 data_type=args.data_type,
+                                 attribute=args.attribute)
     stream = emit_records(header, code)
     args.out.write_bytes(stream)
 

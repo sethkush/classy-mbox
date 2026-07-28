@@ -24,7 +24,7 @@ $(BUILD)/$(TARGET).ihx: $(BUILD)/main.rel
 	sdcc $(LDFLAGS) -o $@ $<
 
 $(BUILD)/$(TARGET)_flasher.bin: $(BUILD)/$(TARGET).ihx
-	python3 ../tools/wrap_hex.py $< -o $@
+	python3 ../tools/wrap_hex.py $< -o $@ --attribute 0x00
 
 clean:
 	rm -rf $(BUILD)
