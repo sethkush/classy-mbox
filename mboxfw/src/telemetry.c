@@ -36,6 +36,9 @@ volatile __data unsigned char tlm_codec_status  = 0xFF;
 volatile __data unsigned int  tlm_sof_count = 0;
 volatile __data unsigned char tlm_vec_iep1  = 0;
 volatile __data unsigned char tlm_vec_oep2  = 0;
+volatile __data unsigned char tlm_last_iface = 0xFF;  /* 0xFF = none seen */
+volatile __data unsigned char tlm_last_alt   = 0xFF;
+volatile __data unsigned char tlm_alt_seen   = 0;
 
 volatile __data unsigned char tlm_p1_boot = 0xFF;  /* 0xFF = not sampled */
 volatile __data unsigned char tlm_p3_boot = 0xFF;
@@ -124,8 +127,8 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[3] = tlm_vec_oep2;
         out[4] = IEPCNF1;
         out[5] = OEPCNF2;
-        out[6] = IEPBCTX1;
-        out[7] = OEPBCTX2;
+        out[6] = tlm_alt_seen;
+        out[7] = (unsigned char)((tlm_last_iface << 4) | (tlm_last_alt & 0x0F));
         return 1;
 
     default:

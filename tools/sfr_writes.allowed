@@ -125,6 +125,12 @@
 0xfffc  assign    0x00    # main
 0xfffc  or        0x80    # usb
 0xfffc  or        0xc0    # usb
-0xfffd  or        0xe5    # usb
+# USBIMSK — 0xF5 = RSTR|SUSR|RESR|SOF|SETUP|STPOW (datasheet §6.5.1.3:
+#   7=RSTR 6=SUSR 5=RESR 4=SOF 3=PSOF 2=SETUP 1=rsvd 0=STPOW).
+#   Was 0xE5, the same set without SOF. Telemetry block 5 measured
+#   tlm_sof_count == 0 on hardware because of it. Rev 20 uses 0x9F, which
+#   also enables SOF; we keep SUSR/RESR that Rev 20 omits, and still leave
+#   PSOF masked.
+0xfffd  or        0xf5    # usb
 0xffff  assign    0x00    # usb
 0xffff  runtime   -       # usb

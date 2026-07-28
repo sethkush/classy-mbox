@@ -293,12 +293,21 @@ static void handle_set_interface(void)
     unsigned char iface = wIndexL;
     unsigned char alt   = wValueL;
 
+    /* Latched for telemetry. A live read cannot answer "was capture ever
+     * enabled?" because arecord dies within milliseconds of the failed
+     * read and ALSA sets the interface back to alt 0 on teardown, so any
+     * sample taken from the host races the teardown. These are sticky. */
+    tlm_last_iface = iface;
+    tlm_last_alt   = alt;
+
     if (iface == 1) {
         g_alt_playback = alt;
         streaming_playback_enable(alt != 0);
+        if (alt) tlm_alt_seen |= TLM_ALT_PLAYBACK_ON;
     } else if (iface == 2) {
         g_alt_capture = alt;
         streaming_capture_enable(alt != 0);
+        if (alt) tlm_alt_seen |= TLM_ALT_CAPTURE_ON;
     }
     reply_zero_length();
 }
@@ -654,15 +663,29 @@ void usb_init(void)
      * assignment; that also clobbered whatever boot ROM had set. RMW to
      * be safe. Reference: TI UsbEng.c::engUsbInit line ~647.
      *
-     * NOTE (2026-07-25): Rev 20's boot USBIMSK is actually 0x9F
-     * (rev20_flat.asm 0x09FE-0x0A03, verified), NOT 0xE5 as an
-     * earlier doc row claimed — 0x091A writes 0xE5 to CPTCNF4
-     * (0xFFDF), not USBIMSK. Choosing 0xE5 over Rev 20's 0x9F is a
-     * deliberate architectural divergence: we dispatch SETUP via
-     * the STPOW interrupt path (bit 5), while Rev 20 uses a polled
-     * EP0 model that doesn't need STPOW. Do NOT "fix" this back to
-     * 0x9F. */
-    USBIMSK |= 0xE5;
+     * Bits per TAS1020B datasheet §6.5.1.3: 7=RSTR 6=SUSR 5=RESR
+     * 4=SOF 3=PSOF 2=SETUP 1=reserved 0=STPOW.
+     *
+     * 0xF5 = RSTR|SUSR|RESR|SOF|SETUP|STPOW.
+     *
+     * This was 0xE5, which is the same set WITHOUT SOF (bit 4), and
+     * telemetry block 5 measured tlm_sof_count == 0 on hardware for
+     * exactly that reason — we had masked the frame clock off.
+     *
+     * Rev 20 uses 0x9F (RSTR|SOF|PSOF|SETUP|STPOW) at rev20_flat.asm
+     * 0x09FE-0x0A03. The old comment here claimed switching to 0x9F
+     * "would silence our SETUP handler" because STPOW was bit 5 —
+     * both parts are wrong. STPOW is bit 0 and SETUP is bit 2, and
+     * 0x9F sets both; commit 189c219 corrected the same error in
+     * safety_net's comments but never propagated it here.
+     *
+     * We take 0xF5 rather than Rev 20's 0x9F so we keep SUSR/RESR for
+     * suspend/resume, which Rev 20 omits. The deliberate divergence
+     * that remains is PSOF (bit 3), which we still leave masked.
+     *
+     * Enabling SOF was neutral for enumeration, which is why the gap
+     * survived this long — it only matters once streaming starts. */
+    USBIMSK |= 0xF5;
 
     g_configured   = 0;
     g_alt_playback = 0;

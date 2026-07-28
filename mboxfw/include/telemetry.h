@@ -35,7 +35,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0004   /* 0004: isoc streaming telemetry (block 5) */
+#define TLM_BUILD_ID     0x0005   /* 0005: SOF unmasked (USBIMSK 0xF5) + alt latches */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01
@@ -104,6 +104,14 @@ extern volatile __data unsigned char tlm_p3_boot;
 extern volatile __data unsigned int  tlm_sof_count;
 extern volatile __data unsigned char tlm_vec_iep1;
 extern volatile __data unsigned char tlm_vec_oep2;
+
+/* SET_INTERFACE forensics. Sticky, because a host-side read always races
+ * arecord's teardown back to alt 0. */
+#define TLM_ALT_PLAYBACK_ON 0x01
+#define TLM_ALT_CAPTURE_ON  0x02
+extern volatile __data unsigned char tlm_last_iface;
+extern volatile __data unsigned char tlm_last_alt;
+extern volatile __data unsigned char tlm_alt_seen;
 
 /* Saturating increments — a counter that wraps mid-experiment reads as a
  * smaller number than reality and would silently corrupt a measurement. */

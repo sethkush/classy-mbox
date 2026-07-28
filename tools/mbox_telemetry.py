@@ -73,8 +73,10 @@ def dump(d):
     b5 = read_block(d, 5)
     sof = b5[0] | (b5[1] << 8)
     print("isoc: sof=%d iep1=%d oep2=%d" % (sof, b5[2], b5[3]))
-    print("  live IEPCNF1=0x%02x OEPCNF2=0x%02x IEPBCTX1=0x%02x OEPBCTX2=0x%02x"
-          % (b5[4], b5[5], b5[6], b5[7]))
+    seen = b5[6]
+    print("  live IEPCNF1=0x%02x OEPCNF2=0x%02x  alt_seen: playback=%d capture=%d"
+          % (b5[4], b5[5], (seen >> 0) & 1, (seen >> 1) & 1))
+    print("  last SET_INTERFACE: iface=%d alt=%d" % (b5[7] >> 4, b5[7] & 0x0F))
 
 
 def ep0_test(d, trials=40):
