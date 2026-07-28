@@ -708,12 +708,36 @@ void usb_service(void)
             break;
 
         case VEC_IEP0:
-            /* Ordering and cleanup ported from safety_net.
+            /* ACK the vector BEFORE arming the next packet.
+             *
+             * TI UsbEng.c engEx0():
+             *     case IEP0_INT:
+             *         VECINT=0;
+             *         engEp0TxDone();
+             * This code used to ship the chunk first and clear VECINT at
+             * the bottom of the case, which loses interrupts: once
+             * IEPBCTX0 is written the packet can complete before we reach
+             * the clear, and VECINT = 0 then wipes the completion event
+             * for the packet just armed. The continuation never fires
+             * again and the transfer hangs.
+             *
+             * Measured 2026-07-27, 60 trials/size: 1-2 packet replies
+             * 60/60; 3 packets 53/60; 4 packets 47/60; 8 packets 27/60;
+             * 23 packets 9/60 — a clean geometric ~12% loss per
+             * continuation past the first. safety_net showed the same
+             * curve from the same ordering, which is what ruled out every
+             * mboxfw-specific theory (SDCC overlay, busy main loop).
+             *
+             * Ordering and cleanup otherwise ported from safety_net.
              *
              * USB 2.0 §9.4.6: a pending SET_ADDRESS takes effect only
              * AFTER its zero-length IN status stage completes. VEC_IEP0
              * firing means the host ACKed that packet, so latch USBFADR
              * now and the next transaction lands at the new address. */
+            /* TI UsbEng.c engEx0 — `case IEP0_INT: VECINT=0;` precedes
+             * engEp0TxDone(), so the vector is acknowledged before the
+             * next packet is armed. */
+            VECINT = 0;
             if (g_pending_address != 0xFF) {
                 /* 16 = deferred address actually applied. */
                 STAGE(16);
@@ -737,12 +761,13 @@ void usb_service(void)
             /* Re-arm EP0 OUT on EVERY IN completion, not just at end of
              * transfer — safety_net does this unconditionally. */
             OEPBCTX0 = 0;
-            VECINT = 0;
             break;
 
         case VEC_OEP0:
             /* Host sent data (or status stage). Nothing to do for the
-             * requests we handle so far — just acknowledge. */
+             * requests we handle so far — just acknowledge. TI UsbEng.c
+             * engEx0(): `case OEP0_INT: VECINT=0; engEp0RxDone();` —
+             * vector cleared first, same as IEP0 above. */
             VECINT = 0;
             break;
 

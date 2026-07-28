@@ -666,6 +666,27 @@ static void usb_service(void)
             VECINT = 0;
             break;
         case VEC_IEP0:
+            /* ACK the vector BEFORE arming the next packet.
+             *
+             * TI UsbEng.c engEx0() does exactly this:
+             *     case IEP0_INT:
+             *         VECINT=0;
+             *         engEp0TxDone();
+             * We used to ship the chunk first and clear VECINT at the
+             * bottom of the case. That loses interrupts: once IEPBCTX0 is
+             * written the packet can go out and complete before we reach
+             * the clear, and then VECINT = 0 wipes the completion event
+             * for the packet we just armed. No further chunk is ever
+             * shipped and the transfer hangs.
+             *
+             * Measured on hardware 2026-07-27, 60 trials per size: 1- and
+             * 2-packet replies 60/60, 3-packet 28/60, 8-packet 25/60 —
+             * i.e. every continuation past the first was ~12% lossy, and
+             * mboxfw showed the same curve from the same code.
+             *
+             * TI UsbEng.c engEx0 — `case IEP0_INT: VECINT=0;` precedes
+             * engEp0TxDone(). */
+            VECINT = 0;
             if (pending_addr != 0xFF) {
                 USBFADR = pending_addr;
                 pending_addr = 0xFF;
@@ -707,9 +728,10 @@ static void usb_service(void)
                 IEPBCTX0 = 0;
             }
             OEPBCTX0 = 0;
-            VECINT = 0;
             break;
         case VEC_OEP0:
+            /* TI UsbEng.c engEx0(): `case OEP0_INT: VECINT=0;
+             * engEp0RxDone();` — vector cleared before any work. */
             VECINT = 0;
             break;
         case VEC_RSTR:
