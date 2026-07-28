@@ -35,7 +35,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x000A   /* 000A: CPTRXCNF4 DIVB2=4, rate words swapped */
+#define TLM_BUILD_ID     0x000B   /* 000B: BYOR cleared on capture (S24_3LE) */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01

@@ -57,11 +57,52 @@ void hw_init(void)
      * corrected; the addresses written are unchanged. */
     CPTCNF1   = 0x0D;   /* 0xFFE0 — stock writes 0x0D */
     CPTCNF2   = 0xE5;   /* 0xFFDF — stock writes 0xE5 */
-    CPTCNF3   = 0xAC;   /* 0xFFDE — stock writes 0xAC */
+    /* CPTCNF3 / CPTRXCNF3 bit 2 is BYOR, the byte-order bit: "when this bit
+     * is set to a 1, the byte order of each audio sample is reversed when
+     * the data is moved to/from the USB endpoint buffer" (datasheet
+     * §6.5.4.3 and §6.5.4.12 — identical layouts).
+     *
+     * Stock is big-endian on the wire and sets BYOR. Chain of evidence,
+     * entirely static:
+     *   1. Linux declares stock 0dba:1000 as SNDRV_PCM_FMTBIT_S24_3BE, both
+     *      directions (reference/mbox1_quirks-table.h.snippet).
+     *   2. Stock boot init writes 0xAC (BYOR=1) to BOTH registers, in Rev 20
+     *      (@0x090B, @0x0923) and Rev 22 (@0x082C, @0x0844).
+     *   3. So BYOR=1 gives big-endian, and BYOR=0 gives little-endian.
+     * mboxfw declares S24_3LE, which is the spec-compliant choice and the
+     * whole point of the project, so it wants BYOR=0 where stock has 1.
+     *
+     * Copying stock's 0xAC is why the first successful capture looked like
+     * full-scale noise: it was correct audio with the bytes in the other
+     * order. `00 00 80` reads as -8388608 little-endian and as 128 big-.
+     *
+     * The two directions are NOT symmetric. Rev 20 toggles CPTCNF3 at
+     * runtime by direction — 0xAC (BYOR=1) when capture is requested
+     * (@0x035C) and 0xA8 (BYOR=0) when playback is (@0x0367) — while Linux
+     * reports BOTH directions as big-endian. So the reversal is relative to
+     * the direction the DMA moves bytes, and the two paths need opposite
+     * BYOR values to produce the same wire order.
+     *
+     * CPTRXCNF3 governs the receive (capture) path in I2S mode 5, which is
+     * the path we have measured, and clearing BYOR there is well supported
+     * by the chain above. The playback value is a build-time switch because
+     * we have no playback measurement yet; MBOX_PLAYBACK_BYOR selects it so
+     * two units can carry opposite settings and be compared over a loopback
+     * cable. Delete the switch once a loopback settles it. */
+#ifndef MBOX_PLAYBACK_BYOR
+#define MBOX_PLAYBACK_BYOR 1      /* 1 = 0xAC (stock boot value), 0 = 0xA8 */
+#endif
+#if MBOX_PLAYBACK_BYOR
+    CPTCNF3   = 0xAC;   /* Rev 20 fcn.0x08CB @ 0x090B — BYOR set */
+#else
+    CPTCNF3   = 0xA8;   /* Rev 20 @ 0x0367 playback branch — BYOR clear */
+#endif
     CPTCNF4   = 0x03;   /* 0xFFDD — stock writes 0x03 */
     CPTSTA    = 0x50;   /* 0xFFDC — stock writes 0x50 */
     CPTRXCNF2 = 0x25;   /* 0xFFD6 — stock writes 0x25 */
-    CPTRXCNF3 = 0xAC;   /* 0xFFD5 — stock writes 0xAC */
+    /* Capture path: BYOR cleared so the wire order matches our declared
+     * S24_3LE. Stock writes 0xAC here (Rev 20 fcn.0x08CB @ 0x0923). */
+    CPTRXCNF3 = 0xA8;
     /* CPTRXCNF4 — DIVB2(2:0), the divider from MCLKO2 to SCLK2, which is
      * the I2S RECEIVE bit clock (datasheet §6.5.4.13; block diagram
      * Figure 2-1). Encoding: 001b = ÷2, 010b = ÷3, 011b = ÷4.

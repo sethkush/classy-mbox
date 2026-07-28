@@ -12,21 +12,17 @@
 # NOTE: --update rewrites this file and DROPS per-entry annotations.
 # The standing annotations are kept below the entry list instead.
 #
-# RE-BASELINED 2026-07-28 (fifth time today). Two related changes, both
-# anchored to a measured sample count rather than to a reading of the
-# disassembly:
-#   0xffd4 assign 0x01 -> 0x03  CPTRXCNF4 DIVB2: /2 -> /4, the I2S receive
-#     bit-clock divider. Stock writes this address TWICE -- 0x03 in boot
-#     init (Rev 20 @0x0929, Rev 22 @0x084A) and 0x01 in the mode-5 branch
-#     (Rev 20 @0x07A0, Rev 22 @0x077E). hw_init mirrors boot init, so 0x03
-#     is correct here; a 2026-07-26 change took the mode-5 value on the
-#     note "both stock images write 0x01 here", which was true and
-#     incomplete. /2 doubled the capture rate: DCNTX measured 96 samples
-#     per USB frame where stock delivers 48, and 88 where stock delivers 44.
-#   ACG frequency words swap between the rate branches. With /4 restored,
-#     mode 3 (0x61/0xa8/0x0f) is 48 kHz and mode 2 (0x6a/0x4b/0x20) is
-#     44.1 kHz. 0xffe1 assign 0x0d drops out: both branches now end on
-#     ACGCTL = 0x06, which is what Rev 20's shared tail at 0x0E0F does.
+# RE-BASELINED 2026-07-28 (sixth time today), for sample byte order.
+#   0xffd5 assign 0xac -> 0xa8  CPTRXCNF3 bit 2 is BYOR, the DMA byte-order
+#     reversal for the capture path. Stock sets it and is documented as
+#     S24_3BE; mboxfw declares S24_3LE, so it wants BYOR clear. Inferred
+#     statically -- Linux quirks table + both stock images -- rather than
+#     measured, which is why the first capture looked like full-scale
+#     noise (correct audio, bytes in the other order).
+#   0xffde (CPTCNF3) is now selected by MBOX_PLAYBACK_BYOR: 0xac (default,
+#     stock boot value) or 0xa8. The manifest carries whichever the default
+#     build emits; the two units run opposite settings to settle playback
+#     byte order over a loopback cable.
 
 0xff2e  rmw       -       # usb
 0xff60  assign    0x00    # streaming,usb
@@ -74,7 +70,7 @@
 0xffc3  assign    0xa0    # eeprom
 0xffc3  assign    0xa1    # eeprom
 0xffd4  assign    0x03    # hw_init
-0xffd5  assign    0xac    # hw_init
+0xffd5  assign    0xa8    # hw_init
 0xffd6  assign    0x25    # hw_init
 0xffdc  assign    0x50    # hw_init
 0xffdd  assign    0x03    # hw_init
