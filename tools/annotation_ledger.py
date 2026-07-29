@@ -34,10 +34,19 @@ So the numerator is now EXPLICIT and hand-curated. Only items listed in
 
 count as explained. One row per item:
 
-    image<TAB>kind<TAB>addr<TAB>name<TAB>where-it-is-established
+    image<TAB>kind<TAB>addr<TAB>name<TAB>where-established<TAB>level
 
-`kind` is one of func / xdata / irambyte / irambit. The last column must point
-at a document that actually establishes the claim, not merely mention it.
+`kind` is one of func / xdata / irambyte / irambit. The where-established
+column must point at something that actually establishes the claim, not merely
+mention it.
+
+`level` is `explained` or `name`, and the distinction is load-bearing. Knowing
+that XDATA 0xFFEE is called DMACTL1 is NOT knowing what the firmware does with
+it -- that address was called DMACTL1 while the real DMA sat elsewhere, and the
+wrong name caused a real bug. Register names imported from a datasheet or
+vendor header are `name`. A byte-exact reconstruction with prose saying what
+the code does, or a bit map derived and cross-checked against both images, is
+`explained`. The two are reported separately and never added together.
 
 The denominator stays automatic -- the image tells us what it touches, and
 that cannot be argued with. The numerator requires somebody to have done the
@@ -170,8 +179,8 @@ CLAIMS = os.path.join(DISASM, "ANNOTATION_CLAIMS.tsv")
 
 
 def load_claims():
-    """-> set of (image, kind, addr-text) that somebody has claimed to explain."""
-    out = set()
+    """-> {(image, kind, addr-text): level}. Absent level defaults to explained."""
+    out = {}
     if not os.path.exists(CLAIMS):
         return out
     for line in open(CLAIMS):
@@ -180,7 +189,8 @@ def load_claims():
             continue
         f = line.split("\t")
         if len(f) >= 5:
-            out.add((f[0].strip(), f[1].strip(), f[2].strip()))
+            lvl = f[5].strip() if len(f) >= 6 and f[5].strip() else "explained"
+            out[(f[0].strip(), f[1].strip(), f[2].strip())] = lvl
     return out
 
 
@@ -218,13 +228,16 @@ def main():
                             ("irambyte", "IRAM bytes     "),
                             ("irambit", "IRAM bits      ")):
             items = [(a, t) for k, a, t in rows if k == kind]
-            un = [t for a, t in items if (image, kind, t) not in claims]
             n = len(items)
             if not n:
                 continue
-            pct = 100.0 * (n - len(un)) / n
-            emit(f"  {label}: {n - len(un):3d}/{n:3d} explained "
-                 f"({pct:5.1f}%)   {len(un)} not")
+            exp = [t for a, t in items
+                   if claims.get((image, kind, t)) == "explained"]
+            nmd = [t for a, t in items if claims.get((image, kind, t)) == "name"]
+            un = [t for a, t in items if (image, kind, t) not in claims]
+            emit(f"  {label}: {len(exp):3d}/{n:3d} explained "
+                 f"({100.0*len(exp)/n:5.1f}%)   "
+                 f"{len(nmd):3d} named-only   {len(un):3d} neither")
             if full and un:
                 for j in range(0, len(un), 12):
                     emit("      " + " ".join(un[j:j + 12]))
