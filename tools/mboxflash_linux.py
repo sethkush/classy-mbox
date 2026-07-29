@@ -42,6 +42,12 @@ def require_usb():
 DFU_DEVICES = [(0xFFFF, 0xFFFE, "bulletproof-DFU"),
                (0x0DBA, 0x1001, "app-DFU")]
 AUDIO_DEVICE = (0x0DBA, 0x1000)
+# mboxfw can be built with MBOX_PID overridden (`make MBOX_PID=0x2000`) so that
+# two units on one bench are tellable apart. Those units are still audio-mode
+# Mboxes -- not flashable as they stand, but they must be FINDABLE, or probe
+# reports "no Mbox on the bus" and there is nothing to send the DFU trigger to.
+# Anything in 0x2000..0x200F is treated as an audio-mode alias of 0x1000.
+AUDIO_PID_ALIASES = tuple(range(0x2000, 0x2010))
 DFU_INTERFACE = 0          # both DFU PIDs expose the class requests on iface 0
 
 # DFU 1.0 §6.1 request codes
@@ -339,7 +345,19 @@ def cmd_probe(_args):
         print()
     dev, vid, pid, label = find_device(require_dfu=False)
     if dev is None:
-        print("no Mbox on the bus (looked for ffff:fffe, 0dba:1001, 0dba:1000)")
+        alias = None
+        for pid in AUDIO_PID_ALIASES:
+            if usb.core.find(idVendor=0x0DBA, idProduct=pid) is not None:
+                alias = pid
+                break
+        if alias is not None:
+            print("audio mode at 0dba:%04x -- a custom MBOX_PID build, not "
+                  "flashable as it stands." % alias)
+            print("Send the class-request DFU trigger, then power-cycle the "
+                  "unit; it returns as ffff:fffe and can be flashed.")
+        else:
+            print("no Mbox on the bus (looked for ffff:fffe, 0dba:1001, "
+                  "0dba:1000, 0dba:2000-200f)")
         return 1
     print("found %04x:%04x — %s" % (vid, pid, label))
     print("  bcdDevice   0x%04x" % dev.bcdDevice)
