@@ -171,3 +171,87 @@ decoded the stock value 0xC5 as "ISO=0" -- not marked isochronous -- which
 contradicts `regs.h`'s own reading of 0xC5 as "ISO, BPS field = 5". One of the
 two is wrong. Until the datasheet bit map is transcribed and cited, IEPCNF
 values are compared against known-good constants instead of decoded.
+
+## Addendum 3: byte order ruled out; the pattern is sample-clock locked
+
+Two more measurements, both on `loop44100.raw` (the capture taken with the
+two-tone WAV playing), so no new hardware run was needed.
+
+### Byte order is not the fault
+
+`hw_init.c` records that `00 00 80` is -8388608 read little-endian but **128**
+read big-endian, and `ff ff 7f` is +full-scale LE but **-1** BE. 128 and -1 are
+LSB-level dither -- silence. That made a stale BYOR setting the leading
+suspect: the pinned frames would be silence with the bytes still reversed.
+
+Re-reading the same capture with each 3-byte sample reversed:
+
+    order  ch    rms      @1000Hz   @1500Hz   @5512Hz
+    LE     ch1   -3.5     -87.0     -86.7     -11.5
+    LE     ch2   -3.5     -87.0     -86.7     -11.5
+    BE     ch1   -7.3     -72.0     -80.2     -20.4
+    BE     ch2   -7.3     -76.3     -78.4     -20.4
+
+All dBFS. The BE reading does move things -- @1000 Hz rises 15 dB and the
+5512 Hz artifact drops 9 dB -- but -72 dBFS is not a tone. The signal played
+was -6 dBFS. A 66 dB shortfall is not a byte-order problem.
+
+**BYOR / byte order is ruled out as the primary fault.** The `7590af1` change
+that cleared BYOR on capture is not what is wrong here.
+
+### The pattern is locked to the audio sample clock, not to USB framing
+
+If the 8-frame structure were an artefact of USB packet boundaries it could not
+hold phase. At 44.1 kHz a full-speed device must alternate 44- and 45-sample
+packets to average 44.1 per 1 ms frame, and 44 samples = 264 bytes = 5.5 x 48,
+so every packet boundary would shift the 48-byte pattern's phase -- roughly a
+hundred slips per second.
+
+Measured across the entire 220500-frame (5.00 s) capture: **4 phase
+discontinuities.** The gaps between pattern hits are 12 or 36 bytes everywhere
+else.
+
+Four slips in five seconds is not USB framing; it is four sample-domain
+discontinuities, at about one per 1.25 s. So the repeating structure is
+generated upstream of the USB layer, in the codec / C-port clock domain, and
+survives packet reassembly intact.
+
+### The two "channels" look like one serial stream
+
+Adjacent channel pairs run e.g. `53 8b 06 | bf a3 07` (0x068B53 vs 0x07A3BF)
+and `99 ae 19 | 5b ee 18` (0x19AE99 vs 0x18EE5B) -- similar magnitude,
+correlated, not identical. Two independent ADC channels with only analog out 2
+looped into source 2 would not track each other like this. It is more
+consistent with time slots 0 and 1 sampling adjacent positions of a single
+continuous serial bit stream.
+
+### Where that leaves it
+
+Established, in order of certainty:
+
+  * The capture DMA is armed, its slot map (3 B/slot, slots 0+1) is identical
+    to stock, and the endpoint buffer is 512 B (Addendum 2).
+  * Full-rate bytes arrive: 263.1 B/ms against 264.6 required, timed.
+  * The corrupting structure is periodic at exactly Fs/8, sample-clock locked,
+    and present with and without playback.
+  * Byte order is not it.
+
+So the fault is in the C-port serial interface configuration or in what the
+codec is clocking out -- `CPTCNF1..4` / `CPTRXCNF2..4` in `hw_init.c:58-129`,
+or `codec_init()`. Note that `CPTRXCNF4` (the receive bit-clock divider) and
+BYOR have each already been wrong once in this project's history, so this
+register group has a track record.
+
+### Two ways forward
+
+1. **usbmon**, free and available: capture the raw isoc packet stream to get
+   per-packet lengths and contents as the device actually sends them, rather
+   than as ALSA reassembles them. Confirms whether any packets are short and
+   whether the 4 slips are dropped packets.
+2. **A telemetry build that reads back the C-port group**, which costs a
+   flash: block 6 exposes none of `CPTCNF1..4`, `CPTRXCNF2..4`, `DMATSH1`,
+   `DMATSL1`, or `DMABCNT1L/H`. All had to be read from source, so there is
+   currently NO confirmation that the values in `hw_init.c` are the values the
+   registers actually hold. `DMABCNT1` updates every SOF and would give the
+   live per-frame byte count directly. Reading back the C-port group would
+   close the last gap between "the source says" and "the part is".
