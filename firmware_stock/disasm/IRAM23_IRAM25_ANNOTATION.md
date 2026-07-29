@@ -60,7 +60,7 @@ Always moved together, three times in each image, never individually. Whatever
 they control is a two-bit field or a pair of matched channel switches — a
 single mute bit does not need two.
 
-## Bit 6 and the "48V phantom" claim (#144)
+## Bit 6 IS MONO — #144 resolved
 
 Bit 6 is the only bit of 0x23 that is *tested* (`JNB` at Rev 20 0x0F32 and
 0x1028). Its behaviour: cleared at boot (0x039E, part of the same
@@ -71,10 +71,61 @@ read and then written both ways — the classic toggle idiom:
     102b  CLR 0x1e
     102e  SETB 0x1e
 
-A two-state toggle is consistent with a 48V phantom button and NOT with a
-source selector, which cycles three ways. That is suggestive but it is still
-only structural: nothing in either image names the pin. #144 stands -- the
-"48V phantom" label remains an inference, now with its mechanism documented.
+### 48V is not a firmware control -- established, not inferred
+
+Seth has stated this from the hardware and it is now confirmed three
+independent ways:
+
+  1. **The port pins do not move.** Telemetry block 4 does live P1/P3 reads.
+     Five samples with the 48V switch OFF and five with it ON, on hardware
+     2026-07-29: P1=0x18, P3=0xFB, byte-identical across both positions.
+  2. **No 48V-shaped latch exists.** The census below covers every IRAM bit in
+     the image; no bit outside the source state machines and the mono latch
+     behaves like a phantom-power control.
+  3. **The 48V LED tracks the switch directly**, so the indicator is hardwired
+     and the firmware is not in the loop.
+
+48V is a mechanical switch, independent of the firmware. `g_phantom_48v` in
+`mboxfw/include/mux.h` and `P3_BTN_48V_MASK` in `buttons.c` name a control the
+firmware cannot even observe. #144 is resolved.
+
+### What 0x23.6 actually is
+
+Seth: **mono is off at boot, and the mono button toggles it.** That is exactly
+this bit's behaviour, and two independent routes confirm it.
+
+**Route 1 -- census by elimination.** For every IRAM bit address 0x00-0x7F in
+Rev 20, collect all SETB / CLR / CPL / JB / JNB / JBC sites and keep bits with
+a set, a clear AND a test. Fourteen qualify. Those cleared in the boot
+initialisation run are:
+
+    0x23.6  CLR 0x039E          <-- toggle at 0x1028-0x102E
+    0x25.5  CLR 0x0395          0x22.6 input
+    0x25.0  CLR 0x03A5          channel 1 source state
+    0x25.1  CLR 0x03A7          channel 2 source state
+    0x25.2  CLR 0x03A9          channel 1 source state
+    0x25.3  CLR 0x03AB          channel 2 source state
+    0x25.4  CLR 0x03AD          0x22.6 input
+
+All but 0x23.6 are accounted for as source state or 0x22.6 inputs. 0x23.6 is
+the only boot-cleared latch left and the only bit in either image with a
+read-then-write-both-ways toggle.
+
+**Route 2 -- the button handler reaches it.** Rev 20 0x0EE7 is
+`LCALL 0x1028` from the P3.5 button branch (see the button section below).
+The mono button calls the 0x23.6 toggle directly.
+
+**IRAM 0x23.6 = MONO.**
+
+It is also clocked out as a 9th bit on the panel shift chain: the mux
+shift-out routine tests it at Rev 20 0x0F32 / Rev 22 0x0F20 to choose the
+trailing latch sequence.
+
+Follow-on for mboxfw, not yet done:
+
+  * `mux.h` `g_phantom_48v` -> `g_mono`.
+  * `buttons.c` `P3_BTN_48V_MASK` -> the mono button mask. The handler is
+    toggling the right bit under the name of a switch it cannot see.
 
 ---
 
@@ -164,3 +215,98 @@ means is still open.
     computed stores could set them).
   * IRAM 0x25 bit 4's role, given the early test at Rev 20 0x0076.
   * The meaning of 0x25.7, toggled around Rev 20 0x083E-0x0850.
+
+---
+
+# The button handler — Rev 20 0x0ED5 / Rev 22 0x0F31
+
+    0ed5  CLR A
+    0ed6  MOV R6,A
+    0ed7  MOV R5,0xb0        ; R5 = P3
+    0ed9  MOV A,R5
+    0eda  CJNE A,0x20,0x0ee0 ; vs IRAM 0x20 = previous P3; equal -> return 0
+    0edd  MOV R7,#0x0
+    0edf  RET
+    0ee0  JB  0x05,0x0eed    ; prev P3.5 set  -> skip
+    0ee3  MOV A,R5
+    0ee4  JNB 0xe5,0x0eed    ; cur  P3.5 clear -> skip
+    0ee7  LCALL 0x1028       ; MONO toggle (0x23.6)
+    0eea  ORL 0x06,#0x1
+    0eed  JB  0x03,0x0efa    ; prev P3.3
+    0ef0  MOV A,R5
+    0ef1  JNB 0xe3,0x0efa    ; cur  P3.3
+    0ef4  LCALL 0x0e27       ; channel 1 source
+    0ef7  ORL 0x06,#0x1
+    0efa  JB  0x04,0x0f07    ; prev P3.4
+    0efd  MOV A,R5
+    0efe  JNB 0xe4,0x0f07    ; cur  P3.4
+    0f01  LCALL 0x0e9d       ; channel 2 source
+    0f04  ORL 0x06,#0x1
+    0f07  MOV 0x20,R5        ; save P3 as previous
+    0f09  MOV R7,0x06
+    0f0b  RET
+
+Rev 22's equivalent read is at 0x0F33, `MOV R6,0xb0`.
+
+    P3.3   channel 1 source button
+    P3.4   channel 2 source button
+    P3.5   mono button
+    IRAM 0x20   previous P3 sample
+
+The 0xE3/0xE4/0xE5 bit addresses are ACC.3/ACC.4/ACC.5 -- the current sample,
+copied into A. The 0x03/0x04/0x05 bit addresses are IRAM 0x20 bits 3/4/5 --
+the previous sample.
+
+**Edge polarity: the action fires when prev = 0 and cur = 1.** The pins idle
+high (stock writes `MOV P3,#0xFF` at Rev 20 0x08DC / Rev 22 0x07FD, enabling
+the quasi-bidirectional pull-ups) and a press pulls low, so the firing edge is
+the **release**, not the press.
+
+`mboxfw/src/buttons.c:39` computes `pressed_low = changed & ~now` -- a falling
+edge -- so mboxfw acts on press where stock acts on release. Divergence,
+recorded, not yet fixed.
+
+## The panel shift routine and the P1 pin map
+
+Rev 20 0x0F0C, from the same read of 0x22 documented in
+`MUX_IRAM22_ANNOTATION.md`:
+
+    0f0c  MOV R6,#0x8        ; 8 bits
+    0f0e  MOV R5,0x22
+    0f10  ANL 0x90,#0xbf     ; P1.6 = 0
+    0f13  (per bit) rotate; JNB ACC.0 ->
+    0f22  ORL 0x90,#0x80     ;   P1.7 = 1   (data high)
+    0f27  ANL 0x90,#0x7f     ;   P1.7 = 0   (data low)
+    0f2a  ORL 0x90,#0x20     ; P1.5 = 1     (clock high)
+    0f2d  ANL 0x90,#0xdf     ; P1.5 = 0     (clock low)
+    0f30  DJNZ R6 -> 0x0f13
+    0f32  JNB 0x1e,0x0f39    ; test 0x23.6 = MONO
+    0f35  ORL 0x90,#0xc0     ;   P1.7 and P1.6 high
+    0f39  ANL 0x90,#0x7f / ORL 0x90,#0x40 / ANL 0x90,#0xbf
+
+    P1.5 = clock, P1.7 = data, P1.6 = latch
+
+## Open: the buttons do not move P3 under mboxfw
+
+Measured 2026-07-29 on the unit running mboxfw: telemetry block 4 polled at
+605 Hz for 100 s (60457 samples) while Seth pressed mono, channel 1 source and
+channel 2 source repeatedly. **P3 read 0xFB for every one of the 60457
+samples**, and no panel LED changed.
+
+Block 4 reads the port directly, so a press should move the pin regardless of
+what the firmware does with it. Sampling was not the limit -- 605 Hz resolves
+a 2 ms press.
+
+That leaves two candidates, and the disassembly cannot decide between them:
+
+  1. The buttons are not electrically on P3.3/4/5 on this unit.
+  2. The buttons need the panel shift register clocked to be readable. Stock
+     refreshes it from the main loop (0x0F0C is called from Rev 20 0x0AE6); if
+     one of the shift register's outputs is a button common or enable line,
+     an unrefreshed panel leaves the buttons dead. mboxfw's P1 reads 0x18,
+     with P1.5/6/7 all low.
+
+Candidate 2 is testable with a diagnostic image that drives the panel and
+reports P3. Note also that P3 bits 0, 1, 6 and 7 are untouched by stock's
+handler -- the TRS jack presence switches, if the firmware sees them at all,
+would be there.
