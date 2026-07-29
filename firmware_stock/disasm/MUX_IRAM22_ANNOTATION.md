@@ -62,10 +62,24 @@ and the same three on bits [5:3] for channel 2:
 The set {0x05, 0x03, 0x06} matches what `mboxfw/src/buttons.c` `cycle_source()`
 knows. That much of mboxfw is right.
 
-**Which pattern is which physical source is NOT established by this scan.** The
-firmware only shifts bits; the mapping to mic/line/inst lives in the analog
-hardware. mboxfw's comments assert 0x05=mic, 0x06=line, 0x03=inst, and nothing
-in either image confirms or contradicts that. Treat it as unverified.
+**The mapping IS deducible, and it is now fixed.** Two facts do it:
+
+  1. Stock boots 0x22 = 0x76, i.e. pattern 0x06 on both channels (below), and
+     boots the state bits to (0,0) -- Rev 20 0x03A5-0x03AD / Rev 22
+     0x03A9-0x03B1 clear 0x25 bits 0,1,2,3,4 explicitly.
+  2. Seth reports the hardware boots to MIC, and the source button cycles
+     mic -> line -> inst -> mic.
+
+From state (0,0) the machine below emits 0x05 on the first press, 0x03 on the
+second, 0x06 on the third. Boot is 0x06 and boot is mic, so:
+
+    0x06 = MIC     (boot value)
+    0x05 = LINE    (first press)
+    0x03 = INST    (second press)
+
+`mboxfw/src/buttons.c` asserts 0x05=mic, 0x06=line, 0x03=inst. **mic and line
+are swapped there.** Combined with the cycle-order divergence below, mboxfw
+walks mic -> inst -> line where stock walks mic -> line -> inst.
 
 ## The state machine, and a divergence
 
@@ -136,8 +150,6 @@ capture" are superseded on this point.
 
 ## Still open on this byte
 
-  * Physical meaning of patterns 0x05 / 0x03 / 0x06 (mic / line / inst — which
-    is which). Needs hardware or the analog schematic; not in the firmware.
   * Bit 7's meaning. Cleared at boot, set at Rev 20 0x03E6 with an immediate
     publish; only those two sites.
   * Bit 6's meaning, beyond its derivation from IRAM 0x25.4 / 0x25.5.
