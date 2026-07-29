@@ -196,8 +196,21 @@ All dBFS. The BE reading does move things -- @1000 Hz rises 15 dB and the
 5512 Hz artifact drops 9 dB -- but -72 dBFS is not a tone. The signal played
 was -6 dBFS. A 66 dB shortfall is not a byte-order problem.
 
-**BYOR / byte order is ruled out as the primary fault.** The `7590af1` change
-that cleared BYOR on capture is not what is wrong here.
+**RETRACTED 2026-07-29.** This exclusion is void, for the same reason the
+loopback result was void: the measurement was taken with mboxfw's source mux
+word at 0x00, an illegal pattern (see MUX_IRAM22_ANNOTATION.md), so there is no
+guarantee any signal reached the ADC at all. A byte-order test needs a signal
+to reorder. With no signal, "the tone did not appear under either byte order"
+says nothing about byte order.
+
+CPTRXCNF3 is therefore a LIVE suspect again. Stock writes 0xAC to it (Rev 20
+0x0923, Rev 22 0x0844); mboxfw writes 0xA8, a deliberate divergence from
+`7590af1`. Stock works and mboxfw does not, and this is one of only two
+audio-path registers where mboxfw disagrees with stock's boot init.
+
+The 5512.5 Hz / 6000 Hz structural finding below stands -- it is a property of
+the returned data and needs no input signal. Only the byte-order exclusion is
+withdrawn.
 
 ### The pattern is locked to the audio sample clock, not to USB framing
 
@@ -255,3 +268,44 @@ register group has a track record.
    registers actually hold. `DMABCNT1` updates every SOF and would give the
    live per-frame byte count directly. Reading back the C-port group would
    close the last gap between "the source says" and "the part is".
+
+## Addendum 4: exhaustive stock-vs-mboxfw audio register diff
+
+Now possible mechanically, from `disasm/XDATA_ACCESS_MAP.md` (every stock
+register access, site and constant) against every SFR assignment in mboxfw.
+Across the whole 0xFFC0-0xFFFF audio/USB range, mboxfw disagrees with stock's
+boot init in exactly **two** places:
+
+### 1. CPTRXCNF3 (0xFFD5) -- mboxfw 0xA8, stock 0xAC
+
+    stock   0x0923  write 0xAC          (Rev 22 0x0844)
+            0x0FF5  write-computed
+    mboxfw  hw_init.c  = 0xA8
+
+Bit 2 is BYOR. This is the deliberate change from `7590af1`, made to match
+mboxfw's declared S24_3LE. With the byte-order exclusion above retracted, it is
+un-cleared and is the leading suspect for the capture artifact.
+
+### 2. ACGCTL (0xFFE1) -- mboxfw is missing two of stock's four operations
+
+    stock   0x052C  clr-bits 0x3F       <-- mboxfw does not do this
+            0x074D  write 0x0D          <-- mboxfw does not do this
+            0x07CC  set-bits 0xC0
+            0x0824  set-bits 0xC0
+            0x0E10  write 0x06
+    mboxfw  = 0x06 ; |= 0xC0
+
+mboxfw performs the 0x06 write and the 0xC0 set, but never writes 0x0D and
+never clears the low six bits. ACGCTL is the adaptive clock generator control
+register -- the register whose misnaming as "DMACTL1" caused the
+zero-length-isoc bug -- so a missing write here lands squarely on the audio
+clock path.
+
+Both are checkable against the map, and neither needs hardware to establish.
+
+### Registers confirmed identical
+
+CPTRXCNF2/4, CPTSTA, CPTCNF1-4, ACGDCTL, ACG1FRQ0-2, ACG2FRQ0-2, ACG2DCTL,
+DMACTL0/1, DMATSH0/1, DMATSL0/1. CPTRXCNF4 deserves a note: stock writes 0x01
+at 0x07A0 and 0x03 via the helper at 0x0929, and mboxfw's 0x03 mirrors the boot
+init, which is the correct one of the two.
