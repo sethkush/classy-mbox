@@ -6,16 +6,33 @@ inferred from mboxfw source; mboxfw's names have been wrong before.
 
 ## The memory layout, which explains the whole range at once
 
-Keil C51 places register bank 0 at IRAM 0x00–0x07 and starts its `DATA`
-segment immediately after the highest register bank the program actually uses.
-Both images use **only bank 0** — there is no `MOV PSW,#0x08` / `#0x10` /
-`#0x18` bank switch anywhere in either image — so `DATA` begins at **0x08**.
+Keil C51 places register bank 0 at IRAM 0x00–0x07, reserves any other bank the
+program selects, and fills the gaps with its `DATA` segment.
 
-That single fact accounts for the shape of everything below:
+An earlier draft of this document claimed neither image switches banks. That
+was wrong, and a byte scan for `MOV PSW,#imm` (opcode `75 D0`) found the
+counter-example:
+
+    Rev 20 0x0DB4  PUSH PSW
+    Rev 20 0x0DB6  MOV PSW,#0x10      ; RS1=1 RS0=0 -> register bank 2
+    Rev 22 0x0DE9  MOV PSW,#0x10
+
+That is an interrupt prologue: save PSW, switch to a private bank so the
+handler need not preserve the interrupted code's registers. **Bank 2 is live**,
+at 0x10–0x17, and bank 1 and bank 3 are not selected anywhere.
+
+So the layout, which accounts for the shape of the whole range:
 
     0x00–0x07   register bank 0, R0–R7
-    0x08–0x1E   Keil DATA segment: compiler-allocated globals
-    0x20–0x2F   bit-addressable globals (see the other IRAM documents)
+    0x08–0x0F   Keil DATA segment (globals)
+    0x10–0x17   register bank 2 — reserved for the ISR at 0x0DB4 / 0x0DE9
+    0x18–0x1E   Keil DATA segment continues
+    0x20–0x26   bit-addressable globals (see the other IRAM documents)
+    0x27–0x33   Keil overlaid locals (see IRAM_OVERLAY_ANNOTATION.md)
+
+The split DATA region — 0x08–0x0F, then a hole, then 0x18 onward — is a direct
+consequence of bank 2 being reserved in the middle of it, and is the reason the
+used addresses look scattered.
 
 ## 0x01, 0x03, 0x05, 0x06, 0x07 — register bank 0 slots
 
@@ -100,12 +117,20 @@ The 0x0FD8/0x0FE0/0x0FE4 run reads 0x0D, reads 0x0E, and writes 0x0D back.
 
 Two accesses, one store and one load, consumed by the 0x0FD8 run above.
 
-## 0x16 — one read into R2
+## 0x16 — register bank 2's R6, not a variable
 
     Rev 20 0x0DD1  MOV R2,0x16
 
-The only access in the image. Complete account: read once, never written by
-the application, so it holds whatever the boot ROM left.
+This was first written up here as a variable "read once, never written, so it
+holds whatever the boot ROM left". That was wrong. 0x16 is inside bank 2
+(0x10–0x17) and 0x0DD1 lies inside the very ISR that switched to bank 2 at
+0x0DB6, so this instruction reads **R6 of the bank it is currently running
+in** — `MOV R2,R6` expressed as a direct access. Bank 2's R6 is set by the
+handler's own register-parameter traffic.
+
+The correction came from the `MOV PSW,#imm` scan above. It is a good example of
+why a location cannot be annotated from its own access sites alone: 0x16 in
+isolation looks exactly like an uninitialised global.
 
 ## 0x18 — bit-accumulator in the block loop
 

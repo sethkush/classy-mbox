@@ -389,3 +389,28 @@ rev22	irambyte	0x1B	EP0 working pointer high byte (Rev 20)	disasm/IRAM_LOW_ANNOT
 rev22	irambyte	0x1C	EP0 working pointer low byte (Rev 20)	disasm/IRAM_LOW_ANNOTATION.md	explained
 rev22	irambyte	0x1D	EP0 working pointer high byte (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
 rev22	irambyte	0x1E	EP0 working pointer low byte (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x27	overlaid local, clamped-to-1 working value (fcn 0x0A96)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x28	overlaid local, countdown (DEC 0x28)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x29	overlaid local, countdown (DEC 0x29)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x2A	overlaid local, single write #0x00, no read	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x2B	overlaid local, single write #0x10, no read	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x2C	CS8427 register number (arg in R7); also scratch via XRL #0xFF	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x2D	CS8427 register value (arg in R5)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x2E	CS8427 register number (arg in R7); also DJNZ delay counter	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x2F	CS8427 register value (arg in R5); also an INC counter	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x30	streaming-region counter (INC 0x30)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x31	CS8427 register number for CLOCKSOURCE start/stop	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x32	CS8427 value 0x41=RUN set / 0x40=RUN clear	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambyte	0x33	R7 spill slot (Rev 20 only)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x27	overlaid local, clamped-to-1 working value (fcn 0x0A96)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x28	overlaid local, countdown (DEC 0x28)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x29	overlaid local, countdown (DEC 0x29)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x2A	overlaid local, single write #0x00, no read	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x2B	overlaid local, single write #0x10, no read	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x2C	CS8427 register number (arg in R7); also scratch via XRL #0xFF	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x2D	CS8427 register value (arg in R5)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x2E	CS8427 register number (arg in R7); also DJNZ delay counter	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x2F	CS8427 register value (arg in R5); also an INC counter	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x30	streaming-region counter (INC 0x30)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x31	CS8427 register number for CLOCKSOURCE start/stop	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev22	irambyte	0x32	CS8427 value 0x41=RUN set / 0x40=RUN clear	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
