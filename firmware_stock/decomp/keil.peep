@@ -74,12 +74,17 @@ replace {
 
 // SDCC copies the accumulator into R7 before comparing against a constant.
 // Keil compared A directly, saving the copy.
+// The notUsed('r7') guard was dropped: SDCC's liveness analysis is
+// conservative and refuses to fire inside functions with many branches, which
+// is exactly where the rule is needed. Dropping it is safe here because every
+// candidate is re-verified against the stock bytes, and any function where R7
+// really is live afterwards stops matching.
 replace {
 	mov	r7,a
 	cjne	r7,#%1,%2
 } by {
 	cjne	a,#%1,%2
-} if notUsed('r7')
+}
 
 // SDCC commutes an equality test against a variable: it loads the CONSTANT
 // into A and compares with "CJNE A,direct" where Keil loaded the VARIABLE and
@@ -94,4 +99,32 @@ replace {
 } by {
 	mov	a,%2
 	cjne	a,#%1,%3
+}
+
+// SDCC evaluates an unsigned ">= const" by emitting CJNE against a label that
+// is the very next instruction, using it purely for the carry side effect.
+// Keil used SETB C + SUBB A,#const-1, which is the same three bytes and the
+// same carry, but destroys A. Only valid where A is dead, which the byte
+// match verifies.
+replace {
+	cjne	a,#0x02,%1
+%1:
+} by {
+	setb	c
+	subb	a,#0x01
+}
+
+// SDCC folds "test bit, then clear it" into JBC (test-and-clear) and inverts
+// the branch. Keil emitted the naive JNB + CLR. The earlier attempt at this
+// rule failed because it named two labels; matching only the one that is
+// defined inside the window works.
+replace {
+	jbc	%1,%2
+	sjmp	%3
+%2:
+	ret
+} by {
+	jnb	%1,%3
+	clr	%1
+	ret
 }

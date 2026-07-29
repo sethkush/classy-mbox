@@ -34,10 +34,11 @@ Each candidate declares its target in a header comment:
 
 ## Scoreboard
 
-    matched 22/25 functions, 537/597 bytes
+    matched 27/28 functions, 742/743 bytes
 
-`setup_get_sample_freq` reaches 130/131 bytes; its single remaining byte is a
-layout artifact, not a codegen difference — see below.
+The one outstanding byte is `setup_get_sample_freq`, and it is a layout
+artifact rather than a codegen difference — see below. Every construct that
+was on the stubborn list has been solved.
 
 Rev 20. Run `python3 tools/match51.py firmware_stock/decomp/cand/*.c`.
 
@@ -49,8 +50,10 @@ Rev 20. Run `python3 tools/match51.py firmware_stock/decomp/cand/*.c`.
 | `mov dir,#0` -> `clr a; mov dir,a` | `CLR A` + `MOV dir,A` | `MOV dir,#0` | `evt_dispatch_epilogue` |
 | commute `xrl/orl/anl a,#imm` | 2-byte `XRL A,#imm` | `push b`/`mov b,a`/`mov a,#imm`/`xrl a,b`/`pop b` | `std_clear_feature`, and every `== const` comparison idiom |
 | `inc dir` (2 rules, `notUsed('a')` guard) | direct `INC` | `mov a,dir`/`inc a`/`mov dir,a` | all pointer-walking code |
-| drop `mov r7,a` before `cjne` | compares A directly | stages through R7 | `setup_get_sample_freq` |
+| drop `mov r7,a` before `cjne` | compares A directly | stages through R7 | `std_get_descriptor`, and it cascaded |
 | un-commute `cjne` operands | `MOV A,var`/`CJNE A,#c` | `MOV A,#c`/`CJNE A,var` | `setup_get_sample_freq` |
+| `cjne a,#2,next` + label -> `setb c`/`subb a,#1` | `SETB C`/`SUBB` | `CJNE` used only for its carry | `std_set_configuration` |
+| `jbc`/`sjmp`/label/`ret` -> `jnb`/`clr`/`ret` | naive `JNB`+`CLR` | folds to `JBC` | `toggle_bit1e` |
 
 The 16-bit pointer advance also needs the right C. `if (++pl == 0) ph++;`
 leaves a stray `mov a,_ph` that clobbers A — which the following call needs as
@@ -62,6 +65,22 @@ The third is the big one: SDCC does not commute a bitwise op against a
 constant, so it loads the constant into A and the variable into B and pays for
 a push/pop pair. Collapsing that is what makes Keil's comparison idioms
 reachable.
+
+## Two things that unlocked most of the tail
+
+**Peephole rules can match across a label**, as long as only one label is both
+named and defined inside the window. An earlier attempt named two and silently
+never fired, which is why `toggle_bit1e` was written off as needing hand
+assembly. It does not — a four-line rule fixes it. The same shape solved the
+`SETB C`/`SUBB` range check in `std_set_configuration`.
+
+**SDCC's `notUsed()` guard is too conservative to rely on.** The rule dropping
+`mov r7,a` before `cjne` refused to fire inside branch-heavy functions, which
+is exactly where it was needed. Removing the guard fixed `std_get_descriptor`
+outright and cascaded: `std_set_configuration` fell from 56 wrong bytes to 3 in
+the same run. The guard is unnecessary because the byte match is the real
+check — anywhere R7 is genuinely live afterwards, the function stops matching
+and the harness says so.
 
 ## Idiom mismatches — the actual grind
 
@@ -82,10 +101,9 @@ Note SDCC is often the *better* compiler here. Matching means defeating it.
 
 | Construct | Why | Plan |
 |---|---|---|
-| `std_set_configuration` @0x025B | `SETB C`/`SUBB` range check vs SDCC's `CJNE`/`JC` | source rewrite or targeted peephole |
-| `toggle_bit1e` @0x1028 | SDCC folds test-then-clear into `JBC` then `CPL`; not expressible as a peephole (patterns match instructions, not label definitions) | hand-written `__naked` asm |
-| Register parameters | Keil passes the first `char` in R7, SDCC in DPL | `__naked` prologue |
-| Shared tails with live A/DPTR | Keil merges common tails; callers jump in with registers live. ~5 per image. | merge into one source function (proven by `acg_48k_commit`) |
+| Shared tails with live A/DPTR | Keil merges common tails; callers jump in with registers live. ~5 per image. | solved — merge into one source function (`acg_48k_commit`, `dptr_to_ep0_out_buf`) |
+| Register parameters | Keil passes the first `char` in R7, SDCC in DPL | solved — `__naked` (`ep0_buf_clear_byte`, `code_read_byte_at_srcptr`) |
+| Function ordering | tail calls to an adjacent function use 2-byte `SJMP`; SDCC cannot short-jump to an external symbol | open — needs whole-image layout |
 | Keil library routines | `?C?CASE` (38 B), `udiv16` (85 B), C51 startup + initialiser interpreter | hand-written asm; all four fully decoded |
 
 ## The helper-call idiom — solved
