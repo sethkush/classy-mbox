@@ -82,18 +82,134 @@ Established in `IRAM23_IRAM25_ANNOTATION.md`; claimed here for completeness.
 Set on entry to the shift routine, tested and cleared as it finishes: a
 loop/first-pass flag local to that routine.
 
-## Not yet established
+## Byte 0x21 — the SET_INTERFACE alt-setting flags
 
-Byte 0x21's seven flag bits — 0x21.0 through 0x21.6 — and 0x24.0 / 0x24.2.
+Byte 0x21 is never accessed as a byte, only bitwise: a pure flag word. What
+identifies it is the pair of XDATA sources feeding it, both already named in
+`regs.h`:
 
-Byte 0x21 is never accessed as a byte, only bitwise, so it is a pure flag word.
-Structurally it is clear that these are program state flags: they are set,
-cleared, tested, and three of them move through the carry
-(`MOV 0x08,CY` at Rev 20 0x02C3, `ORL CY,0x0A` at 0x0528, `MOV CY,0x0E` at
-0x0526). Several are cleared together at Rev 20 0x09F7–0x09FD and again at
-0x0F63–0x0F69, which marks those two sites as a shared reset of the flag group.
+    0xFF2A = SETPACK_WVAL_L    (SETUP wValue low  = alt setting)
+    0xFF2C = SETPACK_WIDX_L    (SETUP wIndex low  = interface number)
 
-That is structure, not meaning, and I am not claiming them until each one is
-traced to what it actually gates. 0x21.2 and 0x21.6 have 15 and 18 sites and
-are branched on all over the request-handling region, so they are the two that
-need real work rather than a label.
+Rev 20 0x0267–0x0293 decodes wValue with the interface implied, and
+0x029F–0x02E1 decodes the (wIndex, wValue) pair:
+
+    0x0267  wValue == 0  -> CLR 0x21.2, CLR 0x21.6, CLR 0x21.0, CLR 0x21.1
+    0x0279  wValue == 1  -> CLR 0x21.2, SETB 0x21.6, CLR 0x21.0, CLR 0x21.1
+    0x0288  wValue == 2  -> CLR 0x21.2, SETB 0x21.6, CLR 0x21.0, CLR 0x21.1
+    0x02BA  wIndex == 1  -> A = wValue + 0xFF; MOV 0x21.0,CY   (i.e. alt >= 1)
+    0x02CE  wIndex == 2  -> A = wValue + 0xFF; MOV 0x21.1,CY   (i.e. alt >= 1)
+
+So:
+
+    0x21.0   interface 1 is on a non-zero alt setting
+    0x21.1   interface 2 is on a non-zero alt setting
+    0x21.6   an alt setting was selected (set for wValue 1 or 2, clear for 0)
+
+Both are reset as a group at Rev 20 0x09F7–0x09FD and 0x0F63–0x0F69, the bus
+reset / detach paths.
+
+### 0x21.2 is never set anywhere in either image
+
+Its sites are `CLR` at 0x026D, 0x027C, 0x028B, 0x09F7, 0x0F63; `ORL CY,0x0A`
+at 0x0528; and eight `JB`/`JNB` tests. **There is no `SETB 0x0A` and no
+`MOV 0x0A,CY` in either image.** IRAM is zero at reset and every write to this
+bit clears it, so it is always false and every `JB 0x21.2` branch is dead code.
+
+One of those dead branches matters. At Rev 20 0x0347:
+
+    0347  JNB 0x0A,0x0352          ; always taken
+    034a  MOV DPTR,#0xFFDE / A=#0xAC / LCALL 0x0FF4   ; DEAD
+    0352  JNB 0x0E,0x035D
+    0355  MOV DPTR,#0xFFDE / A=#0xA8 / LCALL 0x0FF4   ; reached
+
+0xFFDE is CPTCNF3 and bit 2 is BYOR. The 0xAC (BYOR set) write on this path is
+unreachable; only the 0xA8 (BYOR clear) write can execute here. That is a fact
+about this code path only — `hw_init` writes 0xAC to CPTCNF3 at 0x090B by a
+different route — but it means any claim that "stock always sets BYOR" cannot
+cite this region.
+
+## 0x21.3 : 0x21.4 — EP0 control-transfer state, written as a pair
+
+Three small setter routines write the pair together with byte 0x0D:
+
+    0x005B  MOV 0x0A,#0x0D ; CLR  0x21.3 ; CLR 0x21.4 ; RET
+    0x0063  MOV 0x0D,#0x02 ; SETB 0x21.3 ; CLR 0x21.4 ; RET
+    0x006B  MOV 0x0D,#0x01 ; SETB 0x21.3 ; CLR 0x21.4 ; RET
+
+and the consumers test them in order:
+
+    0x0D25  JNB 0x21.3,0x0D67     then dispatch on byte 0x0D
+    0x0FC4  JNB 0x21.3,0x0FCA     else LJMP 0x0B77
+    0x0FCA  JNB 0x21.4,0x0FD8     then CLR 0x21.4 and touch OEPCNF0 (0xFFA8)
+    0x1019  CLR 0x21.3 ; 0x101B CLR 0x21.4   after OEPCNF0 |= 0x08
+
+0x21.3 is "a control transfer is in progress" and 0x21.4 its second-phase
+flag; they are set as a pair, tested in sequence, and cleared together on
+completion. Byte 0x0D carries which transfer it is (see
+`IRAM_LOW_ANNOTATION.md`).
+
+## 0x21.5 — one-shot
+
+    CLR  Rev 20 0x0039 (ISR, right after LCALL 0x0B2B), 0x0D8F
+    SETB Rev 20 0x0DA9
+    test Rev 20 0x0BE1  JNB 0x0D,0x0BE9
+
+Set at one site, cleared at two, tested once: a one-shot consumed by the
+0x0BE1 branch.
+
+## 0x24.0 — the timer-0 tick flag that drives the main loop
+
+This is the one that explains how the panel is serviced at all. Rev 20
+0x0AD3 is the main loop:
+
+    0ad3  JB 0x24.0,0x0ADF     ; tick pending? -> service the panel
+    0ad6  MOV A,0x0A           ; else: pending request code?
+    0ad8  JZ 0x0AD3            ; nothing to do, spin
+    0ada  LCALL 0x02EE         ; dispatch it
+    0add  SJMP 0x0AD3
+    0adf  LCALL 0x0ED5         ; the BUTTON HANDLER
+    0ae2  MOV A,R7 / JNB ACC.0 ; did it act? (the 0x06 accumulator)
+    0ae6  LCALL 0x0F0C         ;   yes -> republish panel word 0x22
+    0ae9  LCALL 0x0E62         ;        -> republish codec word 0x23
+    0aec  JB 0x20.1,0x0AFC     ; P3.1 handling, below
+    ...
+    0b0d  CLR 0x24.0           ; consume the tick
+    0b0f  SJMP 0x0AD3
+
+The flag is **set in the timer-0 interrupt**: 0x101E is `CLR IE.7` reached from
+the timer-0 vector at 0x000B, and 0x1020 is `SETB 0x24.0`. Timer 0 is loaded
+with `TH0 = 0xCE` at 0x08DF.
+
+So the button chain is: timer 0 ticks -> ISR sets 0x24.0 -> main loop calls the
+button handler -> if it acted, both shift words are republished. **The panel is
+only ever read and rewritten on a timer tick**, which is the mechanism any
+firmware has to reproduce for the buttons to work at all.
+
+## 0x20.1 — P3.1, an insert/remove input, not a momentary button
+
+Continuing the same loop body:
+
+    0aec  JB  0x20.1,0x0AFC
+    0aef  MOV A,0x27 / JNZ 0x0AFC        ; local 0x27 already set?
+    0af3  MOV 0x27,#1 ; MOV 0x0A,#0x0B ; LCALL 0x02EE
+    0afc  JNB 0x20.1,0x0B0D
+    0aff  MOV A,0x27 / CJNE A,#1,0x0B0D
+    0b04  CLR A ; MOV 0x27,A ; MOV 0x0A,#0x0C ; LCALL 0x02EE
+
+Two complementary edges on P3.1, latched through local 0x27 so each fires once,
+raising **two distinct request codes**: 0x0B on one transition and 0x0C on the
+other. That is level-detect on a sustained input with separate
+"became-present" and "became-absent" events — the shape of a **jack-presence /
+plug-detect** line, not a pushbutton. The three panel buttons are P3.3/4/5 and
+act on a single edge each.
+
+Which connector it belongs to is not determined by the firmware, but P3.1 is
+the input to instrument if the TRS jack-detect question is to be settled.
+
+## 0x24.2 — cleared once, never set, never tested
+
+    Rev 20 0x0AAB  CLR 0x22
+
+The only access in either image. Vestigial; cannot affect behaviour.
+

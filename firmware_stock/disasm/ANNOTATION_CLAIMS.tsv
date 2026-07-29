@@ -465,3 +465,21 @@ rev22	func	0x000F	stubbed RETI for the serial vector	disasm/IRAM_LOW_ANNOTATION.
 rev22	func	0x07A0	entry into the CS8427-start tail (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
 rev22	func	0x07A6	entry into the CS8427-start tail (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
 rev22	func	0x0971	entry into a MOVC table walk (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambit	0x21.0	interface 1 on a non-zero alt setting	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x21.1	interface 2 on a non-zero alt setting	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x21.2	never set in either image; always false, its JB branches dead	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x21.3	EP0 control transfer in progress	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x21.4	EP0 transfer second-phase flag	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x21.5	one-shot consumed at 0x0BE1	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x21.6	an alt setting was selected	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x24.0	timer-0 tick flag driving the main loop panel service	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x24.2	cleared once, never set, never tested; vestigial	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x21.0	interface 1 on a non-zero alt setting	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x21.1	interface 2 on a non-zero alt setting	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x21.2	never set in either image; always false, its JB branches dead	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x21.3	EP0 control transfer in progress	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x21.4	EP0 transfer second-phase flag	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x21.5	one-shot consumed at 0x0BE1	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x21.6	an alt setting was selected	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x24.0	timer-0 tick flag driving the main loop panel service	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x24.2	cleared once, never set, never tested; vestigial	disasm/IRAM_BITS_ANNOTATION.md	explained
