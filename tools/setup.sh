@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot setup for a fresh clone or worktree:
-#   * install the git pre-commit hook (SFR-write citation gate)
+#   * install the git pre-commit hook (SFR citation + name-consistency gates)
 #   * verify all required toolchain versions are present
 #
 # Run: tools/setup.sh
@@ -52,9 +52,15 @@ else
     mkdir -p "$HOOK_DIR"
     cat > "$HOOK_DIR/pre-commit" << 'HOOK'
 #!/usr/bin/env bash
-# Refuse to commit SFR-touching changes without a reference citation.
-# Installed by tools/setup.sh — see tools/check_sfr_citations.py.
-exec python3 "$(git rev-parse --show-toplevel)/tools/check_sfr_citations.py"
+# Two gates, both cheap enough to run on every commit:
+#   1. SFR-touching changes must carry a reference citation.
+#   2. Register names must agree with the datasheet and with each other.
+# Installed by tools/setup.sh — see tools/check_sfr_citations.py and
+# tools/check_sfr_names.py.
+set -e
+ROOT="$(git rev-parse --show-toplevel)"
+python3 "$ROOT/tools/check_sfr_citations.py"
+python3 "$ROOT/tools/check_sfr_names.py"
 HOOK
     chmod +x "$HOOK_DIR/pre-commit"
     echo "  installed $HOOK_DIR/pre-commit"

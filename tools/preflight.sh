@@ -49,6 +49,7 @@ echo "  (target: $TARGET)"
 # build artifacts that produced it. We assume the working tree matches.
 check "SDCC version matches pin"            bash    tools/check_sdcc_version.sh
 check "wrap_hex golden regression"          python3 tools/test_wrap_hex_golden.py
+check "SFR register names consistent"       python3 tools/check_sfr_names.py
 
 if [[ "$TARGET" == "safety_net" ]]; then
     # Safety-net path: minimal, single-file image whose sole job is
