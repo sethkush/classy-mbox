@@ -267,7 +267,7 @@ means the routine is reached only through a dispatch table.
 | 0x0B82 | `ep0_arm_zlp_and_out` | OEPDCNTX0 = 0, IEPDCNTX0 = 0 | certain | 0x0D64, 0x0F43 |
 | 0x0B8C | `ep0_in_fill_chunk` | Copy ≤8 bytes CODE→EP0 IN buffer, update counts and state bits | certain | 0x0B77 |
 | 0x0BEE | `eeprom_write_byte` / `i2c_write_byte` | I²C write to slave 0xA0: addr hi (R7), addr lo (R5), data (R3), STOP, settle delay | certain | 0x04EE, 0x051C |
-| 0x0C45 | `cs8427_ctl_write` | Bit-banged 3-byte serial write {0x20, R7, R5} on P1.4/P1.3, CS via bit 0x2F | likely (mechanics certain, chip id likely) | 0x04DB, 0x050C, 0x0572, 0x0586, 0x07C9, 0x0889, 0x08A2, 0x08B0, 0x08BA, 0x08C8 |
+| 0x0C45 | `cs8427_ctl_write` | Bit-banged 3-byte serial write {0x20, R7, R5} on P1.4/P1.3, CS via bit 0x2F; the part is a Cirrus Logic CS8427 and the 0x20 lead byte is its I²C write address, (CS8427_BASE_ADDR 0x10 << 1) \| 0 | certain (mechanics and chip id; see `firmware_stock/decomp/FINDING_cs8427_confirmed.md`) | 0x04DB, 0x050C, 0x0572, 0x0586, 0x07C9, 0x0889, 0x08A2, 0x08B0, 0x08BA, 0x08C8 |
 | 0x0CDD | `i2c_eeprom_read_byte` | Random read of one byte from slave 0xA0 at 16-bit address R7:R5 | certain | 0x04E2, 0x04F3 |
 | 0x0D25 | `ep0_out_data_handler` | VECINT 0x00: decode the EP0 OUT payload into events 4-8, arm status stage | certain | VECINT table (0x0C93) |
 | 0x0D6B | `ep0_clamp_len_to_wlength` | Clamp 0x09/0x0B to wLength; set bit 0x0D if shorter | certain | 0x01EB |
@@ -276,7 +276,7 @@ means the routine is reached only through a dispatch table.
 | 0x0DEC | `acg_set_freq_48k_family` | Both synthesizers ← 0x61A80F (≈24.576 MHz) | certain | 0x078E, 0x081B |
 | 0x0E0F | `acg_commit_and_ctl` | Caller's `MOVX` (ACG2FRQ0 latch) then `ACGCTL = 0x06` | certain | 0x0782, fall-through |
 | 0x0E17 / 0x0E18 | `acg_dividers_div2` | ACG1DCTL = ACG2DCTL = 0x10 (÷2) | certain | 0x0931, 0x081E (0x0E17); 0x0739 (0x0E18) |
-| 0x0E20 | `queue_cs8427_reg4_val40` | IRAM 0x31 = 4, 0x32 = 0x40 | likely | 0x0788, 0x0794, 0x07C2 |
+| 0x0E20 | `queue_cs8427_reg4_val40` | IRAM 0x31 = 4, 0x32 = 0x40 (CLOCKSOURCE, RUN + 256*Fso) | established | 0x0788, 0x0794, 0x07C2 |
 | 0x0E27 | `button_a_cycle_3state` | P3.3 rising edge: cycle channel-A 3-position selector | likely | 0x0EF4 |
 | 0x0E62 | `shiftreg16_commit_p1_0_1_2` | Shift IRAM 0x23 then 0x25 out P1.0/P1.2, latch P1.1 | certain | 0x0733, 0x07BC, 0x07F2, 0x0818, 0x0835, 0x0842, 0x084D, 0x0852, 0x096C, 0x037D, 0x03AF, 0x0458, 0x046A, 0x0538, 0x0AE9, 0x0C51, 0x0C8F |
 | 0x0E9D | `button_b_cycle_3state` | P3.4 rising edge: cycle channel-B selector | likely | 0x0F01 |
@@ -362,12 +362,12 @@ latch bit 6 is asserted for as long as the hardware is considered initialized. W
 net latch bit 6 drives remains UNKNOWN.
 
 **R7 — `fcn_0c45`'s target chip.**
-Named `cs8427_ctl_write` by the 0x0C45 annotator (confidence "likely": the leading 0x20
+Named `cs8427_ctl_write` by the 0x0C45 annotator (identity now established: the leading 0x20
 byte matches the CS8427 chip-address/write byte, and project `NOTES.md` says CS8427); the
 0x032A, 0x0518, 0x0728 and 0x080B annotators all refused the identification because no
 CS8427 datasheet exists in the repo. **Resolved: the transport is certain** (3 bytes,
 {0x20, register, value}, MSB-first on P1.4 data / P1.3 clock, chip-select through latch bit
-0x2F), **the chip identity is "likely, unverified", and no register/field meaning of that
+0x2F), **the chip identity is ESTABLISHED (see firmware_stock/decomp/FINDING_cs8427_confirmed.md), though no register/field meaning of that
 device is asserted anywhere in this document.**
 
 **R8 — SET_CONFIGURATION accepting wValue 2.**
@@ -2134,7 +2134,7 @@ The whole range is code; there are **no data regions**.
 | bits 0x21.0/1/2/6 (0x08/0x09/0x0a/0x0e) | event/pending flags cleared at end of usb_ep_dma_init; semantics owned by EP0/main-loop annotators |
 
 Out-of-range helpers referenced (each read in the listing for this pass):
-- **fcn_0c45** — 3-byte bit-banged serial write on P1.4=data/P1.3=clock: sends constant `0x20` (`7b20` at 0x0c4b — matches CS8427 I2C write address 0b0010000+W; chip identity *likely*, not hardware-verified), then register (R7, saved to 0x33), then value (R5). Clears bit 0x25.7 + shifts latch chain (CS low) first.
+- **fcn_0c45** — 3-byte bit-banged serial write on P1.4=data/P1.3=clock: sends constant `0x20` (`7b20` at 0x0c4b — matches CS8427 I2C write address 0b0010000+W; chip identity established, see firmware_stock/decomp/FINDING_cs8427_confirmed.md), then register (R7, saved to 0x33), then value (R5). Clears bit 0x25.7 + shifts latch chain (CS low) first.
 - **fcn_0e62** — shifts IRAM 0x23 then 0x25 out the P1.0/P1.2/P1.1 latch chain (16 bits + latch pulse).
 - **fcn_0f0c** — shifts IRAM 0x22 out P1.7/P1.5 with P1.6 low (second serial device).
 - **fcn_0deb** — `movx @dptr,a` then falls into fcn_0dec: programs ACGFRQ2/1/0 = 0x61,0xA8,0x0F and ACG2FRQ2/1/0 the same (N=0x61A80F/2^18≈24.414 → 600/N ≈ 24.576 MHz, the datasheet §2.2.6.1 example value +0x0F LSB), then ACGCTL=0x06 (DIVEN=1, MCLKO2 source=acg2_clk÷M, MCLKO1 source=acg_clk÷M), leaves DPTR=0xFFE1, RET.
@@ -2183,7 +2183,7 @@ the external chip's register file.
 0x084d  12 0e 62   lcall 0x0e62          ; ... shift out: drive CS/reset line LOW
 0x0850  d2 2f      setb 0x2f             ; bit 0x25.7 = 1 ...
 0x0852  12 0e 62   lcall 0x0e62          ; ... shift out: line HIGH again — a full low pulse on the serial chip's CS/reset before programming it
-0x0855  12 08 a6   lcall 0x08a6          ; -> extchip_write_reg4_zero: ext reg 0x04 = 0x00 (via fcn_0c45; chip likely CS8427, reg semantics unverified)
+0x0855  12 08 a6   lcall 0x08a6          ; -> extchip_write_reg4_zero: ext reg 0x04 = 0x00 (via fcn_0c45; CS8427 established; reg 0x04 = CLOCKSOURCE, RUN=0 stops the clock)
 0x0858  75 2e 13   mov 0x2e,#0x13        ; reg = 0x13
 0x085b  75 2f 10   mov 0x2f,#0x10        ; value = 0x10
 0x085e  12 08 bd   lcall 0x08bd          ; -> extchip_write_2e_2f: ext reg 0x13 = 0x10
@@ -3068,13 +3068,13 @@ IRAM variables tracked in this range (bank 0 registers at 0x00-0x07):
 - byte 0x33 = saved R7 argument of fcn_0c45
 - bytes 0x23/0x25 = 16-bit control-latch word shifted out by fcn_0e62 (P1.0 data / P1.2 clock / P1.1 latch); bit 0x2f = byte 0x25.7 = chip-select-type control bit for the fcn_0c45 target device
 
-## fcn_0c45 = cs8427_ctl_write(reg=R7, data=R5)  [chip id: likely]
+## fcn_0c45 = cs8427_ctl_write(reg=R7, data=R5)  [chip id: established]
 
 Bit-bangs three bytes MSB-first on P1.4 (data) / P1.3 (clock, pulsed high
 then low per bit): first the constant 0x20, then R7, then R5. 0x20 matches
 the CS8427 chip-address/write byte (0b0010000_0); existing NOTES.md agrees
 (treated as unverified — but the 0x20 byte, 3-byte format, and the project's
-known CS8427 hardware make the identification likely). Before the transfer
+known CS8427 hardware establish the identification; see decomp/FINDING_cs8427_confirmed.md). Before the transfer
 it clears bit 0x2f (bit 7 of latch byte 0x25) and re-shifts the external
 control latch via fcn_0e62 (verified: 0x0e62 shifts IRAM 0x23 then 0x25 out
 P1.0/P1.2 and pulses P1.1); after the 3 bytes it sets bit 0x2f and shifts
@@ -3085,7 +3085,7 @@ latch and is held in the '0' state during the transfer.
 0x0c45  8f 33     mov 0x33,r7      ; save arg1 (register/MAP address) in IRAM 0x33
 0x0c47  a9 05     mov r1,0x05      ; R1 = direct 0x05 = bank-0 R5 = arg2 (data byte), saved before R-bank use
 0x0c49  7c 08     mov r4,#0x8      ; R4 = 8 = bit counter for first byte
-0x0c4b  7b 20     mov r3,#0x20     ; R3 = current shift byte = 0x20 (chip-address/write byte; CS8427 = 0b0010000+W, likely)
+0x0c4b  7b 20     mov r3,#0x20     ; R3 = shift byte 0x20 = CS8427 write address (base 0x10 << 1)
 0x0c4d  7a 01     mov r2,#0x1      ; R2 = byte-phase state = 1 (sending byte 1 of 3)
 0x0c4f  c2 2f     clr 0x2f         ; clear bit 0x2f (IRAM 0x25.7) — select/control bit in external latch word, driven low for the transfer
 0x0c51  12 0e 62  lcall 0x0e62     ; -> fcn_0e62: shift latch word IRAM 0x23:0x25 out P1.0/P1.2, pulse P1.1 (asserts the select line)

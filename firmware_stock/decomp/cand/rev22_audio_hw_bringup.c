@@ -78,7 +78,10 @@
  * already brackets itself with CS inside spi3wire_write_3bytes (CLR 0x2F at
  * 0x0C39, SETB 0x2F at 0x0C77), so this one is extra. A control port being
  * told which of two protocol modes to use would explain it; that is an
- * INFERENCE, not verified here. Rev 20 emits the identical pulse at
+ * INFERENCE and it is STILL not verified. Identifying the part (see
+ * FINDING_cs8427_confirmed.md) does not settle it: the artefact this repo has,
+ * reference/cs8427/alsa_cs8427.h, is a REGISTER map and says nothing about the
+ * part's mode-selection pin behaviour. Rev 20 emits the identical pulse at
  * 0x084B..0x0854.
  *
  * THE TEN REGISTER WRITES, read straight from the bytes:
@@ -94,12 +97,60 @@
  *     reg 0x06 = 0x05     rev22 0x0A30     rev20 0x0892 (via helper 0x08B3)
  *     reg 0x11 = 0xFF     rev22 0x0A37     rev20 0x0898 (inline)
  *
- * Register NUMBERS and VALUES are certain. Register NAMES are not: no CS8427
- * datasheet exists anywhere under reference/ (TAS1020A/B material and
- * Digidesign updater artefacts only), and firmware_stock/disasm/
- * rev20_ANNOTATED.md:270 rates the chip identification itself only "likely",
- * inferred from the constant 0x20 lead byte at rev22 0x0C35 / rev20 0x0C4B.
- * No register name is claimed here.
+ * Those pairs were re-read off the bytes for this annotation, not copied
+ * forward: rev22 0x09F8 is 7f 04 e4 fd 12 0c 31 7f 13 7d 10 12 0c 31 (R7 =
+ * register, R5 = value; reg 0x04 = 0x00 then reg 0x13 = 0x10) and rev22 0x0A22
+ * is 7f 03 7d 0c 12 0c 31 (reg 0x03 = 0x0C). The rev20 column was checked the
+ * same way: rev20 0x0855 is 12 08 a6 75 2e 13 75 2f 10 12 08 bd, and the
+ * helper it calls first, extchip_write_reg4_zero, is 75 2e 04 e4 f5 2f at
+ * rev20 0x08A6 -- register 4, value zero.
+ *
+ * ================= WHAT THE TEN WRITES MEAN ==========================
+ *
+ * Register NUMBERS and VALUES were always certain; the NAMES used to be
+ * flagged here as unclaimed, because no CS8427 datasheet exists anywhere under
+ * reference/ (TAS1020A/B material and Digidesign updater artefacts only) and
+ * the chip identification was itself rated only "likely" from the constant
+ * 0x20 lead byte at rev22 0x0C35 / rev20 0x0C4B.
+ *
+ * BOTH OF THOSE HAVE MOVED. The part is identified -- 0x20 is an I2C write to
+ * slave address 0x10, which ALSA's header gives as CS8427_BASE_ADDR, and every
+ * register the firmware touches decodes coherently under that map; see
+ * FINDING_cs8427_confirmed.md. And the register map is now in the repo as
+ * reference/cs8427/alsa_cs8427.h. That header is a SECONDARY source (ALSA's
+ * named constants, not Cirrus's datasheet), so names below are given as what
+ * ALSA's CS8427 header calls the field.
+ *
+ * The full field-by-field decode of all ten values is written up once, in the
+ * Rev 20 counterpart audio_path_reconfig_ext_chips.c; the values are identical
+ * so it is not repeated here. In brief:
+ *
+ *   0x04 = 0x00   CLOCKSOURCE, RUN = 0 -- stop the clock before reconfiguring
+ *   0x13 = 0x10   UDATABUF, UD = 1 (U pin an output), UBM = 00 (send zeros)
+ *   0x04 = 0x00   still stopped
+ *   0x04 = 0x40   CLOCKSOURCE, RUN = 1, 256*Fso, RXD = ILRCK pin -- clocked
+ *                 from the TAS1020B, NOT from the incoming S/PDIF. cmd7/cmd8
+ *                 write 0x41 here instead when S/PDIF is the source, which is
+ *                 the same register with RXD = AES3 input.
+ *   0x01 = 0x01   CONTROL1, TCBLDIR = 1 (TCBL is an output), no mutes
+ *   0x02 = 0x20   CONTROL2, HOLD = 01 = "replace the current audio sample with
+ *                 zero (mute)" on a receiver error; stereo RX and stereo TX
+ *   0x03 = 0x0C   DATAFLOW -- the whole S/PDIF routing in one byte. TXD field
+ *                 = TXDSERIAL: the AES3 transmitter is fed from the serial
+ *                 audio input port, so host playback goes out S/PDIF. SPD
+ *                 field = SPDAES3RECEIVER: the serial audio output port is fed
+ *                 from the AES3 receiver, so S/PDIF in reaches capture.
+ *                 TXOFF = 0 and AESBP = 0: transmitter on, no RX->TX bypass.
+ *   0x05 = 0x05   SERIALINPUT, slave, 24-bit, left-justified + one-clock delay
+ *                 + inverted LRCK polarity = I2S
+ *   0x06 = 0x05   SERIALOUTPUT, the same format in the mirror register
+ *   0x11 = 0xFF   RECVERRMASK, every defined receiver-error bit set. The ALSA
+ *                 header gives this register the bit layout of RECVERRORS but
+ *                 NOT the polarity of the mask, so "all receiver errors are
+ *                 silent" is the reading, not a decode -- keep that hedge.
+ *                 What is certain from the bytes is that no receiver-error
+ *                 interrupt is enabled either way: INT1MASK (0x09) and
+ *                 INT2MASK (0x0C) are never written by either image.
  *
  * WRITTEN AS ASSEMBLY DELIBERATELY, for one reason that survives the loss of
  * the helpers: spi3wire_write_3bytes takes its arguments in R7 (register) and
@@ -172,35 +223,41 @@ void audio_hw_bringup(void) __naked {
         mov   r7,#0x04
         clr   a                    ; Keil's zero encoding: CLR A / MOV R5,A
         mov   r5,a
-        lcall _spi3wire_write_3bytes    ; reg 0x04 = 0x00
+        lcall _spi3wire_write_3bytes    ; reg 0x04 = 0x00: CLOCKSOURCE, RUN = 0
         mov   r7,#0x13
         mov   r5,#0x10
-        lcall _spi3wire_write_3bytes    ; reg 0x13 = 0x10
+        lcall _spi3wire_write_3bytes    ; reg 0x13 = 0x10: UDATABUF, UD = out,
+                                        ; U-bit manager = transmit zeros
         mov   r7,#0x04
         clr   a
         mov   r5,a
-        lcall _spi3wire_write_3bytes    ; reg 0x04 = 0x00 again
+        lcall _spi3wire_write_3bytes    ; reg 0x04 = 0x00 again, still stopped
         mov   r7,#0x04
         mov   r5,#0x40
-        lcall _spi3wire_write_3bytes    ; reg 0x04 = 0x40
+        lcall _spi3wire_write_3bytes    ; reg 0x04 = 0x40: RUN = 1, 256*Fso,
+                                        ; RXD = ILRCK pin (not S/PDIF)
         mov   r7,#0x01
         mov   r5,#0x01
-        lcall _spi3wire_write_3bytes    ; reg 0x01 = 0x01
+        lcall _spi3wire_write_3bytes    ; reg 0x01 = 0x01: CONTROL1, TCBL out
         mov   r7,#0x02
         mov   r5,#0x20
-        lcall _spi3wire_write_3bytes    ; reg 0x02 = 0x20
+        lcall _spi3wire_write_3bytes    ; reg 0x02 = 0x20: CONTROL2, HOLD = 01
+                                        ; = zero the sample on receiver error
         mov   r7,#0x03
         mov   r5,#0x0c
-        lcall _spi3wire_write_3bytes    ; reg 0x03 = 0x0C
+        lcall _spi3wire_write_3bytes    ; reg 0x03 = 0x0C: DATAFLOW. Playback
+                                        ; -> AES3 TX, AES3 RX -> capture.
         mov   r7,#0x05
         mov   r5,#0x05
-        lcall _spi3wire_write_3bytes    ; reg 0x05 = 0x05
+        lcall _spi3wire_write_3bytes    ; reg 0x05 = 0x05: SERIALINPUT, slave
+                                        ; 24-bit I2S
         mov   r7,#0x06
         mov   r5,#0x05
-        lcall _spi3wire_write_3bytes    ; reg 0x06 = 0x05
+        lcall _spi3wire_write_3bytes    ; reg 0x06 = 0x05: SERIALOUTPUT, same
         mov   r7,#0x11
         mov   r5,#0xff
-        lcall _spi3wire_write_3bytes    ; reg 0x11 = 0xFF
+        lcall _spi3wire_write_3bytes    ; reg 0x11 = 0xFF: RECVERRMASK, all
+                                        ; defined error bits set
         ret
     __endasm;
 }

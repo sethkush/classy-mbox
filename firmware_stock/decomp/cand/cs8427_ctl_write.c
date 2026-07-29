@@ -23,21 +23,40 @@
  * two full 16-bit panel shifts, and every control write to this chip also
  * rewrites the panel latch outputs with their current values.
  *
- * Chip identity: NOT ESTABLISHED, and no CS8427 datasheet exists anywhere in
- * this repo -- reference/ holds TAS1020A/B material and Digidesign updater
- * artefacts only, nothing from Cirrus Logic. The name is Ghidra's; this
- * project rates the identification "likely, mechanics certain"
- * (firmware_stock/disasm/rev20_ANNOTATED.md:270) and nothing here settles it.
- * What is certain from the bytes is that byte 1 of every transaction is the
- * constant 0x20 (rev20 0x0C4B, rev22 0x0C35). If the part is a CS8427, that
- * constant lines up with its chip-address byte -- but that is a recollected
- * fact about a part whose datasheet is not here to check, so it is offered as
- * a reason the name was proposed, not as evidence for it. Cutting the other
- * way, two of the register indices the wrappers use, 0x23 (0x048E, 0x04A8) and
- * 0x24 (0x0589), are outside the 0x00-0x20 range a CS8427 is believed to
- * document, which I cannot reconcile. The mechanics below are byte-exact; the
- * part number is not a claim I am making, and neither is any register name
- * anywhere in this decompilation.
+ * STILL UNEXPLAINED, and the CS8427 identification does not touch it: the bare
+ * chip-select pulse the caller issues immediately before the bring-up writes
+ * (rev20 0x084B `C2 2F 12 0E 62 D2 2F 12 0E 62`, i.e. CLR 0x2F / LCALL 0x0E62
+ * / SETB 0x2F / LCALL 0x0E62, through 0x0854; rev22 0x09EE..0x09F7, the same
+ * four instructions against 0x0E56). It asserts and releases the select line
+ * without clocking a single data bit. A protocol-mode select on the part
+ * remains the obvious guess and remains a guess -- ALSA's header covers
+ * registers, not mode-selection pin behaviour.
+ *
+ * Chip identity: ESTABLISHED -- the part is a Cirrus Logic CS8427. See
+ * firmware_stock/decomp/FINDING_cs8427_confirmed.md. Two independent halves,
+ * both checked against the bytes:
+ *
+ *   1. Byte 1 of every transaction is the constant 0x20 (rev20 0x0C4B `7B 20`
+ *      MOV R3,#0x20; rev22 0x0C35, the same two bytes). ALSA's CS8427 header
+ *      gives CS8427_BASE_ADDR = 0x10 as the part's base address, and an
+ *      address byte for a write to slave 0x10 is exactly (0x10 << 1) | 0 =
+ *      0x20.
+ *   2. Every register this routine is asked to write decodes to a coherent
+ *      CS8427 field with a value an S/PDIF transceiver in this product would
+ *      need -- the ten-write bring-up sequence (rev20 0x0855..0x08A4, rev22
+ *      0x09F8..0x0A3D) lands on CLOCKSOURCE, UDATABUF, CONTROL1, CONTROL2,
+ *      DATAFLOW, SERIALINPUT, SERIALOUTPUT and RECVERRMASK, in that order,
+ *      with sensible values in each.
+ *
+ * The old objection that register indices 0x23 (0x048E, 0x04A8) and 0x24
+ * (0x0589) fall outside the part's map is WITHDRAWN: ALSA names 0x20
+ * CS8427_REG_CORU_DATABUF and documents it as a 24-byte buffer area, so
+ * 0x20..0x37 are all valid addresses and 0x23/0x24 are the C/U-data buffer
+ * bytes 3 and 4. Register names used in this decompilation are ALSA's
+ * (reference/cs8427/alsa_cs8427.h), a secondary source -- cite them as "ALSA's
+ * CS8427 header names this ...", never as datasheet text. No CS8427 datasheet
+ * is in this repo; reference/ holds TAS1020A/B material, the Digidesign
+ * updater artefacts, and that header.
  *
  * WRITTEN AS ASSEMBLY DELIBERATELY, for two reasons that compound: the R7/R5
  * register parameters, and the same `_crol_(x,1)` intrinsic expansion that

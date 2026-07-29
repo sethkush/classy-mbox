@@ -23,11 +23,24 @@
  * Those sit on the `JNB 0x2C` analogue path (BIT 0x2C = IRAM 0x25.4, S/PDIF
  * selected) at 0x0482 and 0x04A4; the S/PDIF path calls
  * cs8427_write_reg04_val41 (0x0567) instead. So bit 0x40 of chip register
- * 0x23 is the single thing that differs between the two analogue modes. What
- * it selects is NOT established -- no CS8427 datasheet exists under
- * reference/, and 0x23 is outside the register range that part is believed to
- * document, which is one of the reasons the chip identification is still
- * rated only "likely" (firmware_stock/disasm/rev20_ANNOTATED.md:270).
+ * 0x23 is the single thing that differs between the two analogue modes.
+ *
+ * The chip is a CS8427 -- that is established, see
+ * firmware_stock/decomp/FINDING_cs8427_confirmed.md -- and the objection this
+ * comment used to raise, that 0x23 lies outside the part's register map, is
+ * WITHDRAWN. ALSA's CS8427 header names 0x20 CS8427_REG_CORU_DATABUF and
+ * documents it as a 24-byte buffer area, so 0x20..0x37 are all valid and 0x23
+ * / 0x24 are bytes 3 and 4 of the C/U data buffer -- i.e. transmitted channel
+ * status when CSDATABUF selects CS data.
+ *
+ * WHAT 0x40 SELECTS IS STILL NOT ESTABLISHED. Two gaps remain and the header
+ * closes neither: (a) this analogue path never writes register 0x12
+ * (CSDATABUF) itself, so which buffer, access mode and channel the byte lands
+ * in is inherited from whatever ran before -- only the S/PDIF path sets
+ * 0x12 = 0x00, via stage_ctrl_pair_12_00 at 0x0FFA; and (b) ALSA's header maps
+ * the buffer as an address range and does not decode the AES3 channel-status
+ * bit layout inside it. So "byte 3 of transmitted channel status" is
+ * supported; "bit 6 of it means X" is not.
  *
  * ===================== REV 20 -> REV 22 DELTA ==========================
  *

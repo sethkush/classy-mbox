@@ -9,14 +9,33 @@
  * two sites differ there.
  *
  * The register numbers (5 and 6) and the value (0x05) are read from the bytes
- * and are certain. The naming is not: IF the part is a CS8427, then registers
- * 5 and 6 are its serial input and serial output format registers, and writing
- * the same byte to both would configure the two sides of the serial audio port
- * identically. No CS8427 datasheet exists anywhere under reference/ -- see
- * extchip_write_reg4_zero.c (0x08A6) for the provenance of the chip
- * identification and why it is still rated only "likely". Nothing here settles
- * it either; what the bytes show is two writes of 0x05 to two adjacent
- * registers.
+ * and are certain, AND SO IS THE NAMING. The part is a Cirrus Logic CS8427
+ * (firmware_stock/decomp/FINDING_cs8427_confirmed.md); ALSA's CS8427 header
+ * names 0x05 CS8427_REG_SERIALINPUT and 0x06 CS8427_REG_SERIALOUTPUT -- the
+ * serial audio input and output port format registers. Writing the same byte
+ * to both configures the two sides of the serial audio port identically, which
+ * is what this helper exists to do.
+ *
+ * 0x05 = 0000 0101 decodes, bit by bit, identically on both registers (the
+ * two registers' bit layouts are mirror images, SI* against SO*):
+ *
+ *     bit 7  SIMS / SOMS   = 0   SLAVE mode -- the TAS1020B drives ILRCK/
+ *                                ISCLK and OLRCK/OSCLK, the CS8427 follows
+ *     bit 6  SISF / SOSF   = 0   64*Fs bit clock
+ *     bits 5:4  SIRESMASK / SORESMASK
+ *                          = 00  CS8427_SIRES24 / CS8427_SORES24 -- 24-BIT
+ *     bit 3  SIJUST/SOJUST = 0   LEFT-justified
+ *     bit 2  SIDEL / SODEL = 1   data delayed to the SECOND clock period
+ *                                after the LRCK edge
+ *     bit 1  SISPOL/SOSPOL = 0   data clocked on the RISING edge
+ *     bit 0  SILRPOL/SOLRPOL = 1 LRCK polarity inverted -- data is the RIGHT
+ *                                channel while LRCK is high
+ *
+ * Left-justified, plus a one-clock delay, plus inverted LRCK polarity is
+ * exactly I2S. So both directions are 24-bit I2S with the CS8427 as clock
+ * slave -- consistent with the 24-bit format the stock descriptors advertise.
+ * (ALSA's header is a secondary source: cite it as "ALSA's CS8427 header names
+ * this ...", not as datasheet text.)
  *
  * REV 22 CROSS-CHECK: this helper does not exist in rev22. Rev 22's
  * audio_hw_bringup (0x09B6) inlines the same ten (register, value) pairs at

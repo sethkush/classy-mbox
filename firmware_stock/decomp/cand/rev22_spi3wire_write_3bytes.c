@@ -56,13 +56,24 @@
  * it. I have NOT checked whether anything else in Rev 22 writes IRAM 0x33, so
  * I make no claim that this fixed a collision -- only that the use is gone.
  *
- * Chip identity: NOT ESTABLISHED. No CS8427 datasheet exists anywhere under
- * reference/ -- it holds TAS1020A/B material and Digidesign updater artefacts
- * only. The name is Ghidra's for the Rev 20 listing; Rev 22's Ghidra listing
- * names this function after the bus shape instead, which is the honest name.
- * firmware_stock/disasm/rev20_ANNOTATED.md:270 rates the identification
- * "likely, mechanics certain". The mechanics below are byte-exact; the part
- * number is not a claim I am making, and no register name is either.
+ * Chip identity: ESTABLISHED -- the part on the far end of this bus is a
+ * Cirrus Logic CS8427. See firmware_stock/decomp/FINDING_cs8427_confirmed.md.
+ * The lead byte this routine emits is the evidence's first half: ALSA's CS8427
+ * header gives CS8427_BASE_ADDR = 0x10, and an address byte for a write to
+ * slave 0x10 is (0x10 << 1) | 0 = 0x20 -- the exact constant loaded here
+ * (rev22 0x0C35 `7B 20` MOV R3,#0x20; rev20 0x0C4B, the same two bytes). The
+ * second half is that every register carried over this bus decodes to a
+ * coherent CS8427 field: audio_hw_bringup's ten writes at 0x09F8..0x0A3D
+ * (rev20 0x0855..0x08A4) are CLOCKSOURCE, UDATABUF, CONTROL1, CONTROL2,
+ * DATAFLOW, SERIALINPUT, SERIALOUTPUT and RECVERRMASK, with values an S/PDIF
+ * transceiver in this product needs.
+ *
+ * This function's own name still describes the bus shape rather than the part,
+ * which is the right name for it -- the wire format is three bytes MSB first
+ * and knows nothing about CS8427 semantics. Register names elsewhere in this
+ * decompilation are ALSA's (reference/cs8427/alsa_cs8427.h), a secondary
+ * source: quote it as "ALSA's CS8427 header names this ...", not as datasheet
+ * text.
  *
  * WRITTEN AS ASSEMBLY DELIBERATELY, for two compounding reasons: the R7/R5
  * register parameters, and the `_crol_(x,1)` intrinsic expansion -- a DJNZ

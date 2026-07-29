@@ -169,7 +169,7 @@ External (non-XDATA) hardware is driven by GPIO bit-banging on Port 1:
   IRAM 0x23 then 0x25.
 - **8-bit control/LED latch** — `fcn_0efc`: data=P1.7, clock=P1.5, latch=P1.6; sends
   IRAM 0x22.
-- **CS8427 S/PDIF transceiver** (likely) — `fcn_0c31`: data=P1.4, clock=P1.3; 3-byte
+- **CS8427 S/PDIF transceiver** (established, see firmware_stock/decomp/FINDING_cs8427_confirmed.md) — `fcn_0c31`: data=P1.4, clock=P1.3; 3-byte
   frame {0x20, reg, val}, MSB-first, CS via bit 0x2f through the 16-bit latch.
 - **Config EEPROM (24Cxx, I2C addr 0xA0)** — `fcn_0bda` (write) / `fcn_0d11` (read) via
   the hardware I2C block (I2CCTL/I2CADR/I2CDATO/I2CDATI at 0xFFC0–0xFFC3).
@@ -270,8 +270,8 @@ table are marked "(VECINT table)".
 | 0x02e8 | `ep0_done_no_data` | clear bits 0x0b/0x0c, RET | certain | 0x005e/0x0156/0x0256/0x0299 |
 | 0x02ef | `ep0_stall_both` | stall EP0 both dirs (→ fcn_1001) | certain | many |
 | 0x02f3 | `usb_deferred_action_dispatch` | main-loop deferred control-request executor (14-way) | certain | 0x0a84/0x0aa3/0x0ab4 |
-| 0x0567 | `cs8427_write_reg04_val41` | CS8427 reg 0x04 := 0x41 | likely | 0x0485, 0x04a7 |
-| 0x0575 | `cs8427_write_shadowed` | CS8427 write of preloaded 0x2c/0x2d | likely | 0x0494, 0x04b5 |
+| 0x0567 | `cs8427_write_reg04_val41` | CS8427 reg 0x04 := 0x41 (CLOCKSOURCE, RXD=AES3 input) | established | 0x0485, 0x04a7 |
+| 0x0575 | `cs8427_write_shadowed` | CS8427 write of preloaded 0x2c/0x2d | established | 0x0494, 0x04b5 |
 | 0x070f | `audio_clock_set_mode` | program ACG for clock mode R7 (1/2/3/5) | certain | 0x03be/0x0426/0x047f/0x04a1/0x04d2/0x0512 |
 | 0x07ec | `hw_clock_codec_init` | MCU/codec-port/ACG cold init | certain | 0x0550, 0x0a57 |
 | 0x0891 | `usb_ep_dma_init` | EP0 + iso EP1/EP2 + DMA setup, USBIMSK/USBFADR | certain | 0x0553, 0x0a5a |
@@ -295,7 +295,7 @@ table are marked "(VECINT table)".
 | 0x0b7f | `udiv16` | unsigned 16÷16 divide runtime helper | certain | 0x0d79 |
 | 0x0bd4 | `jmp_via_r2r1` | computed jump to R2:R1 | certain | 0x0e06 |
 | 0x0bda | `i2c_eeprom_write3` | write 3 bytes (addr-hi, addr-lo, data) to EEPROM 0xA0 | likely | 0x04f2, 0x051b |
-| 0x0c31 | `fcn_0c31` = `cs8427_write_reg` | 3-wire CS8427 register write (0x20, reg, val) | likely | 0x09fc–0x0a3b (10×), 0x04df/0x050d, 0x0571/0x0579, 0x07aa |
+| 0x0c31 | `fcn_0c31` = `cs8427_write_reg` | 3-wire CS8427 register write (0x20, reg, val) | established | 0x09fc–0x0a3b (10×), 0x04df/0x050d, 0x0571/0x0579, 0x07aa |
 | 0x0cc7 | `oep0_int_handler` | OEP0_INT: EP0 OUT data-stage for class requests | certain | (VECINT 0x00) |
 | 0x0d0a | `oep0_clear_stall_and_rearm` | tail of `oep0_int_handler` (no OUT data expected) | certain | 0x0cc7 |
 | 0x0d11 | `i2c_eeprom_read_byte` | random-read 1 byte from EEPROM 0xA0 → R7 | certain | 0x04e6, 0x04f7 |
@@ -1946,7 +1946,7 @@ read with the reconciliation note.
 0x0c30  22          ret                  ; write complete (delay skipped if TXE already set at first poll)
 ```
 
-### 5.15 — 0x0c31–0x0c7c : fcn_0c31 (spi3w_write_reg — likely CS8427)
+### 5.15 — 0x0c31–0x0c7c : fcn_0c31 (spi3w_write_reg — CS8427, established)
 
 ```
 0x0c31  a9 07      mov r1,0x07        ; R1 := R7 (register-number arg saved)
@@ -2805,7 +2805,7 @@ each.
 
 1. **CS8427 chip identity and register map.** `fcn_0c31`, `fcn_0567`, `fcn_0575` and the
    bring-up sequence write registers 0x01–0x24 to a 3-wire device at write-address 0x20.
-   The chip is *likely* the CS8427 S/PDIF transceiver (0x20 = CS8427 SPI write address
+   The chip is the CS8427 S/PDIF transceiver, established (0x20 = CS8427 write address
    with AD0..2=0; consistent with NOTES.md pin map), but no CS8427 datasheet is in the
    repo, so no register meaning is verified. *Resolve:* obtain the CS8427 datasheet and
    map the written registers (0x01=0x01, 0x02=0x20, 0x03=0x0C, 0x04=0x00/0x40/0x41,

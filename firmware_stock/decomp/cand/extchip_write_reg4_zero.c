@@ -16,17 +16,41 @@
  * Why register 4 is written twice, before and after register 0x13: the
  * sequence in the caller is reg 4 = 0x00, reg 0x13 = 0x10, reg 4 = 0x00,
  * reg 4 = 0x40 (0x0855..0x086C). Those register numbers and those values are
- * read straight from the bytes and are certain. What the registers MEAN is
- * not. IF the part is a CS8427, then register 4 is its clock-source control
- * register and writing 0 would park the clock source off while another
- * register is changed, then re-enable it -- but that is an inference stacked
- * on an unconfirmed part number. NO CS8427 DATASHEET EXISTS IN THIS REPO:
- * reference/ contains only TAS1020A/B material (reference/tas1020a/) and the
- * Digidesign firmware/updater artefacts, nothing from Cirrus Logic. And
- * firmware_stock/disasm/rev20_ANNOTATED.md:270 records the chip identity
- * itself as only "likely" (from the 0x20 chip-address byte at rev20 0x0C4B /
- * rev22 0x0C35) with the register semantics explicitly unverified. Read the
- * numbers as fact and every register name in this batch as inference.
+ * read straight from the bytes and are certain. WHAT THEY MEAN IS NOW ALSO
+ * ESTABLISHED, which it was not when this comment was first written.
+ *
+ * The part is a Cirrus Logic CS8427 (firmware_stock/decomp/FINDING_cs8427_
+ * confirmed.md). ALSA's CS8427 header names register 0x04
+ * CS8427_REG_CLOCKSOURCE and gives CS8427_RUN = (1<<6) with "0 = clock off,
+ * 1 = clock on". So:
+ *
+ *     reg 4 = 0x00   RUN = 0  -- clock STOPPED
+ *     reg 4 = 0x40   RUN = 1  -- clock STARTED; the rest of the byte is
+ *                               CLK256 (bits 5:4 = 00, 256*Fso), OUTC = 0
+ *                               (output time base = OMCK), INC = 0 (input
+ *                               time base = recovered input clock), and
+ *                               RXD = 00 = CS8427_RXDILRCK (256*Fsi from the
+ *                               ILRCK pin)
+ *
+ * The stop-clock / reconfigure / start-clock reading this comment previously
+ * called "an inference stacked on an inference" is therefore CORRECT and no
+ * longer an inference: the bracket parks the clock off, writes register 0x13,
+ * and turns it back on. Register 0x04 really is the clock-source register.
+ * (ALSA's header is a secondary source -- cite it as "ALSA's CS8427 header
+ * names this ...", not as datasheet text. No Cirrus datasheet is in this repo;
+ * reference/ has TAS1020A/B material, the Digidesign artefacts and that
+ * header.)
+ *
+ * THE REGISTER THE BRACKET PROTECTS IS ONLY HALF DECODED. ALSA names 0x13
+ * CS8427_REG_UDATABUF, so it is the AES3 U-bit (user-data) buffer control
+ * register, and that much is settled. Why 0x10 specifically is NOT: the header
+ * gives CS8427_UD = (1<<4) as the U-pin direction bit, which 0x10 sets, and
+ * CS8427_UBMMASK = (3<<2) as the U-bit manager mode with bits 3:2 = 00 here,
+ * for which it names only two of the four codes. Whether "U pin as output,
+ * U-bit manager in its 00 mode" is what the firmware author was after, or a
+ * side effect of wanting one of the other bits clear, is not decidable from
+ * the register map alone. Read 0x13 = 0x10 as a named register with an
+ * undecoded value.
  *
  * REV 22 CROSS-CHECK: rev22 has no helper here at all -- neither this one nor
  * extchip_write_val05 nor extchip_write_2e_2f exists in that image. Rev 22's

@@ -34,7 +34,7 @@ The ten writes in `audio_path_reconfig_ext_chips` (rev20 `0x080B`) /
 | 7 | `0x03` | `0x0C` | DATAFLOW | `TXD = 01` serial-input-port → AES3 transmitter; `SPD = 10` AES3 receiver → serial output port |
 | 8 | `0x05` | `0x05` | SERIALINPUT | slave, 24-bit, left-justified + one-clock delay + LRCK polarity — **I²S** |
 | 9 | `0x06` | `0x05` | SERIALOUTPUT | slave, 24-bit — **I²S**, same format |
-| 10 | `0x11` | `0xFF` | RECVERRMASK | **mask every receiver error** — no interrupts from the AES3 receiver |
+| 10 | `0x11` | `0xFF` | RECVERRMASK | every defined receiver-error bit set — see the polarity caveat below |
 
 Three previously hedged claims are now facts:
 
@@ -46,6 +46,18 @@ Three previously hedged claims are now facts:
   and both are configured as 24-bit I²S in slave mode — consistent with the
   TAS1020B driving the clocks and the 24-bit format in the stock descriptors.
 * **Register 4 really is the clock-source register.**
+
+**Correction to an earlier draft of this note.** It read register `0x11 = 0xFF`
+as "mask every receiver error, no interrupts from the AES3 receiver". The ALSA
+header gives RECVERRMASK only the *bit layout* of RECVERRORS and states no
+polarity, and ALSA's own use of the register is to *unmask* input error bits --
+i.e. 1 enables the condition to assert RERR, the opposite reading. The decode
+does not follow from the artefact and may well be backwards.
+
+What is checkable, and settles the behaviour either way: **no receiver-error
+interrupt is enabled at all.** Neither image ever writes INT1MASK (`0x09`) or
+INT2MASK (`0x0C`) — the complete set of CS8427 registers written by either
+firmware is `0x01`–`0x06`, `0x11`, `0x12`, `0x13`, `0x23`, `0x24`.
 
 And one thing nobody had claimed: **register 7 (DATAFLOW) is the S/PDIF routing
 switch.** `0x0C` sends the serial audio input port to the AES3 transmitter and
@@ -76,8 +88,12 @@ the register map rather than by the handlers' names.
   is still unexplained. It clocks no data. A protocol-mode select remains the
   obvious guess and is still a guess: ALSA's header covers registers, not the
   part's mode-selection pin behaviour.
-* **Register `0x13 = 0x10`** is named (UDATABUF) but the *choice* of `0x10` is
-  not decoded here; the U-data mode bits are not in the ALSA header.
+* **Register `0x13 = 0x10`** decodes fully -- the header does define the U-data
+  fields (`CS8427_UD (1<<4)`, `CS8427_UBMMASK (3<<2)`, `CS8427_UBMZEROS`,
+  `CS8427_UBMBLOCK`), giving UD = 1 (U pin an output) and UBM = 00 (transmit all
+  zeros). An earlier draft of this note wrongly said those bits were absent from
+  the header. What is *not* decidable is the author's intent: why this state
+  rather than another.
 * **What `0xFF` means on shift-register chain A** is unrelated to this part.
 
 ## Consequence for task #145 (S/PDIF clock slaving)

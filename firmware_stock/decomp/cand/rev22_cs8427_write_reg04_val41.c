@@ -18,6 +18,27 @@
  * cmd8_set_clock_mode3_prog_spdif (call at 0x04A7). The analogue branch goes
  * to cs8427_write_shadowed (0x0575) instead.
  *
+ * WHAT 0x04 = 0x41 DOES. The chip is a Cirrus Logic CS8427 -- established, see
+ * firmware_stock/decomp/FINDING_cs8427_confirmed.md -- and ALSA's CS8427
+ * header names register 0x04 CS8427_REG_CLOCKSOURCE. 0x41 = 0100 0001:
+ *
+ *     bit 6    CS8427_RUN   = 1   clock on
+ *     bits 5:4 CLKMASK      = 00  CS8427_CLK256, OMCK = 256*Fso
+ *     bit 3    CS8427_OUTC  = 0   output time base = OMCK
+ *     bit 2    CS8427_INC   = 0   input time base = recovered input clock
+ *     bits 1:0 RXDMASK      = 01  CS8427_RXDAES3INPUT -- recover 256*Fsi
+ *                                 FROM THE AES3 (S/PDIF) INPUT
+ *
+ * The bring-up default written by audio_hw_bringup (0x0A0D, `MOV R7,#0x4 /
+ * MOV R5,#0x40`; rev20 0x0864..0x086C via extchip_write_2e_2f) is 0x40, whose
+ * only difference is RXD = 00 = CS8427_RXDILRCK, recovering the clock from the
+ * ILRCK pin instead. So this wrapper is the single byte that switches the
+ * CS8427 from internally clocked to S/PDIF-input clocked, and it is written on
+ * exactly the S/PDIF branch -- which is the clock-source half of the
+ * "externally clocked / S/PDIF-slaved" reading of the S/PDIF modes.
+ * (ALSA's header is a secondary source: cite it as "ALSA's CS8427 header names
+ * this ...", not as datasheet text.)
+ *
  * ===================== REV 20 -> REV 22 DELTA ==========================
  *
  * THE FUNCTION BOUNDARY MOVED; THE WIRE SEQUENCE DID NOT. Rev 20's block at
