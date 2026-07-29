@@ -164,12 +164,12 @@ void hw_init(void)
      * DMAEN (bit 7) is deliberately NOT set here — the channels are
      * enabled per direction at SET_INTERFACE time in streaming.c, which
      * is what Rev 20 does. */
-    DMACTL0 = 0x02;   /* Rev 20 fcn.0x08CB @ 0x09F2 */
-    DMATSH0 = 0x80;   /* Rev 20 fcn.0x08CB @ 0x09E0 */
-    DMATSL0 = 0x03;   /* Rev 20 fcn.0x08CB @ 0x09DA */
-    DMACTL1 = 0x09;   /* Rev 20 fcn.0x08CB @ 0x09F8 */
-    DMATSH1 = 0x80;   /* Rev 20 fcn.0x08CB @ 0x09EC */
-    DMATSL1 = 0x03;   /* Rev 20 fcn.0x08CB @ 0x09E6 */
+    DMACTL0 = 0x02;   /* Rev 20 fcn.0x08CB @ 0x09E0 */
+    DMATSH0 = 0x80;   /* Rev 20 fcn.0x08CB @ 0x09CE */
+    DMATSL0 = 0x03;   /* Rev 20 fcn.0x08CB @ 0x09C8 */
+    DMACTL1 = 0x09;   /* Rev 20 fcn.0x08CB @ 0x09E6 */
+    DMATSH1 = 0x80;   /* Rev 20 fcn.0x08CB @ 0x09DA */
+    DMATSL1 = 0x03;   /* Rev 20 fcn.0x08CB @ 0x09D4 */
 
     /* -------- Initial mux state -------- */
     g_mux_state  = 0x00;

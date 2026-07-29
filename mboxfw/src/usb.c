@@ -790,7 +790,9 @@ void usb_service(void)
                 /* 16 = deferred address actually applied. */
                 STAGE(16);
                 /* TI UsbEng.c engEp0TxDone — deferred SET_ADDRESS latch;
-                 * Rev 20 fcn.0x0F91 @ 0x0FAD writes USBFADR here too. */
+                 * Rev 20 fcn.0x0F43 @ 0x0F4E writes USBFADR here too.
+                 * (Was cited as fcn.0x0F91 @ 0x0FAD: 0x0F91 is a REV 22
+                 * address and 0x0FAD is inside the ?C_INITSEG data table.) */
                 USBFADR = g_pending_address;
                 g_pending_address = 0xFF;
             }
@@ -860,7 +862,9 @@ void usb_service(void)
              * state that a mid-enum reset shouldn't clobber. Mirrors
              * safety_net/src/main.c:402-433 exactly. */
             /* TI UsbEng.c engUsbInit: IEPCNF0=OEPCNF0=0x84, USBFADR=0.
-             * Rev 20 fcn.0x0F72 @ 0x0F7C-0x0F82: USBCTL |= 0xC0. */
+             * Rev 20 fcn.0x0F43 @ 0x0F5C: USBCTL |= 0xC0
+             * (`90 ff fc e0 44 c0 f0`). Was cited as fcn.0x0F72 @ 0x0F7C,
+             * a Rev 22 address; rev20 0x0F7C is inside ?C?CCASE. */
             OEPCNF0 = 0x84;
             IEPCNF0 = 0x84;
             USBFADR = 0;

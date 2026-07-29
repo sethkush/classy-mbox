@@ -51,6 +51,7 @@ check "SDCC version matches pin"            bash    tools/check_sdcc_version.sh
 check "wrap_hex golden regression"          python3 tools/test_wrap_hex_golden.py
 check "SFR register names consistent"       python3 tools/check_sfr_names.py
 check "quoted bytes match the images"       python3 tools/check_byte_quotes.py
+check "Rev-20 citations land on target"    python3 tools/check_citation_targets.py
 # The decompilation is only a claim about the stock image if it still
 # reproduces it. match51 checks each candidate standalone; link51 places them
 # all at their stock addresses and resolves every inter-function call for real,

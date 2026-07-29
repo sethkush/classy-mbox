@@ -58,7 +58,10 @@ void streaming_set_rate(unsigned long hz)
      *
      * Writing 0 to a clock-generator control register instead of 0x10
      * would misconfigure the capture clock on every rate change. */
-    ACGDCTL  = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E18 */
+    ACGDCTL  = 0x10;   /* Rev 20 fcn.0x0728 @ 0x0736 — the caller selects
+                         * ACGDCTL (`90 ff e2`) and LCALLs the shared helper at
+                         * 0x0E18, which writes the caller's DPTR then ACG2DCTL.
+                         * Cite the site that names the register, not the helper. */
     ACG2DCTL = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E1B */
 
     /* Adaptive clock generator.
@@ -109,12 +112,12 @@ void streaming_set_rate(unsigned long hz)
         ACG2FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E0A */
 
     } else {
-        ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 — mode 2, 44.1 kHz */
-        ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
-        ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
-        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0789 */
-        ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0783 */
-        ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x078F */
+        ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0765 — mode 2, 44.1 kHz */
+        ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x075F */
+        ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x076B */
+        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0765 */
+        ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
+        ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
 
     }
     /* Shared by both rates: Rev 20's modes 2 and 3 both end at the tail
@@ -171,7 +174,7 @@ void streaming_set_rate(unsigned long hz)
      * per-endpoint in streaming_capture_enable()/streaming_playback_enable()
      * via DMACTL1/DMACTL0 bit 7, which is what Rev 20 does at 0x03CF and
      * 0x03DF. */
-    ACGCTL |= 0xC0;         /* Rev 20 fcn.0x0728 @ 0x07DE */
+    ACGCTL |= 0xC0;         /* Rev 20 fcn.0x0728 @ 0x07CC */
 
     /* Codec-side state commit. On real silicon fcn.0x0E74 is dead
      * code (codec self-configures from I²S clocks — see NOTES.md),
@@ -214,13 +217,13 @@ void streaming_playback_enable(unsigned char on)
         /* 0xC5 = IEPEN | ISO | BPS field 5 (6 bytes per sample, i.e.
          * stereo 24-bit) per datasheet §6.4.4.6.2. */
         OEPCNF2  = 0xC5;
-        /* Rev 20 fcn.0x0398 @ 0x03DF — DMACTL0 |= DMAEN, after the
+        /* Rev 20 fcn.0x0398 @ 0x03CD — DMACTL0 |= DMAEN, after the
          * endpoint is enabled. Datasheet §6.5.2.3: "before enabling the
          * DMA channel, all other DMA channel configuration bits must be
          * set to the desired value." */
         DMACTL0 |= DMA_EN;
     } else {
-        DMACTL0 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x1013 @ 0x1013 */
+        DMACTL0 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x1013 @ 0x1001 */
         OEPCNF2  = 0;
     }
 }
@@ -234,9 +237,9 @@ void streaming_capture_enable(unsigned char on)
         /* 0xC5 = IEPEN | ISO | BPS field 5 (6 bytes per sample) per
          * datasheet §6.4.4.6.2. Rev 20 fcn.0x0398 @ 0x03C4 */
         IEPCNF1  = 0xC5;
-        DMACTL1 |= DMA_EN; /* Rev 20 fcn.0x0398 @ 0x03CF */
+        DMACTL1 |= DMA_EN; /* Rev 20 fcn.0x0398 @ 0x03BD */
     } else {
-        DMACTL1 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x0330 @ 0x033F */
+        DMACTL1 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x0330 @ 0x032D */
         IEPCNF1  = 0;
     }
 }

@@ -63,6 +63,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 python3 "$ROOT/tools/check_sfr_citations.py"
 python3 "$ROOT/tools/check_sfr_names.py"
 python3 "$ROOT/tools/check_byte_quotes.py"
+python3 "$ROOT/tools/check_citation_targets.py"
 HOOK
     chmod +x "$HOOK_DIR/pre-commit"
     echo "  installed $HOOK_DIR/pre-commit"
