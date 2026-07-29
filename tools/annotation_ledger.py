@@ -126,6 +126,11 @@ def survey(image):
         elif op == 0x11 or (op & 0x1F) == 0x11:      # ACALL page-relative
             pass
         if op == 0x90:                                # MOV DPTR,#imm16
+            # A DPTR load is not automatically an XDATA access. The image is
+            # 0x1FEE bytes, so any target below that is a CODE address -- a
+            # lookup-table base for MOVC A,@A+DPTR. Lumping those in with SFR
+            # space made five CODE tables look like unnamed hardware
+            # registers, which is a category error, not a gap.
             xdata[(d[i + 1] << 8) | d[i + 2]].add(i)
         if op in DIRECT_OPS:
             a = d[i + 1]

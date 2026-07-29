@@ -182,3 +182,37 @@ Every address in 0x01–0x1E that either image touches is accounted for above,
 with every access site enumerated. Where the complete account is "one write
 and no reads" (0x0C) or "one read" (0x16), that is stated as such rather than
 dressed up.
+
+---
+
+# Appendix: the non-SFR `MOV DPTR,#imm16` targets
+
+Four addresses in Rev 20 and five in Rev 22 showed up in the ledger as
+"unnamed XDATA". Two categories, neither of which is a hardware register.
+
+## CODE lookup-table bases (below 0x1FEE, i.e. inside the image)
+
+    Rev 20 0x02F9  MOV DPTR,#0x0300      Rev 20 0x0A50  MOV DPTR,#0x0F9C
+    Rev 22 0x0117  MOV DPTR,#0x011E      Rev 22 0x02FE  MOV DPTR,#0x030C
+    Rev 22 0x0971  MOV DPTR,#0x0FBA
+
+Each is loaded once and used as the base for a `MOVC A,@A+DPTR` table read.
+They are table bases in CODE space, not XDATA locations — the image is only
+0x1FEE bytes long, so no data segment exists at these addresses.
+
+## EP0's Y-buffer data counts
+
+    Rev 20 0x0984  MOV DPTR,#0xFFAF      Rev 22 0x08A5
+    Rev 20 0x0988  MOV DPTR,#0xFF6F      Rev 22 0x08A9
+
+These fall on the endpoint register grid documented in `regs.h`. The IN block
+runs `IEPCNFn = 0xFF68 - n*8` with `+1` BBAX, `+2` BSIZ, `+3` DCNTX and `+7`
+DCNTY; the OUT block is the same shape based at `OEPCNF0 = 0xFFA8`. So:
+
+    0xFF6F = IEPDCNTY0     (endpoint 0 IN,  Y buffer data count)
+    0xFFAF = OEPDCNTY0     (endpoint 0 OUT, Y buffer data count)
+
+i.e. the second half of EP0's double buffer. `regs.h` names the X counts and
+the endpoint-1/2 registers but not these two, which is why they read as
+unnamed. Both are written in the boot init run, adjacent, as part of clearing
+EP0's buffer state.
