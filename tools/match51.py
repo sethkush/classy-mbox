@@ -46,6 +46,30 @@ LST = re.compile(r"^\s+([0-9A-F]{6})((?:\s[0-9A-F]{2})+)\s")
 RELOC_MNEMONICS = ("lcall", "ljmp")
 RELOC_OPERAND_BYTES = (1, 2)
 
+# LJMP/LCALL to a LOCAL label encodes an absolute address, so a function
+# compiled standalone at 0x0000 differs from the same function linked at its
+# real address by exactly that base. Rather than excusing those bytes, relocate
+# ours and compare properly -- a genuinely wrong local target still fails.
+ABS_MNEMONICS = ("lcall", "ljmp")
+
+
+def relocate_local_jumps(got, notes, base):
+    """Add `base` to absolute operands of LJMP/LCALL targeting local labels."""
+    out = bytearray(got)
+    for off, mn, sz in notes:
+        parts = mn.split()
+        if len(parts) < 2 or parts[0] not in ABS_MNEMONICS or sz != 3:
+            continue
+        if parts[1].startswith("_"):      # external symbol: linker resolves it
+            continue
+        if off + 2 >= len(out):
+            continue
+        tgt = (out[off + 1] << 8) | out[off + 2]
+        tgt = (tgt + base) & 0xFFFF
+        out[off + 1] = tgt >> 8
+        out[off + 2] = tgt & 0xFF
+    return bytes(out)
+
 CFLAGS = ["-mmcs51", "--model-small", "--std-c99", "--opt-code-size",
           "--no-xinit-opt", "-S"]
 
@@ -138,6 +162,7 @@ def main():
 
         lst = compile_candidate(c, extra)
         got, notes = extract(lst, func)
+        got = relocate_local_jumps(got, notes, addr)
 
         n = max(len(want), len(got))
         bad = []

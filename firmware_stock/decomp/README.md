@@ -34,7 +34,7 @@ Each candidate declares its target in a header comment:
 
 ## Scoreboard
 
-    matched 28/29 functions, 907/908 bytes
+    matched 30/31 functions, 1287/1288 bytes
 
 The one outstanding byte is `setup_get_sample_freq`, and it is a layout
 artifact rather than a codegen difference — see below. Every construct that
@@ -154,7 +154,12 @@ at the top of the function, and they made the match *worse* (45 bytes matching
 down to 16). They were reverted.
 
 **Rule of thumb: if a fix requires a rule that encodes one specific instruction
-adjacency, write the function as annotated `__naked` assembly instead.** A
+adjacency, write the function as annotated `__naked` assembly instead.**
+
+Functions in this class so far: `hw_master_init` (165 B), `usb_ep_dma_init`
+(153 B), `audio_clock_mode_apply` (227 B). All three are long straight-line
+register programming where Keil held A and DPTR live across the whole body.
+Together they are 545 bytes and all three match exactly. A
 narrow rule is a standing risk to every function that already matches, and the
 functions that need this treatment are long straight-line register programming
 where assembly carries the meaning as well as C would. `hw_master_init` is 165
@@ -176,6 +181,14 @@ A whole-image build will have to place functions in the original order before
 this class of difference disappears. Worth knowing now rather than at 95%.
 
 ## Harness correctness
+
+`LJMP`/`LCALL` to a **local** label encodes an absolute address, so a function
+compiled standalone at 0x0000 differs from the same function linked at its real
+address by exactly the base. Those operands are relocated before comparison
+rather than excused, so a genuinely wrong local target still fails. Only
+`LJMP`/`LCALL` to an *external* symbol is excused, because the linker resolves
+it.
+
 
 `match51.py` masks only the two address operand bytes of `LCALL`/`LJMP` to
 external symbols. It must never mask a whole instruction: `"jbc".startswith("jb")`
