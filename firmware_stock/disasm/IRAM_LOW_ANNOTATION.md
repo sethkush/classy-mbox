@@ -216,3 +216,72 @@ i.e. the second half of EP0's double buffer. `regs.h` names the X counts and
 the endpoint-1/2 registers but not these two, which is why they read as
 unnamed. Both are written in the boot init run, adjacent, as part of clearing
 EP0's buffer state.
+
+---
+
+# Appendix: the remaining call targets
+
+Seven addresses in Rev 20 and five in Rev 22 were called or jumped to without
+being a named candidate function. All are either stubbed interrupt vectors or
+entry points into the middle of a function whose bytes are already reconstructed
+— the merged-tail pattern Keil produces and `link51.py` models with `entry=1`.
+
+## 0x000E, 0x000F — stubbed interrupt vectors
+
+    CODE:000e  32   RETI      ; reached from the vector at 0x001B
+    CODE:000f  32   RETI      ; reached from the vector at 0x0023
+
+Bare `RETI`, nothing else. 0x001B is the timer-1 vector and 0x0023 the serial
+vector; neither peripheral is used, so both vectors land on a do-nothing
+handler. Present identically in both images.
+
+## 0x07C5 — entry into the CS8427-start tail
+
+    07c5  MOV R5,0x32        ; value  (0x41 = CLOCKSOURCE RUN set)
+    07c7  MOV R7,0x31        ; register (0x04 = CLOCKSOURCE)
+    07c9  LCALL 0x0C45       ; the two-arg control-port write
+    07cc  ACGCTL |= 0xC0
+    07d3  ...IEPDCNTX1
+
+Entered from four sites (0x074B, 0x075C, 0x078B, 0x0797). The (register, value)
+pair is the one documented in `IRAM_OVERLAY_ANNOTATION.md`; this tail commits it
+and then enables the clock generators.
+
+## 0x0A50 — entry into a MOVC table walk
+
+    0a50  MOV DPTR,#0x0F9C   ; table base in CODE
+    0a56  MOVC A,@A+DPTR
+    0a57  JZ  0x0A15         ; zero terminator
+    0a5b  ANL A,#0x3F
+
+A null-terminated table scan with a 6-bit field mask, entered from 0x0A12.
+
+## 0x0B2B — entry into the EP0 buffer-count reset
+
+    0b2b  MOVX @DPTR,A
+    0b2c  MOV DPTR,#0xFF6B   ; IEPDCNTX0
+    0b31  MOV DPTR,#0xFFAB   ; OEPDCNTX0
+    0b35  RET
+
+Clears EP0's X-buffer data counts, the counterpart to the Y counts at 0xFF6F /
+0xFFAF documented above. Entered from 0x0036, 0x0FD5 and 0x1016.
+
+## 0x0DEC — entry into the 48 kHz ACG load
+
+    0dec  ACG1FRQ1 (0xFFE6) = 0xA8
+    0df2  ACG1FRQ2 (0xFFE5) = 0x61
+    0df8  ACG1FRQ0 (0xFFE7) = 0x0F
+
+That is the 24-bit word **0x61A80F**, the 48 kHz-family clock value already
+carried by the `acg_48k_commit` candidate. Entered from 0x078E and 0x081B.
+
+## 0x0E18 — entry into the "both DCTL = 0x10" tail
+
+    0e18  MOV A,#0x10
+    0e1a  MOVX @DPTR,A       ; caller's pending DPTR
+    0e1b  MOV DPTR,#0xFFF6   ; ACG2DCTL
+    0e1e  MOVX @DPTR,A
+    0e1f  RET
+
+The tail of the `acg_set_both_dctl_10` candidate, entered one instruction in
+from 0x0739 by a caller already holding the target DPTR.

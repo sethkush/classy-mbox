@@ -453,3 +453,15 @@ rev22	xdata	0x030C	CODE lookup-table base (MOVC)	disasm/IRAM_LOW_ANNOTATION.md	e
 rev22	xdata	0x0FBA	CODE lookup-table base (MOVC)	disasm/IRAM_LOW_ANNOTATION.md	explained
 rev22	xdata	0xFF6F	IEPDCNTY0 - EP0 IN Y-buffer data count	disasm/IRAM_LOW_ANNOTATION.md	explained
 rev22	xdata	0xFFAF	OEPDCNTY0 - EP0 OUT Y-buffer data count	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	func	0x000E	stubbed RETI for the timer-1 vector	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	func	0x000F	stubbed RETI for the serial vector	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	func	0x07C5	entry into the CS8427-start tail	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	func	0x0A50	entry into a MOVC table walk	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	func	0x0B2B	entry into the EP0 X-buffer count reset	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	func	0x0DEC	entry into the 48 kHz ACG load	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	func	0x0E18	entry into the both-DCTL=0x10 tail	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	func	0x000E	stubbed RETI for the timer-1 vector	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	func	0x000F	stubbed RETI for the serial vector	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	func	0x07A0	entry into the CS8427-start tail (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	func	0x07A6	entry into the CS8427-start tail (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	func	0x0971	entry into a MOVC table walk (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
