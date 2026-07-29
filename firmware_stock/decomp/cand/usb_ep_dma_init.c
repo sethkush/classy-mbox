@@ -51,10 +51,10 @@ void usb_ep_dma_init(void) __naked {
         movx  @dptr,a
         mov   dptr,#0xff62         ; IEPBSIZ1
         movx  @dptr,a
-        mov   dptr,#0xff9b         ; OEPBCTX2
+        mov   dptr,#0xff9b         ; OEPDCNTX2
         clr   a
         movx  @dptr,a
-        mov   dptr,#0xff63         ; IEPBCTX1
+        mov   dptr,#0xff63         ; IEPDCNTX1
         movx  @dptr,a
         mov   dptr,#0xff98         ; OEPCNF2
         mov   a,#0xc5              ;   enable | ISO | BPS 5 = 6 bytes/sample

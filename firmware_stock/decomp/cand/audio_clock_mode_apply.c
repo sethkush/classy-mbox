@@ -139,14 +139,14 @@ void audio_clock_mode_apply(void) __naked {
         movx  a,@dptr
         orl   a,#0xc0              ; MCLKO1EN | MCLKO2EN
         movx  @dptr,a
-        mov   dptr,#0xff63         ; IEPBCTX1
+        mov   dptr,#0xff63         ; IEPDCNTX1
         clr   a
         movx  @dptr,a
-        mov   dptr,#0xff67         ; IEPBCTY1
+        mov   dptr,#0xff67         ; IEPDCNTY1
         movx  @dptr,a
-        mov   dptr,#0xff9b         ; OEPBCTX2
+        mov   dptr,#0xff9b         ; OEPDCNTX2
         movx  @dptr,a
-        mov   dptr,#0xff9f         ; OEPBCTY2
+        mov   dptr,#0xff9f         ; OEPDCNTY2
         movx  @dptr,a
         mov   dptr,#0xff60         ; IEPCNF1
         mov   a,#0xc5              ;   enable | ISO | 6 bytes per sample

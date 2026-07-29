@@ -136,10 +136,10 @@ void streaming_set_rate(unsigned long hz)
      * SET_INTERFACE. Rev 20 sets BBAX/BSIZ exactly once at 0x09B1-0x09C6
      * and never again. */
     ACG2DCTL = 0x10;        /* Rev 20 fcn.0x0728 @ 0x07C4 */
-    IEPBCTX1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07E5 */
-    IEPBCTY1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07EA */
-    OEPBCTX2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07EE */
-    OEPBCTY2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07F2 */
+    IEPDCNTX1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07E5 */
+    IEPDCNTY1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07EA */
+    OEPDCNTX2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07EE */
+    OEPDCNTY2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07F2 */
     IEPCNF1  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07F6 — enable EP1 IN */
     OEPCNF2  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07FC — enable EP2 OUT */
     /* ACGCTL bits 6-7, NOT a DMA arm. The old comment here claimed this
@@ -187,7 +187,7 @@ void streaming_playback_enable(unsigned char on)
     if (on) {
         OEPBBAX2 = EP_BBAX(EP2_OUT_BUF_ADDR);
         OEPBSIZ2 = EP_BSIZE(EP_AUDIO_BUF_SIZE);
-        OEPBCTX2 = 0;
+        OEPDCNTX2 = 0;
         /* 0xC5 = IEPEN | ISO | BPS field 5 (6 bytes per sample, i.e.
          * stereo 24-bit) per datasheet §6.4.4.6.2. */
         OEPCNF2  = 0xC5;
@@ -207,7 +207,7 @@ void streaming_capture_enable(unsigned char on)
     if (on) {
         IEPBBAX1 = EP_BBAX(EP1_IN_BUF_ADDR);
         IEPBSIZ1 = EP_BSIZE(EP_AUDIO_BUF_SIZE);
-        IEPBCTX1 = 0;
+        IEPDCNTX1 = 0;
         /* 0xC5 = IEPEN | ISO | BPS field 5 (6 bytes per sample) per
          * datasheet §6.4.4.6.2. Rev 20 fcn.0x0398 @ 0x03C4 */
         IEPCNF1  = 0xC5;

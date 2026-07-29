@@ -1,5 +1,8 @@
 // MATCH: image=rev20 addr=0x022F len=30 func=std_get_status cflags=--peep-file,firmware_stock/decomp/keil.peep
 #include "mbox.h"
+/* EP0 working pointer, Rev 20 addresses -- see the note in mbox.h. */
+__data __at (0x1B) unsigned char g_ep0_ptr_hi;
+__data __at (0x1C) unsigned char g_ep0_ptr_lo;
 extern void ep0_ptr_set_in_buf(void);
 extern void ep0_buf_clear_byte(void);   /* takes the low address byte in A */
 

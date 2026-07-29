@@ -41,36 +41,57 @@ Then link the lot at their stock addresses:
 
 ## Scoreboard
 
-    match51:  matched 88/88 functions, 3735/3735 bytes
+    match51:  matched 168/168 functions, 7239/7239 bytes
               1 declared partial (std_get_interface, 3 bytes)
-    link51:   linked  84/84 functions exact, 3579/3579 placed bytes
-              image coverage: 3579/3598 instruction bytes (99.5% of rev20)
+    link51 rev20:  84/84 exact, 3534/3598 distinct instruction bytes (98.2%)
+    link51 rev22:  81/81 exact, 3626/3630 distinct instruction bytes (99.9%)
 
-Rev 20 is essentially complete. What is left is 64 addresses, and both reasons
-are understood rather than outstanding:
+Both images are done. What remains is understood rather than outstanding:
 
-  * `std_get_interface`, 62 bytes, is the declared partial. It cannot be
-    *placed* at all -- it is three bytes too long, so it would run into its
-    neighbour -- which is why link51 excludes it rather than counting it.
-  * Two single-byte merged-tail prologues, `0x0DEB` (`MOVX @DPTR,A`) and
-    `0x0E17` (`INC DPTR`), are entry points that fall through into functions
-    already covered. No candidate emits them because link51 derives its
-    defined-symbol set from the header's `func=` name alone, so a candidate
-    cannot declare a second entry label. That is a tooling limit, not a
-    decompilation gap.
+  * Rev 20, 62 bytes: `std_get_interface` is the declared partial. It cannot be
+    *placed* -- three bytes too long, so it would run into its neighbour --
+    which is why link51 excludes it rather than counting it.
+  * Rev 20, 2 bytes: the one-byte merged-tail prologues at `0x0DEB` and
+    `0x0E17`. No candidate emits them because link51 takes a candidate's
+    defined symbols from its `func=` header alone, so a candidate cannot
+    declare a second entry label. Rev 22 needs no equivalent -- Ghidra already
+    names its versions, so the generated equates cover them.
+  * Rev 22, 4 bytes: not code. Ghidra's extent for `ep0_in_done_handler`
+    over-reaches four bytes into the `?C_INITSEG` initialiser table at
+    `0x0FBA`, which it labels a GAP. Rev 22 reproduces 100% of its actual
+    instruction bytes.
 
-Rev 22 is measured, not started: three probe functions (`dma0_disable`,
-`std_clear_feature`, `std_get_descriptor`, 149 bytes) matched exactly with the
-existing peephole set and no new rules. The set carries over.
+Coverage counts DISTINCT addresses. Summing candidate lengths double-counts,
+because a candidate may span more than one Ghidra function or carry an inline
+data table -- that arithmetic reported Rev 22 at "100.1%" before it was fixed,
+and overstated Rev 20 as 99.5% when the honest figure is 98.2%.
 
-Rev 22 is not started.
+## Rev 22 needed no new peephole rules
 
-The two figures differ because a candidate can cover bytes another candidate
-also covers: `setup_get_sample_freq` is one 142-byte unit spanning two Ghidra
-functions, and `dptr_from_ep0_ptr` is an entry point whose seven bytes belong
-to `dptr_to_ep0_out_buf`. link51 counts each stock byte once, so its number is
-the honest one. An earlier scoreboard here said 1288 bytes; 14 of those were
-double-counted.
+The whole Rev 22 corpus -- 109 functions, 3481 bytes -- matched with the rule
+set developed for Rev 20 and not one rule added. That is worth stating plainly,
+because it was measured rather than assumed: a three-function probe was run
+first specifically to find out, and the full batch then confirmed it.
+
+The two images are the same source built by the same compiler, and where they
+differ it is nearly always Keil re-drawing the boundaries of factored code
+rather than anything in the source changing. Three shapes recur:
+
+  * A helper subroutine in one image is inlined in the other
+    (`queue_chip_reg4_val40`, Rev 20 0x0E20, has no Rev 22 counterpart).
+  * The boundary of an extracted common tail moves by one instruction, paid for
+    by transposing two instructions inside the block so the block length is
+    unchanged.
+  * A branch reaches its target directly in one image and via an intervening
+    jump in the other, same size, same semantics.
+
+The one IRAM change: the EP0 working pointer moved from `0x1B:0x1C` in Rev 20
+to `0x1D:0x1E` in Rev 22. `ep0_*_buf_ptr_load` are otherwise byte-identical
+(rev20 `0x0B3E` `75 1b fa 75 1c 18 22` against rev22 `0x0B37`
+`75 1d fa 75 1e 18 22`). Because `__data __at` defines the symbol in every
+translation unit, a shared declaration of that pointer is a link-time
+multiple-definition error rather than a silent wrong address -- which is how it
+was found. It is therefore declared per candidate, not in `mbox.h`.
 
 ## Why per-function matching is not enough
 

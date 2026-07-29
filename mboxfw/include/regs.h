@@ -103,14 +103,14 @@
 #define IEPCNF1     XDATA(0xFF60)   /* audio capture (device → host) */
 #define IEPBBAX1    XDATA(0xFF61)
 #define IEPBSIZ1    XDATA(0xFF62)
-#define IEPBCTX1    XDATA(0xFF63)
-#define IEPBCTY1    XDATA(0xFF67)   /* Y buffer count — IEPCNFn + 7 */
+#define IEPDCNTX1    XDATA(0xFF63)
+#define IEPDCNTY1    XDATA(0xFF67)   /* Y buffer count — IEPCNFn + 7 */
 
 #define OEPCNF2     XDATA(0xFF98)   /* audio playback (host → device) */
 #define OEPBBAX2    XDATA(0xFF99)
 #define OEPBSIZ2    XDATA(0xFF9A)
-#define OEPBCTX2    XDATA(0xFF9B)
-#define OEPBCTY2    XDATA(0xFF9F)   /* Y buffer count — OEPCNFn + 7 */
+#define OEPDCNTX2    XDATA(0xFF9B)
+#define OEPDCNTY2    XDATA(0xFF9F)   /* Y buffer count — OEPCNFn + 7 */
 
 /* USB setup-packet block (SETPACK, 8 bytes at 0xFF28-0xFF2F) */
 #define SETPACK_BMREQ  XDATA(0xFF28)

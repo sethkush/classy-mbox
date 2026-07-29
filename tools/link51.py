@@ -80,15 +80,21 @@ PARK = {"DSEG": 0x0030, "OSEG": 0x0030, "ISEG": 0x0080, "SSEG": 0x0080,
 SYM_EXTRA = {}
 
 
-def load_symmap():
-    """-> {c_name: addr} for callees whose C name differs from Ghidra's."""
+def load_symmap(image):
+    """-> {c_name: addr} for callees whose C name differs from Ghidra's.
+
+    Rows are scoped by image. The same merged-tail entry point exists in both
+    images at different addresses, so an unscoped map would resolve a Rev 22
+    call to a Rev 20 address -- and because the linker would happily emit it,
+    the result would be a wrong operand that looks like a decompilation error.
+    """
     out = {}
     if not os.path.exists(SYMMAP):
         return out
     for line in open(SYMMAP):
-        line = line.split("#")[0].split()
-        if len(line) == 2:
-            out[line[0]] = int(line[1], 0)
+        f = line.split("#")[0].split()
+        if len(f) == 3 and f[0] == image:
+            out[f[1]] = int(f[2], 0)
     return out
 
 
@@ -155,7 +161,7 @@ def make_stubs(image, defined, work):
              ";; not yet decompiled, so live call sites resolve correctly.",
              "\t.module stubs"]
     syms = {name: addr for addr, (name, _) in ghidra_functions(image).items()}
-    syms.update(load_symmap())      # C-side names for merged-tail entry points
+    syms.update(load_symmap(image))      # C-side names for merged-tail entry points
     syms.update(SYM_EXTRA)          # entry=1 candidates
     n = 0
     for name, addr in sorted(syms.items(), key=lambda kv: kv[1]):
@@ -312,14 +318,27 @@ def main():
             print(f"    0x{addr:04X} {func:<30} {length:3d} B  "
                   + (f"inside {host}" if host else "\033[31mNOT COVERED\033[0m"))
 
-    total = sum(v[1] for v in ghidra_functions(a.image).values())
+    # Coverage counts DISTINCT addresses, not summed candidate lengths. A
+    # candidate may span more than one Ghidra function (merged tails) or carry
+    # an inline data table, so summing lengths double-counts and can report
+    # more than 100%. Distinct addresses are what "how much of the image do we
+    # reproduce" actually means.
+    g = ghidra_functions(a.image)
+    all_addrs = set()
+    for ad, (_, sz) in g.items():
+        all_addrs.update(range(ad, ad + sz))
+    covered = set()
+    for _, ad, _, ln, _ in cands:
+        covered.update(range(ad, ad + ln))
+    total = len(all_addrs)
+    reproduced = len(all_addrs & covered)
     nm_ok = sum(1 for r in rows if not r[3])
     if placed:
         print(f"\n  linked {nm_ok}/{len(rows)} functions exact, "
               f"{placed - bad_total}/{placed} placed bytes "
               f"({100.0 * (placed - bad_total) / placed:.1f}%)")
-        print(f"  image coverage: {placed}/{total} instruction bytes "
-              f"({100.0 * placed / total:.1f}% of {a.image})")
+        print(f"  image coverage: {reproduced}/{total} distinct instruction "
+              f"bytes ({100.0 * reproduced / total:.1f}% of {a.image})")
     else:
         print("\n  nothing placed")
     print(f"  map: {mapf}")

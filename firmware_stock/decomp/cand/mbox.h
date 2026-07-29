@@ -24,8 +24,15 @@ SFRX(DMACTL0,   0xFFE8);   SFRX(DMACTL1,   0xFFEE);
 __data __at (0x0A) unsigned char g_event;        /* pending event code 1..14 */
 __data __at (0x0D) unsigned char g_class_tag;    /* pending class-request tag */
 __data __at (0x0E) unsigned char g_pending_addr; /* deferred USB address     */
-__data __at (0x1B) unsigned char g_ep0_ptr_hi;
-__data __at (0x1C) unsigned char g_ep0_ptr_lo;
+/* The EP0 working pointer is deliberately NOT declared here: it is the one
+ * IRAM location that moved between images. Rev 20 keeps it at 0x1B:0x1C and
+ * Rev 22 at 0x1D:0x1E -- verified from ep0_*_buf_ptr_load, which are otherwise
+ * byte-identical (rev20 0x0B3E `75 1b fa 75 1c 18 22` against rev22 0x0B37
+ * `75 1d fa 75 1e 18 22`). A single shared definition would be wrong for one
+ * image, and because __data __at defines the symbol in every translation unit,
+ * a wrong one is a link-time multiple-definition error rather than a silent
+ * mistake. Each candidate that touches the pointer declares it itself, at the
+ * address its own image uses. Both bytes stay big-endian, Keil's order. */
 __data __at (0x31) unsigned char g_chip_reg;     /* queued chip register     */
 __data __at (0x32) unsigned char g_chip_val;     /* queued chip value        */
 /* --- bit flags (bit B lives in IRAM 0x20 + (B>>3), bit B&7) ------------ */

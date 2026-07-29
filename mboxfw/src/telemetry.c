@@ -137,7 +137,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
          * SOF fires and the endpoints are enabled, but tlm_vec_iep1 stays
          * 0: the device never returns a packet for an IN token. For
          * isochronous there is no NAK, so that means the endpoint buffer
-         * is never filled. streaming_set_rate() arms IEPBCTX1 = 0 and
+         * is never filled. streaming_set_rate() arms IEPDCNTX1 = 0 and
          * relies on the DMA engine to fill it from the C-port; this block
          * shows whether either half is actually running.
          *
@@ -156,9 +156,9 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[2] = CPTSTA;
         out[3] = ACGCTL;
         out[4] = IEPCNF1;
-        out[5] = IEPBCTX1;
+        out[5] = IEPDCNTX1;
         out[6] = IEPBSIZ1;
-        out[7] = OEPBCTX2;
+        out[7] = OEPDCNTX2;
         return 1;
 
     default:

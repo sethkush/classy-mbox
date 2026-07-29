@@ -83,6 +83,14 @@ RETIRED = {
     "DMASRC2_LO": "0xFFF7-9 are ACG2FRQ2/1/0",
     "DMASRC2_MID": "0xFFF7-9 are ACG2FRQ2/1/0",
     "DMASRC2_HI": "0xFFF7-9 are ACG2FRQ2/1/0",
+    # Invented during the Rev 22 decompilation for 0xFF9B/0xFF9F. TI calls them
+    # OEPDCNTX2/OEPDCNTY2; "OEPBCT" appears nowhere in reference/tas1020a/. The
+    # name/address check did not catch these because cand/ is advisory, so they
+    # are listed here instead, where a bare mention is enough to fail.
+    "OEPBCTX2": "0xFF9B is OEPDCNTX2",
+    "OEPBCTY2": "0xFF9F is OEPDCNTY2",
+    "IEPBCTX1": "0xFF63 is IEPDCNTX1",
+    "IEPBCTY1": "0xFF67 is IEPDCNTY1",
 }
 # A line that is *narrating* a past naming error legitimately contains the bad
 # name next to the address it never belonged to. Recognising that is what keeps

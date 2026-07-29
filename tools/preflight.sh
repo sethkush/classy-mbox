@@ -63,6 +63,7 @@ check "decomp candidates match stock"      python3 tools/match51.py firmware_sto
 check "no declared partials in cand/"      sh -c '! grep -hE "^// MATCH:.*partial=" firmware_stock/decomp/cand/*.c 2>/dev/null | grep -q .'
 check "declared partials hold exactly"     python3 tools/match51.py firmware_stock/decomp/cand/partial/*.c
 check "decomp links at stock addresses"    python3 tools/link51.py rev20
+check "decomp links at stock addresses (v22)" python3 tools/link51.py rev22
 
 if [[ "$TARGET" == "safety_net" ]]; then
     # Safety-net path: minimal, single-file image whose sole job is

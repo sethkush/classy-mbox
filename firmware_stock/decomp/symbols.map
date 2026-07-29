@@ -9,19 +9,44 @@
 # Every row is a claim about an address and is checked by link51.py: if a row is
 # wrong, the call operand stops matching stock and the link reports it.
 #
-#   <name used in C>            <stock address>   # Ghidra's name for it
+#   <image> <name used in C>    <stock address>   # Ghidra's name for it
+#
+# The image column is load-bearing: the same merged-tail name exists in both
+# images at different addresses, and without it a Rev 22 link would resolve
+# these to Rev 20 addresses and quietly compare the wrong bytes.
 
 # Rev 20
-sfr_store_then_acg_48k          0x0DEB   # MOVX store, then falls into 0x0DEC
+rev20 sfr_store_then_acg_48k          0x0DEB   # MOVX store, then falls into 0x0DEC
                                          # (Ghidra: sfr_store_then_cpt_cfg_tail)
-sfr_store_then_acg_ctl6         0x0E0F   # MOVX store, then falls into 0x0E10's
+rev20 sfr_store_then_acg_ctl6         0x0E0F   # MOVX store, then falls into 0x0E10's
                                          # ACGCTL = 0x06 tail. audio_clock_mode_apply
                                          # calls THIS, one byte before the tail, so it
                                          # commits the A it was still holding.
                                          # (Ghidra: acg_commit_and_ctl)
-acg_incdptr_dctl_div2           0x0E17   # INC DPTR, then falls into 0x0E18
+rev20 acg_incdptr_dctl_div2           0x0E17   # INC DPTR, then falls into 0x0E18
                                          # (Ghidra: acg_dptr_inc_then_set_both_dctl_10)
-shiftreg16_commit               0x0E62   # Ghidra: shiftreg16_commit_p1_0_1_2
-shiftreg8_commit                0x0F0C   # Ghidra: shiftreg8_commit_p1_7_6_5
-send_3byte_ep0_reply            0x010D   # merged tail of setup_get_sample_freq;
+rev20 shiftreg16_commit               0x0E62   # Ghidra: shiftreg16_commit_p1_0_1_2
+rev20 shiftreg8_commit                0x0F0C   # Ghidra: shiftreg8_commit_p1_7_6_5
+rev20 send_3byte_ep0_reply            0x010D   # merged tail of setup_get_sample_freq;
                                          # LCALLed from 0x00B8 and 0x00E0 too
+
+# Rev 22. Keil folded the common ends of sibling switch-case bodies harder here
+# than in Rev 20, so several shared tails sit *inside* another function's extent
+# and Ghidra gives them no symbol at all. Each row is an address other functions
+# jump into; the bytes themselves belong to the container.
+#
+# Three further Rev 22 entry points -- sfr_write_then_acg_program (0x0EC7),
+# acg_dividers_div2 (0x0EF3) and ep0_store_byte_and_arm_zlp (0x0B2C) -- are
+# deliberately NOT listed. Ghidra already names them and they have their own
+# candidates, so link51 resolves them without help; a row would be redundant.
+rev22 ep0_arm_in_1byte                0x016F   # inside std_get_configuration;
+                                               # Rev 20 had this standalone as
+                                               # ep0_send_1byte at 0x0B45
+rev22 evt_tail_write_ctrl_pair        0x0509   # inside cmd11_eeprom_selftest:
+                                               # write the staged CS8427
+                                               # reg/val pair, then clear event
+rev22 evt_tail_apply_clock_mode       0x0512   # inside cmd11_eeprom_selftest:
+                                               # apply the mode in R7, clear event
+rev22 evt_dispatch_epilogue           0x0563   # inside cmd14_usb_suspend_and_resume;
+                                               # g_event = 0 and return. Rev 20
+                                               # had it standalone at 0x0564
