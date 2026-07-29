@@ -177,6 +177,40 @@ story among several; a plain "analog section enable" fits the same trace.
 mono LEDs. See the test in §1.7 — this is cheap to falsify and worth doing
 before anyone writes an LED name next to these bits.
 
+### 1.8 RESOLVED NEGATIVE: `0x1A`/`0x1B` are not sample-rate bits
+
+Added 2026-07-28, and it settles a competing hypothesis that was sitting in our
+own firmware rather than in this document.
+
+`mboxfw/src/streaming.c:111` does `g_codec_state_23 |= 0x0C;  /* 48 kHz codec
+bits */` and `:120` clears the same two bits for 44.1 kHz -- i.e. it reads IRAM
+`0x23.2`/`0x23.3` as a rate selector. That is decidable against stock, and stock
+says no:
+
+* The only writes to those bits in `audio_clock_mode_apply` are `CLR` at the top
+  (rev20 `0x072F`/`0x0731`, rev22 `0x0716`/`0x0718`) and `SETB` near the end
+  (rev20 `0x07EE`/`0x07F0`, rev22 `0x07CF`/`0x07D1`).
+* The `SETB` pair is straight-line code: nothing XREFs `0x07EE`, no branch skips
+  it, and there is **not a single `RET` anywhere between `0x0728` and `0x07EE`**,
+  so every mode -- 44.1, 48, idle, external -- reaches it.
+* They are therefore left SET at the end of every clock-mode apply, whatever the
+  rate. A rate selector would differ between the 44.1 and 48 kHz arms. These
+  do not.
+
+**Consequence for the reading in §1.6:** strengthened, not weakened. The shape is
+now "cleared before the clock is disturbed; set again only after the clock is
+stable *and* the USB endpoints have been re-armed (`IEPCNF1 = 0xC5` at rev20
+`0x07E7`, `OEPCNF2` at `0x07EA`); then committed". That is pop suppression, and
+nothing about it is rate-dependent.
+
+**Consequence for mboxfw: it is a live divergence.** At 44.1 kHz mboxfw leaves
+both lines LOW, a state stock never rests in. If the mute/enable reading is
+right, mboxfw is muted at 44.1 kHz. Filed as task #147.
+
+**What this still does not do** is name the lines. "Not a rate selector" and
+"not the spdif/USB/mono LEDs" are both negatives. The scope test in §1.7 remains
+the only thing that produces a name.
+
 ### 1.7 Tests Seth could run (hardware observation outranks all of the above)
 
 1. **The LED test — one glance, no flashing, settles §1.6's negative claim.**
