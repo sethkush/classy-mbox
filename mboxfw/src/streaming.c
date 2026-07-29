@@ -108,7 +108,6 @@ void streaming_set_rate(unsigned long hz)
         ACG2FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0E04 */
         ACG2FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E0A */
 
-        g_codec_state_23 |= (unsigned char)0x0C;   /* 48 kHz codec bits */
     } else {
         ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 — mode 2, 44.1 kHz */
         ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
@@ -117,7 +116,6 @@ void streaming_set_rate(unsigned long hz)
         ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0783 */
         ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x078F */
 
-        g_codec_state_23 &= (unsigned char)~0x0C;  /* 44.1 kHz codec bits */
     }
     /* Shared by both rates: Rev 20's modes 2 and 3 both end at the tail
      * 0x0E0F..0x0E16, which writes ACGCTL = 0x06 (DIVEN + both MCLKO
@@ -135,13 +133,38 @@ void streaming_set_rate(unsigned long hz)
      * zero-length buffer if a SET_CUR(sample rate) arrived after
      * SET_INTERFACE. Rev 20 sets BBAX/BSIZ exactly once at 0x09B1-0x09C6
      * and never again. */
-    ACG2DCTL = 0x10;        /* Rev 20 fcn.0x0728 @ 0x07C4 */
-    IEPDCNTX1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07E5 */
-    IEPDCNTY1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07EA */
-    OEPDCNTX2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07EE */
-    OEPDCNTY2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07F2 */
-    IEPCNF1  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07F6 — enable EP1 IN */
-    OEPCNF2  = 0xC5;        /* Rev 20 fcn.0x0728 @ 0x07FC — enable EP2 OUT */
+    ACG2DCTL = 0x10;         /* Rev 20 fcn.0x0728 — CITATION UNVERIFIED, see note */
+    IEPDCNTX1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07D3 */
+    IEPDCNTY1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07D8 */
+    OEPDCNTX2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07DC */
+    OEPDCNTY2 = 0;           /* Rev 20 fcn.0x0728 @ 0x07E0 */
+    IEPCNF1  = 0xC5;         /* Rev 20 fcn.0x0728 @ 0x07E4 — enable EP1 IN */
+    OEPCNF2  = 0xC5;         /* Rev 20 fcn.0x0728 @ 0x07EA — enable EP2 OUT */
+
+    /* #147. Rev 20 sets IRAM 0x23.2 and 0x23.3 HERE, unconditionally, at
+     * 0x07EE and 0x07F0 -- immediately after the two endpoint-enable writes
+     * above and immediately before the chain-B commit at 0x07F2. rev22 is
+     * identical at 0x07CF/0x07D1.
+     *
+     * This used to sit inside the rate branches: set for 48 kHz, CLEARED for
+     * 44.1 kHz, commented "48 kHz codec bits". That reading is wrong. The only
+     * writes to the pair in Rev 20's whole clock-mode routine are a CLR at the
+     * top (0x072F/0x0731) and this SETB, and the SETB is straight-line code --
+     * nothing XREFs 0x07EE, no branch skips it, and there is no RET anywhere
+     * between 0x0728 and 0x07EE. Every mode reaches it and leaves both bits
+     * set, whatever the rate. A rate selector would differ between the arms.
+     *
+     * The shape that is left -- cleared before the clock is disturbed, set
+     * again only once the clock is stable AND the endpoints are re-armed, then
+     * committed -- is an output mute or audio-path enable. Which is why this
+     * mattered: at 44.1 kHz we were resting with both lines low, a state stock
+     * never rests in, and if the mute reading is right we were muted at the
+     * default Mac sample rate.
+     *
+     * See firmware_stock/decomp/FINDING_open_questions.md §1.8. The lines are
+     * still not NAMED -- that needs the scope test -- but "not a rate selector"
+     * is established from the bytes. */
+    g_codec_state_23 |= (unsigned char)0x0C;
     /* ACGCTL bits 6-7, NOT a DMA arm. The old comment here claimed this
      * armed DMA channels 0+1; 0xFFE1 is the adaptive clock generator
      * control register (datasheet §6.5.3.11). The DMA channels are enabled
