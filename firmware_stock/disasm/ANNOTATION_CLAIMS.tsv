@@ -414,3 +414,33 @@ rev22	irambyte	0x2F	CS8427 register value (arg in R5); also an INC counter	disas
 rev22	irambyte	0x30	streaming-region counter (INC 0x30)	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
 rev22	irambyte	0x31	CS8427 register number for CLOCKSOURCE start/stop	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
 rev22	irambyte	0x32	CS8427 value 0x41=RUN set / 0x40=RUN clear	disasm/IRAM_OVERLAY_ANNOTATION.md	explained
+rev20	irambit	0x20.1	previous-P3 bit 1: a fourth input, not a panel button	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x20.3	previous-P3 bit 3: ch1 source button prior state	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x20.4	previous-P3 bit 4: ch2 source button prior state	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x20.5	previous-P3 bit 5: mono button prior state	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x22.7	panel shift word top bit; write-only, boot-cleared	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x23.0	codec control word bit 0; set once	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x23.1	codec control word bit 1; set once	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x23.2	codec control word; #147 pair with 0x23.3, always moved together	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x23.3	codec control word; #147 pair with 0x23.2, always moved together	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x23.4	codec control word bit 4; set once	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x25.4	input to 0x22.6	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x25.5	input to 0x22.6	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x25.6	gates the boot init run	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x25.7	two toggle sites incl. 0x084B	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	irambit	0x26.0	shift-loop flag inside the 0x0E62 codec shift routine	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x20.1	previous-P3 bit 1: a fourth input, not a panel button	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x20.3	previous-P3 bit 3: ch1 source button prior state	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x20.4	previous-P3 bit 4: ch2 source button prior state	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x20.5	previous-P3 bit 5: mono button prior state	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x22.7	panel shift word top bit; write-only, boot-cleared	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x23.0	codec control word bit 0; set once	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x23.1	codec control word bit 1; set once	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x23.2	codec control word; #147 pair with 0x23.3, always moved together	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x23.3	codec control word; #147 pair with 0x23.2, always moved together	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x23.4	codec control word bit 4; set once	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x25.4	input to 0x22.6	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x25.5	input to 0x22.6	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x25.6	gates the boot init run	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x25.7	two toggle sites incl. 0x084B	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev22	irambit	0x26.0	shift-loop flag inside the 0x0E62 codec shift routine	disasm/IRAM_BITS_ANNOTATION.md	explained

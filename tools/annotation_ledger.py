@@ -184,7 +184,14 @@ def load_claims():
     if not os.path.exists(CLAIMS):
         return out
     for line in open(CLAIMS):
-        line = line.split("#")[0].rstrip()
+        # Comments are WHOLE-LINE only. Stripping from the first '#' anywhere
+        # silently ate four legitimate rows whose names contained 8051
+        # immediates -- "#0xFE", "#0x00", "#0x10", "#0xFF" -- leaving too few
+        # fields to parse, so the ledger under-reported and I misread that as
+        # unfinished work.
+        if line.lstrip().startswith("#"):
+            continue
+        line = line.rstrip("\n")
         if not line.strip():
             continue
         f = line.split("\t")
