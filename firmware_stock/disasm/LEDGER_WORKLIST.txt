@@ -1,0 +1,1084 @@
+
+======================================================================
+rev20
+======================================================================
+
+--- IRAM byte 0x01  (1 site(s)) ---
+  CODE:0c87  ab01      MOV R3,0x01
+
+--- IRAM byte 0x03  (1 site(s)) ---
+  CODE:0c59  af03      MOV R7,0x03
+
+--- IRAM byte 0x05  (4 site(s)) ---
+  CODE:0bee  ae05      MOV R6,0x05                     ; XREF from CODE:04ee,CODE:051c
+  CODE:0c47  a905      MOV R1,0x05
+  CODE:0e6d  af05      MOV R7,0x05
+  CODE:0f15  af05      MOV R7,0x05
+
+--- IRAM byte 0x06  (5 site(s)) ---
+  CODE:0d03  430601    ORL 0x06,#0x1
+  CODE:0eea  430601    ORL 0x06,#0x1
+  CODE:0ef7  430601    ORL 0x06,#0x1
+  CODE:0f04  430601    ORL 0x06,#0x1
+  CODE:0f09  af06      MOV R7,0x06
+
+--- IRAM byte 0x08  (10 site(s)) ---
+  CODE:0098  e508      MOV A,0x08
+  CODE:00ba  e508      MOV A,0x08                      ; XREF from CODE:009a
+  CODE:00e2  e508      MOV A,0x08                      ; XREF from CODE:00bc
+  CODE:045e  af08      MOV R7,0x08
+  CODE:0753  750801    MOV 0x08,#0x1
+  CODE:0785  750802    MOV 0x08,#0x2
+  CODE:0791  750803    MOV 0x08,#0x3
+  CODE:07bf  750805    MOV 0x08,#0x5
+  CODE:0821  750803    MOV 0x08,#0x3
+  CODE:093b  750803    MOV 0x08,#0x3
+
+--- IRAM byte 0x09  (13 site(s)) ---
+  CODE:003b  f509      MOV 0x09,A
+  CODE:0183  f509      MOV 0x09,A
+  CODE:01a7  f509      MOV 0x09,A
+  CODE:01e1  f509      MOV 0x09,A
+  CODE:09ff  f509      MOV 0x09,A
+  CODE:0b92  e509      MOV A,0x09                      ; XREF from CODE:0bc3
+  CODE:0bb0  d5090c    DJNZ 0x09,0x0bbf                ; XREF from CODE:0bac
+  CODE:0bba  7509ff    MOV 0x09,#0xff
+  CODE:0bd4  e509      MOV A,0x09
+  CODE:0d7f  e509      MOV A,0x09
+  CODE:0d89  f509      MOV 0x09,A
+  CODE:0d96  e509      MOV A,0x09
+  CODE:0d9d  b5090b    CJNE A,0x09,0x0dab
+
+--- IRAM byte 0x0A  (16 site(s)) ---
+  CODE:0006  750a0e    MOV 0x0a,#0xe                   ; XREF from CODE:0cbf
+  CODE:005b  750a0d    MOV 0x0a,#0xd
+  CODE:0293  750a01    MOV 0x0a,#0x1                   ; XREF from CODE:0288
+  CODE:02c5  750a02    MOV 0x0a,#0x2
+  CODE:02d9  750a03    MOV 0x0a,#0x3
+  CODE:02ee  e50a      MOV A,0x0a                      ; XREF from CODE:0ada,CODE:0af9,CODE:0b0a
+  CODE:0565  f50a      MOV 0x0a,A
+  CODE:0a06  f50a      MOV 0x0a,A
+  CODE:0ad6  e50a      MOV A,0x0a
+  CODE:0af6  750a0b    MOV 0x0a,#0xb
+  CODE:0b07  750a0c    MOV 0x0a,#0xc
+  CODE:0d35  750a07    MOV 0x0a,#0x7
+  CODE:0d3c  750a08    MOV 0x0a,#0x8
+  CODE:0d42  750a06    MOV 0x0a,#0x6
+  CODE:0d51  750a04    MOV 0x0a,#0x4
+  CODE:0d56  750a05    MOV 0x0a,#0x5                   ; XREF from CODE:0d4e
+
+--- IRAM byte 0x0B  (12 site(s)) ---
+  CODE:003d  f50b      MOV 0x0b,A
+  CODE:0186  f50b      MOV 0x0b,A
+  CODE:01ac  f50b      MOV 0x0b,A
+  CODE:01e4  f50b      MOV 0x0b,A
+  CODE:0a01  f50b      MOV 0x0b,A
+  CODE:0bb3  e50b      MOV A,0x0b
+  CODE:0bbd  150b      DEC 0x0b
+  CODE:0bd8  e50b      MOV A,0x0b
+  CODE:0d70  e50b      MOV A,0x0b
+  CODE:0d77  b50b17    CJNE A,0x0b,0x0d91
+  CODE:0d8d  f50b      MOV 0x0b,A
+  CODE:0da3  e50b      MOV A,0x0b
+
+--- IRAM byte 0x0C  (1 site(s)) ---
+  CODE:0a03  750cfe    MOV 0x0c,#0xfe
+
+--- IRAM byte 0x0D  (7 site(s)) ---
+  CODE:0063  750d02    MOV 0x0d,#0x2                   ; XREF from CODE:0059
+  CODE:006b  750d01    MOV 0x0d,#0x1                   ; XREF from CODE:0045
+  CODE:024d  750d05    MOV 0x0d,#0x5                   ; XREF from CODE:0128
+  CODE:0d28  e50d      MOV A,0x0d
+  CODE:0d45  e50d      MOV A,0x0d                      ; XREF from CODE:0d2a,CODE:0d40
+  CODE:0fd8  e50d      MOV A,0x0d                      ; XREF from CODE:0fca
+  CODE:0fe4  f50d      MOV 0x0d,A
+
+--- IRAM byte 0x0E  (2 site(s)) ---
+  CODE:0254  f50e      MOV 0x0e,A
+  CODE:0fe0  e50e      MOV A,0x0e
+
+--- IRAM byte 0x16  (1 site(s)) ---
+  CODE:0dd1  aa16      MOV R2,0x16
+
+--- IRAM byte 0x18  (5 site(s)) ---
+  CODE:0b8d  f518      MOV 0x18,A
+  CODE:0bbf  0518      INC 0x18                        ; XREF from CODE:0bb0,CODE:0bb8
+  CODE:0bc1  e518      MOV A,0x18
+  CODE:0bcd  4518      ORL A,0x18
+  CODE:0bdc  e518      MOV A,0x18
+
+--- IRAM byte 0x19  (8 site(s)) ---
+  CODE:017a  751905    MOV 0x19,#0x5
+  CODE:0198  751906    MOV 0x19,#0x6
+  CODE:01a1  851983    MOV DPH,0x19
+  CODE:01be  751906    MOV 0x19,#0x6
+  CODE:01cb  751906    MOV 0x19,#0x6
+  CODE:01d8  751906    MOV 0x19,#0x6
+  CODE:0b71  851983    MOV DPH,0x19
+  CODE:0bae  0519      INC 0x19
+
+--- IRAM byte 0x1A  (9 site(s)) ---
+  CODE:017d  751a96    MOV 0x1a,#0x96
+  CODE:019b  751a70    MOV 0x1a,#0x70
+  CODE:019e  851a82    MOV DPL,0x1a
+  CODE:01c1  751aa6    MOV 0x1a,#0xa6
+  CODE:01ce  751aaa    MOV 0x1a,#0xaa
+  CODE:01db  751ac8    MOV 0x1a,#0xc8
+  CODE:0b6e  851a82    MOV DPL,0x1a                    ; XREF from CODE:0180,CODE:01de,CODE:0b99
+  CODE:0ba8  051a      INC 0x1a                        ; XREF from CODE:0ba4
+  CODE:0baa  e51a      MOV A,0x1a
+
+--- IRAM byte 0x1B  (14 site(s)) ---
+  CODE:00a8  051b      INC 0x1b
+  CODE:00b3  051b      INC 0x1b
+  CODE:00cb  051b      INC 0x1b
+  CODE:00cf  851b83    MOV DPH,0x1b
+  CODE:00db  051b      INC 0x1b
+  CODE:00f3  051b      INC 0x1b
+  CODE:00f7  851b83    MOV DPH,0x1b
+  CODE:0103  051b      INC 0x1b
+  CODE:023d  051b      INC 0x1b
+  CODE:0b11  751bfa    MOV 0x1b,#0xfa                  ; XREF from CODE:0d2d,CODE:0d4a
+  CODE:0b1a  851b83    MOV DPH,0x1b
+  CODE:0b38  851b83    MOV DPH,0x1b
+  CODE:0b3e  751bfa    MOV 0x1b,#0xfa                  ; XREF from CODE:0073,CODE:0095,CODE:015d,CODE:0b8f,CODE:0200,CODE:022f
+  CODE:0ba6  051b      INC 0x1b
+
+--- IRAM byte 0x1C  (19 site(s)) ---
+  CODE:00a2  051c      INC 0x1c
+  CODE:00a4  e51c      MOV A,0x1c
+  CODE:00ad  051c      INC 0x1c
+  CODE:00af  e51c      MOV A,0x1c
+  CODE:00c5  051c      INC 0x1c
+  CODE:00c7  e51c      MOV A,0x1c
+  CODE:00d5  051c      INC 0x1c
+  CODE:00d7  e51c      MOV A,0x1c
+  CODE:00ed  051c      INC 0x1c
+  CODE:00ef  e51c      MOV A,0x1c
+  CODE:00fd  051c      INC 0x1c
+  CODE:00ff  e51c      MOV A,0x1c
+  CODE:0237  051c      INC 0x1c
+  CODE:0239  e51c      MOV A,0x1c
+  CODE:0b14  751c10    MOV 0x1c,#0x10
+  CODE:0b17  851c82    MOV DPL,0x1c                    ; XREF from CODE:0079,CODE:0081,CODE:009d,CODE:00bf,CODE:00e7,CODE:0163,CODE:016b,CODE:0b9c
+  CODE:0b41  751c18    MOV 0x1c,#0x18
+  CODE:0ba0  051c      INC 0x1c
+  CODE:0ba2  e51c      MOV A,0x1c
+
+--- IRAM byte 0x27  (5 site(s)) ---
+  CODE:0a96  f527      MOV 0x27,A
+  CODE:0aef  e527      MOV A,0x27
+  CODE:0af3  752701    MOV 0x27,#0x1
+  CODE:0aff  e527      MOV A,0x27
+  CODE:0b05  f527      MOV 0x27,A
+
+--- IRAM byte 0x28  (3 site(s)) ---
+  CODE:0a9a  f528      MOV 0x28,A
+  CODE:0ab8  e528      MOV A,0x28
+  CODE:0ac4  1528      DEC 0x28
+
+--- IRAM byte 0x29  (4 site(s)) ---
+  CODE:0a9c  f529      MOV 0x29,A
+  CODE:0ab4  e529      MOV A,0x29
+  CODE:0abe  e529      MOV A,0x29
+  CODE:0ac0  1529      DEC 0x29
+
+--- IRAM byte 0x2A  (1 site(s)) ---
+  CODE:0a9e  752a00    MOV 0x2a,#0x0
+
+--- IRAM byte 0x2B  (1 site(s)) ---
+  CODE:0aa1  752b10    MOV 0x2b,#0x10
+
+--- IRAM byte 0x2C  (17 site(s)) ---
+  CODE:048e  752c23    MOV 0x2c,#0x23                  ; XREF from CODE:0485
+  CODE:04a8  752c23    MOV 0x2c,#0x23                  ; XREF from CODE:049f
+  CODE:04d1  752c04    MOV 0x2c,#0x4
+  CODE:04d9  af2c      MOV R7,0x2c
+  CODE:04e5  8f2c      MOV 0x2c,R7
+  CODE:04e7  632cff    XRL 0x2c,#0xff
+  CODE:04ea  ab2c      MOV R3,0x2c
+  CODE:04fa  b52c02    CJNE A,0x2c,0x04ff
+  CODE:0502  752c12    MOV 0x2c,#0x12
+  CODE:050a  af2c      MOV R7,0x2c
+  CODE:0568  752c04    MOV 0x2c,#0x4                   ; XREF from CODE:0488,CODE:04a2
+  CODE:0570  af2c      MOV R7,0x2c
+  CODE:0575  752c12    MOV 0x2c,#0x12
+  CODE:057d  af2c      MOV R7,0x2c
+  CODE:0584  af2c      MOV R7,0x2c
+  CODE:0589  752c24    MOV 0x2c,#0x24
+  CODE:0591  af2c      MOV R7,0x2c
+
+--- IRAM byte 0x2D  (15 site(s)) ---
+  CODE:0492  f52d      MOV 0x2d,A
+  CODE:04ab  752d40    MOV 0x2d,#0x40
+  CODE:04d4  752d41    MOV 0x2d,#0x41
+  CODE:04d7  ad2d      MOV R5,0x2d
+  CODE:04f6  8f2d      MOV 0x2d,R7
+  CODE:04f8  e52d      MOV A,0x2d
+  CODE:0506  f52d      MOV 0x2d,A
+  CODE:0508  ad2d      MOV R5,0x2d
+  CODE:056b  752d41    MOV 0x2d,#0x41
+  CODE:056e  ad2d      MOV R5,0x2d
+  CODE:0579  f52d      MOV 0x2d,A
+  CODE:057b  ad2d      MOV R5,0x2d
+  CODE:0582  ad2d      MOV R5,0x2d                     ; XREF from CODE:0494,CODE:04ae
+  CODE:058c  752d80    MOV 0x2d,#0x80
+  CODE:058f  ad2d      MOV R5,0x2d
+
+--- IRAM byte 0x2E  (28 site(s)) ---
+  CODE:0728  8f2e      MOV 0x2e,R7                     ; XREF from CODE:03ba,CODE:0426,CODE:0460,CODE:0472,CODE:047a,CODE:0482,CODE:049c,CODE:04b6
+  CODE:073c  e52e      MOV A,0x2e
+  CODE:0812  752eff    MOV 0x2e,#0xff
+  CODE:0815  d52efd    DJNZ 0x2e,0x0815                ; XREF from CODE:0815
+  CODE:082b  752eff    MOV 0x2e,#0xff
+  CODE:082e  d52efd    DJNZ 0x2e,0x082e                ; XREF from CODE:082e
+  CODE:0838  752eff    MOV 0x2e,#0xff
+  CODE:083b  d52efd    DJNZ 0x2e,0x083b                ; XREF from CODE:083b
+  CODE:0845  752eff    MOV 0x2e,#0xff
+  CODE:0848  d52efd    DJNZ 0x2e,0x0848                ; XREF from CODE:0848
+  CODE:0858  752e13    MOV 0x2e,#0x13
+  CODE:0864  752e04    MOV 0x2e,#0x4
+  CODE:086d  752e01    MOV 0x2e,#0x1
+  CODE:0876  752e02    MOV 0x2e,#0x2
+  CODE:087f  752e03    MOV 0x2e,#0x3
+  CODE:0887  af2e      MOV R7,0x2e
+  CODE:088c  752e05    MOV 0x2e,#0x5
+  CODE:0892  752e06    MOV 0x2e,#0x6
+  CODE:0898  752e11    MOV 0x2e,#0x11
+  CODE:08a0  af2e      MOV R7,0x2e
+  CODE:08a6  752e04    MOV 0x2e,#0x4                   ; XREF from CODE:0855,CODE:0861
+  CODE:08ae  af2e      MOV R7,0x2e
+  CODE:08b8  af2e      MOV R7,0x2e
+  CODE:08bf  af2e      MOV R7,0x2e
+  CODE:08c6  af2e      MOV R7,0x2e
+  CODE:08cc  f52e      MOV 0x2e,A
+  CODE:094b  e52e      MOV A,0x2e
+  CODE:0957  052e      INC 0x2e
+
+--- IRAM byte 0x2F  (22 site(s)) ---
+  CODE:072b  f52f      MOV 0x2f,A
+  CODE:07f6  f52f      MOV 0x2f,A
+  CODE:0800  052f      INC 0x2f
+  CODE:0805  e52f      MOV A,0x2f
+  CODE:085b  752f10    MOV 0x2f,#0x10
+  CODE:0867  752f40    MOV 0x2f,#0x40
+  CODE:0870  752f01    MOV 0x2f,#0x1
+  CODE:0879  752f20    MOV 0x2f,#0x20
+  CODE:0882  752f0c    MOV 0x2f,#0xc
+  CODE:0885  ad2f      MOV R5,0x2f
+  CODE:089b  752fff    MOV 0x2f,#0xff
+  CODE:089e  ad2f      MOV R5,0x2f
+  CODE:08aa  f52f      MOV 0x2f,A
+  CODE:08ac  ad2f      MOV R5,0x2f
+  CODE:08b3  752f05    MOV 0x2f,#0x5                   ; XREF from CODE:088f,CODE:0895
+  CODE:08b6  ad2f      MOV R5,0x2f
+  CODE:08bd  ad2f      MOV R5,0x2f                     ; XREF from CODE:085e,CODE:086a
+  CODE:08c4  ad2f      MOV R5,0x2f                     ; XREF from CODE:0873,CODE:087c
+  CODE:08ce  f52f      MOV 0x2f,A
+  CODE:0946  e52f      MOV A,0x2f                      ; XREF from CODE:0955,CODE:0959
+  CODE:0951  052f      INC 0x2f
+  CODE:0953  e52f      MOV A,0x2f
+
+--- IRAM byte 0x30  (4 site(s)) ---
+  CODE:072d  f530      MOV 0x30,A
+  CODE:07f8  f530      MOV 0x30,A
+  CODE:07fa  0530      INC 0x30                        ; XREF from CODE:0802,CODE:0807
+  CODE:07fc  e530      MOV A,0x30
+
+--- IRAM byte 0x31  (3 site(s)) ---
+  CODE:0756  753104    MOV 0x31,#0x4
+  CODE:07c7  af31      MOV R7,0x31
+  CODE:0e20  753104    MOV 0x31,#0x4                   ; XREF from CODE:0788,CODE:0794,CODE:07c2
+
+--- IRAM byte 0x32  (3 site(s)) ---
+  CODE:0759  753241    MOV 0x32,#0x41
+  CODE:07c5  ad32      MOV R5,0x32                     ; XREF from CODE:074b,CODE:075c,CODE:078b,CODE:0797
+  CODE:0e23  753240    MOV 0x32,#0x40
+
+--- IRAM byte 0x33  (2 site(s)) ---
+  CODE:0c45  8f33      MOV 0x33,R7                     ; XREF from CODE:0889,CODE:08a2,CODE:07c9,CODE:0572,CODE:0586,CODE:04db,CODE:050c,CODE:08b0
+  CODE:0c7c  ab33      MOV R3,0x33
+
+--- IRAM bit 0x20.1  (2 site(s)) ---
+  CODE:0aec  20010d    JB 0x01,0x0afc                  ; XREF from CODE:0ae3
+  CODE:0afc  30010e    JNB 0x01,0x0b0d                 ; XREF from CODE:0aec,CODE:0af1
+
+--- IRAM bit 0x20.3  (1 site(s)) ---
+  CODE:0eed  20030a    JB 0x03,0x0efa                  ; XREF from CODE:0ee0,CODE:0ee4
+
+--- IRAM bit 0x20.4  (1 site(s)) ---
+  CODE:0efa  20040a    JB 0x04,0x0f07                  ; XREF from CODE:0eed,CODE:0ef1
+
+--- IRAM bit 0x20.5  (1 site(s)) ---
+  CODE:0ee0  20050a    JB 0x05,0x0eed                  ; XREF from CODE:0eda
+
+--- IRAM bit 0x21.0  (10 site(s)) ---
+  CODE:0207  300808    JNB 0x08,0x0212
+  CODE:0271  c208      CLR 0x08
+  CODE:0280  c208      CLR 0x08
+  CODE:028f  c208      CLR 0x08
+  CODE:02c3  9208      MOV 0x08,CY
+  CODE:0341  200821    JB 0x08,0x0365                  ; XREF from CODE:033b
+  CODE:038c  300847    JNB 0x08,0x03d6                 ; XREF from CODE:0386
+  CODE:03dc  200812    JB 0x08,0x03f1                  ; XREF from CODE:03d6
+  CODE:09fb  c208      CLR 0x08
+  CODE:0f67  c208      CLR 0x08
+
+--- IRAM bit 0x21.1  (10 site(s)) ---
+  CODE:0219  300908    JNB 0x09,0x0224
+  CODE:0273  c209      CLR 0x09
+  CODE:0282  c209      CLR 0x09
+  CODE:0291  c209      CLR 0x09
+  CODE:02d7  9209      MOV 0x09,CY
+  CODE:0344  20091e    JB 0x09,0x0365
+  CODE:0413  30091c    JNB 0x09,0x0432
+  CODE:0448  200903    JB 0x09,0x044e
+  CODE:09fd  c209      CLR 0x09
+  CODE:0f69  c209      CLR 0x09
+
+--- IRAM bit 0x21.2  (15 site(s)) ---
+  CODE:01f1  200a03    JB 0x0a,0x01f7                  ; XREF from CODE:0137
+  CODE:026d  c20a      CLR 0x0a
+  CODE:027c  c20a      CLR 0x0a
+  CODE:028b  c20a      CLR 0x0a
+  CODE:02b0  200a03    JB 0x0a,0x02b6
+  CODE:033b  200a03    JB 0x0a,0x0341
+  CODE:0347  300a08    JNB 0x0a,0x0352
+  CODE:0365  200a03    JB 0x0a,0x036b                  ; XREF from CODE:033e,CODE:0341,CODE:0344
+  CODE:0386  200a03    JB 0x0a,0x038c                  ; XREF from CODE:0303
+  CODE:03d6  200a03    JB 0x0a,0x03dc                  ; XREF from CODE:0389,CODE:038c
+  CODE:0406  300a04    JNB 0x0a,0x040d                 ; XREF from CODE:0402
+  CODE:043b  300a04    JNB 0x0a,0x0442                 ; XREF from CODE:0437
+  CODE:0528  720a      ORL CY,0x0a
+  CODE:09f7  c20a      CLR 0x0a
+  CODE:0f63  c20a      CLR 0x0a
+
+--- IRAM bit 0x21.3  (16 site(s)) ---
+  CODE:005e  c20b      CLR 0x0b
+  CODE:0066  d20b      SETB 0x0b
+  CODE:006e  d20b      SETB 0x0b
+  CODE:0113  c20b      CLR 0x0b
+  CODE:0155  c20b      CLR 0x0b
+  CODE:0248  c20b      CLR 0x0b
+  CODE:0256  c20b      CLR 0x0b
+  CODE:0b4b  c20b      CLR 0x0b
+  CODE:0b69  c20b      CLR 0x0b
+  CODE:0bd0  d20b      SETB 0x0b
+  CODE:0be4  d20b      SETB 0x0b
+  CODE:0be9  c20b      CLR 0x0b                        ; XREF from CODE:0bde,CODE:0be1
+  CODE:0d25  300b3f    JNB 0x0b,0x0d67                 ; XREF from CODE:0c93
+  CODE:0d59  c20b      CLR 0x0b                        ; XREF from CODE:0d47,CODE:0d54
+  CODE:0fc4  300b03    JNB 0x0b,0x0fca                 ; XREF from CODE:0ca3
+  CODE:1019  c20b      CLR 0x0b
+
+--- IRAM bit 0x21.4  (16 site(s)) ---
+  CODE:0060  c20c      CLR 0x0c
+  CODE:0068  c20c      CLR 0x0c
+  CODE:0070  c20c      CLR 0x0c
+  CODE:0115  d20c      SETB 0x0c
+  CODE:0157  c20c      CLR 0x0c
+  CODE:024a  d20c      SETB 0x0c
+  CODE:0258  c20c      CLR 0x0c
+  CODE:0b4d  d20c      SETB 0x0c
+  CODE:0b6b  c20c      CLR 0x0c
+  CODE:0bd2  c20c      CLR 0x0c
+  CODE:0be6  c20c      CLR 0x0c
+  CODE:0beb  d20c      SETB 0x0c
+  CODE:0d5b  c20c      CLR 0x0c
+  CODE:0fca  300c0b    JNB 0x0c,0x0fd8                 ; XREF from CODE:0fc4
+  CODE:0fcd  c20c      CLR 0x0c
+  CODE:101b  c20c      CLR 0x0c
+
+--- IRAM bit 0x21.5  (4 site(s)) ---
+  CODE:0039  c20d      CLR 0x0d
+  CODE:0be1  300d05    JNB 0x0d,0x0be9
+  CODE:0d8f  c20d      CLR 0x0d
+  CODE:0da9  d20d      SETB 0x0d                       ; XREF from CODE:0d9a
+
+--- IRAM bit 0x21.6  (18 site(s)) ---
+  CODE:0160  300e08    JNB 0x0e,0x016b
+  CODE:01f4  300e35    JNB 0x0e,0x022c
+  CODE:026f  c20e      CLR 0x0e
+  CODE:027e  d20e      SETB 0x0e
+  CODE:028d  d20e      SETB 0x0e
+  CODE:02b3  300e2e    JNB 0x0e,0x02e4
+  CODE:033e  300e24    JNB 0x0e,0x0365
+  CODE:0352  300e08    JNB 0x0e,0x035d                 ; XREF from CODE:0347
+  CODE:0368  300e06    JNB 0x0e,0x0371
+  CODE:0389  300e4a    JNB 0x0e,0x03d6
+  CODE:03c4  300e2a    JNB 0x0e,0x03f1
+  CODE:03d9  300e15    JNB 0x0e,0x03f1
+  CODE:03eb  300e03    JNB 0x0e,0x03f1
+  CODE:03fd  300e04    JNB 0x0e,0x0404                 ; XREF from CODE:0306
+  CODE:0432  300e04    JNB 0x0e,0x0439                 ; XREF from CODE:0411,CODE:0413
+  CODE:0526  a20e      MOV CY,0x0e                     ; XREF from CODE:0327
+  CODE:09f9  c20e      CLR 0x0e
+  CODE:0f65  c20e      CLR 0x0e
+
+--- IRAM bit 0x22.7  (2 site(s)) ---
+  CODE:03a0  c217      CLR 0x17
+  CODE:03e6  d217      SETB 0x17
+
+--- IRAM bit 0x23.0  (1 site(s)) ---
+  CODE:07b8  d218      SETB 0x18
+
+--- IRAM bit 0x23.1  (1 site(s)) ---
+  CODE:07ba  d219      SETB 0x19
+
+--- IRAM bit 0x23.2  (3 site(s)) ---
+  CODE:072f  c21a      CLR 0x1a
+  CODE:07ee  d21a      SETB 0x1a
+  CODE:0831  d21a      SETB 0x1a
+
+--- IRAM bit 0x23.3  (3 site(s)) ---
+  CODE:0731  c21b      CLR 0x1b
+  CODE:07f0  d21b      SETB 0x1b
+  CODE:0833  d21b      SETB 0x1b
+
+--- IRAM bit 0x23.4  (1 site(s)) ---
+  CODE:0840  d21c      SETB 0x1c
+
+--- IRAM bit 0x24.0  (3 site(s)) ---
+  CODE:0ad3  202009    JB 0x20,0x0adf                  ; XREF from CODE:0ad8,CODE:0add,CODE:0b0f
+  CODE:0b0d  c220      CLR 0x20                        ; XREF from CODE:0afc,CODE:0b01
+  CODE:1020  d220      SETB 0x20
+
+--- IRAM bit 0x24.2  (1 site(s)) ---
+  CODE:0aab  c222      CLR 0x22
+
+--- IRAM bit 0x25.4  (10 site(s)) ---
+  CODE:0076  302c08    JNB 0x2c,0x0081
+  CODE:03ad  c22c      CLR 0x2c
+  CODE:0454  c22c      CLR 0x2c                        ; XREF from CODE:0309
+  CODE:0466  d22c      SETB 0x2c                       ; XREF from CODE:030c
+  CODE:0485  302c06    JNB 0x2c,0x048e
+  CODE:049f  302c06    JNB 0x2c,0x04a8
+  CODE:0e52  202c02    JB 0x2c,0x0e57                  ; XREF from CODE:0e34,CODE:0e46
+  CODE:0e57  302c02    JNB 0x2c,0x0e5c                 ; XREF from CODE:0e52
+  CODE:0ec5  202c02    JB 0x2c,0x0eca                  ; XREF from CODE:0eaa,CODE:0eb9
+  CODE:0eca  302c02    JNB 0x2c,0x0ecf                 ; XREF from CODE:0ec5
+
+--- IRAM bit 0x25.5  (5 site(s)) ---
+  CODE:0395  c22d      CLR 0x2d                        ; XREF from CODE:038f
+  CODE:041c  c22d      CLR 0x2d                        ; XREF from CODE:0416
+  CODE:04ca  d22d      SETB 0x2d                       ; XREF from CODE:04c4
+  CODE:0e5c  302d02    JNB 0x2d,0x0e61                 ; XREF from CODE:0e57
+  CODE:0ecf  302d02    JNB 0x2d,0x0ed4                 ; XREF from CODE:0eca
+
+--- IRAM bit 0x25.6  (6 site(s)) ---
+  CODE:035d  202e20    JB 0x2e,0x0380                  ; XREF from CODE:0352
+  CODE:037b  c22e      CLR 0x2e
+  CODE:038f  202e03    JB 0x2e,0x0395
+  CODE:0416  202e03    JB 0x2e,0x041c
+  CODE:04c4  202e03    JB 0x2e,0x04ca                  ; XREF from CODE:031e
+  CODE:0810  d22e      SETB 0x2e
+
+--- IRAM bit 0x25.7  (5 site(s)) ---
+  CODE:083e  d22f      SETB 0x2f
+  CODE:084b  c22f      CLR 0x2f
+  CODE:0850  d22f      SETB 0x2f
+  CODE:0c4f  c22f      CLR 0x2f
+  CODE:0c8d  d22f      SETB 0x2f                       ; XREF from CODE:0c82
+
+--- IRAM bit 0x26.0  (3 site(s)) ---
+  CODE:0e66  d230      SETB 0x30
+  CODE:0e8b  303008    JNB 0x30,0x0e96                 ; XREF from CODE:0e69
+  CODE:0e8e  c230      CLR 0x30
+
+--- XDATA 0x0300  (1 site(s)) ---
+  CODE:02f9  900300    MOV DPTR,#0x300                 ; XREF from CODE:02f4
+
+--- XDATA 0x0F9C  (1 site(s)) ---
+  CODE:0a50  900f9c    MOV DPTR,#0xf9c                 ; XREF from CODE:0a12
+
+--- XDATA 0xFF6F  (1 site(s)) ---
+  CODE:0988  90ff6f    MOV DPTR,#0xff6f
+
+--- XDATA 0xFFAF  (1 site(s)) ---
+  CODE:0984  90ffaf    MOV DPTR,#0xffaf
+
+--- CALL TARGET 0x000E ---
+  CODE:000e  32        RETI                            ; XREF from CODE:001b
+  CODE:000f  32        RETI                            ; XREF from CODE:0023
+  CODE:0010  22        RET                             ; XREF from CODE:0c95
+  CODE:0011  22        RET                             ; XREF from CODE:0c97
+  CODE:0012  22        RET                             ; XREF from CODE:0c99
+  CODE:0013  02000a    LJMP 0x000a
+  CODE:0016  22        RET                             ; XREF from CODE:0c9b
+  CODE:0017  22        RET                             ; XREF from CODE:0c9d
+  CODE:0018  22        RET                             ; XREF from CODE:0c9f
+  CODE:0019  22        RET                             ; XREF from CODE:0ca1
+  CODE:001a  22        RET                             ; XREF from CODE:0ca5
+  CODE:001b  02000e    LJMP 0x000e
+
+--- CALL TARGET 0x000F ---
+  CODE:000f  32        RETI                            ; XREF from CODE:0023
+  CODE:0010  22        RET                             ; XREF from CODE:0c95
+  CODE:0011  22        RET                             ; XREF from CODE:0c97
+  CODE:0012  22        RET                             ; XREF from CODE:0c99
+  CODE:0013  02000a    LJMP 0x000a
+  CODE:0016  22        RET                             ; XREF from CODE:0c9b
+  CODE:0017  22        RET                             ; XREF from CODE:0c9d
+  CODE:0018  22        RET                             ; XREF from CODE:0c9f
+  CODE:0019  22        RET                             ; XREF from CODE:0ca1
+  CODE:001a  22        RET                             ; XREF from CODE:0ca5
+  CODE:001b  02000e    LJMP 0x000e
+  CODE:001e  22        RET                             ; XREF from CODE:0ca7
+
+--- CALL TARGET 0x07C5 ---
+  CODE:07c5  ad32      MOV R5,0x32                     ; XREF from CODE:074b,CODE:075c,CODE:078b,CODE:0797
+  CODE:07c7  af31      MOV R7,0x31
+  CODE:07c9  120c45    LCALL 0x0c45
+  CODE:07cc  90ffe1    MOV DPTR,#0xffe1
+  CODE:07cf  e0        MOVX A,@DPTR
+  CODE:07d0  44c0      ORL A,#0xc0
+  CODE:07d2  f0        MOVX @DPTR,A
+  CODE:07d3  90ff63    MOV DPTR,#0xff63
+
+--- CALL TARGET 0x0A50 ---
+  CODE:0a50  900f9c    MOV DPTR,#0xf9c                 ; XREF from CODE:0a12
+  CODE:0a53  e4        CLR A                           ; XREF from CODE:0a93,CODE:0a28,CODE:0a46
+  CODE:0a54  7e01      MOV R6,#0x1
+  CODE:0a56  93        MOVC A,@A+DPTR
+  CODE:0a57  60bc      JZ 0x0a15
+  CODE:0a59  a3        INC DPTR
+  CODE:0a5a  ff        MOV R7,A
+  CODE:0a5b  543f      ANL A,#0x3f
+  CODE:0a5d  30e509    JNB 0xe5,0x0a69
+
+--- CALL TARGET 0x0B2B ---
+  CODE:0b2b  f0        MOVX @DPTR,A                    ; XREF from CODE:0036,CODE:1016,CODE:0fd5
+  CODE:0b2c  90ff6b    MOV DPTR,#0xff6b
+  CODE:0b2f  e4        CLR A
+  CODE:0b30  f0        MOVX @DPTR,A
+  CODE:0b31  90ffab    MOV DPTR,#0xffab
+  CODE:0b34  f0        MOVX @DPTR,A
+  CODE:0b35  22        RET
+  CODE:0b36  f582      MOV DPL,A                       ; XREF from CODE:00aa,CODE:00b5,CODE:00dd,CODE:0105,CODE:023f
+  CODE:0b38  851b83    MOV DPH,0x1b
+
+--- CALL TARGET 0x0DEC ---
+  CODE:0dec  90ffe6    MOV DPTR,#0xffe6                ; XREF from CODE:081b,CODE:078e
+  CODE:0def  74a8      MOV A,#0xa8
+  CODE:0df1  f0        MOVX @DPTR,A
+  CODE:0df2  90ffe5    MOV DPTR,#0xffe5
+  CODE:0df5  7461      MOV A,#0x61
+  CODE:0df7  f0        MOVX @DPTR,A
+  CODE:0df8  90ffe7    MOV DPTR,#0xffe7
+  CODE:0dfb  740f      MOV A,#0xf
+
+--- CALL TARGET 0x0E18 ---
+  CODE:0e18  7410      MOV A,#0x10                     ; XREF from CODE:0739
+  CODE:0e1a  f0        MOVX @DPTR,A
+  CODE:0e1b  90fff6    MOV DPTR,#0xfff6
+  CODE:0e1e  f0        MOVX @DPTR,A
+  CODE:0e1f  22        RET
+  CODE:0e20  753104    MOV 0x31,#0x4                   ; XREF from CODE:0788,CODE:0794,CODE:07c2
+  CODE:0e23  753240    MOV 0x32,#0x40
+  CODE:0e26  22        RET
+  CODE:0e27  20280c    JB 0x28,0x0e36                  ; XREF from CODE:0ef4
+
+======================================================================
+rev22
+======================================================================
+
+--- IRAM byte 0x01  (1 site(s)) ---
+  CODE:0c66  ab01      MOV R3,0x01
+
+--- IRAM byte 0x03  (1 site(s)) ---
+  CODE:0c43  af03      MOV R7,0x03
+
+--- IRAM byte 0x05  (2 site(s)) ---
+  CODE:0bda  ae05      MOV R6,0x05                     ; XREF from CODE:04f2,CODE:051b
+  CODE:0c71  ab05      MOV R3,0x05
+
+--- IRAM byte 0x06  (1 site(s)) ---
+  CODE:0d37  430601    ORL 0x06,#0x1
+
+--- IRAM byte 0x07  (4 site(s)) ---
+  CODE:0c31  a907      MOV R1,0x07                     ; XREF from CODE:09fc,CODE:0a03,CODE:0a0a,CODE:0a11,CODE:0a18,CODE:0a1f,CODE:0a26,CODE:0a2d
+  CODE:0f44  430701    ORL 0x07,#0x1
+  CODE:0f51  430701    ORL 0x07,#0x1
+  CODE:0f5e  430701    ORL 0x07,#0x1
+
+--- IRAM byte 0x08  (10 site(s)) ---
+  CODE:0094  e508      MOV A,0x08
+  CODE:00b3  e508      MOV A,0x08                      ; XREF from CODE:0096
+  CODE:00d8  e508      MOV A,0x08                      ; XREF from CODE:00b5
+  CODE:0464  af08      MOV R7,0x08
+  CODE:073a  750801    MOV 0x08,#0x1
+  CODE:0769  750802    MOV 0x08,#0x2
+  CODE:0772  750803    MOV 0x08,#0x3
+  CODE:079d  750805    MOV 0x08,#0x5
+  CODE:085c  750803    MOV 0x08,#0x3
+  CODE:09ca  750803    MOV 0x08,#0x3
+
+--- IRAM byte 0x09  (12 site(s)) ---
+  CODE:003b  f509      MOV 0x09,A
+  CODE:01a0  f509      MOV 0x09,A
+  CODE:01dc  f509      MOV 0x09,A
+  CODE:0920  f509      MOV 0x09,A
+  CODE:0ac1  e509      MOV A,0x09                      ; XREF from CODE:0af4
+  CODE:0ae1  d5090c    DJNZ 0x09,0x0af0                ; XREF from CODE:0add
+  CODE:0aeb  7509ff    MOV 0x09,#0xff
+  CODE:0b05  e509      MOV A,0x09
+  CODE:0db2  e509      MOV A,0x09
+  CODE:0dbc  f509      MOV 0x09,A
+  CODE:0dc9  e509      MOV A,0x09
+  CODE:0dd0  b5090b    CJNE A,0x09,0x0dde
+
+--- IRAM byte 0x0A  (16 site(s)) ---
+  CODE:0006  750a0e    MOV 0x0a,#0xe                   ; XREF from CODE:0ca9
+  CODE:005b  750a0d    MOV 0x0a,#0xd
+  CODE:0291  750a01    MOV 0x0a,#0x1                   ; XREF from CODE:0286
+  CODE:02c3  750a02    MOV 0x0a,#0x2
+  CODE:02d7  750a03    MOV 0x0a,#0x3
+  CODE:02f3  e50a      MOV A,0x0a                      ; XREF from CODE:0a84,CODE:0aa3,CODE:0ab4
+  CODE:0564  f50a      MOV 0x0a,A
+  CODE:0927  f50a      MOV 0x0a,A
+  CODE:0a80  e50a      MOV A,0x0a
+  CODE:0aa0  750a0b    MOV 0x0a,#0xb
+  CODE:0ab1  750a0c    MOV 0x0a,#0xc
+  CODE:0cd7  750a07    MOV 0x0a,#0x7
+  CODE:0cde  750a08    MOV 0x0a,#0x8
+  CODE:0ce4  750a06    MOV 0x0a,#0x6
+  CODE:0cf3  750a04    MOV 0x0a,#0x4
+  CODE:0cf8  750a05    MOV 0x0a,#0x5                   ; XREF from CODE:0cf0
+
+--- IRAM byte 0x0B  (11 site(s)) ---
+  CODE:003d  f50b      MOV 0x0b,A
+  CODE:01a5  f50b      MOV 0x0b,A
+  CODE:01df  f50b      MOV 0x0b,A
+  CODE:0922  f50b      MOV 0x0b,A
+  CODE:0ae4  e50b      MOV A,0x0b
+  CODE:0aee  150b      DEC 0x0b
+  CODE:0b09  e50b      MOV A,0x0b
+  CODE:0da3  e50b      MOV A,0x0b
+  CODE:0daa  b50b17    CJNE A,0x0b,0x0dc4
+  CODE:0dc0  f50b      MOV 0x0b,A
+  CODE:0dd6  e50b      MOV A,0x0b
+
+--- IRAM byte 0x0C  (1 site(s)) ---
+  CODE:0924  750cfe    MOV 0x0c,#0xfe
+
+--- IRAM byte 0x0D  (7 site(s)) ---
+  CODE:0061  750d02    MOV 0x0d,#0x2                   ; XREF from CODE:0059
+  CODE:0066  750d01    MOV 0x0d,#0x1                   ; XREF from CODE:0045
+  CODE:024d  750d05    MOV 0x0d,#0x5                   ; XREF from CODE:012d
+  CODE:0cca  e50d      MOV A,0x0d
+  CODE:0ce7  e50d      MOV A,0x0d                      ; XREF from CODE:0ccc,CODE:0ce2
+  CODE:0fa5  e50d      MOV A,0x0d                      ; XREF from CODE:0f98
+  CODE:0fb1  f50d      MOV 0x0d,A
+
+--- IRAM byte 0x0E  (2 site(s)) ---
+  CODE:0254  f50e      MOV 0x0e,A
+  CODE:0fad  e50e      MOV A,0x0e
+
+--- IRAM byte 0x16  (1 site(s)) ---
+  CODE:0e03  aa16      MOV R2,0x16
+
+--- IRAM byte 0x18  (5 site(s)) ---
+  CODE:0abc  f518      MOV 0x18,A
+  CODE:0af0  0518      INC 0x18                        ; XREF from CODE:0ae1,CODE:0ae9
+  CODE:0af2  e518      MOV A,0x18
+  CODE:0afe  4518      ORL A,0x18
+  CODE:0b0d  e518      MOV A,0x18
+
+--- IRAM byte 0x19  (7 site(s)) ---
+  CODE:017e  751905    MOV 0x19,#0x5
+  CODE:0194  751906    MOV 0x19,#0x6
+  CODE:01b7  751906    MOV 0x19,#0x6
+  CODE:01c4  751906    MOV 0x19,#0x6
+  CODE:01d1  751906    MOV 0x19,#0x6
+  CODE:0adf  0519      INC 0x19
+  CODE:0b71  851983    MOV DPH,0x19
+
+--- IRAM byte 0x1A  (8 site(s)) ---
+  CODE:0181  751a7d    MOV 0x1a,#0x7d
+  CODE:0197  751a57    MOV 0x1a,#0x57
+  CODE:01ba  751a8d    MOV 0x1a,#0x8d
+  CODE:01c7  751a91    MOV 0x1a,#0x91
+  CODE:01d4  751aaf    MOV 0x1a,#0xaf
+  CODE:0ad9  051a      INC 0x1a                        ; XREF from CODE:0ad5
+  CODE:0adb  e51a      MOV A,0x1a
+  CODE:0b6e  851a82    MOV DPL,0x1a                    ; XREF from CODE:019a,CODE:01d7,CODE:0ac8
+
+--- IRAM byte 0x1B  (2 site(s)) ---
+  CODE:0d6f  651b      XRL A,0x1b
+  CODE:0d73  8e1b      MOV 0x1b,R6
+
+--- IRAM byte 0x1C  (2 site(s)) ---
+  CODE:0d6a  651c      XRL A,0x1c
+  CODE:0d75  8f1c      MOV 0x1c,R7
+
+--- IRAM byte 0x1D  (14 site(s)) ---
+  CODE:00a4  051d      INC 0x1d
+  CODE:00af  051d      INC 0x1d
+  CODE:00c4  051d      INC 0x1d
+  CODE:00c8  851d83    MOV DPH,0x1d
+  CODE:00d4  051d      INC 0x1d
+  CODE:00e9  051d      INC 0x1d
+  CODE:00ed  851d83    MOV DPH,0x1d
+  CODE:00f9  051d      INC 0x1d
+  CODE:023d  051d      INC 0x1d
+  CODE:0ad7  051d      INC 0x1d
+  CODE:0b1f  751dfa    MOV 0x1d,#0xfa                  ; XREF from CODE:0ccf,CODE:0cec
+  CODE:0b28  851d83    MOV DPH,0x1d
+  CODE:0b37  751dfa    MOV 0x1d,#0xfa                  ; XREF from CODE:006e,CODE:0091,CODE:022f,CODE:0abe,CODE:015c,CODE:01fc
+  CODE:0b5d  851d83    MOV DPH,0x1d
+
+--- IRAM byte 0x1E  (19 site(s)) ---
+  CODE:009e  051e      INC 0x1e
+  CODE:00a0  e51e      MOV A,0x1e
+  CODE:00a9  051e      INC 0x1e
+  CODE:00ab  e51e      MOV A,0x1e
+  CODE:00be  051e      INC 0x1e
+  CODE:00c0  e51e      MOV A,0x1e
+  CODE:00ce  051e      INC 0x1e
+  CODE:00d0  e51e      MOV A,0x1e
+  CODE:00e3  051e      INC 0x1e
+  CODE:00e5  e51e      MOV A,0x1e
+  CODE:00f3  051e      INC 0x1e
+  CODE:00f5  e51e      MOV A,0x1e
+  CODE:0237  051e      INC 0x1e
+  CODE:0239  e51e      MOV A,0x1e
+  CODE:0ad1  051e      INC 0x1e
+  CODE:0ad3  e51e      MOV A,0x1e
+  CODE:0b22  751e10    MOV 0x1e,#0x10
+  CODE:0b25  851e82    MOV DPL,0x1e                    ; XREF from CODE:0074,CODE:007d,CODE:0099,CODE:00b8,CODE:00dd,CODE:0232,CODE:0acd,CODE:0162
+  CODE:0b3a  751e18    MOV 0x1e,#0x18
+
+--- IRAM byte 0x27  (5 site(s)) ---
+  CODE:0a40  f527      MOV 0x27,A
+  CODE:0a99  e527      MOV A,0x27
+  CODE:0a9d  752701    MOV 0x27,#0x1
+  CODE:0aa9  e527      MOV A,0x27
+  CODE:0aaf  f527      MOV 0x27,A
+
+--- IRAM byte 0x28  (3 site(s)) ---
+  CODE:0a44  f528      MOV 0x28,A
+  CODE:0a62  e528      MOV A,0x28
+  CODE:0a6e  1528      DEC 0x28
+
+--- IRAM byte 0x29  (4 site(s)) ---
+  CODE:0a46  f529      MOV 0x29,A
+  CODE:0a5e  e529      MOV A,0x29
+  CODE:0a68  e529      MOV A,0x29
+  CODE:0a6a  1529      DEC 0x29
+
+--- IRAM byte 0x2A  (1 site(s)) ---
+  CODE:0a48  752a00    MOV 0x2a,#0x0
+
+--- IRAM byte 0x2B  (1 site(s)) ---
+  CODE:0a4b  752b10    MOV 0x2b,#0x10
+
+--- IRAM byte 0x2C  (15 site(s)) ---
+  CODE:048e  752c23    MOV 0x2c,#0x23                  ; XREF from CODE:0482
+  CODE:0497  752c24    MOV 0x2c,#0x24
+  CODE:04af  752c23    MOV 0x2c,#0x23                  ; XREF from CODE:04a4
+  CODE:04b8  752c24    MOV 0x2c,#0x24
+  CODE:04d5  752c04    MOV 0x2c,#0x4
+  CODE:04dd  af2c      MOV R7,0x2c
+  CODE:04e9  8f2c      MOV 0x2c,R7
+  CODE:04eb  632cff    XRL 0x2c,#0xff
+  CODE:04ee  ab2c      MOV R3,0x2c
+  CODE:04fe  b52c02    CJNE A,0x2c,0x0503
+  CODE:050b  af2c      MOV R7,0x2c
+  CODE:0567  752c04    MOV 0x2c,#0x4                   ; XREF from CODE:0485,CODE:04a7
+  CODE:056f  af2c      MOV R7,0x2c
+  CODE:0577  af2c      MOV R7,0x2c
+  CODE:0ffa  752c12    MOV 0x2c,#0x12                  ; XREF from CODE:0488,CODE:04aa,CODE:0506
+
+--- IRAM byte 0x2D  (13 site(s)) ---
+  CODE:0492  f52d      MOV 0x2d,A
+  CODE:049a  752d80    MOV 0x2d,#0x80
+  CODE:04b2  752d40    MOV 0x2d,#0x40
+  CODE:04bb  752d80    MOV 0x2d,#0x80
+  CODE:04d8  752d41    MOV 0x2d,#0x41
+  CODE:04db  ad2d      MOV R5,0x2d
+  CODE:04fa  8f2d      MOV 0x2d,R7
+  CODE:04fc  e52d      MOV A,0x2d
+  CODE:0509  ad2d      MOV R5,0x2d                     ; XREF from CODE:048b,CODE:049d,CODE:04be
+  CODE:056a  752d41    MOV 0x2d,#0x41
+  CODE:056d  ad2d      MOV R5,0x2d
+  CODE:0575  ad2d      MOV R5,0x2d                     ; XREF from CODE:0494,CODE:04b5
+  CODE:0ffe  f52d      MOV 0x2d,A
+
+--- IRAM byte 0x2E  (5 site(s)) ---
+  CODE:070f  8f2e      MOV 0x2e,R7                     ; XREF from CODE:03be,CODE:0426,CODE:0512,CODE:047f,CODE:04a1,CODE:04d2
+  CODE:0723  e52e      MOV A,0x2e
+  CODE:07ed  f52e      MOV 0x2e,A
+  CODE:086c  e52e      MOV A,0x2e
+  CODE:0878  052e      INC 0x2e
+
+--- IRAM byte 0x2F  (8 site(s)) ---
+  CODE:0712  f52f      MOV 0x2f,A
+  CODE:07d7  f52f      MOV 0x2f,A
+  CODE:07e1  052f      INC 0x2f
+  CODE:07e6  e52f      MOV A,0x2f
+  CODE:07ef  f52f      MOV 0x2f,A
+  CODE:0867  e52f      MOV A,0x2f                      ; XREF from CODE:087a
+  CODE:0872  052f      INC 0x2f
+  CODE:0874  e52f      MOV A,0x2f
+
+--- IRAM byte 0x30  (4 site(s)) ---
+  CODE:0714  f530      MOV 0x30,A
+  CODE:07d9  f530      MOV 0x30,A
+  CODE:07db  0530      INC 0x30                        ; XREF from CODE:07e3,CODE:07e8
+  CODE:07dd  e530      MOV A,0x30
+
+--- IRAM byte 0x31  (3 site(s)) ---
+  CODE:073d  753104    MOV 0x31,#0x4
+  CODE:07a0  753104    MOV 0x31,#0x4                   ; XREF from CODE:076c,CODE:0775
+  CODE:07a8  af31      MOV R7,0x31
+
+--- IRAM byte 0x32  (3 site(s)) ---
+  CODE:0740  753241    MOV 0x32,#0x41
+  CODE:07a3  753240    MOV 0x32,#0x40
+  CODE:07a6  ad32      MOV R5,0x32                     ; XREF from CODE:0732,CODE:0743
+
+--- IRAM bit 0x20.1  (2 site(s)) ---
+  CODE:0a96  20010d    JB 0x01,0x0aa6                  ; XREF from CODE:0a8d
+  CODE:0aa6  30010e    JNB 0x01,0x0ab7                 ; XREF from CODE:0a96,CODE:0a9b
+
+--- IRAM bit 0x20.3  (1 site(s)) ---
+  CODE:0f47  20030a    JB 0x03,0x0f54                  ; XREF from CODE:0f3a,CODE:0f3e
+
+--- IRAM bit 0x20.4  (1 site(s)) ---
+  CODE:0f54  20040a    JB 0x04,0x0f61                  ; XREF from CODE:0f47,CODE:0f4b
+
+--- IRAM bit 0x20.5  (1 site(s)) ---
+  CODE:0f3a  20050a    JB 0x05,0x0f47                  ; XREF from CODE:0f36
+
+--- IRAM bit 0x21.0  (10 site(s)) ---
+  CODE:0203  300808    JNB 0x08,0x020e
+  CODE:026f  c208      CLR 0x08
+  CODE:027e  c208      CLR 0x08
+  CODE:028d  c208      CLR 0x08
+  CODE:02c1  9208      MOV 0x08,CY
+  CODE:034d  20081c    JB 0x08,0x036c                  ; XREF from CODE:0347
+  CODE:0390  300847    JNB 0x08,0x03da                 ; XREF from CODE:038a
+  CODE:03e0  200812    JB 0x08,0x03f5                  ; XREF from CODE:03da
+  CODE:091c  c208      CLR 0x08
+  CODE:0f88  c208      CLR 0x08
+
+--- IRAM bit 0x21.1  (10 site(s)) ---
+  CODE:0215  300908    JNB 0x09,0x0220
+  CODE:0271  c209      CLR 0x09
+  CODE:0280  c209      CLR 0x09
+  CODE:028f  c209      CLR 0x09
+  CODE:02d5  9209      MOV 0x09,CY
+  CODE:0350  200919    JB 0x09,0x036c
+  CODE:0413  30091c    JNB 0x09,0x0432
+  CODE:0448  200903    JB 0x09,0x044e
+  CODE:091e  c209      CLR 0x09
+  CODE:0f8a  c209      CLR 0x09
+
+--- IRAM bit 0x21.2  (15 site(s)) ---
+  CODE:01ed  200a03    JB 0x0a,0x01f3                  ; XREF from CODE:013c
+  CODE:026b  c20a      CLR 0x0a
+  CODE:027a  c20a      CLR 0x0a
+  CODE:0289  c20a      CLR 0x0a
+  CODE:02ae  200a03    JB 0x0a,0x02b4
+  CODE:0347  200a03    JB 0x0a,0x034d
+  CODE:0353  300a05    JNB 0x0a,0x035b
+  CODE:036c  200a03    JB 0x0a,0x0372                  ; XREF from CODE:034a,CODE:034d,CODE:0350
+  CODE:038a  200a03    JB 0x0a,0x0390                  ; XREF from CODE:030f
+  CODE:03da  200a03    JB 0x0a,0x03e0                  ; XREF from CODE:038d,CODE:0390
+  CODE:0406  300a04    JNB 0x0a,0x040d                 ; XREF from CODE:0402
+  CODE:043b  300a04    JNB 0x0a,0x0442                 ; XREF from CODE:0437
+  CODE:0527  720a      ORL CY,0x0a
+  CODE:0918  c20a      CLR 0x0a
+  CODE:0f84  c20a      CLR 0x0a
+
+--- IRAM bit 0x21.3  (10 site(s)) ---
+  CODE:0069  d20b      SETB 0x0b                       ; XREF from CODE:0064
+  CODE:0248  c20b      CLR 0x0b
+  CODE:02e8  c20b      CLR 0x0b                        ; XREF from CODE:005e,CODE:0156,CODE:0256,CODE:0299
+  CODE:0b01  d20b      SETB 0x0b
+  CODE:0b15  d20b      SETB 0x0b
+  CODE:0b1a  c20b      CLR 0x0b                        ; XREF from CODE:0b0f,CODE:0b12
+  CODE:0cc7  300b40    JNB 0x0b,0x0d0a                 ; XREF from CODE:0c7d
+  CODE:0cfb  c20b      CLR 0x0b                        ; XREF from CODE:0ce9,CODE:0cf6
+  CODE:0f91  300b04    JNB 0x0b,0x0f98                 ; XREF from CODE:0c8d
+  CODE:1011  c20b      CLR 0x0b
+
+--- IRAM bit 0x21.4  (10 site(s)) ---
+  CODE:006b  c20c      CLR 0x0c
+  CODE:024a  d20c      SETB 0x0c
+  CODE:02ea  c20c      CLR 0x0c
+  CODE:0b03  c20c      CLR 0x0c
+  CODE:0b17  c20c      CLR 0x0c
+  CODE:0b1c  d20c      SETB 0x0c
+  CODE:0cfd  c20c      CLR 0x0c
+  CODE:0f98  300c0a    JNB 0x0c,0x0fa5                 ; XREF from CODE:0f91
+  CODE:0f9b  c20c      CLR 0x0c
+  CODE:1013  c20c      CLR 0x0c
+
+--- IRAM bit 0x21.5  (4 site(s)) ---
+  CODE:0039  c20d      CLR 0x0d
+  CODE:0b12  300d05    JNB 0x0d,0x0b1a
+  CODE:0dc2  c20d      CLR 0x0d
+  CODE:0ddc  d20d      SETB 0x0d                       ; XREF from CODE:0dcd
+
+--- IRAM bit 0x21.6  (18 site(s)) ---
+  CODE:015f  300e08    JNB 0x0e,0x016a
+  CODE:01f0  300e39    JNB 0x0e,0x022c
+  CODE:026d  c20e      CLR 0x0e
+  CODE:027c  d20e      SETB 0x0e
+  CODE:028b  d20e      SETB 0x0e
+  CODE:02b1  300e39    JNB 0x0e,0x02ed
+  CODE:034a  300e1f    JNB 0x0e,0x036c
+  CODE:035b  300e05    JNB 0x0e,0x0363                 ; XREF from CODE:0353
+  CODE:036f  300e06    JNB 0x0e,0x0378
+  CODE:038d  300e4a    JNB 0x0e,0x03da
+  CODE:03c8  300e2a    JNB 0x0e,0x03f5
+  CODE:03dd  300e15    JNB 0x0e,0x03f5
+  CODE:03ef  300e03    JNB 0x0e,0x03f5
+  CODE:03fd  300e04    JNB 0x0e,0x0404                 ; XREF from CODE:0312
+  CODE:0432  300e04    JNB 0x0e,0x0439                 ; XREF from CODE:0411,CODE:0413
+  CODE:0525  a20e      MOV CY,0x0e                     ; XREF from CODE:0333
+  CODE:091a  c20e      CLR 0x0e
+  CODE:0f86  c20e      CLR 0x0e
+
+--- IRAM bit 0x22.7  (2 site(s)) ---
+  CODE:03a4  c217      CLR 0x17
+  CODE:03ea  d217      SETB 0x17
+
+--- IRAM bit 0x23.0  (1 site(s)) ---
+  CODE:0796  d218      SETB 0x18
+
+--- IRAM bit 0x23.1  (1 site(s)) ---
+  CODE:0798  d219      SETB 0x19
+
+--- IRAM bit 0x23.2  (3 site(s)) ---
+  CODE:0716  c21a      CLR 0x1a
+  CODE:07cf  d21a      SETB 0x1a
+  CODE:09d8  d21a      SETB 0x1a
+
+--- IRAM bit 0x23.3  (3 site(s)) ---
+  CODE:0718  c21b      CLR 0x1b
+  CODE:07d1  d21b      SETB 0x1b
+  CODE:09da  d21b      SETB 0x1b
+
+--- IRAM bit 0x23.4  (1 site(s)) ---
+  CODE:09e5  d21c      SETB 0x1c
+
+--- IRAM bit 0x24.0  (3 site(s)) ---
+  CODE:0a7d  202009    JB 0x20,0x0a89                  ; XREF from CODE:0a82,CODE:0a87,CODE:0ab9
+  CODE:0ab7  c220      CLR 0x20                        ; XREF from CODE:0aa6,CODE:0aab
+  CODE:1018  d220      SETB 0x20
+
+--- IRAM bit 0x24.2  (1 site(s)) ---
+  CODE:0a55  c222      CLR 0x22
+
+--- IRAM bit 0x25.4  (10 site(s)) ---
+  CODE:0071  302c09    JNB 0x2c,0x007d
+  CODE:03b1  c22c      CLR 0x2c
+  CODE:045a  c22c      CLR 0x2c                        ; XREF from CODE:0315
+  CODE:0469  d22c      SETB 0x2c                       ; XREF from CODE:0318
+  CODE:0482  302c09    JNB 0x2c,0x048e
+  CODE:04a4  302c08    JNB 0x2c,0x04af
+  CODE:0e46  202c02    JB 0x2c,0x0e4b                  ; XREF from CODE:0e28,CODE:0e3a
+  CODE:0e4b  302c02    JNB 0x2c,0x0e50                 ; XREF from CODE:0e46
+  CODE:0eb7  202c02    JB 0x2c,0x0ebc                  ; XREF from CODE:0e9c,CODE:0eab
+  CODE:0ebc  302c02    JNB 0x2c,0x0ec1                 ; XREF from CODE:0eb7
+
+--- IRAM bit 0x25.5  (5 site(s)) ---
+  CODE:0399  c22d      CLR 0x2d                        ; XREF from CODE:0393
+  CODE:041c  c22d      CLR 0x2d                        ; XREF from CODE:0416
+  CODE:04ce  d22d      SETB 0x2d                       ; XREF from CODE:04c8
+  CODE:0e50  302d02    JNB 0x2d,0x0e55                 ; XREF from CODE:0e4b
+  CODE:0ec1  302d02    JNB 0x2d,0x0ec6                 ; XREF from CODE:0ebc
+
+--- IRAM bit 0x25.6  (6 site(s)) ---
+  CODE:0363  202e21    JB 0x2e,0x0387                  ; XREF from CODE:035b
+  CODE:0382  c22e      CLR 0x2e
+  CODE:0393  202e03    JB 0x2e,0x0399
+  CODE:0416  202e03    JB 0x2e,0x041c
+  CODE:04c8  202e03    JB 0x2e,0x04ce                  ; XREF from CODE:032a
+  CODE:09bb  d22e      SETB 0x2e
+
+--- IRAM bit 0x25.7  (5 site(s)) ---
+  CODE:09e3  d22f      SETB 0x2f
+  CODE:09ee  c22f      CLR 0x2f
+  CODE:09f3  d22f      SETB 0x2f
+  CODE:0c39  c22f      CLR 0x2f
+  CODE:0c77  d22f      SETB 0x2f                       ; XREF from CODE:0c6c
+
+--- IRAM bit 0x26.0  (3 site(s)) ---
+  CODE:0e5a  d230      SETB 0x30
+  CODE:0e7d  303008    JNB 0x30,0x0e88                 ; XREF from CODE:0e5d
+  CODE:0e80  c230      CLR 0x30
+
+--- XDATA 0x011E  (1 site(s)) ---
+  CODE:0117  90011e    MOV DPTR,#0x11e                 ; XREF from CODE:0112
+
+--- XDATA 0x030C  (1 site(s)) ---
+  CODE:02fe  90030c    MOV DPTR,#0x30c                 ; XREF from CODE:02f9
+
+--- XDATA 0x0FBA  (1 site(s)) ---
+  CODE:0971  900fba    MOV DPTR,#0xfba                 ; XREF from CODE:0933
+
+--- XDATA 0xFF6F  (1 site(s)) ---
+  CODE:08a9  90ff6f    MOV DPTR,#0xff6f
+
+--- XDATA 0xFFAF  (1 site(s)) ---
+  CODE:08a5  90ffaf    MOV DPTR,#0xffaf
+
+--- CALL TARGET 0x000E ---
+  CODE:000e  32        RETI                            ; XREF from CODE:001b
+  CODE:000f  32        RETI                            ; XREF from CODE:0023
+  CODE:0010  22        RET                             ; XREF from CODE:0c7f
+  CODE:0011  22        RET                             ; XREF from CODE:0c81
+  CODE:0012  22        RET                             ; XREF from CODE:0c83
+  CODE:0013  02000a    LJMP 0x000a
+  CODE:0016  22        RET                             ; XREF from CODE:0c85
+  CODE:0017  22        RET                             ; XREF from CODE:0c87
+  CODE:0018  22        RET                             ; XREF from CODE:0c89
+  CODE:0019  22        RET                             ; XREF from CODE:0c8b
+  CODE:001a  22        RET                             ; XREF from CODE:0c8f
+  CODE:001b  02000e    LJMP 0x000e
+
+--- CALL TARGET 0x000F ---
+  CODE:000f  32        RETI                            ; XREF from CODE:0023
+  CODE:0010  22        RET                             ; XREF from CODE:0c7f
+  CODE:0011  22        RET                             ; XREF from CODE:0c81
+  CODE:0012  22        RET                             ; XREF from CODE:0c83
+  CODE:0013  02000a    LJMP 0x000a
+  CODE:0016  22        RET                             ; XREF from CODE:0c85
+  CODE:0017  22        RET                             ; XREF from CODE:0c87
+  CODE:0018  22        RET                             ; XREF from CODE:0c89
+  CODE:0019  22        RET                             ; XREF from CODE:0c8b
+  CODE:001a  22        RET                             ; XREF from CODE:0c8f
+  CODE:001b  02000e    LJMP 0x000e
+  CODE:001e  22        RET                             ; XREF from CODE:0c91
+
+--- CALL TARGET 0x07A0 ---
+  CODE:07a0  753104    MOV 0x31,#0x4                   ; XREF from CODE:076c,CODE:0775
+  CODE:07a3  753240    MOV 0x32,#0x40
+  CODE:07a6  ad32      MOV R5,0x32                     ; XREF from CODE:0732,CODE:0743
+  CODE:07a8  af31      MOV R7,0x31
+  CODE:07aa  120c31    LCALL 0x0c31
+  CODE:07ad  90ffe1    MOV DPTR,#0xffe1
+
+--- CALL TARGET 0x07A6 ---
+  CODE:07a6  ad32      MOV R5,0x32                     ; XREF from CODE:0732,CODE:0743
+  CODE:07a8  af31      MOV R7,0x31
+  CODE:07aa  120c31    LCALL 0x0c31
+  CODE:07ad  90ffe1    MOV DPTR,#0xffe1
+  CODE:07b0  e0        MOVX A,@DPTR
+  CODE:07b1  44c0      ORL A,#0xc0
+  CODE:07b3  f0        MOVX @DPTR,A
+  CODE:07b4  90ff63    MOV DPTR,#0xff63
+
+--- CALL TARGET 0x0971 ---
+  CODE:0971  900fba    MOV DPTR,#0xfba                 ; XREF from CODE:0933
+  CODE:0974  e4        CLR A                           ; XREF from CODE:09b4,CODE:0949,CODE:0967
+  CODE:0975  7e01      MOV R6,#0x1
+  CODE:0977  93        MOVC A,@A+DPTR
+  CODE:0978  60bc      JZ 0x0936
+  CODE:097a  a3        INC DPTR
+  CODE:097b  ff        MOV R7,A
+  CODE:097c  543f      ANL A,#0x3f
+  CODE:097e  30e509    JNB 0xe5,0x098a

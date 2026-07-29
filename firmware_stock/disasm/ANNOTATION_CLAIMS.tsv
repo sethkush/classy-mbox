@@ -352,3 +352,40 @@ rev20	xdata	0xFFF8	ACG2FRQ1	mboxfw/include/regs.h	name
 rev22	xdata	0xFFF8	ACG2FRQ1	mboxfw/include/regs.h	name
 rev20	xdata	0xFFF9	ACG2FRQ0	mboxfw/include/regs.h	name
 rev22	xdata	0xFFF9	ACG2FRQ0	mboxfw/include/regs.h	name
+rev20	irambyte	0x01	register bank 0 R1 (direct-addressed)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x03	register bank 0 R3 (direct-addressed)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x05	register bank 0 R5 (Keil arg slot)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x06	register bank 0 R6 / handler changed-flag	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x08	live mode number (1/2/3/5)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x09	loop counter, low half of 16-bit pair with 0x0B	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x0A	enumerated state / index	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x0B	loop counter, high half of pair with 0x09	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x0C	dead store #0xFE, never read	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x0D	enumerated state (1/2/5)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x0E	save/restore partner of 0x0D	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x16	read once into R2; never written by the application	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x18	bit accumulator in the 0x0B8D block loop	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x19	table pointer high byte (with 0x1A)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x1A	table pointer low byte (with 0x19)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x1B	EP0 working pointer high byte (Rev 20)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev20	irambyte	0x1C	EP0 working pointer low byte (Rev 20)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x01	register bank 0 R1 (direct-addressed)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x03	register bank 0 R3 (direct-addressed)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x05	register bank 0 R5 (Keil arg slot)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x06	register bank 0 R6 / handler changed-flag	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x07	register bank 0 R7 (Keil arg slot)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x08	live mode number (1/2/3/5)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x09	loop counter, low half of 16-bit pair with 0x0B	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x0A	enumerated state / index	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x0B	loop counter, high half of pair with 0x09	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x0C	dead store #0xFE, never read	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x0D	enumerated state (1/2/5)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x0E	save/restore partner of 0x0D	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x16	read once into R2; never written by the application	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x18	bit accumulator in the 0x0B8D block loop	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x19	table pointer high byte (with 0x1A)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x1A	table pointer low byte (with 0x19)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x1B	EP0 working pointer high byte (Rev 20)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x1C	EP0 working pointer low byte (Rev 20)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x1D	EP0 working pointer high byte (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
+rev22	irambyte	0x1E	EP0 working pointer low byte (Rev 22)	disasm/IRAM_LOW_ANNOTATION.md	explained
