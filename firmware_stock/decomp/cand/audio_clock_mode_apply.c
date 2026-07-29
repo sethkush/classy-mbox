@@ -10,7 +10,12 @@
  *   2  44100 Hz                (synth word 0x6A4B20)
  *   3  48000 Hz                (synth word 0x61A80F, via acg_48k_commit)
  *   4  no setup, straight to the common tail
- *   5  external / S/PDIF slaved: halves DIVB2 to 0x01
+ *   5  external / S/PDIF slaved: CPTRXCNF4 DIVB2 halved to 0x01, then -- via
+ *      the fall-through at 0x0DEB -- the same 48 kHz synth word mode 3 loads
+ *      and ACGCTL = 0x06, and finally ACG1DCTL = 0x00 with ACG2DCTL = 0x10.
+ *      Mode 5 is the only path in either image that writes ACG1DCTL anything
+ *      other than 0x10, so it is the only one that leaves the two dividers
+ *      configured differently.
  *
  * The dispatch is a chain of ADD/DEC against the accumulator rather than
  * compares, which is why it reads oddly: A holds mode-2, then mode-3, then
@@ -97,13 +102,28 @@ void audio_clock_mode_apply(void) __naked {
         mov   dptr,#0xffb1         ; GLOBCTL
         movx  a,@dptr
         orl   a,#0x01              ; CPTEN back on
-        lcall _sfr_store_then_acg_48k   ; commits the pending MOVX
-        inc   dptr                 ; -> 0xFFB2 VECINT
+        ; 0x0DEB is one instruction -- the MOVX @DPTR,A that commits the
+        ; GLOBCTL value staged above -- and then FALLS THROUGH. It falls into
+        ; acg_48k_commit (0x0DEC), which loads the whole 48 kHz synth word into
+        ; ACG1FRQ2/1/0 and ACG2FRQ2/1/0, and on into acg_commit_and_ctl
+        ; (0x0E0F), which sets DPTR = ACGCTL 0xFFE1 (0x0E10) and stores 0x06
+        ; there (0x0E15) before RET. So this call also reprograms both
+        ; synthesizers, and it returns with DPTR on 0xFFE1, NOT on the 0xFFB1
+        ; it was called with. Identical in rev22: LCALL 0x0EC7 at 0x078A, whose
+        ; fall-through chain ends at acg2frq0_load_and_acgctl 0x0EE8 with
+        ; DPTR = 0xFFE1 and ACGCTL = 0x06.
+        lcall _sfr_store_then_acg_48k
+        inc   dptr                 ; 0xFFE1 + 1 = 0xFFE2 ACG1DCTL
         clr   a
-        movx  @dptr,a
+        movx  @dptr,a              ; ACG1DCTL = 0x00 -- the only write of
+                                   ;   anything but 0x10 to this register in
+                                   ;   either image (rev22 0x078D-0x078F)
         mov   dptr,#0xfff6         ; ACG2DCTL
         mov   a,#0x10
-        movx  @dptr,a
+        movx  @dptr,a              ; ACG2DCTL = 0x10, unchanged from every
+                                   ;   other mode -- ACG2 keeps running while
+                                   ;   ACG1's divider does not, which is the
+                                   ;   shape an externally slaved clock takes
         setb  0x18
         setb  0x19
         lcall _shiftreg16_commit

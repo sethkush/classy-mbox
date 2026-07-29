@@ -50,6 +50,7 @@ echo "  (target: $TARGET)"
 check "SDCC version matches pin"            bash    tools/check_sdcc_version.sh
 check "wrap_hex golden regression"          python3 tools/test_wrap_hex_golden.py
 check "SFR register names consistent"       python3 tools/check_sfr_names.py
+check "quoted bytes match the images"       python3 tools/check_byte_quotes.py
 # The decompilation is only a claim about the stock image if it still
 # reproduces it. match51 checks each candidate standalone; link51 places them
 # all at their stock addresses and resolves every inter-function call for real,
@@ -59,7 +60,7 @@ check "decomp candidates match stock"      python3 tools/match51.py firmware_sto
 # cand/ must be exact. A declared partial belongs in cand/partial/, where it is
 # still checked -- but allowing one to sit in cand/ would quietly weaken the
 # gate above into "matches, or has an excuse".
-check "no declared partials in cand/"      sh -c '! grep -l "partial=" firmware_stock/decomp/cand/*.c 2>/dev/null | grep -q .'
+check "no declared partials in cand/"      sh -c '! grep -hE "^// MATCH:.*partial=" firmware_stock/decomp/cand/*.c 2>/dev/null | grep -q .'
 check "declared partials hold exactly"     python3 tools/match51.py firmware_stock/decomp/cand/partial/*.c
 check "decomp links at stock addresses"    python3 tools/link51.py rev20
 

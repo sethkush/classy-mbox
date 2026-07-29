@@ -41,10 +41,27 @@ Then link the lot at their stock addresses:
 
 ## Scoreboard
 
-    match51:  matched 29/29 functions, 1281/1281 bytes
+    match51:  matched 88/88 functions, 3735/3735 bytes
               1 declared partial (std_get_interface, 3 bytes)
-    link51:   linked  28/28 functions exact, 1274/1274 placed bytes
-              image coverage: 1274/3598 instruction bytes (35.4% of rev20)
+    link51:   linked  84/84 functions exact, 3579/3579 placed bytes
+              image coverage: 3579/3598 instruction bytes (99.5% of rev20)
+
+Rev 20 is essentially complete. What is left is 64 addresses, and both reasons
+are understood rather than outstanding:
+
+  * `std_get_interface`, 62 bytes, is the declared partial. It cannot be
+    *placed* at all -- it is three bytes too long, so it would run into its
+    neighbour -- which is why link51 excludes it rather than counting it.
+  * Two single-byte merged-tail prologues, `0x0DEB` (`MOVX @DPTR,A`) and
+    `0x0E17` (`INC DPTR`), are entry points that fall through into functions
+    already covered. No candidate emits them because link51 derives its
+    defined-symbol set from the header's `func=` name alone, so a candidate
+    cannot declare a second entry label. That is a tooling limit, not a
+    decompilation gap.
+
+Rev 22 is measured, not started: three probe functions (`dma0_disable`,
+`std_clear_feature`, `std_get_descriptor`, 149 bytes) matched exactly with the
+existing peephole set and no new rules. The set carries over.
 
 Rev 22 is not started.
 

@@ -191,3 +191,28 @@ replace {
 	mov	dptr,#%2
 	movx	a,@dptr
 }
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+// Generalisation of the JBC rule above. The existing row only fires when the
+// guarded block is a bare RET; the same Keil-vs-SDCC divergence appears
+// whenever the source says "if (bit) { bit = 0; ... }" and the block is
+// anything at all. SDCC folds the test and the clear into JBC and inverts the
+// branch sense; Keil emitted JNB to the else-path followed by CLR.
+//
+// Both encodings are 5 bytes, so this is shape only, not size. %2 is the only
+// label both named and defined inside the window, which is the condition for
+// a cross-label rule to fire at all (see decomp/README.md).
+//
+// Needed by: usb_iep0_done_handler (0x0FC4), where the guarded block is the
+// OEPCNF0 TOGGLE set rather than a RET. Placed after the RET-specific row so
+// that row still wins where it applies; the two agree on the output anyway.
+replace {
+	jbc	%1,%2
+	sjmp	%3
+%2:
+} by {
+	jnb	%1,%3
+	clr	%1
+}

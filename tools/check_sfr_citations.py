@@ -78,11 +78,24 @@ def has_citation(context_lines: list[str]) -> bool:
 
 
 def staged_diff() -> str:
-    """Return unified diff of staged changes vs HEAD, from git."""
+    """Return unified diff of staged changes vs HEAD, from git.
+
+    firmware_stock/decomp/ is excluded. This gate asks "why does our firmware
+    write this register", and the answer has to be a reference. A decompilation
+    candidate is not our firmware -- it is a transcription of a stock image, and
+    its justification is stronger than any comment: the candidate declares the
+    stock address in its MATCH header, and tools/match51.py and tools/link51.py
+    prove the emitted bytes equal the stock bytes there. Requiring a prose
+    citation as well would mean writing "Rev 20 does this" next to code that is
+    mechanically proven to be what Rev 20 does.
+
+    The exclusion is safe only because those two gates run in preflight and
+    demand 100%. If they are ever relaxed, this exclusion has to go with them.
+    """
     try:
         return subprocess.check_output(
             ["git", "diff", "--cached", "--unified=3",
-             "--", "*.c", "*.h"],
+             "--", "*.c", "*.h", ":(exclude)firmware_stock/decomp/**"],
             text=True,
         )
     except subprocess.CalledProcessError as e:

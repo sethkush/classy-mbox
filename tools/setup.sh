@@ -52,15 +52,17 @@ else
     mkdir -p "$HOOK_DIR"
     cat > "$HOOK_DIR/pre-commit" << 'HOOK'
 #!/usr/bin/env bash
-# Two gates, both cheap enough to run on every commit:
+# Three gates, all cheap enough to run on every commit:
 #   1. SFR-touching changes must carry a reference citation.
 #   2. Register names must agree with the datasheet and with each other.
-# Installed by tools/setup.sh — see tools/check_sfr_citations.py and
-# tools/check_sfr_names.py.
+#   3. Bytes quoted from a firmware image must be at the address cited.
+# Installed by tools/setup.sh — see tools/check_sfr_citations.py,
+# tools/check_sfr_names.py and tools/check_byte_quotes.py.
 set -e
 ROOT="$(git rev-parse --show-toplevel)"
 python3 "$ROOT/tools/check_sfr_citations.py"
 python3 "$ROOT/tools/check_sfr_names.py"
+python3 "$ROOT/tools/check_byte_quotes.py"
 HOOK
     chmod +x "$HOOK_DIR/pre-commit"
     echo "  installed $HOOK_DIR/pre-commit"

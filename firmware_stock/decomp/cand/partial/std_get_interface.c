@@ -10,10 +10,11 @@ __bit __at (0x0E) f_configured;
 
 /* GET_INTERFACE: reply with one byte, the current alternate setting.
  *
- * The wIndex == 2 arm is unreachable: the range check above already rejected
- * anything >= 2. std_set_configuration carries the same dead third arm, so
- * this is the original author's habit rather than a one-off, and reproducing
- * it is part of the match.
+ * All three arms are reachable. The guard rejects wIndex > 2, not >= 2:
+ * `SETB C / SUBB A,#2 / JNC` borrows when A < 3, so wIndex 0, 1 and 2 all get
+ * through. (std_set_configuration does carry a genuinely dead third arm, but
+ * that is a different function and a different constant -- do not read this
+ * one as the same habit.)
  *
  * f_cfg_alt is never set anywhere in the image, so the first test always falls
  * through to the f_configured check. It is written by std_set_configuration
