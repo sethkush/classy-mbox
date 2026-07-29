@@ -61,7 +61,10 @@ check "decomp candidates match stock"      python3 tools/match51.py firmware_sto
 # still checked -- but allowing one to sit in cand/ would quietly weaken the
 # gate above into "matches, or has an excuse".
 check "no declared partials in cand/"      sh -c '! grep -hE "^// MATCH:.*partial=" firmware_stock/decomp/cand/*.c 2>/dev/null | grep -q .'
-check "declared partials hold exactly"     python3 tools/match51.py firmware_stock/decomp/cand/partial/*.c
+# An empty cand/partial/ is the normal state now that both images are exact;
+# the mechanism stays for the next stubborn function. Only run the check when
+# there is something to check, rather than failing on an unexpanded glob.
+check "declared partials hold exactly"     sh -c 'set -- firmware_stock/decomp/cand/partial/*.c; [ -e "$1" ] || exit 0; python3 tools/match51.py "$@"' 
 check "decomp links at stock addresses"    python3 tools/link51.py rev20
 check "decomp links at stock addresses (v22)" python3 tools/link51.py rev22
 

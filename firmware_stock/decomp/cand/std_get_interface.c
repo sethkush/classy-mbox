@@ -1,4 +1,4 @@
-// MATCH: image=rev20 addr=0x01F1 len=62 func=std_get_interface cflags=--peep-file,firmware_stock/decomp/keil.peep partial=3 at=0x12
+// MATCH: image=rev20 addr=0x01F1 len=62 func=std_get_interface cflags=--peep-file,firmware_stock/decomp/keil.peep
 #include "mbox.h"
 extern void ep0_ptr_set_in_buf(void);
 extern void ep0_send_1byte(void);
@@ -29,16 +29,16 @@ void std_get_interface(void) {
     if (!f_cfg_alt && !f_configured) goto stall;
     if (SETUP_wIndexL > 2) goto stall;
 
-    /* PARTIAL, 3 bytes. Stock reads SETUP_wIndexL here with a bare
-     * `MOVX A,@DPTR`: DPTR still holds 0xFF2C from the range check above,
-     * because ep0_ptr_set_in_buf touches only IRAM 0x1B and 0x1C and Keil's
-     * inter-procedural register analysis knew it. SDCC has no such analysis
-     * and reloads DPTR, costing three bytes.
+    /* Stock reads SETUP_wIndexL here with a bare `MOVX A,@DPTR`: DPTR still
+     * holds 0xFF2C from the range check above, because ep0_ptr_set_in_buf
+     * touches only IRAM 0x1B and 0x1C and Keil's inter-procedural register
+     * analysis knew it. SDCC has no such analysis and reloads DPTR.
      *
-     * Everything else in this function matches. The gap is not a modelling
-     * error and no rewrite of the C closes it -- it is a compiler capability
-     * SDCC does not have. Left as readable C rather than hand assembly, and
-     * declared above so the shortfall is counted rather than hidden. */
+     * This was a declared 3-byte partial for exactly that reason. It is closed
+     * by a peephole rule whose window spans both DPTR loads, so the rule fires
+     * only where DPTR is provably being reloaded with what it already holds --
+     * see the comment on it in keil.peep. No rewrite of the C reaches this;
+     * the rule does. */
     ep0_ptr_set_in_buf();
     if (SETUP_wIndexL == 1 && f_iface1_alt) {
         __asm

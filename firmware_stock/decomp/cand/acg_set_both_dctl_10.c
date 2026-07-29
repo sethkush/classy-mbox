@@ -1,4 +1,4 @@
-// MATCH: image=rev20 addr=0x0E18 len=8 func=acg_set_both_dctl_10 cflags=--peep-file,firmware_stock/decomp/keil.peep
+// MATCH: image=rev20 addr=0x0E17 len=9 func=acg_incdptr_dctl_div2 span=1 defines=acg_set_both_dctl_10 cflags=--peep-file,firmware_stock/decomp/keil.peep
 /* Set both adaptive clock generator divider-control registers to 0x10.
  *
  * The register written first is *not* named here: it is whatever DPTR points
@@ -20,15 +20,13 @@
  * input parameter of the function, and "the caller's DPTR" is not expressible
  * in C at all.
  *
- * 0x0E17 is therefore an alternate entry point into these bytes, not a
- * separate function, and is carried in firmware_stock/decomp/symbols.map as
- * `acg_incdptr_dctl_div2 = 0x0E17` rather than as a candidate of its own. Its
- * one byte (0xA3) is not covered by any placed candidate -- the same treatment
- * already given to `sfr_store_then_acg_48k = 0x0DEB` and
- * `sfr_store_then_acg_ctl6 = 0x0E0F`. See the report note: a one-byte prologue
- * cannot be spanned into this candidate, because link51 derives its
- * already-defined set from the header's `func=` name alone and would then
- * emit a duplicate equate for the second label.
+ * 0x0E17 is an alternate entry point into these bytes, not a separate
+ * function, so this candidate starts there and emits BOTH labels. The header's
+ * `defines=` tells link51 that this one candidate owns the second name too --
+ * without it link51 would also emit a stub equate for it and the link would
+ * fail on a duplicate symbol, which is why the prologue byte went uncovered
+ * before. `span=1` is needed because the second label would otherwise stop
+ * match51's extraction.
  *
  * Value 0x10: bit 4 of ACGxDCTL. The two images agree exactly -- rev20 0x0E18
  * and rev22 0x0EF4 are the identical eight bytes
@@ -36,8 +34,11 @@
  * rev22 0x0EF3. Callers of the 0x0E17 form are rev20 0x081E and 0x0931,
  * rev22 0x0852 and 0x09C7.
  */
-void acg_set_both_dctl_10(void) __naked {
+void acg_incdptr_dctl_div2(void) __naked {
     __asm
+        inc   dptr             ; ACGCTL 0xFFE1 -> ACG1DCTL 0xFFE2
+        .globl _acg_set_both_dctl_10
+    _acg_set_both_dctl_10:
         mov   a,#0x10
         movx  @dptr,a          ; caller's register: ACG1DCTL (0xFFE2)
         mov   dptr,#0xfff6     ; ACG2DCTL

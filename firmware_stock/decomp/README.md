@@ -41,30 +41,63 @@ Then link the lot at their stock addresses:
 
 ## Scoreboard
 
-    match51:  matched 168/168 functions, 7239/7239 bytes
-              1 declared partial (std_get_interface, 3 bytes)
-    link51 rev20:  84/84 exact, 3534/3598 distinct instruction bytes (98.2%)
-    link51 rev22:  81/81 exact, 3626/3630 distinct instruction bytes (99.9%)
+    match51:  matched 169/169 functions, 7303/7303 bytes, no partials
+    link51 rev20:  85/85 exact, 3598/3598 distinct instruction bytes (100.0%)
+    link51 rev22:  81/81 exact, 3626/3626 distinct instruction bytes (100.0%)
 
-Both images are done. What remains is understood rather than outstanding:
+Every instruction byte of both stock images is reproduced by compiling this C
+and placing it at its stock address. Independently checked outside link51's own
+arithmetic: zero mismatched bytes, zero unplaced instruction addresses.
 
-  * Rev 20, 62 bytes: `std_get_interface` is the declared partial. It cannot be
-    *placed* -- three bytes too long, so it would run into its neighbour --
-    which is why link51 excludes it rather than counting it.
-  * Rev 20, 2 bytes: the one-byte merged-tail prologues at `0x0DEB` and
-    `0x0E17`. No candidate emits them because link51 takes a candidate's
-    defined symbols from its `func=` header alone, so a candidate cannot
-    declare a second entry label. Rev 22 needs no equivalent -- Ghidra already
-    names its versions, so the generated equates cover them.
-  * Rev 22, 4 bytes: not code. Ghidra's extent for `ep0_in_done_handler`
-    over-reaches four bytes into the `?C_INITSEG` initialiser table at
-    `0x0FBA`, which it labels a GAP. Rev 22 reproduces 100% of its actual
-    instruction bytes.
+Rev 22's denominator excludes 40 bytes at `0x0FBA..0x0FE1`, the Keil
+`?C_INITSEG` initialiser table -- thirteen three-byte records plus a `00`
+terminator, byte-identical in content to Rev 20's table at `0x0F9C`, with the
+next real function starting cleanly at `0x0FE2`. Ghidra marks most of it as a
+GAP but decodes the last four bytes as `AJMP / RR A / NOP` and attributes them
+to whichever function header it saw last. That is data in the listing's
+instruction column, not code we failed to reproduce.
 
-Coverage counts DISTINCT addresses. Summing candidate lengths double-counts,
-because a candidate may span more than one Ghidra function or carry an inline
-data table -- that arithmetic reported Rev 22 at "100.1%" before it was fixed,
-and overstated Rev 20 as 99.5% when the honest figure is 98.2%.
+The exclusion is printed on every run and is itself checked: any byte inside a
+declared data region that a candidate actually places is code, not data, and
+link51 fails. Without that check, widening the region reported a flattering
+"100.0%" of a denominator 186 bytes smaller -- found by mutation-testing it.
+
+## Closing the last three gaps
+
+Three things stood between 98% and 100%, and none of them was a function nobody
+had decompiled:
+
+**Merged-tail prologues (2 bytes, Rev 20).** `0x0DEB` (`MOVX @DPTR,A`) and
+`0x0E17` (`INC DPTR`) are one-byte entry points that fall through into the
+function after them. They went uncovered because link51 took a candidate's
+defined symbols from its `func=` header alone, so a candidate could not emit a
+second label without link51 also emitting a stub equate and failing on a
+duplicate. The `defines=` header key fixes that: one candidate owns both names.
+`acg_set_both_dctl_10` absorbs its prologue as an extra label in its assembly;
+`acg_48k_commit` is plain C, so its prologue is a one-byte `__naked` function
+with no `RET` placed immediately before it, relying on SDCC emitting functions
+in definition order -- the same mechanism as the `setup_get_sample_freq` merged
+tail, and, as there, the byte match is what proves the adjacency.
+
+**The DPTR-across-a-call partial (62 bytes, Rev 20).** `std_get_interface` was
+a declared 3-byte partial: stock re-reads `SETUP_wIndexL` with a bare
+`MOVX A,@DPTR` because DPTR survives a call into a helper that writes IRAM
+only, and SDCC reloads it. That is Keil's inter-procedural register analysis,
+which SDCC does not have, so no rewrite of the C reached it -- `__naked`,
+same-unit compilation and a jump-to-next-instruction rule were all tried and
+all made it worse.
+
+A peephole rule closed it, and the rule's *length* is what makes it sound
+rather than lucky. The window spans BOTH `mov dptr,#%1` loads and binds `%1` to
+the same symbol in each, so it can only fire where DPTR is provably being
+reloaded with what it already holds; the instructions in between touch A and
+the carry and never DPTR; and the callee is named literally, so "this call
+preserves DPTR" is auditable by reading one seven-byte function rather than
+being an assumption about calls in general.
+
+`cand/partial/` is now empty. The mechanism stays, because the next stubborn
+function may need it, and because a declared shortfall that is checked exactly
+is worth having available.
 
 ## Rev 22 needed no new peephole rules
 

@@ -216,3 +216,42 @@ replace {
 	jnb	%1,%3
 	clr	%1
 }
+
+// Keil kept DPTR live across a call and SDCC reloads it. This is the one Keil
+// optimisation that needed a rule rather than a rewrite: it comes from
+// inter-procedural register analysis, which SDCC does not have at all, so no
+// arrangement of the C reaches it.
+//
+// The window is long on purpose, and that length is what makes the rule SOUND
+// rather than merely lucky. It contains BOTH `mov dptr,#%1` loads, and the
+// peephole binds %1 to the same symbol in each, so the rule only fires when
+// DPTR is provably reloaded with what it already holds. Everything in between
+// is checked too: MOVX and the compare touch A and the carry, never DPTR, and
+// the fall-through of the JNC is the only path rewritten.
+//
+// The callee is named literally, and that is the last piece of the proof.
+// _ep0_ptr_set_in_buf is seven bytes -- `mov 0x1b,#0xfa / mov 0x1c,#0x18 / ret`
+// (rev20 0x0B3E) -- and writes IRAM only. Naming it means the claim "this call
+// preserves DPTR" is auditable by reading one short function, instead of being
+// an assumption about calls in general.
+//
+// Needed by: std_get_interface (rev20 0x01F1), which re-reads SETUP_wIndexL
+// after the call with a bare MOVX.
+replace {
+	mov	dptr,#%1
+	movx	a,@dptr
+	setb	c
+	subb	a,#%2
+	jnc	%3
+	lcall	_ep0_ptr_set_in_buf
+	mov	dptr,#%1
+	movx	a,@dptr
+} by {
+	mov	dptr,#%1
+	movx	a,@dptr
+	setb	c
+	subb	a,#%2
+	jnc	%3
+	lcall	_ep0_ptr_set_in_buf
+	movx	a,@dptr
+}

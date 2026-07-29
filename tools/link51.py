@@ -62,6 +62,21 @@ INSN = re.compile(r"^CODE:([0-9a-f]{4})\s+([0-9a-f]+)\s+([A-Z])")
 CFLAGS = ["-mmcs51", "--model-small", "--std-c99", "--opt-code-size",
           "--no-xinit-opt", "-c"]
 
+# Data that Ghidra's listing decodes as instructions, and which therefore
+# inflates the "instruction bytes" denominator. Excluded from coverage with the
+# evidence for calling it data, so the figure means what it says.
+#
+# rev22 0x0FBA..0x0FE1 is the Keil ?C_INITSEG initialiser table: thirteen
+# three-byte records (count, address-high, address-low) plus a 00 terminator,
+# byte-identical in content to Rev 20's table at 0x0F9C, and the next real
+# function starts cleanly at 0x0FE2. Ghidra marks 0x0FBA..0x0FDD as a GAP but
+# decodes the final four bytes -- `01 08 03 00` -- as AJMP 0x0808 / RR A / NOP
+# and attributes them to whichever function header it saw last.
+DATA_IN_LISTING = {
+    "rev22": [(0x0FBA, 0x0FE1, "?C_INITSEG initialiser table")],
+    "rev20": [],
+}
+
 SYMMAP = os.path.join(FW, "decomp", "symbols.map")
 
 # Areas SDCC emits that hold no placed content for these candidates. They are
@@ -145,7 +160,8 @@ def candidates(image):
         addr = int(kv["addr"], 0)
         length = int(kv["len"], 0) if "len" in kv else fns.get(addr, (None, 0))[1]
         rec = (path, addr, kv["func"], length,
-               kv.get("cflags", "").replace(",", " ").split())
+               kv.get("cflags", "").replace(",", " ").split(),
+               [x for x in kv.get("defines", "").split(",") if x])
         (entry if kv.get("entry") == "1" else placed).append(rec)
     key = lambda c: c[1]
     return sorted(placed, key=key), sorted(entry, key=key)
@@ -182,13 +198,19 @@ def build(image, work, verbose):
     cands, entries = candidates(image)
     # Entry points are *not* defined by a placed segment, so they fall through
     # to the equate list along with the functions we have not decompiled.
-    defined = {c[2] for c in cands}
-    for _, addr, func, _, _ in entries:
+    # A candidate may define more than one global: a merged-tail prologue that
+    # falls through into the body is part of the same run of bytes, and the only
+    # way to cover it is to let one candidate emit both labels. Without this,
+    # link51 would also emit a stub equate for the second name and the link
+    # would fail on a duplicate symbol -- which is why those prologue bytes went
+    # uncovered until now.
+    defined = {c[2] for c in cands} | {d for c in cands for d in c[5]}
+    for _, addr, func, _, _, _ in entries:
         SYM_EXTRA[func] = addr
     stub_rel, n_stub = make_stubs(image, defined, work)
 
     rels, segs = [], []
-    for path, addr, func, length, extra in cands:
+    for path, addr, func, length, extra, _ in cands:
         seg = f"S{addr:04X}"
         rel = os.path.join(work, f"{func}.rel")
         r = subprocess.run(
@@ -264,12 +286,12 @@ def main():
 
     # Expected extent of each placed function, for overrun detection.
     owner = {}
-    for _, addr, func, length, _ in cands:
+    for _, addr, func, length, _, _ in cands:
         for i in range(addr, addr + length):
             owner[i] = func
 
     rows, bad_total, placed = [], 0, 0
-    for _, addr, func, length, _ in cands:
+    for _, addr, func, length, _, _ in cands:
         got = [mem.get(addr + i) for i in range(length)]
         bad = [(i, stock[addr + i], got[i])
                for i in range(length) if got[i] != stock[addr + i]]
@@ -313,7 +335,7 @@ def main():
     if entries:
         print("\n  merged-tail entry points (equated, bytes owned by the "
               "container):")
-        for _, addr, func, length, _ in entries:
+        for _, addr, func, length, _, _ in entries:
             host = owner.get(addr)
             print(f"    0x{addr:04X} {func:<30} {length:3d} B  "
                   + (f"inside {host}" if host else "\033[31mNOT COVERED\033[0m"))
@@ -328,8 +350,24 @@ def main():
     for ad, (_, sz) in g.items():
         all_addrs.update(range(ad, ad + sz))
     covered = set()
-    for _, ad, _, ln, _ in cands:
+    for _, ad, _, ln, _, _ in cands:
         covered.update(range(ad, ad + ln))
+    # An exclusion shrinks the denominator, so a too-wide one reports a
+    # flattering 100% of less. Two things keep it honest: any excluded byte a
+    # candidate actually places is code, not data, and is a hard error; and the
+    # exclusions are printed with their sizes so widening one is visible in the
+    # output rather than only in the percentage.
+    excluded = []
+    for lo, hi, why in DATA_IN_LISTING.get(a.image, []):
+        rng = set(range(lo, hi + 1))
+        clash = sorted(rng & covered)
+        if clash:
+            print(f"\n  BAD EXCLUSION: 0x{lo:04X}..0x{hi:04X} is declared data "
+                  f"({why}) but {len(clash)} of its bytes are placed as code, "
+                  f"first at 0x{clash[0]:04X}")
+            return 1
+        all_addrs -= rng
+        excluded.append((lo, hi, why))
     total = len(all_addrs)
     reproduced = len(all_addrs & covered)
     nm_ok = sum(1 for r in rows if not r[3])
@@ -339,6 +377,9 @@ def main():
               f"({100.0 * (placed - bad_total) / placed:.1f}%)")
         print(f"  image coverage: {reproduced}/{total} distinct instruction "
               f"bytes ({100.0 * reproduced / total:.1f}% of {a.image})")
+        for lo, hi, why in excluded:
+            print(f"    excluded as data: 0x{lo:04X}..0x{hi:04X} "
+                  f"({hi - lo + 1} B, {why})")
     else:
         print("\n  nothing placed")
     print(f"  map: {mapf}")
