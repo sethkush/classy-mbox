@@ -1,5 +1,5 @@
 // MATCH: image=rev20 addr=0x0DEC len=43 func=acg_48k_commit cflags=--peep-file,firmware_stock/decomp/keil.peep
-#include "regs.h"
+#include "mbox.h"
 /* Ghidra splits this at 0x0E0F because a second caller jumps into the tail.
  * At source level it is one function: load both synthesizers with the
  * 48 kHz-family word 0x61A80F, then commit via ACGCTL. */

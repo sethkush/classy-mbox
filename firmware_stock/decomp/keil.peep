@@ -1,6 +1,18 @@
-// Peephole rules that steer SDCC toward Keil C51's encoding choices.
-// SDCC emits the 3-byte "ANL direct,#imm" form against ACC where the
-// 2-byte "ANL A,#imm" form is available; same for ORL and XRL.
+// Peephole rules steering SDCC toward Keil C51's encoding choices.
+//
+// Every rule here is validated the only way that matters: the emitted bytes
+// are diffed against the stock image by tools/match51.py. A rule that breaks
+// a function shows up immediately as a DIFF, so "is this transform safe?"
+// reduces to "do all candidates still match?".
+
+// SDCC emits the 3-byte "ANL direct,#imm" form against ACC where the 2-byte
+// "ANL A,#imm" form exists. Same for ORL and XRL.
 replace { anl acc,#%1 } by { anl a,#%1 }
 replace { orl acc,#%1 } by { orl a,#%1 }
 replace { xrl acc,#%1 } by { xrl a,#%1 }
+
+// Keil zeroes a direct byte via the accumulator (CLR A + MOV dir,A, 3 bytes)
+// rather than MOV dir,#0 (3 bytes). Size-neutral, and it is what the original
+// emitted. Clobbers A; any function where that matters will fail its match.
+replace { mov %1,#0x00 } by { clr a
+	mov %1,a }
