@@ -171,3 +171,23 @@ replace {
 	subb	a,#0x02
 	jnc	%1
 }
+
+// Carry is already set on the fall-through path of a JNC, and neither MOV DPTR
+// nor MOVX touches it, so the SETB C that opens the next compare is dead. Keil
+// tracked the carry across the branch and omitted it; SDCC re-establishes it
+// every time.
+//
+// This one is sound by inspection rather than by the byte match: "JNC not
+// taken" means CY == 1 by definition, and the two instructions in between are
+// the only ones the window admits. std_set_interface chains two range checks
+// exactly this way.
+replace {
+	jnc	%1
+	mov	dptr,#%2
+	movx	a,@dptr
+	setb	c
+} by {
+	jnc	%1
+	mov	dptr,#%2
+	movx	a,@dptr
+}
