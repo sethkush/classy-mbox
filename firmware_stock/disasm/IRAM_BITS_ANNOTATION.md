@@ -55,11 +55,90 @@ where they are set and cleared; what they switch is inside the codec.
 in each image and never individually, so they are a two-bit field or a matched
 pair of channel switches — a single mute would not need two.
 
-Recorded honestly: the firmware-side account is complete (every site
-enumerated, always paired, write-only), and what they switch in the codec is
-NOT established. The #147 change made mboxfw set them where stock does, which
-is correct on parity grounds and never depended on knowing their meaning. The
-"44.1 kHz mute" reading was inference from timing and remains unproven.
+### 0x23.2 / 0x23.3 ARE the stereo mute pair — established from structure
+
+An earlier version of this section said their meaning was "NOT established" and
+could not be, because the bits are write-only. That was wrong, and wrong in a
+specific way worth naming: write-only rules out reading the value back, and
+nothing else. It does not rule out inferring the function from *what the
+firmware does around the write*. That evidence was in the image the whole time.
+
+`0x0728` is the clock-mode apply function (mode number arrives in R7). Its shape:
+
+    072f  CLR  0x23.2 ; CLR 0x23.3
+    0733  LCALL 0x0E62          <-- publish to the codec IMMEDIATELY
+    0736  ACGDCTL / ACG2DCTL = 0x10      (idle the clock generators)
+    073c  dispatch on mode 1 / 2 / 3 / 5
+          ... reprogram ACG1FRQ2/1/0, ACG2FRQ2/1/0, CPTRXCNF4, MEMCFG ...
+    07c5  CS8427 CLOCKSOURCE write via the 0x31:0x32 pair
+    07cc  ACGCTL |= 0xC0                 (re-enable the clock generators)
+    07d3  IEPDCNTX1 = IEPDCNTY1 = OEPDCNTX2 = OEPDCNTY2 = 0   (flush EP buffers)
+    07e4  IEPCNF1 = 0xC5 ; OEPCNF2 = 0xC5                     (enable endpoints)
+    07ee  SETB 0x23.2 ; SETB 0x23.3
+    07f2  LCALL 0x0E62          <-- publish to the codec IMMEDIATELY
+
+Clear the pair, publish, tear the clocks down, reprogram, bring the clocks back,
+flush and re-enable the endpoints, set the pair, publish. That is the canonical
+mute-across-a-clock-change sequence, and nothing else in a codec control word
+has that usage pattern. Four things make it tight:
+
+  * The bits are cleared immediately *before* the clocks are idled and set
+    immediately *after* they are restored — the exact window in which a PLL
+    relock would otherwise be audible.
+  * Each change is followed instantly by its own publish. You only pay for an
+    immediate shift-out when the effect has to take place now.
+  * No other bit of the codec word is touched inside that bracket.
+  * The same pair, in the same order, appears in the timed power-up sequence at
+    0x0831/0x0833 followed by a publish at 0x0835.
+
+Two bits moved always together, never individually, across all three sites in
+each image = a **stereo (left/right) mute pair**. Polarity: **clear = muted,
+set = unmuted**.
+
+### This vindicates #147, and upgrades it from timing inference to structure
+
+mboxfw cleared the pair on the 44.1 kHz path and never set it again, so the
+device came up **permanently muted at 44.1 kHz**. Stock always re-sets the pair
+in the common tail. The #147 fix — setting them unconditionally in that tail —
+is exactly what stock does, and the "44.1 kHz mute" reading was correct.
+
+It no longer rests on a timing argument or on any hardware measurement. It rests
+on the bracket above, which is in both images.
+
+### 0x23.0 / 0x23.1 — mode-5-only codec configuration pair
+
+Set once each, adjacently, and only inside the **mode 5** branch, then published:
+
+    0799  MEMCFG (0xFFB1) &= 0xFE
+    07a0  CPTRXCNF4 = 0x01              (receive bit clock divided by 2)
+    07a6  MEMCFG |= 0x01
+    07b2  ACG2DCTL = 0x10
+    07b8  SETB 0x23.0 ; SETB 0x23.1
+    07bc  LCALL 0x0E62
+
+Mode 5 is the "one out and one in at different frequencies" I2S mode. The pair
+is set only after the receive path has been switched to its own divided clock,
+so these two bits configure the codec for that independent-input mode. They are
+never cleared, in either image. Which two codec bits they are is not settled
+here; that they are the mode-5 input-path pair is.
+
+### 0x23.4 — one-time power-up bit
+
+    083e  SETB 0x25.7
+    0840  SETB 0x23.4
+    0842  LCALL 0x0E62
+    0845  delay
+
+Set exactly once, inside the timed power-up sequence, *after* the mute pair is
+released at 0x0831/0x0835, bracketed by DJNZ delays, and never cleared in
+either image. A one-shot power-up configuration bit, sequenced after unmute.
+
+### The codec is identifiable, so the remaining bit names are obtainable
+
+`disasm/NOTES.md` records that the two-byte control word matches the **Cirrus
+CS4272 (or close relative)** format, bit-banged on P1.0/P1.1/P1.2. So naming
+0x23.0/0x23.1/0x23.4 precisely is a datasheet lookup, not an impossibility —
+which is the correction to the claim that their meaning "is not in the image".
 
 ## Byte 0x25 bits 4–7
 
