@@ -1,9 +1,8 @@
-// MATCH: image=rev20 addr=0x008A len=131 func=setup_get_sample_freq cflags=--peep-file,firmware_stock/decomp/keil.peep
+// MATCH: image=rev20 addr=0x008A len=142 func=setup_get_sample_freq cflags=--peep-file,firmware_stock/decomp/keil.peep
 #include "mbox.h"
 extern void ep0_ptr_set_in_buf(void);
 extern void ep0_buf_clear_byte(void);   /* takes the low address byte in A */
 extern void ep0_stall_both(void);
-extern void send_3byte_ep0_reply(void);
 __data __at (0x08) unsigned char g_clock_mode;
 
 /* Audio class GET_CUR, SAMPLING_FREQ_CONTROL on the streaming endpoint
@@ -67,5 +66,18 @@ void setup_get_sample_freq(void) {
         ep0_stall_both();
         return;
     }
-    send_3byte_ep0_reply();
+
+    /* The shared reply tail. Ghidra calls this a separate function at 0x010D,
+     * because two other handlers LCALL it -- but at source level it is the end
+     * of this function, and Keil merged the two. The evidence is the encoding:
+     * all three success paths above reach it with a two-byte SJMP, and a short
+     * jump only reaches an adjacent target. Written as a call instead, the same
+     * source yields a three-byte LJMP through a trampoline.
+     *
+     * send_3byte_ep0_reply is therefore declared as an entry point at 0x010D
+     * (firmware_stock/decomp/symbols.map) rather than compiled separately, the
+     * same treatment dptr_from_ep0_ptr gets inside dptr_to_ep0_out_buf. */
+    IEPDCNTX0 = 3;
+    f_stage_out = 0;
+    f_stage_in = 1;
 }

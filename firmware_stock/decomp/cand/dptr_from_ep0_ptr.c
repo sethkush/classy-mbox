@@ -1,4 +1,4 @@
-// MATCH: image=rev20 addr=0x0B17 len=7 func=dptr_from_ep0_ptr cflags=--peep-file,firmware_stock/decomp/keil.peep
+// MATCH: image=rev20 addr=0x0B17 len=7 func=dptr_from_ep0_ptr cflags=--peep-file,firmware_stock/decomp/keil.peep entry=1
 /* Load DPTR from the EP0 working pointer held in IRAM 0x1B:0x1C.
  *
  * Byte order: 0x1B is the HIGH byte and 0x1C the low. That is Keil's

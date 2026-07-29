@@ -139,3 +139,4 @@ replace {
 	clr	a
 	mov	%1,a
 }
+

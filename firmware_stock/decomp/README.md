@@ -31,16 +31,54 @@ Each candidate declares its target in a header comment:
     //        cflags=--peep-file,firmware_stock/decomp/keil.peep
 
 `len` is optional; the stock length comes from the Ghidra function table.
+`entry=1` marks a merged-tail entry point (see below); `span=1` says the
+candidate holds more than one function and the whole run of bytes is the claim.
+
+Then link the lot at their stock addresses:
+
+    python3 tools/link51.py rev20
+    python3 tools/link51.py rev20 -v
 
 ## Scoreboard
 
-    matched 30/31 functions, 1287/1288 bytes
+    match51:  matched 29/29 functions, 1281/1281 bytes
+    link51:   linked  28/28 functions exact, 1274/1274 placed bytes
+              image coverage: 1274/3598 instruction bytes (35.4% of rev20)
 
-The one outstanding byte is `setup_get_sample_freq`, and it is a layout
-artifact rather than a codegen difference — see below. Every construct that
-was on the stubborn list has been solved.
+Rev 22 is not started.
 
-Rev 20. Run `python3 tools/match51.py firmware_stock/decomp/cand/*.c`.
+The two figures differ because a candidate can cover bytes another candidate
+also covers: `setup_get_sample_freq` is one 142-byte unit spanning two Ghidra
+functions, and `dptr_from_ep0_ptr` is an entry point whose seven bytes belong
+to `dptr_to_ep0_out_buf`. link51 counts each stock byte once, so its number is
+the honest one. An earlier scoreboard here said 1288 bytes; 14 of those were
+double-counted.
+
+## Why per-function matching is not enough
+
+match51 compiles each candidate standalone at address zero. It therefore
+cannot know where any other function will land, and deliberately excuses the
+address operands of `LCALL`/`LJMP` to external symbols. That is a real hole:
+a call to entirely the wrong function still reports MATCH.
+
+link51 closes it. Every candidate is compiled into its own code segment, the
+segments are placed at their stock addresses, and the linker resolves every
+inter-function reference for real. Functions not yet decompiled are supplied
+as absolute equates generated from the Ghidra function table, so a matched
+function can call an unmatched one and still link.
+
+Three defect classes only become visible there, and all three were present
+when the tool was first run:
+
+* **Wrong call target.** Deliberately breaking one `symbols.map` address
+  turns four bytes red across two functions. match51 reports all of them as
+  MATCH.
+* **Overrun.** A function that compiles longer than its stock counterpart is
+  a length difference per-function, but linked it runs into its neighbour.
+* **Layout dependence.** `sdld` bumps an area forward rather than honouring a
+  base that would overlap, so two candidates claiming the same stock bytes is
+  reported as a displaced segment instead of silently comparing the wrong
+  bytes against the wrong function.
 
 ## What the peephole rules buy
 
@@ -165,20 +203,35 @@ functions that need this treatment are long straight-line register programming
 where assembly carries the meaning as well as C would. `hw_master_init` is 165
 bytes of SFR pokes; the annotated assembly is no harder to read than the C was.
 
-## Layout-dependent differences
+## Merged tails, and how a short jump proved one
 
-Some differences cannot be resolved by per-function compilation at all.
+Keil merges common tails, so several things Ghidra lists as functions are
+entry points into the middle or end of another function. They have their own
+callers, which is why Ghidra names them, but they were never separate
+functions in the source. Two are modelled explicitly:
 
-`setup_get_sample_freq` matches 130 of 131 bytes. Its three branches end with
-`SJMP` straight into `send_3byte_ep0_reply`, which Keil placed immediately
-after it — a tail call costing 2 bytes. SDCC cannot short-jump to an external
-symbol, so it emits a shared 3-byte `LJMP` instead. The generated code is
-correct and the instruction sequences are otherwise identical; only the tail
-encoding differs, and only because of where the next function sits.
+* `dptr_from_ep0_ptr` (0x0B17) is the tail of `dptr_to_ep0_out_buf` (0x0B11).
+* `send_3byte_ep0_reply` (0x010D) is the tail of `setup_get_sample_freq`.
 
-This is the first evidence that **function ordering is part of the match**.
-A whole-image build will have to place functions in the original order before
-this class of difference disappears. Worth knowing now rather than at 95%.
+Such a candidate carries `entry=1` and is linked as an absolute equate rather
+than placed, because its bytes already exist once — inside its container.
+`symbols.map` records the address, and link51 checks that the address really
+does land inside a placed function.
+
+`send_3byte_ep0_reply` is worth the detail, because getting it wrong cost
+three bytes and the fix was a modelling change, not a codegen trick. Written
+as a call — which is what it looks like — the tail compiles to a three-byte
+`LJMP` through a trampoline, and no arrangement of C, `__naked`, or peephole
+rules removes it: SDCC will not emit a short jump to another function, and its
+peephole runs per function so it never sees the boundary. Written as what it
+actually is, the last three statements of `setup_get_sample_freq`, the whole
+142-byte run matches exactly.
+
+The tell was in the encoding all along. All three success paths reach 0x010D
+with a **two-byte SJMP**, and a short jump only reaches an adjacent target.
+That is not a call to a function that happens to be nearby; it is a jump to
+the end of the function you are already in. **Function ordering is part of the
+match**, and here the ordering was the evidence.
 
 ## Harness correctness
 

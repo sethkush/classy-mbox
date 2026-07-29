@@ -19,7 +19,7 @@ void audio_clock_mode_apply(void) __naked {
     __asm
         .globl _shiftreg16_commit
         .globl _acg_set_both_dctl_10
-        .globl _acg_commit_and_ctl
+        .globl _sfr_store_then_acg_ctl6
         .globl _acg_48k_commit
         .globl _queue_chip_reg4_val40
         .globl _sfr_store_then_acg_48k
@@ -73,7 +73,7 @@ void audio_clock_mode_apply(void) __naked {
         movx  @dptr,a
         mov   dptr,#0xfff9         ; ACG2FRQ0
         mov   a,#0x20
-        lcall _acg_commit_and_ctl  ; stores the pending A, then ACGCTL = 0x06
+        lcall _sfr_store_then_acg_ctl6  ; stores the pending A, then ACGCTL = 0x06
         mov   0x08,#0x02
         lcall _queue_chip_reg4_val40
         ljmp  0009$

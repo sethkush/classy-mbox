@@ -1,0 +1,27 @@
+# Callee names used in the decompiled C that differ from the name Ghidra gave
+# the function, mapped to the stock address the call must resolve to.
+#
+# Most of these exist because Keil merged common tails: the same run of bytes is
+# entered at more than one address, and Ghidra names each entry point after what
+# it does rather than after the source function it came from. The C has to name
+# the entry point it actually calls.
+#
+# Every row is a claim about an address and is checked by link51.py: if a row is
+# wrong, the call operand stops matching stock and the link reports it.
+#
+#   <name used in C>            <stock address>   # Ghidra's name for it
+
+# Rev 20
+sfr_store_then_acg_48k          0x0DEB   # MOVX store, then falls into 0x0DEC
+                                         # (Ghidra: sfr_store_then_cpt_cfg_tail)
+sfr_store_then_acg_ctl6         0x0E0F   # MOVX store, then falls into 0x0E10's
+                                         # ACGCTL = 0x06 tail. audio_clock_mode_apply
+                                         # calls THIS, one byte before the tail, so it
+                                         # commits the A it was still holding.
+                                         # (Ghidra: acg_commit_and_ctl)
+acg_incdptr_dctl_div2           0x0E17   # INC DPTR, then falls into 0x0E18
+                                         # (Ghidra: acg_dptr_inc_then_set_both_dctl_10)
+shiftreg16_commit               0x0E62   # Ghidra: shiftreg16_commit_p1_0_1_2
+shiftreg8_commit                0x0F0C   # Ghidra: shiftreg8_commit_p1_7_6_5
+send_3byte_ep0_reply            0x010D   # merged tail of setup_get_sample_freq;
+                                         # LCALLed from 0x00B8 and 0x00E0 too

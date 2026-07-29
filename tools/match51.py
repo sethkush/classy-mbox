@@ -112,8 +112,15 @@ def compile_candidate(cpath, extra):
     return os.path.join(d, "c.lst")
 
 
-def extract(lst, func):
-    """Return (bytes, [(offset, mnemonic)]) for one function in the listing."""
+def extract(lst, func, span=False):
+    """Return (bytes, [(offset, mnemonic)]) for one function in the listing.
+
+    With `span`, keep going past subsequent function labels to the end of the
+    code area. That is for candidates holding more than one function, where the
+    point of the candidate is the run of bytes the two produce together --
+    Keil's merged tails and adjacent-function short jumps only reproduce when
+    the functions are compiled in the original order in one unit.
+    """
     out, notes, inside = bytearray(), [], False
     for line in open(lst):
         if re.match(rf"^\s+[0-9A-F]{{6}}\s.*\b_{re.escape(func)}:", line) or \
@@ -125,7 +132,8 @@ def extract(lst, func):
         # Stop at the next function label or the end of the code area.
         # Do NOT stop at the first `ret` — functions with early returns have
         # several, and truncating there silently under-reports the body.
-        if re.search(r"\b_\w+:\s*$", line) and not line.lstrip().startswith(";"):
+        if not span and re.search(r"\b_\w+:\s*$", line) \
+                and not line.lstrip().startswith(";"):
             break
         if ".area" in line and "CSEG" not in line:
             break
@@ -161,7 +169,7 @@ def main():
         want = stock_bytes(image, addr, length)
 
         lst = compile_candidate(c, extra)
-        got, notes = extract(lst, func)
+        got, notes = extract(lst, func, kv.get("span") == "1")
         got = relocate_local_jumps(got, notes, addr)
 
         n = max(len(want), len(got))
