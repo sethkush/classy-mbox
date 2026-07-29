@@ -115,7 +115,7 @@ void streaming_set_rate(unsigned long hz)
         ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0765 — mode 2, 44.1 kHz */
         ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x075F */
         ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x076B */
-        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0765 */
+        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 */
         ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
         ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
 
