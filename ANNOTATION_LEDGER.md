@@ -8,16 +8,16 @@ ANNOTATION LEDGER
 Byte reconstruction is 100% for both images and is NOT what this
 measures. This counts items explained in ANNOTATION_CLAIMS.tsv, where
 each row names a location and points at the document establishing it.
-Claims on file: 476
+Claims on file: 478
 
 --- rev20 ---
-  call targets   :  71/ 71 explained (100.0%)     0 named-only     0 neither
+  call targets   :  83/ 83 explained (100.0%)     0 named-only     0 neither
   XDATA addresses:  62/ 62 explained (100.0%)     0 named-only     0 neither
   IRAM bytes     :  34/ 34 explained (100.0%)     0 named-only     0 neither
   IRAM bits      :  36/ 36 explained (100.0%)     0 named-only     0 neither
 
 --- rev22 ---
-  call targets   :  81/ 81 explained (100.0%)     0 named-only     0 neither
+  call targets   :  82/ 82 explained (100.0%)     0 named-only     0 neither
   XDATA addresses:  65/ 65 explained (100.0%)     0 named-only     0 neither
   IRAM bytes     :  36/ 36 explained (100.0%)     0 named-only     0 neither
   IRAM bits      :  36/ 36 explained (100.0%)     0 named-only     0 neither

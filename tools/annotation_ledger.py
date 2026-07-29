@@ -101,6 +101,19 @@ DIRECT_OPS |= set(range(0xA8, 0xB0))    # MOV Rn,direct
 BIT_OPS = {0x10, 0x20, 0x30, 0x72, 0x82, 0x92, 0xA0, 0xA2, 0xB2, 0xC2, 0xD2}
 CALL_OPS = {0x12, 0x02}                 # LCALL, LJMP (absolute targets)
 
+# (base, entry-count) of request-code dispatch tables: 3-byte entries of
+# (16-bit big-endian handler address, 1-byte request code).
+# Rev 22 has NO equivalent table. A signature search for the same code
+# sequence (00,01,03,05,06,07,08,09,0A,0B,0C at stride 3) finds it only in
+# Rev 20; Rev 22 dispatches the same request codes with a CJNE compare chain,
+# which the instruction scan already covers. Assuming symmetry and decoding
+# Rev 22 at 0x011E produced garbage handlers (0x0201/0x0202) and nonsense
+# codes -- the check that caught it was that the codes were not the known set.
+DISPATCH_TABLES = {"rev20": [(0x011F, 11)]}
+# Reached by LCALL through a computed vector or from a data table, never named
+# by an instruction operand in the image.
+BOOT_ROM_ENTRIES = {0x2F00}
+
 
 def load(image):
     """-> (image bytes, set of instruction start addresses)."""
@@ -140,6 +153,16 @@ def survey(image):
             b = d[i + 1]
             if b < 0x80:                              # bit-addressable IRAM
                 iram_bit[b].add(i)
+    # Table-driven dispatch targets. These are reached by JMP @A+DPTR with the
+    # address coming from a const table, so no LCALL/LJMP instruction names
+    # them and the scan above cannot see them. Leaving them out made
+    # "call targets 100%" mean "100% of instruction-reachable targets", which
+    # is not what it looked like. See disasm/DISPATCH_TABLE_011F.md.
+    for base, n in DISPATCH_TABLES.get(image, []):
+        for k in range(n):
+            off = base + k * 3
+            calls.add((d[off] << 8) | d[off + 1])
+    calls |= BOOT_ROM_ENTRIES
     return calls, iram_b, iram_bit, xdata
 
 

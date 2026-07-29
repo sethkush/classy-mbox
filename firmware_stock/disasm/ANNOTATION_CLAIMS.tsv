@@ -601,3 +601,5 @@ rev22	xdata	0xFFF9	ACG2FRQ0: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.m
 rev22	xdata	0xFFFC	USBCTL: 5 site(s), clr-bits/set-bits/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFFD	USBIMSK: 3 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFFF	USBFADR: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	func	0x2F00	boot ROM standard-request handler; entered by LCALL from the SETUP path	disasm/rev20_std_requests.md	explained
+rev22	func	0x2F00	boot ROM standard-request handler; entered by LCALL from the SETUP path	disasm/rev20_std_requests.md	explained
