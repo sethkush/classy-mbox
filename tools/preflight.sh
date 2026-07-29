@@ -67,6 +67,10 @@ check "no declared partials in cand/"      sh -c '! grep -hE "^// MATCH:.*partia
 check "declared partials hold exactly"     sh -c 'set -- firmware_stock/decomp/cand/partial/*.c; [ -e "$1" ] || exit 0; python3 tools/match51.py "$@"' 
 check "decomp links at stock addresses"    python3 tools/link51.py rev20
 check "decomp links at stock addresses (v22)" python3 tools/link51.py rev22
+# The strongest statement the decompilation can make, and the cheapest to check:
+# build the whole ROM from source and diff it against the part's contents.
+check "rebuilt image == stock rev20"       sh -c 'python3 tools/link51.py rev20 --emit-image "$(mktemp -t r20)" | grep -q "IMAGE IDENTICAL"'
+check "rebuilt image == stock rev22"       sh -c 'python3 tools/link51.py rev22 --emit-image "$(mktemp -t r22)" | grep -q "IMAGE IDENTICAL"' 
 
 if [[ "$TARGET" == "safety_net" ]]; then
     # Safety-net path: minimal, single-file image whose sole job is

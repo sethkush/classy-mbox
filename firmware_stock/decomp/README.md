@@ -41,26 +41,55 @@ Then link the lot at their stock addresses:
 
 ## Scoreboard
 
-    match51:  matched 169/169 functions, 7303/7303 bytes, no partials
-    link51 rev20:  85/85 exact, 3598/3598 distinct instruction bytes (100.0%)
-    link51 rev22:  81/81 exact, 3626/3626 distinct instruction bytes (100.0%)
+    match51:  175/175 candidates, 8335/8335 bytes, no partials
+    link51 rev20:  IMAGE IDENTICAL -- all 8174 bytes
+    link51 rev22:  IMAGE IDENTICAL -- all 8174 bytes
 
-Every instruction byte of both stock images is reproduced by compiling this C
-and placing it at its stock address. Independently checked outside link51's own
-arithmetic: zero mismatched bytes, zero unplaced instruction addresses.
+Both stock ROMs rebuild from this source, bit for bit:
 
-Rev 22's denominator excludes 40 bytes at `0x0FBA..0x0FE1`, the Keil
-`?C_INITSEG` initialiser table -- thirteen three-byte records plus a `00`
-terminator, byte-identical in content to Rev 20's table at `0x0F9C`, with the
-next real function starting cleanly at `0x0FE2`. Ghidra marks most of it as a
-GAP but decodes the last four bytes as `AJMP / RR A / NOP` and attributes them
-to whichever function header it saw last. That is data in the listing's
-instruction column, not code we failed to reproduce.
+    $ python3 tools/link51.py rev20 --emit-image /tmp/r20.bin
+    $ cmp firmware_stock/rev20_firmware_code.bin /tmp/r20.bin && echo same
 
-The exclusion is printed on every run and is itself checked: any byte inside a
-declared data region that a candidate actually places is code, not data, and
-link51 fails. Without that check, widening the region reported a flattering
-"100.0%" of a denominator 186 bytes smaller -- found by mutation-testing it.
+    0519fc81b2a4a393b823bf5dcf642f3a361915565c3e501e7f1ecc8feb992679  rev20 stock
+    0519fc81b2a4a393b823bf5dcf642f3a361915565c3e501e7f1ecc8feb992679  rev20 built
+    1c5aea39fea93eef33fe2b7ebb83d9a8f181bb5602c565941801a77583e62c06  rev22 stock
+    1c5aea39fea93eef33fe2b7ebb83d9a8f181bb5602c565941801a77583e62c06  rev22 built
+
+That replaces the coverage percentage as the headline claim. A percentage is an
+accounting statement about a denominator someone chose; a matching SHA-256 over
+the whole 8174-byte part is not.
+
+## Code was not the whole ROM
+
+Reaching 100% of *instruction* bytes still left 513 bytes per image that existed
+only inside the .bin -- pure data, so no amount of decompiling functions would
+ever have reached them:
+
+  * the 402-byte USB descriptor block (rev20 0x0596, rev22 0x057D),
+  * the 74-byte VECINT dispatch table (rev20 0x0C93, rev22 0x0C7D),
+  * the 40-byte Keil ?C_INITSEG initialiser table (rev20 0x0F9C, rev22 0x0FBA).
+
+`tools/gen_data_blocks.py` emits them as candidates, decoded to field level: the
+descriptor block walked by bLength/bDescriptorType with string descriptors shown
+as text, the vector table labelled with the TI interrupt-source constant each
+slot answers to, the initialiser table split into its three-byte records. The
+bytes are transcribed by a program so they cannot be mistyped, and the byte
+match proves the transcription. Everything the candidates do not place is 0xFF,
+which is what an unprogrammed EEPROM byte reads as -- so the fill is the correct
+value for "nothing was written here", not a convenience.
+
+Two things surfaced while doing it, both worth keeping:
+
+  * **match51 was silently under-reading long data rows.** sdas prints at most
+    seven bytes per listing row and wraps the rest onto continuation lines with
+    no address and no mnemonic. The parser ignored those, so a 402-byte block
+    read as 362. Only `.db` runs are long enough to hit it -- no instruction is
+    -- so no earlier result was affected, but the failure mode was silent.
+  * **The BAD EXCLUSION check caught its own obsolescence.** Rev 22's ?C_INITSEG
+    tail was excluded from the denominator because Ghidra decodes it as
+    AJMP/RR A/NOP. The moment the table became real source, those bytes were
+    placed, and the check correctly refused an exclusion covering placed code.
+    `DATA_IN_LISTING` is now empty, and its emptiness is the point.
 
 ## Closing the last three gaps
 

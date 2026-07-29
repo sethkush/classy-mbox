@@ -35,6 +35,11 @@ GHIDRA = {"rev20": os.path.join(DIS, "rev20_ghidra.txt"),
 HDR = re.compile(r"//\s*MATCH:\s*(.*)")
 # listing rows: "      000000 90 FF E8         [24]  107 \tmov\tdptr,#_X"
 LST = re.compile(r"^\s+([0-9A-F]{6})((?:\s[0-9A-F]{2})+)\s")
+# sdas prints at most seven bytes on a listing row and wraps the rest onto
+# continuation lines that carry neither an address nor a mnemonic. Long .db
+# runs -- the descriptor block is 402 bytes -- lose a byte per row without
+# this, and the loss is silent: the function simply reads short.
+LST_CONT = re.compile(r"^\s{6,}([0-9A-F]{2}(?:\s+[0-9A-F]{2})*)\s*$")
 # Only calls/jumps to *external* symbols are left unresolved by the assembler
 # (as 00 00 plus a relocation record); everything else, including local
 # branches, is resolved at assembly time and must compare strictly.
@@ -130,7 +135,7 @@ def extract(lst, func, span=False):
     Keil's merged tails and adjacent-function short jumps only reproduce when
     the functions are compiled in the original order in one unit.
     """
-    out, notes, inside = bytearray(), [], False
+    out, notes, inside, prev = bytearray(), [], False, False
     for line in open(lst):
         if re.match(rf"^\s+[0-9A-F]{{6}}\s.*\b_{re.escape(func)}:", line) or \
            re.search(rf"\b_{re.escape(func)}:\s*$", line):
@@ -148,11 +153,23 @@ def extract(lst, func, span=False):
             break
         m = LST.match(line)
         if not m:
+            # Continuation of the row above, but only ever that: `prev` is
+            # cleared by any row that is not itself byte-bearing, so a stray
+            # hex-looking line elsewhere cannot silently append bytes.
+            c = LST_CONT.match(line) if prev else None
+            if c:
+                extra = bytes.fromhex(c.group(1).replace(" ", ""))
+                out += extra
+                o, mn, sz = notes[-1]
+                notes[-1] = (o, mn, sz + len(extra))
+            else:
+                prev = False
             continue
         raw = bytes.fromhex(m.group(2).replace(" ", ""))
         mn = line.split("\t", 1)[1].strip() if "\t" in line else ""
         notes.append((len(out), mn, len(raw)))
         out += raw
+        prev = True
     return bytes(out), notes
 
 

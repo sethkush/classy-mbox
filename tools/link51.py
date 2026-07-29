@@ -72,10 +72,17 @@ CFLAGS = ["-mmcs51", "--model-small", "--std-c99", "--opt-code-size",
 # function starts cleanly at 0x0FE2. Ghidra marks 0x0FBA..0x0FDD as a GAP but
 # decodes the final four bytes -- `01 08 03 00` -- as AJMP 0x0808 / RR A / NOP
 # and attributes them to whichever function header it saw last.
-DATA_IN_LISTING = {
-    "rev22": [(0x0FBA, 0x0FE1, "?C_INITSEG initialiser table")],
-    "rev20": [],
-}
+# Now empty, and the emptiness is the point. This existed because Ghidra
+# decodes the tail of Rev 22's ?C_INITSEG table as AJMP/RR A/NOP, so four data
+# bytes counted toward the instruction denominator and could never be matched.
+# Once the table became real source (cand/rev22_c51_initseg_table.c) those bytes
+# are placed like any others and the exclusion became not merely unnecessary but
+# wrong -- the BAD EXCLUSION check caught that the moment the candidate landed.
+#
+# Kept as a mechanism because a future listing artefact may need it, and because
+# a data region that is genuinely absent from source is better declared here,
+# visibly, than quietly subtracted.
+DATA_IN_LISTING = {"rev20": [], "rev22": []}
 
 SYMMAP = os.path.join(FW, "decomp", "symbols.map")
 
@@ -277,6 +284,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("image", choices=sorted(IMAGES))
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--emit-image", metavar="OUT", dest="emit_image",
+                    help="write the complete firmware image and compare it, "
+                         "byte for byte, against the stock binary")
     a = ap.parse_args()
 
     stock = open(IMAGES[a.image], "rb").read()
@@ -383,6 +393,28 @@ def main():
     else:
         print("\n  nothing placed")
     print(f"  map: {mapf}")
+
+    # The whole point, stated as one comparison instead of a percentage: build
+    # the entire ROM from source and diff it against the part's contents.
+    # Everything our candidates do not place is erase fill, which is what an
+    # unprogrammed EEPROM byte reads as -- so filling with 0xFF is not a
+    # convenience, it is the correct value for "nothing was written here".
+    if a.emit_image:
+        built = bytearray(b"\xFF" * len(stock))
+        for ad, b in mem.items():
+            if ad < len(built):
+                built[ad] = b
+        open(a.emit_image, "wb").write(built)
+        diff = [i for i in range(len(stock)) if built[i] != stock[i]]
+        print(f"\n  full image: {a.emit_image} ({len(built)} bytes)")
+        if diff:
+            print(f"  \033[31mIMAGE DIFFERS\033[0m from stock in "
+                  f"{len(diff)} byte(s), first at 0x{diff[0]:04X} "
+                  f"(stock {stock[diff[0]]:02X}, ours {built[diff[0]]:02X})")
+            return 1
+        print(f"  \033[32mIMAGE IDENTICAL\033[0m to "
+              f"firmware_stock/{a.image}_firmware_code.bin -- all "
+              f"{len(stock)} bytes")
     return 1 if (bad_total or overruns or unbacked) else 0
 
 
