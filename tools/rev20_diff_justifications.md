@@ -74,12 +74,12 @@ name.
 | 0xffee | and_not | 0x7f | rev20 | RESOLVED 2026-07-28 — DMAEN clear on capture stop, emitted by `streaming_capture_enable(0)`. Rev 20 does it at 0x033F and 0x03F1. |
 | 0xffef | assign | 0x80 | rev20 | RESOLVED — DMATSH1, same encoding as DMATSH0 above. Cite: rev20_flat.asm 0x09EC. |
 | 0xfff0 | assign | 0x03 | rev20 | RESOLVED — DMATSL1, same encoding as DMATSL0 above. Cite: rev20_flat.asm 0x09E6. |
-| 0xffe5 | assign | 0x61 | rev20 | RESOLVED 2026-07-28 — mboxfw emits this as its **48 kHz** word. ACG1FRQ2, from Rev 20's mode-3 branch (`fcn.0x0DEC`, true entry verified by hand-decoding the raw bytes; radare's listing of this region is misaligned by two bytes and its addresses should not be trusted). Formerly SAFE_OMIT'd on the reading that mode 3 meant 96 kHz — it does not; it measured 96 only because CPTRXCNF4 halved the receive divider. See 0xffd4. Original text follows: ACG1FRQ2, part of the 24-bit clock word in Rev 20's **mode-3** branch (`fcn.0x0DEC`, true entry verified by hand-decoding the raw bytes; radare's listing of this region is misaligned by two bytes and its addresses should not be trusted). mboxfw briefly emitted this on 2026-07-28 and now writes the **mode-2** word (0x6a/0x4b/0x20) instead. MEASURED: mode 3's word produces 96 kHz — IEPDCNTX1 read a steady DCNTX = 96 samples per USB frame during capture, exactly double the 48 a stock unit delivers. Mode 2 is the 48 kHz program. Modes 2 and 3 are otherwise identical: both fall into the shared tail at 0x0E0F which writes ACGCTL = 0x06. |
-| 0xffe6 | assign | 0xa8 | rev20 | SAFE_OMIT — ACG1FRQ1, mode-3 (96 kHz) word. See 0xffe5. |
-| 0xffe7 | assign | 0x0f | rev20 | SAFE_OMIT — ACG1FRQ0, mode-3 (96 kHz) word. See 0xffe5. |
-| 0xfff7 | assign | 0x61 | rev20 | SAFE_OMIT — ACG2FRQ2, mode-3 (96 kHz) word. See 0xffe5. |
-| 0xfff8 | assign | 0xa8 | rev20 | SAFE_OMIT — ACG2FRQ1, mode-3 (96 kHz) word. See 0xffe5. |
-| 0xfff9 | assign | 0x0f | rev20 | SAFE_OMIT — ACG2FRQ0, mode-3 (96 kHz) word. See 0xffe5. |
+| 0xffe5 | assign | 0x61 | rev20 | RESOLVED 2026-07-28 — ACG1FRQ2, top byte of the 24-bit synth word 0x61A80F written by Rev 20's **mode-3** branch. mboxfw emits this as its **48 kHz** word. Mode 3 IS 48 kHz: `setup_get_sample_freq` (Rev 20 @0x008A) reads the mode back from IRAM 0x08 and answers the host `80 BB 00` = 48000 for mode 3 and `44 AC 00` = 44100 for mode 2, so the firmware states the mapping itself. An earlier revision of this row claimed mode 3 produced 96 kHz, measured as DCNTX = 96 samples per USB frame. That measurement was real but the attribution was wrong: the doubling came from CPTRXCNF4 being set to the mode-5 value 0x01 (÷2) instead of the boot value 0x03 (÷4), which halves the receive bit clock. See 0xffd4. Modes 2 and 3 both fall into the shared tail at 0x0E0F, which writes ACGCTL = 0x06. Cite: Rev 20 fcn.0x0DEC @ 0x0DEC (entry verified by byte-exact recompilation, `firmware_stock/decomp/cand/acg_48k_commit.c`, 43/43 bytes). |
+| 0xffe6 | assign | 0xa8 | rev20 | SAFE_OMIT — ACG1FRQ1, mode-3 (48 kHz) word. See 0xffe5. |
+| 0xffe7 | assign | 0x0f | rev20 | SAFE_OMIT — ACG1FRQ0, mode-3 (48 kHz) word. See 0xffe5. |
+| 0xfff7 | assign | 0x61 | rev20 | SAFE_OMIT — ACG2FRQ2, mode-3 (48 kHz) word. See 0xffe5. |
+| 0xfff8 | assign | 0xa8 | rev20 | SAFE_OMIT — ACG2FRQ1, mode-3 (48 kHz) word. See 0xffe5. |
+| 0xfff9 | assign | 0x0f | rev20 | SAFE_OMIT — ACG2FRQ0, mode-3 (48 kHz) word. See 0xffe5. |
 | 0xffe1 | assign | 0x06 | streaming.c | JUSTIFIED — ACGCTL, Rev 20 @ 0x0E10 (shared tail entered at 0x0E0F by BOTH mode 2 and mode 3 — an earlier note here claimed mode 2 writes no ACGCTL, which came from a misaligned disassembly and was wrong). 0x06 = DIVEN (bit 2) set, MCLKO1 <- acg_clk after /M, MCLKO2 <- acg2_clk after /M (datasheet 6.5.3.11). The common tail's `\|= 0xC0` then enables both outputs, giving 0xC6. **DIVEN is the fix**: every build before 2026-07-28 left ACGCTL at 0xC0 with DIVEN clear, so the /M divider never ran, the codec was never clocked, no I2S frame reached the C-port, and per datasheet 2.2.7.4.1 the UBM answered every isochronous IN token with a NULL packet. Telemetry read ACGCTL back as exactly 0xC0. |
 | 0xfff6 | assign | 0x10 | rev20 | **MUST_ADD** — Rev 20's `fcn.0x0728` common streaming tail writes 0x10 here. Per TI Reg_stc1.h:70 this is ACG2DCTL (Audio Clock Generator 2 divider control). The pending-review table misnamed it as IEPBBAX2 (which is actually 0xFF59). Rev 20 uses this to seed the second clock generator during stream re-arm. Cite: rev20_dynamic_reconfig.md §3 "Common ... tail" bullet 1 (`XDATA[0xFFF6] = 0x10`). Included in patch. |
 | 0xfff6 | runtime | - | rev20 | **MUST_ADD** — same register, second write with computed value. Reflected in the same reconfig site. Included in patch. |
@@ -246,14 +246,14 @@ Grouped by SFR function.
 
 | Addr | Category | Verdict | Reason |
 |------|----------|---------|--------|
-| 0xffd4 | CHANGED_REV assign 0x01 / CHANGED_MBOX assign 0x03 | **SAFE_OMIT** | Per TI Reg_stc1.h this is `CPTRXCNF4`; per Rev-20-empirical usage (NOTES §"Master boot init") it's `CPTCTL` and the correct boot value is 0x03. mboxfw matches Rev 20's boot value 0x03. The Rev 20 `assign 0x01` is from a runtime mode-switch path we don't perform. |
+| 0xffd4 | CHANGED_REV assign 0x01 / CHANGED_MBOX assign 0x03 | **SAFE_OMIT** | `CPTRXCNF4` (TI Reg_stc1.h; datasheet §6.5.4.13), bits 2:0 = DIVB2, the MCLKO2→SCLK2 divider on the I²S **receive** clock. NOT `CPTCTL` — that is 0xFFDC. An earlier version of this row offered "Rev-20-empirical usage" as authority for the CPTCTL name; there was no such authority, and it is the same invented-name error as the old DMACTL1/ACGCTL confusion. Boot value is 0x03 (÷4) and mboxfw matches it; the `assign 0x01` (÷2) is Rev 20's mode-5 branch, which we do not implement. |
 | 0xffd5 | CHANGED_REV runtime | **FALSE_POSITIVE** | `CPTBRRX` — Rev 20 runtime writes 0xAC; mboxfw assigns 0xAC in hw_init. Same terminal value. |
 
 ### DMA registers (Rev-20-empirical block)
 
 | Addr | Category | Verdict | Reason |
 |------|----------|---------|--------|
-| 0xffe2 | CHANGED_MBOX assign 0x00 | **JUSTIFIED** | Rev-20-empirical `DMACTL2` halt at start of `streaming_set_rate` (task #71 patch). Rev 20 does the same halt via `fcn.0x0E18`. |
+| 0xffe2 | CHANGED_MBOX assign 0x00 | **STALE** | Retired 2026-07-28. 0xFFE2 is `ACGDCTL`/`ACG1DCTL` (TI Reg_stc1.h; datasheet §6.5.3.10), not a DMA register — "DMACTL2" was an invented name. Rev 20 never writes 0x00 there; `fcn.0x0E18` writes 0x10 to both ACGDCTL and ACG2DCTL. mboxfw no longer emits this write at all: `streaming.c` now sets `ACGDCTL = 0x10`. Row kept for history. |
 | 0xfff9 | CHANGED_MBOX assign 0x20 | **FALSE_POSITIVE** | `ACG2FRQ0` (TI) / `DMASRC2_H` (Rev-20-empirical). 0x20 matches Rev 20's mode-2 (48 kHz) branch @ 0x077B. Scanner classification asymmetry. |
 
 ### USB engine control
@@ -330,10 +330,9 @@ sections above.
 | 0xffc1 | assign | 0xff | mboxfw | JUSTIFIED — dummy trigger byte for I²C read per TI I2c.c:102. |
 | 0xffc3 | assign | 0xa1 | mboxfw | JUSTIFIED — EEPROM 7-bit address 0x50 shifted + R/W=1 read. Rev 20 runtime-computes same value. |
 | 0xffc3 | runtime | - | rev20 | FALSE_POSITIVE — Rev 20 side of same. |
-| 0xffd4-OLD | assign | 0x01 | rev20 | SAFE_OMIT — CPTCTL runtime mode-switch value. mboxfw uses boot value 0x03 (matches Rev 20 boot init per NOTES §"Master boot init"). |
-| 0xffd4 | assign | 0x03 | mboxfw | JUSTIFIED — CPTCTL boot value matches Rev 20 fcn.0x08CB per NOTES. |
+| 0xffd4 | assign | 0x03 | mboxfw | JUSTIFIED — CPTRXCNF4 DIVB2 = ÷4, the boot value. Cite: Rev 20 fcn.0x08CB @ 0x0929, Rev 22 @ 0x084A. Verified by byte-exact recompilation of hw_master_init (`firmware_stock/decomp/cand/hw_master_init.c`, 165/165 bytes). |
 | 0xffd5 | runtime | - | rev20 | FALSE_POSITIVE — CPTBRRX 0xAC, both firmwares write same terminal value. |
-| 0xffe2 | assign | 0x00 | mboxfw | JUSTIFIED — Rev-20-empirical DMACTL2 halt at start of streaming_set_rate (task #71 patch). Rev 20 does same via fcn.0x0E18. |
+| 0xffe2 | assign | 0x00 | mboxfw | STALE — retired 2026-07-28; see the ACGDCTL row in the C-port section. The write does not exist in mboxfw any more and the "DMACTL2" name was invented. |
 | 0xfff9 | assign | 0x20 | mboxfw | FALSE_POSITIVE — DMASRC2_H mode-2 value 0x20 matches Rev 20 fcn.0x0728 @ 0x077B. Scanner classification asymmetry. |
 | 0xfffc | and_not | 0x7f | rev20 | SAFE_OMIT — USBCTL bit-manipulation in Rev 20 mode-switch (bus-reset simulation on rate change). mboxfw doesn't do runtime re-enum. |
 | 0xfffc | or | 0x80 | rev20 | FALSE_POSITIVE — Rev 20 runtime USBCTL |= CONN. mboxfw does same at end of usb_init. |
