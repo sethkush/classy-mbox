@@ -16,3 +16,35 @@ replace { xrl acc,#%1 } by { xrl a,#%1 }
 // emitted. Clobbers A; any function where that matters will fail its match.
 replace { mov %1,#0x00 } by { clr a
 	mov %1,a }
+
+// SDCC does not commute XOR/OR/AND against a constant: it loads the constant
+// into A and the variable into B, costing a push/pop pair around five
+// instructions. Keil emitted the single 2-byte "XRL A,#imm". This collapses
+// the whole sequence and is what makes comparison idioms match.
+replace {
+	push	b
+	mov	b,a
+	mov	a,#%1
+	xrl	a,b
+	pop	b
+} by {
+	xrl	a,#%1
+}
+replace {
+	push	b
+	mov	b,a
+	mov	a,#%1
+	orl	a,b
+	pop	b
+} by {
+	orl	a,#%1
+}
+replace {
+	push	b
+	mov	b,a
+	mov	a,#%1
+	anl	a,b
+	pop	b
+} by {
+	anl	a,#%1
+}

@@ -32,3 +32,18 @@ __data __at (0x32) unsigned char g_chip_val;     /* queued chip value        */
 __bit __at (0x0B) f_stage_out;   /* IRAM 0x21.3 — expect an OUT data stage  */
 __bit __at (0x0C) f_stage_in;    /* IRAM 0x21.4 — an IN data stage is armed */
 #endif
+
+/* --- panel / selector state (bit addresses) ---------------------------- */
+__bit __at (0x10) pa_src0;   /* IRAM 0x22.0 — channel A source, bit 0 */
+__bit __at (0x11) pa_src1;   /* IRAM 0x22.1 */
+__bit __at (0x12) pa_src2;   /* IRAM 0x22.2 */
+__bit __at (0x13) pb_src0;   /* IRAM 0x22.3 — channel B source, bit 0 */
+__bit __at (0x14) pb_src1;   /* IRAM 0x22.4 */
+__bit __at (0x15) pb_src2;   /* IRAM 0x22.5 */
+__bit __at (0x16) p_derived; /* IRAM 0x22.6 — derived from f_spdif/f_force */
+__bit __at (0x28) sa0;       /* IRAM 0x25.0 — channel A hidden state */
+__bit __at (0x2A) sa1;       /* IRAM 0x25.2 */
+__bit __at (0x29) sb0;       /* IRAM 0x25.1 — channel B hidden state */
+__bit __at (0x2B) sb1;       /* IRAM 0x25.3 */
+__bit __at (0x2C) f_spdif;   /* IRAM 0x25.4 — S/PDIF selected, not analog */
+__bit __at (0x2D) f_force;   /* IRAM 0x25.5 — forces p_derived clear */

@@ -35,9 +35,16 @@ GHIDRA = {"rev20": os.path.join(DIS, "rev20_ghidra.txt"),
 HDR = re.compile(r"//\s*MATCH:\s*(.*)")
 # listing rows: "      000000 90 FF E8         [24]  107 \tmov\tdptr,#_X"
 LST = re.compile(r"^\s+([0-9A-F]{6})((?:\s[0-9A-F]{2})+)\s")
-# relocatable operands come out as 00 00 with an r-record; detect by mnemonic
-RELOC_OPS = ("lcall", "ljmp", "acall", "ajmp", "sjmp", "jz", "jnz", "jc", "jnc",
-             "jb", "jnb", "jbc", "cjne", "djnz", "mov\tdptr")
+# Only calls/jumps to *external* symbols are left unresolved by the assembler
+# (as 00 00 plus a relocation record); everything else, including local
+# branches, is resolved at assembly time and must compare strictly.
+#
+# Mask ONLY the two address operand bytes, never the opcode. Masking whole
+# instructions hides real mismatches: "jbc".startswith("jb") would skip the
+# opcode byte that distinguishes JBC (0x10) from JNB (0x30), and masking
+# `mov dptr,#...` would hide a wrong SFR address entirely.
+RELOC_MNEMONICS = ("lcall", "ljmp")
+RELOC_OPERAND_BYTES = (1, 2)
 
 CFLAGS = ["-mmcs51", "--model-small", "--std-c99", "--opt-code-size",
           "--no-xinit-opt", "-S"]
@@ -91,7 +98,12 @@ def extract(lst, func):
             continue
         if not inside:
             continue
-        if re.search(r"^\s+[0-9A-F]{6}\s+\d+\s+_\w+:", line):
+        # Stop at the next function label or the end of the code area.
+        # Do NOT stop at the first `ret` — functions with early returns have
+        # several, and truncating there silently under-reports the body.
+        if re.search(r"\b_\w+:\s*$", line) and not line.lstrip().startswith(";"):
+            break
+        if ".area" in line and "CSEG" not in line:
             break
         m = LST.match(line)
         if not m:
@@ -100,8 +112,6 @@ def extract(lst, func):
         mn = line.split("\t", 1)[1].strip() if "\t" in line else ""
         notes.append((len(out), mn, len(raw)))
         out += raw
-        if mn.startswith("ret"):
-            break
     return bytes(out), notes
 
 
@@ -135,7 +145,12 @@ def main():
             wb = want[i] if i < len(want) else None
             gb = got[i] if i < len(got) else None
             if wb != gb:
-                reloc = any(o <= i < o + sz and mn.startswith(RELOC_OPS)
+                # A byte is excusable only if it is an address operand of an
+                # LCALL/LJMP to an external symbol, which the linker resolves.
+                reloc = any(o <= i < o + sz
+                            and mn.split("\t")[0] in RELOC_MNEMONICS
+                            and (i - o) in RELOC_OPERAND_BYTES
+                            and "_" in mn
                             for o, mn, sz in notes)
                 if reloc and not a.strict:
                     continue
