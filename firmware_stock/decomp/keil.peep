@@ -1,0 +1,6 @@
+// Peephole rules that steer SDCC toward Keil C51's encoding choices.
+// SDCC emits the 3-byte "ANL direct,#imm" form against ACC where the
+// 2-byte "ANL A,#imm" form is available; same for ORL and XRL.
+replace { anl acc,#%1 } by { anl a,#%1 }
+replace { orl acc,#%1 } by { orl a,#%1 }
+replace { xrl acc,#%1 } by { xrl a,#%1 }
