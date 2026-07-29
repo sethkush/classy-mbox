@@ -1,0 +1,41 @@
+# Annotation claims. One row per explained location.
+# image<TAB>kind<TAB>addr<TAB>name<TAB>where-it-is-established
+#
+# A row here is a CLAIM that the location is understood, checkable against
+# the document in the last column. Do not add a row because an address is
+# mentioned somewhere -- only because its meaning is established there.
+#
+# Seeded 2026-07-29 with the IRAM work of that day and nothing else. The
+# low score is the honest starting point, not a bug.
+rev20	irambyte	0x20	previous P3 sample (button edge detect)	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev20	irambyte	0x22	source mux / panel shift word	disasm/MUX_IRAM22_ANNOTATION.md
+rev20	irambyte	0x23	codec control shift word	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev20	irambyte	0x25	panel/source internal state	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev20	irambit	0x22.0	ch1 source select bit 0	disasm/MUX_IRAM22_ANNOTATION.md
+rev20	irambit	0x22.1	ch1 source select bit 1	disasm/MUX_IRAM22_ANNOTATION.md
+rev20	irambit	0x22.2	ch1 source select bit 2	disasm/MUX_IRAM22_ANNOTATION.md
+rev20	irambit	0x22.3	ch2 source select bit 0	disasm/MUX_IRAM22_ANNOTATION.md
+rev20	irambit	0x22.4	ch2 source select bit 1	disasm/MUX_IRAM22_ANNOTATION.md
+rev20	irambit	0x22.5	ch2 source select bit 2	disasm/MUX_IRAM22_ANNOTATION.md
+rev20	irambit	0x22.6	derived = !0x25.4 and !0x25.5	disasm/MUX_IRAM22_ANNOTATION.md
+rev20	irambit	0x23.6	MONO latch	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev20	irambit	0x25.0	ch1 source state low	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev20	irambit	0x25.1	ch2 source state low	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev20	irambit	0x25.2	ch1 source state high	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev20	irambit	0x25.3	ch2 source state high	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev22	irambyte	0x20	previous P3 sample (button edge detect)	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev22	irambyte	0x22	source mux / panel shift word	disasm/MUX_IRAM22_ANNOTATION.md
+rev22	irambyte	0x23	codec control shift word	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev22	irambyte	0x25	panel/source internal state	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev22	irambit	0x22.0	ch1 source select bit 0	disasm/MUX_IRAM22_ANNOTATION.md
+rev22	irambit	0x22.1	ch1 source select bit 1	disasm/MUX_IRAM22_ANNOTATION.md
+rev22	irambit	0x22.2	ch1 source select bit 2	disasm/MUX_IRAM22_ANNOTATION.md
+rev22	irambit	0x22.3	ch2 source select bit 0	disasm/MUX_IRAM22_ANNOTATION.md
+rev22	irambit	0x22.4	ch2 source select bit 1	disasm/MUX_IRAM22_ANNOTATION.md
+rev22	irambit	0x22.5	ch2 source select bit 2	disasm/MUX_IRAM22_ANNOTATION.md
+rev22	irambit	0x22.6	derived = !0x25.4 and !0x25.5	disasm/MUX_IRAM22_ANNOTATION.md
+rev22	irambit	0x23.6	MONO latch	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev22	irambit	0x25.0	ch1 source state low	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev22	irambit	0x25.1	ch2 source state low	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev22	irambit	0x25.2	ch1 source state high	disasm/IRAM23_IRAM25_ANNOTATION.md
+rev22	irambit	0x25.3	ch2 source state high	disasm/IRAM23_IRAM25_ANNOTATION.md
