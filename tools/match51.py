@@ -147,11 +147,13 @@ def main():
             if wb != gb:
                 # A byte is excusable only if it is an address operand of an
                 # LCALL/LJMP to an external symbol, which the linker resolves.
+                # mn may be tab- or space-separated: compiler output uses
+                # tabs, hand-written inline asm typically does not.
                 reloc = any(o <= i < o + sz
-                            and mn.split("\t")[0] in RELOC_MNEMONICS
+                            and mn.split()[0] in RELOC_MNEMONICS
                             and (i - o) in RELOC_OPERAND_BYTES
                             and "_" in mn
-                            for o, mn, sz in notes)
+                            for o, mn, sz in notes if mn.split())
                 if reloc and not a.strict:
                     continue
                 bad.append((i, wb, gb))

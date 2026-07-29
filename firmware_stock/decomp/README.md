@@ -34,7 +34,7 @@ Each candidate declares its target in a header comment:
 
 ## Scoreboard
 
-    matched 17/19 functions, 333/393 bytes
+    matched 22/24 functions, 406/466 bytes
 
 Rev 20. Run `python3 tools/match51.py firmware_stock/decomp/cand/*.c`.
 
@@ -70,10 +70,40 @@ Note SDCC is often the *better* compiler here. Matching means defeating it.
 |---|---|---|
 | `std_set_configuration` @0x025B | `SETB C`/`SUBB` range check vs SDCC's `CJNE`/`JC` | source rewrite or targeted peephole |
 | `toggle_bit1e` @0x1028 | SDCC folds test-then-clear into `JBC` then `CPL`; not expressible as a peephole (patterns match instructions, not label definitions) | hand-written `__naked` asm |
-| Helper-call idiom | Keil factored `DPTR <- IRAM 0x1B:0x1C` into a called helper; SDCC inlines the pointer load. Affects most EP0 buffer code. | `__naked` helper + asm at call sites |
 | Register parameters | Keil passes the first `char` in R7, SDCC in DPL | `__naked` prologue |
 | Shared tails with live A/DPTR | Keil merges common tails; callers jump in with registers live. ~5 per image. | merge into one source function (proven by `acg_48k_commit`) |
 | Keil library routines | `?C?CASE` (38 B), `udiv16` (85 B), C51 startup + initialiser interpreter | hand-written asm; all four fully decoded |
+
+## The helper-call idiom — solved
+
+Keil factored `DPTR <- IRAM 0x1B:0x1C` into a helper at 0x0B17 called from
+twelve sites, because `LCALL` costs 3 bytes against 6 for the inlined load.
+Two things block SDCC from reproducing it:
+
+* **Byte order.** 0x1B is the HIGH byte, 0x1C the low — Keil's convention for
+  xdata pointers, the opposite of SDCC's. A real SDCC pointer variable cannot
+  live at 0x1B, because the rest of the firmware increments 0x1C as the low
+  byte.
+* **Setting DPTR as a side effect is not expressible in C.**
+
+The working pattern:
+
+1. Write the helper `__naked` with the IRAM addresses **numeric**, not
+   symbolic. Inline asm is opaque to the compiler, so a symbolic reference to
+   an otherwise-unused `__at` variable is never emitted and the assembler
+   fails on an undefined symbol.
+2. At call sites, emit `lcall` from inline asm and declare the callee with a
+   hand-written `.globl` **inside** an `__asm` block — SDCC rejects `__asm` at
+   file scope.
+3. `match51.py` excuses the two address operand bytes, since the linker
+   resolves them.
+
+Matched with this: `dptr_from_ep0_ptr`, `dptr_to_ep0_out_buf`,
+`ep0_buf_clear_byte`, `setup_get_input_source`, `std_get_configuration`.
+
+`ep0_buf_clear_byte` also demonstrates the register-parameter case: it takes
+the low address byte in A, which SDCC's convention would never do, so `__naked`
+covers both problems at once.
 
 ## Harness correctness
 
@@ -82,3 +112,7 @@ external symbols. It must never mask a whole instruction: `"jbc".startswith("jb"
 once caused `toggle_bit1e` to be reported as a false MATCH, because the masked
 opcode byte was exactly the one distinguishing `JBC` (0x10) from `JNB` (0x30).
 Masking `mov dptr,#...` would likewise hide a wrong SFR address.
+
+Mnemonics are split on any whitespace: compiler output is tab-separated but
+hand-written inline asm is not, and assuming tabs silently stopped the
+relocation logic from recognising `lcall` in asm blocks.
