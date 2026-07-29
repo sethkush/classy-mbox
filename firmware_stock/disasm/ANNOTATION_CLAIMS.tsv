@@ -483,3 +483,121 @@ rev22	irambit	0x21.5	one-shot consumed at 0x0BE1	disasm/IRAM_BITS_ANNOTATION.md	
 rev22	irambit	0x21.6	an alt setting was selected	disasm/IRAM_BITS_ANNOTATION.md	explained
 rev22	irambit	0x24.0	timer-0 tick flag driving the main loop panel service	disasm/IRAM_BITS_ANNOTATION.md	explained
 rev22	irambit	0x24.2	cleared once, never set, never tested; vestigial	disasm/IRAM_BITS_ANNOTATION.md	explained
+rev20	xdata	0xFF28	SETPACK_BMREQ: 2 site(s), read/write-via-helper 0x0118	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF29	SETPACK_BREQ: 2 site(s), read/write-via-helper 0x0F70	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF2A	SETPACK_WVAL_L: 12 site(s), code-table (MOVC)/read/write-via-helper 0x0B5F/write-via-helper 0x0B6E	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF2B	SETPACK_WVAL_H: 4 site(s), read/write-via-helper 0x0B6E/write-via-helper 0x1009	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF2C	SETPACK_WIDX_L: 6 site(s), read/write-via-helper 0x0B17/write-via-helper 0x0B3E/write-via-helper 	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF2E	SETPACK_WLEN_L: 3 site(s), read	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF2F	SETPACK_WLEN_H: 1 site(s), read	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF60	IEPCNF1: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF61	IEPBBAX1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF62	IEPBSIZ1: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF63	IEPDCNTX1: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF67	IEPDCNTY1: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF68	IEPCNF0: 7 site(s), clr-bits/set-bits/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF69	IEPBBAX0: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF6A	IEPBSIZ0: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF6B	IEPBCTX0: 10 site(s), clr-bits/write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF98	OEPCNF2: 4 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF99	OEPBBAX2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF9A	OEPBSIZ2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF9B	OEPDCNTX2: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFF9F	OEPDCNTY2: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFA8	OEPCNF0: 7 site(s), clr-bits/write/write-via-helper 0x0B2B	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFA9	OEPBBAX0: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFAA	OEPBSIZ0: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFAB	OEPBCTX0: 6 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFB0	MEMCFG: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFB1	GLOBCTL: 5 site(s), clr-bits/set-bits/write-via-helper 0x0DEB	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFB2	VECINT: 2 site(s), code-table (MOVC)/write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFC0	I2C_STA: 10 site(s), clr-bits/read/set-bits	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFC1	I2C_TX: 5 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFC2	I2C_RX: 1 site(s), write-via-helper 0x0B11	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFC3	I2C_SADDR: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFD4	CPTRXCNF4: 2 site(s), write/write-via-helper 0x0DEB	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFD5	CPTRXCNF3: 2 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFD6	CPTRXCNF2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFDC	CPTSTA: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFDD	CPTCNF4: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFDE	CPTCNF3: 3 site(s), write/write-via-helper 0x0FF4	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFDF	CPTCNF2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFE0	CPTCNF1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFE1	ACGCTL: 5 site(s), clr-bits/set-bits/write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFE2	ACGDCTL: 1 site(s), write-via-helper 0x0E18	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFE5	ACG1FRQ2: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFE6	ACG1FRQ1: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFE7	ACG1FRQ0: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFE8	DMACTL0: 4 site(s), clr-bits/set-bits/write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFE9	DMATSH0: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFEA	DMATSL0: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFEE	DMACTL1: 4 site(s), clr-bits/set-bits/write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFEF	DMATSH1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFF0	DMATSL1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFF6	ACG2DCTL: 2 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFF7	ACG2FRQ2: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFF8	ACG2FRQ1: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFF9	ACG2FRQ0: 2 site(s), write/write-via-helper 0x0E0F	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFFC	USBCTL: 5 site(s), clr-bits/set-bits/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFFD	USBIMSK: 3 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFFF	USBFADR: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF28	SETPACK_BMREQ: 2 site(s), read/write-via-helper 0x010B	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF29	SETPACK_BREQ: 2 site(s), write-via-helper 0x02E8/write-via-helper 0x02EF	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF2A	SETPACK_WVAL_L: 12 site(s), read/write-via-helper 0x02E8/write-via-helper 0x02EF/write-via-helper 	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF2B	SETPACK_WVAL_H: 4 site(s), read/write-via-helper 0x02EF	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF2C	SETPACK_WIDX_L: 6 site(s), read/write-via-helper 0x0B25/write-via-helper 0x0B37/write-via-helper 	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF2E	SETPACK_WLEN_L: 3 site(s), read	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF2F	SETPACK_WLEN_H: 1 site(s), read	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF60	IEPCNF1: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF61	IEPBBAX1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF62	IEPBSIZ1: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF63	IEPDCNTX1: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF67	IEPDCNTY1: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF68	IEPCNF0: 7 site(s), clr-bits/set-bits/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF69	IEPBBAX0: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF6A	IEPBSIZ0: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF6B	IEPBCTX0: 11 site(s), clr-bits/write/write-computed/write-via-helper 0x0247/write-via-helper	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF98	OEPCNF2: 5 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF99	OEPBBAX2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF9A	OEPBSIZ2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF9B	OEPDCNTX2: 4 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFF9F	OEPDCNTY2: 2 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFA8	OEPCNF0: 7 site(s), clr-bits/read/write/write-via-helper 0x0B2C	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFA9	OEPBBAX0: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFAA	OEPBSIZ0: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFAB	OEPBCTX0: 6 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFB0	MEMCFG: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFB1	GLOBCTL: 5 site(s), clr-bits/set-bits/write-via-helper 0x0EC7	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFB2	VECINT: 2 site(s), code-table (MOVC)/write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFC0	I2C_STA: 10 site(s), clr-bits/read/set-bits	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFC1	I2C_TX: 5 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFC2	I2C_RX: 1 site(s), read	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFC3	I2C_SADDR: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFD4	CPTRXCNF4: 2 site(s), write/write-via-helper 0x0EC7	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFD5	CPTRXCNF3: 2 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFD6	CPTRXCNF2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFDC	CPTSTA: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFDD	CPTCNF4: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFDE	CPTCNF3: 2 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFDF	CPTCNF2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFE0	CPTCNF1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFE1	ACGCTL: 5 site(s), clr-bits/set-bits/write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFE2	ACGDCTL: 1 site(s), write-via-helper 0x0EF4	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFE5	ACG1FRQ2: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFE6	ACG1FRQ1: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFE7	ACG1FRQ0: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFE8	DMACTL0: 6 site(s), clr-bits/set-bits/write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFE9	DMATSH0: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFEA	DMATSL0: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFEB	DMABCNT0L: 1 site(s), read	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFEC	DMABCNT0H: 1 site(s), read	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFEE	DMACTL1: 4 site(s), clr-bits/set-bits/write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFEF	DMATSH1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFF0	DMATSL1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFF6	ACG2DCTL: 2 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFF7	ACG2FRQ2: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFF8	ACG2FRQ1: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFF9	ACG2FRQ0: 1 site(s), write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFFC	USBCTL: 5 site(s), clr-bits/set-bits/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFFD	USBIMSK: 3 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFFF	USBFADR: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
