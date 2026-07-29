@@ -55,7 +55,12 @@ check "SFR register names consistent"       python3 tools/check_sfr_names.py
 # all at their stock addresses and resolves every inter-function call for real,
 # which is what catches wrong call targets and functions that grew past their
 # stock extent.
-check "decomp candidates match stock"      sh -c 'python3 tools/match51.py firmware_stock/decomp/cand/*.c | grep -q "^  matched .*(100.0%)"'
+check "decomp candidates match stock"      python3 tools/match51.py firmware_stock/decomp/cand/*.c
+# cand/ must be exact. A declared partial belongs in cand/partial/, where it is
+# still checked -- but allowing one to sit in cand/ would quietly weaken the
+# gate above into "matches, or has an excuse".
+check "no declared partials in cand/"      sh -c '! grep -l "partial=" firmware_stock/decomp/cand/*.c 2>/dev/null | grep -q .'
+check "declared partials hold exactly"     python3 tools/match51.py firmware_stock/decomp/cand/partial/*.c
 check "decomp links at stock addresses"    python3 tools/link51.py rev20
 
 if [[ "$TARGET" == "safety_net" ]]; then

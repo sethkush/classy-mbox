@@ -52,6 +52,12 @@ RELOC_OPERAND_BYTES = (1, 2)
 # ours and compare properly -- a genuinely wrong local target still fails.
 ABS_MNEMONICS = ("lcall", "ljmp")
 
+# Instructions whose LAST byte is a signed displacement to a nearby label. An
+# insertion anywhere in a function shifts all of these, so a declared partial
+# compares everything except them.
+REL_MNEMONICS = ("sjmp", "jc", "jnc", "jz", "jnz", "jb", "jnb", "jbc",
+                 "cjne", "djnz")
+
 
 def relocate_local_jumps(got, notes, base):
     """Add `base` to absolute operands of LJMP/LCALL targeting local labels."""
@@ -99,7 +105,10 @@ def stock_fn_len(image, addr):
 def compile_candidate(cpath, extra):
     d = tempfile.mkdtemp(prefix="match51_")
     asm = os.path.join(d, "c.asm")
-    r = subprocess.run(["sdcc"] + CFLAGS + extra + [cpath, "-o", asm],
+    # cand/ is on the include path explicitly so candidates can live in
+    # subdirectories (cand/partial/) and still find mbox.h.
+    inc = ["-I", os.path.join(FW, "decomp", "cand")]
+    r = subprocess.run(["sdcc"] + CFLAGS + inc + extra + [cpath, "-o", asm],
                        capture_output=True, text=True)
     if r.returncode:
         print(r.stdout + r.stderr, file=sys.stderr)
@@ -190,13 +199,53 @@ def main():
                 if reloc and not a.strict:
                     continue
                 bad.append((i, wb, gb))
-        status = "MATCH" if not bad and len(want) == len(got) else "DIFF"
+        # A candidate may declare a known shortfall (see cand/partial/README.md)
+        # as `partial=N at=0xOFF`: N bytes SDCC emits that Keil did not, all at
+        # one offset. Counting raw differing bytes would be meaningless here --
+        # an insertion shifts every later relative branch, so three extra bytes
+        # show up as dozens of "differences" that are not independent errors.
+        #
+        # Instead, cut the N bytes back out and require the result to equal
+        # stock, ignoring only relative-branch displacements. That pins the
+        # size, the location, and every other byte, so a partial cannot drift
+        # into covering an unrelated mistake.
+        declared = int(kv["partial"], 0) if "partial" in kv else 0
+        if declared:
+            at = int(kv["at"], 0)
+            built = got[:at] + got[at + declared:]
+            # Two kinds of byte cannot be compared here. Relative branch
+            # displacements all shift when bytes are inserted ahead of them,
+            # and address operands of calls to external symbols are still
+            # unresolved -- the same ones the exact path excuses. Everything
+            # else has to be identical.
+            slack = set()
+
+            def excuse(off):
+                slack.add(off if off < at else off - declared)
+
+            for o, mn, sz in notes:
+                w = mn.split()
+                if not w:
+                    continue
+                if w[0] in REL_MNEMONICS:
+                    excuse(o + sz - 1)
+                elif w[0] in RELOC_MNEMONICS and "_" in mn:
+                    for k in RELOC_OPERAND_BYTES:
+                        excuse(o + k)
+            bad = [(i, want[i], built[i]) for i in range(min(len(want), len(built)))
+                   if want[i] != built[i] and i not in slack]
+            status = ("PARTIAL" if not bad and len(built) == len(want)
+                      else "DIFF")
+        else:
+            status = "MATCH" if not bad and len(want) == len(got) else "DIFF"
         tot_b += len(want)
         tot_m += len(want) - len(bad)
         results.append((status, func, image, addr, len(want), len(got), bad, notes))
 
     for status, func, image, addr, lw, lg, bad, notes in results:
-        mark = "\033[32mMATCH\033[0m" if status == "MATCH" else "\033[31mDIFF \033[0m"
+        mark = {"MATCH": "\033[32mMATCH\033[0m",
+                "PARTIAL": "\033[33mPART \033[0m"}.get(
+                    status, "\033[31mDIFF \033[0m")
         size = f"{lw} B" if lw == lg else f"{lw}->{lg} B"
         print(f"  0x{addr:04X} {func:<32} {size:>10}  {mark}"
               + (f"  {len(bad)} byte(s)" if bad else ""))
@@ -208,9 +257,12 @@ def main():
                 print(f"        +0x{off:03x}  stock {w}  ours {g}   {mn}")
     pct = 100.0 * tot_m / tot_b if tot_b else 0
     nm = sum(1 for r in results if r[0] == "MATCH")
+    npart = sum(1 for r in results if r[0] == "PARTIAL")
     print(f"\n  matched {nm}/{len(results)} functions, "
-          f"{tot_m}/{tot_b} bytes ({pct:.1f}%)")
+          f"{tot_m}/{tot_b} bytes ({pct:.1f}%)"
+          + (f", {npart} at their declared partial" if npart else ""))
+    return 1 if any(r[0] == "DIFF" for r in results) else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

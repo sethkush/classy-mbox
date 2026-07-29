@@ -114,6 +114,19 @@ replace {
 	subb	a,#0x01
 }
 
+// Same family, next constant up. The peephole language has no arithmetic on
+// immediates, so "cjne a,#N" -> "subb a,#N-1" needs one row per N rather than
+// one general rule. Each row is still exact, and an unused row simply never
+// fires; add another when a new constant turns up. N=3 is std_get_interface,
+// which rejects wIndex > 2.
+replace {
+	cjne	a,#0x03,%1
+%1:
+} by {
+	setb	c
+	subb	a,#0x02
+}
+
 // SDCC folds "test bit, then clear it" into JBC (test-and-clear) and inverts
 // the branch. Keil emitted the naive JNB + CLR. The earlier attempt at this
 // rule failed because it named two labels; matching only the one that is
@@ -140,3 +153,21 @@ replace {
 	mov	%1,a
 }
 
+
+// Same compare family again, via SDCC's other encoding of it. For "> const"
+// SDCC prefers ADD A,#0xff-const (two bytes, carry out) over CJNE. Keil always
+// used the SETB C / SUBB form.
+//
+// The two carry senses are OPPOSITE, and the conditional branch has to be
+// rewritten with them or the test inverts. ADD A,#0xff-N sets carry when
+// A > N; SETB C + SUBB A,#N borrows when A <= N. Rewriting only the arithmetic
+// and leaving the JC alone silently reverses the comparison -- which is what
+// the first draft of this rule did, and what the byte match caught.
+replace {
+	add	a,#0xff - 0x02
+	jc	%1
+} by {
+	setb	c
+	subb	a,#0x02
+	jnc	%1
+}

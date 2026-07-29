@@ -42,6 +42,7 @@ Then link the lot at their stock addresses:
 ## Scoreboard
 
     match51:  matched 29/29 functions, 1281/1281 bytes
+              1 declared partial (std_get_interface, 3 bytes)
     link51:   linked  28/28 functions exact, 1274/1274 placed bytes
               image coverage: 1274/3598 instruction bytes (35.4% of rev20)
 
@@ -202,6 +203,28 @@ narrow rule is a standing risk to every function that already matches, and the
 functions that need this treatment are long straight-line register programming
 where assembly carries the meaning as well as C would. `hw_master_init` is 165
 bytes of SFR pokes; the annotated assembly is no harder to read than the C was.
+
+## Declared partials
+
+Some stock encodings depend on a compiler capability SDCC does not have, and no
+rewrite of the C reaches them. Rather than fake the number or throw away good C,
+those candidates live in `cand/partial/` and declare the shortfall in the header
+as `partial=N at=0xOFF`: N bytes SDCC emits that Keil did not, all at one offset.
+
+The check is not a tolerance. match51 cuts the N bytes back out and requires the
+result to equal stock exactly, excusing only relative-branch displacements
+(which any insertion shifts) and unresolved external call operands. Size,
+location, and every other byte are pinned, so a partial cannot drift into
+covering an unrelated mistake -- overstating N, understating it, moving the
+offset, or changing an unrelated instruction each turn it back into a DIFF.
+
+`cand/` itself must be exact; preflight fails if a `partial=` appears there.
+
+The recurring cause is Keil's inter-procedural register analysis. Keil knew
+which registers a callee left alone and kept values live across calls. In
+`std_get_interface` DPTR still holds `SETUP_wIndexL` after a call into a helper
+that writes only IRAM 0x1B and 0x1C, so stock re-reads with a bare
+`MOVX A,@DPTR`; SDCC reloads DPTR first, three bytes.
 
 ## Merged tails, and how a short jump proved one
 

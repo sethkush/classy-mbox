@@ -31,7 +31,7 @@ __data __at (0x32) unsigned char g_chip_val;     /* queued chip value        */
 /* --- bit flags (bit B lives in IRAM 0x20 + (B>>3), bit B&7) ------------ */
 __bit __at (0x0B) f_stage_out;   /* IRAM 0x21.3 — expect an OUT data stage  */
 __bit __at (0x0C) f_stage_in;    /* IRAM 0x21.4 — an IN data stage is armed */
-#endif
+
 
 /* --- panel / selector state (bit addresses) ---------------------------- */
 __bit __at (0x10) pa_src0;   /* IRAM 0x22.0 — channel A source, bit 0 */
@@ -53,3 +53,5 @@ __data __at (0x22) unsigned char g_mux_byte;   /* chain A payload  */
 __data __at (0x23) unsigned char g_panel_lo;   /* chain B, first 8 bits out */
 __data __at (0x25) unsigned char g_panel_hi;   /* chain B, second 8 bits    */
 __bit  __at (0x1E) p_hold;                     /* IRAM 0x23.6, P3.5 toggle  */
+
+#endif /* MBOX_H */
