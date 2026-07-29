@@ -48,3 +48,50 @@ replace {
 } by {
 	anl	a,#%1
 }
+
+// SDCC increments a direct byte through the accumulator
+// (mov a,dir / inc a / mov dir,a, 5 bytes). Keil used the direct INC.
+// When A is dead afterwards that is a plain 2-byte INC; when the value is
+// still needed -- as in the 16-bit pointer advance, where the low byte feeds
+// the JNZ -- it is INC dir + MOV A,dir, 4 bytes. The notUsed guard picks the
+// right one. Order matters: the shorter rule must be tried first.
+replace {
+	mov	a,%1
+	inc	a
+	mov	%1,a
+} by {
+	inc	%1
+} if notUsed('a')
+
+replace {
+	mov	a,%1
+	inc	a
+	mov	%1,a
+} by {
+	inc	%1
+	mov	a,%1
+}
+
+// SDCC copies the accumulator into R7 before comparing against a constant.
+// Keil compared A directly, saving the copy.
+replace {
+	mov	r7,a
+	cjne	r7,#%1,%2
+} by {
+	cjne	a,#%1,%2
+} if notUsed('r7')
+
+// SDCC commutes an equality test against a variable: it loads the CONSTANT
+// into A and compares with "CJNE A,direct" where Keil loaded the VARIABLE and
+// used "CJNE A,#imm". Both are 5 bytes; only the operand order differs.
+//
+// Caveat: CJNE sets carry from (first operand) < (second operand), so
+// swapping the operands inverts C. That is safe only where the carry is not
+// consumed afterwards, which the byte match verifies.
+replace {
+	mov	a,#%1
+	cjne	a,%2,%3
+} by {
+	mov	a,%2
+	cjne	a,#%1,%3
+}
