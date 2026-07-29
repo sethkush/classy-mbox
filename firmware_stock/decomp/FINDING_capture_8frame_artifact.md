@@ -101,10 +101,73 @@ D+ pull-up. That is consistent with the firmware having cleared USBCTL CONN,
 or having hung in a state where the pull-up is off -- not with a cable or a
 host-side fault.
 
-Unprompted and delayed, this is a separate defect from the capture artifact,
-and it is the more serious of the two: it makes the unit unreachable, and
-telemetry is the only instrument that can see inside a running image.
+RETRACTED. This was written up as a second firmware defect -- "the device is
+powered and is not asserting its D+ pull-up" -- on the strength of the trace
+alone. Seth then reported that both units were unplugged at the bench. A clean
+disconnect with no preceding error and no re-enumeration is exactly what
+pulling a cable looks like, and that explanation needs no firmware fault at
+all.
+
+The hardware account outranks the inference from the trace. There is no
+evidence here of a self-detach defect, and the earlier paragraph claiming one
+should not be cited. What the log actually supports is: the device left the
+bus at 40830.2 and the reason is not recorded on the host side.
 
 `tools/mboxtlm.py` was written to read the blocks and has NOT been run against
 hardware -- by the time it existed there was nothing on the bus to answer it.
 It is unvalidated code.
+
+## Addendum 2: telemetry read live, 2026-07-29
+
+`tools/mboxtlm.py` now exists and has been run against the unit. Block 6 read
+three times while `arecord` was streaming at 44100, and once after it stopped:
+
+    streaming:  89 02 70 c6 c5 ad 40 00
+    streaming:  89 02 70 c6 c5 ac 40 00
+    streaming:  89 02 70 c6 c5 ac 40 00
+    stopped:    09 02 70 c6 00 2c 40 00
+
+Decoded:
+
+  * **DMACTL1 = 0x89 while streaming, 0x09 stopped.** Bit 7 is DMAEN
+    (datasheet 6.5.2.3). The capture DMA IS armed during streaming and
+    disarms on stop. The DMA-enable fix from `ad7ff3b` works, and the
+    zero-length-isoc era is genuinely over.
+  * **IEPBSIZ1 = 0x40.** This is the ENCODED size: `regs.h` EP_BSIZE is
+    `size >> 3`, so 0x40 means a 512-byte buffer, against the 264.6 bytes a
+    44.1 kHz frame needs. Ample. Worth stating because 0x40 read as a raw
+    byte count looks like a fatal undersize buffer, and it is not one.
+  * **DMATSH1 = 0x80, DMATSL1 = 0x03** (from `hw_init.c:171-172`, both cited
+    to Rev 20 fcn.0x08CB): 3 bytes per time slot on slots 0 and 1 = 6 bytes
+    per stereo 24-bit sample. Identical to stock.
+  * **vec_iep1 = 0 throughout.** The capture endpoint interrupt never fires,
+    which is consistent with the design -- the path is DMA-driven and the
+    IEP1 vector is deliberately unhandled.
+  * **CPTSTA = 0x70 and ACGCTL = 0xC6, constant** across streaming and idle.
+  * **IEPCNF1 = 0xC5 streaming, 0x00 stopped**, while OEPCNF2 stays 0xC5 in
+    both. The capture endpoint config is torn down on stop and the playback
+    one is not. Asymmetric; unexplained; not obviously harmful.
+
+**What this narrows.** The DMA is armed, its time-slot configuration is
+byte-identical to stock, the endpoint buffer is large enough, and full-rate
+bytes arrive. So the 8-frame artifact is NOT a DMA arming or sizing fault.
+Whatever is wrong is upstream of the DMA -- in the C-port serial interface
+configuration or in what the codec is actually clocking out. The C-port
+registers to suspect are the CPTCNF/CPTRXCNF group in `hw_init.c:58-129`,
+particularly the BYOR byte-order bit and the CPTRXCNF4 divider, both of which
+have already been wrong once each in this project's history.
+
+**Instrumentation gap for the next flash.** Block 6 does not expose DMATSH1,
+DMATSL1, DMABCNT1L/H, or the CPTCNF group, so all four had to be read from
+source rather than from the running part. DMABCNT1 in particular is updated
+every SOF and would show the live per-frame byte count directly. Also:
+`TLM_BUILD_ID` is still 0x000B, not bumped for the #147 flash, so block 0
+currently cannot distinguish this build from its predecessor. Both are cheap
+to fix and both should be fixed before the next image goes out.
+
+**Caveat on bit decoding.** `mboxtlm.py` no longer prints IEPCNF bit names.
+The bit map used at first was assembled in the tool from a partial comment and
+decoded the stock value 0xC5 as "ISO=0" -- not marked isochronous -- which
+contradicts `regs.h`'s own reading of 0xC5 as "ISO, BPS field = 5". One of the
+two is wrong. Until the datasheet bit map is transcribed and cited, IEPCNF
+values are compared against known-good constants instead of decoded.

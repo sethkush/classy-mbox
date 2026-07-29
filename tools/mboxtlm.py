@@ -114,14 +114,24 @@ def dec_dmactl(v, what):
 
 
 def dec_iepcnf(v):
-    """IEPCNFn: 7=UBME 6=TOGLE 5=STALL 4=USBIE 3=ISO, 2:0=BPS-ish.
+    """IEPCNFn -- value only. The bit NAMES are deliberately not printed.
 
-    Rev 20 writes 0xC5 for the audio IN endpoint; regs.h records BPS field 5
-    as 6 bytes/sample (stereo 24-bit), matching DMATSH/DMATSL = 0x80/0x03.
+    An earlier version of this function printed
+    "UBME/TOGLE/STALL/USBIE/ISO/BPS" from a bit map assembled here out of a
+    partial comment in regs.h. Run against hardware it decoded the stock
+    value 0xC5 as ISO=0 -- i.e. the audio endpoint not marked isochronous --
+    which contradicts regs.h's own reading of 0xC5 as "ISO, BPS field = 5".
+    One of the two is wrong and this tool is not the place to guess: a
+    confident-looking bit decode is exactly how a wrong reading becomes a
+    wrong conclusion, which is the failure this whole telemetry path exists
+    to avoid.
+
+    What IS established: stock Rev 20 writes 0xC5, mboxfw writes 0xC5, and
+    0x00 means the endpoint config has been torn down. Compare against those
+    until the datasheet bit map is transcribed and cited.
     """
-    return ("IEPCNF1=0x%02X  UBME=%d TOGLE=%d STALL=%d USBIE=%d ISO=%d BPS=%d"
-            % (v, (v >> 7) & 1, (v >> 6) & 1, (v >> 5) & 1, (v >> 4) & 1,
-               (v >> 3) & 1, v & 7))
+    known = {0xC5: "  (= stock Rev 20 value)", 0x00: "  (torn down)"}
+    return "IEPCNF1=0x%02X%s" % (v, known.get(v, "  (non-stock)"))
 
 
 def block0(b):
@@ -207,7 +217,8 @@ def block6(b):
         "ACGCTL=0x%02X   (adaptive clock generator control)" % b[3],
         dec_iepcnf(b[4]),
         "IEPDCNTX1=0x%02X (capture EP byte count -- 0 = buffer armed/empty)" % b[5],
-        "IEPBSIZ1=0x%02X  (capture EP buffer size)" % b[6],
+        "IEPBSIZ1=0x%02X  (capture EP buffer = %d bytes; regs.h EP_BSIZE "
+        "encodes size>>3)" % (b[6], b[6] * 8),
         "OEPDCNTX2=0x%02X (playback EP byte count)" % b[7],
     ]
     # The question this block was added for: is the capture DMA armed at all?
@@ -301,21 +312,29 @@ def cmd_reset(dev, _args):
 
 
 def main():
+    # --raw is accepted on BOTH sides of the subcommand. It was top-level
+    # only at first, so the natural `read 6 --raw` died with "unrecognized
+    # arguments" -- mid-experiment, against a device that does not stay on
+    # the bus indefinitely. A diagnostic tool that is fussy about argument
+    # order costs a whole run to find out.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--raw", action="store_true", help="also print raw bytes")
+
     p = argparse.ArgumentParser(description=__doc__.split("\n")[1],
+                                parents=[common],
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--raw", action="store_true", help="also print raw bytes")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("all", help="read and decode every block")
+    sub.add_parser("all", parents=[common], help="read and decode every block")
     for name, helptext in (("read", "read one block"),
                            ("raw", "read one block, hex only")):
-        sp = sub.add_parser(name, help=helptext)
+        sp = sub.add_parser(name, parents=[common], help=helptext)
         sp.add_argument("block", type=int)
-    sp = sub.add_parser("watch", help="re-read a block repeatedly")
+    sp = sub.add_parser("watch", parents=[common], help="re-read a block repeatedly")
     sp.add_argument("block", type=int)
     sp.add_argument("-n", "--count", type=int, default=10)
     sp.add_argument("-i", "--interval", type=float, default=0.5)
-    sub.add_parser("reset", help="clear the per-experiment counters")
+    sub.add_parser("reset", parents=[common], help="clear the per-experiment counters")
 
     args = p.parse_args()
     dev, pid = find_device()
