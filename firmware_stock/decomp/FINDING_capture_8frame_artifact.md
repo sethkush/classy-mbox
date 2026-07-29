@@ -81,3 +81,30 @@ from the running unit while capture is streaming. `tools/mboxflash_linux.py`
 has no telemetry reader; one has to be written. That block was added for
 exactly this question and reads the DMA and C-port state that would show
 whether the capture DMA is filling only 5 of every 8 frames.
+
+## Addendum: the unit dropped off the bus unprompted
+
+Timeline from `dmesg` (void box uptime 43200 s at 02:30):
+
+    40009.9   device 32 enumerates, 0dba:2000  (post-flash, audio mode)
+    ...       the loopback runs above, all clean, no errors logged
+    40830.2   usb 2-1.2: USB disconnect, device number 32
+
+That is roughly 8 minutes AFTER the last capture finished, with nothing being
+sent to the device in the interval -- the analysis in between was pure local
+Python over already-captured files. No error precedes the disconnect and no
+re-enumeration follows it.
+
+`uhubctl` reports port 2 of hub 2-1 as `0100 power`: port power is applied,
+but the connect bit is clear. The device is powered and is not asserting its
+D+ pull-up. That is consistent with the firmware having cleared USBCTL CONN,
+or having hung in a state where the pull-up is off -- not with a cable or a
+host-side fault.
+
+Unprompted and delayed, this is a separate defect from the capture artifact,
+and it is the more serious of the two: it makes the unit unreachable, and
+telemetry is the only instrument that can see inside a running image.
+
+`tools/mboxtlm.py` was written to read the blocks and has NOT been run against
+hardware -- by the time it existed there was nothing on the bus to answer it.
+It is unvalidated code.
