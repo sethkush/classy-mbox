@@ -47,3 +47,9 @@ __bit __at (0x29) sb0;       /* IRAM 0x25.1 — channel B hidden state */
 __bit __at (0x2B) sb1;       /* IRAM 0x25.3 */
 __bit __at (0x2C) f_spdif;   /* IRAM 0x25.4 — S/PDIF selected, not analog */
 __bit __at (0x2D) f_force;   /* IRAM 0x25.5 — forces p_derived clear */
+
+/* --- panel shift-register source bytes -------------------------------- */
+__data __at (0x22) unsigned char g_mux_byte;   /* chain A payload  */
+__data __at (0x23) unsigned char g_panel_lo;   /* chain B, first 8 bits out */
+__data __at (0x25) unsigned char g_panel_hi;   /* chain B, second 8 bits    */
+__bit  __at (0x1E) p_hold;                     /* IRAM 0x23.6, P3.5 toggle  */

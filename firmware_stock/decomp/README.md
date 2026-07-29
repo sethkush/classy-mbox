@@ -34,7 +34,7 @@ Each candidate declares its target in a header comment:
 
 ## Scoreboard
 
-    matched 27/28 functions, 742/743 bytes
+    matched 28/29 functions, 907/908 bytes
 
 The one outstanding byte is `setup_get_sample_freq`, and it is a layout
 artifact rather than a codegen difference — see below. Every construct that
@@ -136,6 +136,29 @@ Matched with this: `dptr_from_ep0_ptr`, `dptr_to_ep0_out_buf`,
 `ep0_buf_clear_byte` also demonstrates the register-parameter case: it takes
 the low address byte in A, which SDCC's convention would never do, so `__naked`
 covers both problems at once.
+
+## When to stop using C
+
+Most Keil/SDCC divergences are local and a peephole rule fixes a whole class.
+Some are not. `hw_master_init` is the first of the second kind: Keil allocated
+the accumulator across the **entire function**, loading A with 0 once at entry
+and keeping it live through fifteen instructions, using `INC A` to produce the
+1 for MEMCFG, and carrying DPTR from 0xFFB0 to 0xFFB1 with a 1-byte `INC DPTR`
+across fifteen unrelated SFR writes. SDCC re-zeroes A after every store and
+reloads DPTR every time.
+
+That is global register allocation, not a peephole-sized difference. Chasing it
+needs one narrow adjacency rule per context. Two such rules were written and
+measured: they did not generalise, they failed to fire on the three-store run
+at the top of the function, and they made the match *worse* (45 bytes matching
+down to 16). They were reverted.
+
+**Rule of thumb: if a fix requires a rule that encodes one specific instruction
+adjacency, write the function as annotated `__naked` assembly instead.** A
+narrow rule is a standing risk to every function that already matches, and the
+functions that need this treatment are long straight-line register programming
+where assembly carries the meaning as well as C would. `hw_master_init` is 165
+bytes of SFR pokes; the annotated assembly is no harder to read than the C was.
 
 ## Layout-dependent differences
 

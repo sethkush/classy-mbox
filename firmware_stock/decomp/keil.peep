@@ -128,3 +128,14 @@ replace {
 	clr	%1
 	ret
 }
+
+// After "clr a / mov dir,a" the accumulator is still zero, so an immediately
+// following "clr a" is dead. Keil kept A=0 alive across a whole run of stores.
+replace {
+	clr	a
+	mov	%1,a
+	clr	a
+} by {
+	clr	a
+	mov	%1,a
+}
