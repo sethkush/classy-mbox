@@ -17,7 +17,7 @@
 #define MBOXFW_TELEMETRY_H
 
 #define TLM_BLOCK_SIZE   8
-#define TLM_NUM_BLOCKS   8
+#define TLM_NUM_BLOCKS   9
 
 /* Vendor requests. DEVICE recipient, NOT interface: snd-usb-audio claims
  * the audio interfaces, and an interface-recipient request then fails with
@@ -35,7 +35,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x000F   /* 000F: stock GLOBCTL bit 1 restored */
+#define TLM_BUILD_ID     0x0010   /* 0010: boot-ROM handoff snapshot */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01
@@ -85,6 +85,16 @@ extern volatile __data unsigned char tlm_playback_resyncs;
  * idle, so reading a non-zero value proves the device both entered and left
  * idle (a read is only possible once it is answering EP0 again). */
 extern volatile __data unsigned char tlm_suspends;
+
+/* Boot-ROM handoff snapshot (block 8), sampled as the first action in main()
+ * before anything is written. Answers WHAT_REMAINS_UNKNOWN.md §3a -- whether the
+ * boot ROM leaves the EP0 Y buffer counts non-zero -- which usb_ep0_setup()
+ * otherwise destroys before a host can read it.
+ *
+ * NOT cleared by tlm_reset_counters(): it is a one-time boot observation, and
+ * zeroing it on a counter reset would silently turn a real measurement into a
+ * plausible-looking zero. */
+extern volatile __data unsigned char tlm_boot_handoff[4];
 
 /* Peripheral init results (block 4) */
 extern volatile __data unsigned char tlm_eeprom_ok;

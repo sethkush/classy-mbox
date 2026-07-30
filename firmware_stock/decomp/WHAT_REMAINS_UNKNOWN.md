@@ -112,11 +112,37 @@ cycle. See `decomp/FINDING_clock_modes_and_p31.md`.
 
 ## 3. Genuinely unknown, in descending order of consequence
 
-**a. Whether the boot ROM leaves the EP0 Y counts non-zero.** Now
-unrecoverable by observation in the shipping build, because `usb_ep0_setup()`
-clears them before any host can ask. Block 7 answers the surviving question
-(does the UBM write back into Y during a session?). See
-`FINDING_ep0_y_buffer_residue.md`.
+**a. ~~Whether the boot ROM leaves the EP0 Y counts non-zero.~~ ANSWERABLE
+2026-07-29 -- instrumented, awaiting a flash.** This had been written off as
+unrecoverable, because `usb_ep0_setup()` clears both counts before any host can
+ask, and the note here said so. That was the wrong conclusion: the value is
+unrecoverable *by a live read*, not unrecoverable. Sampling it before the
+firmware writes anything costs four bytes of RAM.
+
+New telemetry **block 8**, taken as the very first statement in `main()`:
+
+    byte 0  IEPDCNTY0 at handoff      byte 2  GLOBCTL at handoff
+    byte 1  OEPDCNTY0 at handoff      byte 3  USBCTL  at handoff
+
+Byte 3 shows why the sample has to be first: `main()` zeroes `USBCTL` two lines
+later, so nothing afterwards can recover it. Byte 2 is there to check the
+assumption behind `hw_init()`'s `GLOBCTL |= 0x02` -- that the boot ROM leaves
+`0x04`, a number that comes from a comment in TI's `RomBoot.c` rather than from
+this part. If it reads anything else, that RMW needs revisiting, and
+`tools/mboxtlm.py` says so in the decode.
+
+All four bytes initialise to 0xFF, so all-0xFF reads as "never sampled" rather
+than as data, and `tlm_reset_counters()` deliberately does not clear them --
+zeroing a one-time boot observation on a counter reset would turn a real
+measurement into a plausible-looking zero. Block 7 still answers the *other*
+half (does the UBM write back into Y during a session), which is the version
+that survives the fix. See `FINDING_ep0_y_buffer_residue.md`.
+
+Cost: 147 bytes of code, leaving 178 against the 6144 budget. Two cheaper
+shapes were tried and were worse -- four separate `volatile __data` bytes came
+out 42 bytes LARGER than the array, and trimming the snapshot from eight
+registers to four saved only 6, because the cost is the block-8 machinery rather
+than the reads.
 
 **b. ~~What `DMABCNT0L/H` (0xFFEB/0xFFEC) are for.~~ RESOLVED 2026-07-29** --
 and it was the right thing to rank first. See

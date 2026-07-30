@@ -60,7 +60,7 @@ REQ_IN = 0xC0              # vendor | device-to-host | device
 REQ_OUT = 0x40             # vendor | host-to-device | device
 
 BLOCK_SIZE = 8
-NUM_BLOCKS = 8
+NUM_BLOCKS = 9
 
 PHASE_BITS = [(0x01, "USB_INIT"), (0x02, "HW_INIT"), (0x04, "ATTACH"),
               (0x08, "CS8427"), (0x10, "CODEC"), (0x20, "MAIN_LOOP")]
@@ -261,8 +261,50 @@ def block7(b):
     return out
 
 
+def block8(b):
+    """Boot-ROM handoff snapshot, sampled as the FIRST action in main().
+
+    This is what closes WHAT_REMAINS_UNKNOWN.md §3a. usb_ep0_setup() clears both
+    EP0 Y counts, so block 7's live read can never recover what the boot ROM
+    handed over -- only a sample taken before we write anything can, and byte 3
+    in particular is destroyed by main()'s own `USBCTL = 0` two lines later.
+
+    0xFF in every byte means main() never reached the sample, not a real reading.
+    """
+    if b[0] == 0xFF and b[1] == 0xFF and b[2] == 0xFF and b[3] == 0xFF:
+        return ["NOT SAMPLED (all 0xFF sentinel) -- main() never got this far,"
+                " or this build predates block 8"]
+    out = [
+        "IEPDCNTY0=0x%02X  (EP0 IN  Y count AT HANDOFF)" % b[0],
+        "OEPDCNTY0=0x%02X  (EP0 OUT Y count AT HANDOFF)" % b[1],
+        "GLOBCTL  =0x%02X  (boot-ROM value; TI RomBoot.c says 0x04)" % b[2],
+        "USBCTL   =0x%02X  (boot-ROM value, before main() zeroes it)" % b[3],
+    ]
+    if b[0] or b[1]:
+        out.append("  §3a ANSWERED YES: the boot ROM DOES leave an EP0 Y count"
+                   " non-zero. That is the residue both stock images clear at"
+                   " init and mboxfw did not until build 0x000C -- the candidate"
+                   " mechanism for the ~12% geometric EP0 IN loss.")
+    else:
+        out.append("  §3a ANSWERED NO: both Y counts were already zero at"
+                   " handoff, so ROM residue is NOT the EP0-loss mechanism."
+                   " Read block 7 for whether the UBM writes Y during a session.")
+    if b[2] != 0x04:
+        out.append("  NOTE: GLOBCTL at handoff is 0x%02X, NOT the 0x04 that"
+                   " hw_init's `GLOBCTL |= 0x02` assumes. That RMW was chosen"
+                   " over stock's outright `= 0x06` precisely because the ROM"
+                   " was believed to leave 0x04 -- recheck hw_init.c." % b[2])
+    if b[3]:
+        out.append("  NOTE: USBCTL was NON-ZERO at handoff (0x%02X). main()"
+                   " zeroes it defensively for exactly this case; on the audited"
+                   " paths (cold boot, and UsbDfu.c:699 after a DFU manifest)"
+                   " it should be 0." % b[3])
+    return out
+
+
 DECODERS = {0: block0, 1: block1, 2: block2, 3: block3,
-            4: block4, 5: block5, 6: block6, 7: block7}
+            4: block4, 5: block5, 6: block6, 7: block7,
+            8: block8}
 
 TITLES = {
     0: "identity and liveness",
@@ -273,6 +315,7 @@ TITLES = {
     5: "isochronous streaming state",
     6: "DMA and C-port live state",
     7: "EP0 buffer counts + suspend tally",
+    8: "boot-ROM handoff snapshot",
 }
 
 

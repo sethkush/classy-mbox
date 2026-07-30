@@ -44,6 +44,10 @@ volatile __data unsigned char tlm_last_iface = 0xFF;  /* 0xFF = none seen */
 volatile __data unsigned char tlm_last_alt   = 0xFF;
 volatile __data unsigned char tlm_alt_seen   = 0;
 
+/* 0xFF = not sampled, so a block-8 read of all-0xFF means main() never ran
+ * that far rather than "the boot ROM left everything at 0xFF". */
+volatile __data unsigned char tlm_boot_handoff[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
+
 volatile __data unsigned char tlm_p1_boot = 0xFF;  /* 0xFF = not sampled */
 volatile __data unsigned char tlm_p3_boot = 0xFF;
 
@@ -203,6 +207,22 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[7] = PCON;
         return 1;
 
+
+    case 8:
+        /* Boot-ROM handoff snapshot, sampled as the first action in main().
+         * Closes WHAT_REMAINS_UNKNOWN.md §3a: usb_ep0_setup() clears both EP0 Y
+         * counts, so a live read can never recover what the ROM handed us.
+         *
+         * Byte 7 doubles as a check on hw_init()'s GLOBCTL |= 0x02: that RMW is
+         * only equivalent to stock's outright = 0x06 if the ROM really leaves
+         * 0x04 here, which until now came from a TI source comment rather than
+         * from this part. */
+        for (i = 0; i < 4; i++)
+            out[i] = tlm_boot_handoff[i];
+        /* 0x00, not 0xFF: 0xFF is this block's "never sampled" sentinel. */
+        for (; i < TLM_BLOCK_SIZE; i++)
+            out[i] = 0x00;
+        return 1;
     default:
         /* Clean sentinel rather than a stall, so a host walking blocks
          * until it runs out gets a defined answer. */
@@ -213,6 +233,12 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
 
 void tlm_reset_counters(void)
 {
+    /* tlm_boot_handoff is deliberately NOT reset here, and must not be added.
+     * It is a one-time observation of what the boot ROM handed us, taken before
+     * main() writes anything; zeroing it on a counter reset would turn a real
+     * measurement into a plausible-looking zero, which is the exact failure this
+     * block exists to avoid. tlm_p1_boot/tlm_p3_boot are omitted for the same
+     * reason. */
     tlm_setup_count = 0;
     tlm_iep0_count  = 0;
     tlm_chunks      = 0;

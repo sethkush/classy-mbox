@@ -97,15 +97,16 @@
 0xfffc  assign    0x00    # main
 0xfffc  or        0x80    # power,usb
 0xfffc  or        0xc0    # usb
+0xfffc  rmw       -       # main
 0xfffd  or        0xf5    # usb
 0xfffd  runtime   -       # power
 0xffff  assign    0x00    # usb
 0xffff  runtime   -       # usb
 
-# 0xffb1 runtime (hw_init) -- GLOBCTL |= 0x02, added 2026-07-29. Mirrors the
-# stock boot write GLOBCTL = 0x06 (Rev 20 0x08FE, Rev 22 0x081F), which every
-# scanner had missed because DPTR reaches 0xFFB1 by INC DPTR from the MEMCFG
-# write at 0xFFB0 rather than by an immediate load. It had been recorded in
-# rev20_diff_justifications.md as a FALSE_POSITIVE on that basis; retracted.
-# GLOBCTL bit 1's function is UNKNOWN -- this matches stock's boot state, which
-# is the argument for it, not a claim about what the bit does.
+# 0xfffc rmw (main) -- NOT a new write. Build 0x0010's boot-handoff snapshot
+# reads USBCTL into telemetry block 8 immediately before main()'s existing
+# `USBCTL = 0`, and SDCC keeps DPTR loaded across both, so the scanner sees
+# read-then-store on one DPTR and classifies it rmw. Verified in main.rst: the
+# store is `clr a / movx @dptr,a`, i.e. still exactly = 0, POLICY §2 carve-out A
+# as before. The read has to be there and has to be first -- it is the only way
+# to recover USBCTL's handoff value, which the very next line destroys.

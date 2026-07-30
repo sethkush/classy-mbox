@@ -151,7 +151,8 @@ this there was no way to look at them at all.
 | 7 | **live** `PCON` — bit 0 is IDL, and reads 0 once awake |
 
 On bytes 0-1: `usb_ep0_setup()` now clears both, so this cannot recover the
-boot-ROM handoff value. What it answers is whether the UBM writes anything
+boot-ROM handoff value -- **block 8 does that instead**, by sampling before any
+write. What it answers is whether the UBM writes anything
 *back* into the Y counts during a session — the version of the question that
 survives the fix. Non-zero confirms the EP0-loss mechanism; a persistent zero
 alongside continued loss rules it out. See
@@ -169,6 +170,37 @@ check at all, and mboxfw had Rev 20's behaviour until this was added. A count th
 climbs steadily under playback means something upstream keeps misaligning the
 stream, which is a different problem from the watchdog catching a one-off. See
 `streaming_sof()` in `mboxfw/src/streaming.c`.
+
+Block 8 — **boot-ROM handoff snapshot.** Sampled as the very first action in
+`main()`, before anything is written. Added 2026-07-29 to close
+`WHAT_REMAINS_UNKNOWN.md` §3a, which had become unanswerable by observation.
+
+| byte | field |
+|---|---|
+| 0 | `IEPDCNTY0` **at handoff** |
+| 1 | `OEPDCNTY0` **at handoff** |
+| 2 | `GLOBCTL` at handoff |
+| 3 | `USBCTL` at handoff |
+| 4-7 | zero (0x00, so all-0xFF stays a distinct "never sampled" sentinel) |
+
+Why this block exists rather than reusing block 7: `usb_ep0_setup()` clears both
+EP0 Y counts, so block 7's live read shows 0 whether or not the boot ROM left
+residue there. The §3a question is specifically what the ROM handed us, and the
+only way to see it is to read before writing. Byte 3 makes the point sharpest —
+`main()` zeroes `USBCTL` two lines after this sample, so nothing later can
+recover it.
+
+Byte 2 is not idle curiosity: `hw_init()` sets stock's GLOBCTL bit 1 with
+`|= 0x02` rather than stock's outright `= 0x06`, and that choice is only
+equivalent if the ROM really leaves `0x04`. That number comes from a comment in
+TI's `RomBoot.c`, not from this part. If byte 2 reads anything else, the RMW
+needs revisiting — `tools/mboxtlm.py` says so in the decode.
+
+All four bytes initialise to 0xFF, so a block-8 read of all-0xFF means `main()`
+never reached the sample (or the image predates the block), not "the ROM left
+0xFF everywhere". `tlm_reset_counters()` deliberately does NOT clear this block;
+zeroing a one-time boot observation on a counter reset would turn a real
+measurement into a plausible-looking zero.
 
 ## What this buys
 
@@ -189,12 +221,12 @@ no counter can wrap into a misleading value mid-experiment.
 
 ## Status
 
-Implemented — 8 blocks, `mboxfw/src/telemetry.c`, read with `tools/mboxtlm.py`.
+Implemented — 9 blocks, `mboxfw/src/telemetry.c`, read with `tools/mboxtlm.py`.
 The "design only, not implemented" note that stood here was stale: blocks 0-4
 shipped and have been read off hardware, blocks 5-6 were added for the isoc
 investigation, and block 7 came in with the 2026-07-29 EP0/suspend pass.
 
-`TLM_BUILD_ID` is at **0x000C**. Bump it in `include/telemetry.h` on every
+`TLM_BUILD_ID` is at **0x0010**. Bump it in `include/telemetry.h` on every
 flash — block 0 byte 0-1 is the only thing that proves which image is running
 rather than assuming, and it has already caught one stale-build mismatch (the
 0x0002-vs-0x0003 case that led to the wildcard header dependency in the

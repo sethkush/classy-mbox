@@ -200,6 +200,37 @@ static void canary_blink_forever(void)
 
 void main(void)
 {
+    /* BOOT-ROM HANDOFF SNAPSHOT — must be the very first thing main() does.
+     *
+     * This closes WHAT_REMAINS_UNKNOWN.md §3a, which had become unanswerable by
+     * observation: the question is whether the boot ROM leaves the EP0 Y buffer
+     * counts non-zero when it hands over (a candidate for the measured ~12%
+     * geometric loss of EP0 IN packets past the second), and usb_ep0_setup()
+     * now clears both before any host can ask. The only way to recover the
+     * handoff value is to sample it before we touch anything — so this sits
+     * above the USBCTL = 0 below, which would otherwise destroy byte 4.
+     *
+     * Reads only; nothing is driven. Same pattern as tlm_p1_boot/tlm_p3_boot
+     * further down, which sample the ports before hw_init() drives them.
+     *
+     * Byte 2 also verifies the assumption behind hw_init()'s GLOBCTL |= 0x02:
+     * that the boot ROM leaves GLOBCTL = 0x04. That value comes from TI
+     * RomBoot.c:33's comment, not from this part, and the whole argument for
+     * setting bit 1 by RMW rather than stock's outright 0x06 rests on it.
+     *
+     * Four bytes, not the whole handoff register file: each XDATA read costs
+     * code and the budget has ~170 bytes left. The X counts are omitted because
+     * block 7 reads them live and they are not the §3a question; USBIMSK is
+     * omitted because datasheet §2.1.9 settles what happens to it (#152);
+     * MEMCFG is omitted because hw_init only ORs SDW idempotently.
+     *
+     * NOVEL — reason: no reference firmware records its own handoff state;
+     * stock has no equivalent because it never needed to ask. */
+    tlm_boot_handoff[0] = IEPDCNTY0;
+    tlm_boot_handoff[1] = OEPDCNTY0;
+    tlm_boot_handoff[2] = GLOBCTL;
+    tlm_boot_handoff[3] = USBCTL;
+
     /* DISCONNECT FIRST — defensive against boot-ROM-leftover USBCTL state.
      * Boot ROM's UsbDfu.c:699 zeroes USBCTL after DFU manifest, and cold
      * boot leaves USBCTL at hardware reset (0) — so on the expected paths
