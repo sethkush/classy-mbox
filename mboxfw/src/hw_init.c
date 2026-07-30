@@ -87,11 +87,33 @@ void hw_init(void)
      *
      * GLOBCTL bit 1's FUNCTION IS UNKNOWN -- TI's ROM documents only bit 2
      * (LPWR) and bit 7 (CPU speed), and rev20_STARTUP_TRACE.md's open-items
-     * list has carried "GLOBCTL bit 1 -- UNKNOWN" since it was written. The
-     * argument for setting it is not that we know what it does; it is that
-     * both stock images set it at boot and mboxfw is meant to mirror stock's
-     * boot state. */
-    GLOBCTL |= 0x02;    /* Rev 20 fcn.0x08CB @ 0x08FE */
+     * list has carried "GLOBCTL bit 1 -- UNKNOWN" since it was written.
+     *
+     * ============================================================
+     * DO NOT SET IT. MEASURED ON HARDWARE 2026-07-29: it makes the device
+     * SILENT ON USB. The app never attaches, no VID/PID appears at all.
+     *
+     * Isolated by bisect between two images differing ONLY in this line, same
+     * flasher, same procedure, same host, back to back:
+     *
+     *     build 0x0010  (GLOBCTL |= 0x02 present)  -> silent, never attaches
+     *     build 0x0011  (this line removed)        -> attaches in 7 s
+     *
+     * Why stock can do it and mboxfw cannot: stock runs its hardware init
+     * BEFORE bringing USB up, whereas mboxfw deliberately calls usb_init()
+     * first (task #47), so this write lands AFTER the USB engine is configured
+     * instead of before it. Whatever bit 1 does, doing it to a live USB engine
+     * stops enumeration.
+     *
+     * The arithmetic was never the problem: telemetry block 8 byte 2 reads
+     * GLOBCTL = 0x04 at boot-ROM handoff on this actual part, so |= 0x02 did
+     * reach stock's 0x06 exactly as intended. The value was right; the timing
+     * was fatal. This is why "both stock images do it" is a reason to
+     * investigate and never on its own a reason to ship.
+     *
+     * Reinstating it requires moving the write before usb_init() AND a hardware
+     * test -- not another re-read of the stock listings.
+     * ============================================================ */
 
     /* Codec-port config. Addresses and values verified byte-for-byte
      * against both stock images by static scan (see the SFR tables in

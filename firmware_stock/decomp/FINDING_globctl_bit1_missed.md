@@ -112,6 +112,44 @@ Two mistakes made building it, both worth keeping:
     block passed. Now asserted explicitly in `check_cpten_last()`, which
     mutation-testing confirms names the real violation.
 
+## HARDWARE RESULT 2026-07-29: implementing it makes the device SILENT ON USB
+
+Everything above is correct about the stock images and about the scanners. It was
+wrong about what to do next. The write was implemented as `GLOBCTL |= 0x02` in
+build 0x000F, and on hardware the device **never enumerates** -- no VID/PID
+appears at all, the app never attaches.
+
+Bisected between two images differing in ONLY this line, same flasher, same
+procedure, same host, back to back:
+
+    build 0x0010  (GLOBCTL |= 0x02 present)  ->  silent, never attaches
+    build 0x0011  (line removed)             ->  attaches in 7 s
+
+**Why stock can and mboxfw cannot.** Stock runs its hardware init BEFORE bringing
+USB up. mboxfw deliberately calls `usb_init()` first (task #47), so the write
+lands AFTER the USB engine is configured rather than before it. Whatever bit 1
+does, doing it to a live USB engine stops enumeration.
+
+**The arithmetic was never the problem.** Telemetry block 8 byte 2 -- added in the
+same session for a different purpose -- reads `GLOBCTL = 0x04` at boot-ROM
+handoff on this actual part, confirming TI RomBoot.c's documented value. So
+`|= 0x02` did reach stock's 0x06 exactly as intended. The value was right and the
+timing was fatal.
+
+**The lesson worth keeping.** The argument for shipping this was explicitly "we
+do not know what bit 1 does, but both stock images set it at boot and mboxfw
+mirrors stock's boot state." That argument is a reason to investigate and is
+never on its own a reason to ship. Mirroring a write without mirroring its
+ORDERING mirrors nothing. The new ordering gate compared first-touch positions
+and passed this build, because both sides wrote GLOBCTL before the codec block --
+the gate cannot see that mboxfw's "before the codec block" is also "after
+usb_init", which stock's is not.
+
+Reinstating it requires moving the write before `usb_init()` AND a hardware test.
+The removal is recorded in `hw_init.c`, `tools/sfr_writes.allowed`,
+`tools/rev20_diff_justifications.md`, and as eight ORDER_EXEMPT entries in
+`verify_init_order.py`.
+
 ## The USBIMSK question it raised — RESOLVED from the datasheet, no change needed
 
 Both stock images write `USBIMSK = 0x9F` in their **bus-reset** handler

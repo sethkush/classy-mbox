@@ -68,6 +68,28 @@ STOCK_INIT = {"rev20": 0x08CB, "rev22": 0x07EC}
 # Stock runs:            MEMCFG -> ports -> timers -> IE/IP -> codec -> GLOBCTL.
 # The codec block and GLOBCTL agree, which is the part that matters.
 ORDER_EXEMPT = {
+    # GLOBCTL's first touch differs DELIBERATELY and the reason is a hardware
+    # measurement, not an omission: stock writes GLOBCTL = 0x06 before the codec
+    # block, mboxfw must NOT, because setting bit 1 after usb_init() makes the
+    # device silent on USB (build 0x0010 silent vs 0x0011 attaching, bisected
+    # 2026-07-29). So mboxfw's first GLOBCTL touch is CPTEN, after the block.
+    # See the block comment in hw_init.c and FINDING_globctl_bit1_missed.md.
+    frozenset(("GLOBCTL", "CPTCNF1")):
+        "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
+    frozenset(("GLOBCTL", "CPTCNF2")):
+        "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
+    frozenset(("GLOBCTL", "CPTCNF3")):
+        "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
+    frozenset(("GLOBCTL", "CPTCNF4")):
+        "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
+    frozenset(("GLOBCTL", "CPTSTA")):
+        "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
+    frozenset(("GLOBCTL", "CPTRXCNF2")):
+        "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
+    frozenset(("GLOBCTL", "CPTRXCNF3")):
+        "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
+    frozenset(("GLOBCTL", "CPTRXCNF4")):
+        "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
     frozenset(("MEMCFG", "IE")):
         "MEMCFG |= 0x01 sets SDW, which the boot ROM's UtilResetCPU already "
         "set; the write is idempotent, so its position carries no state",

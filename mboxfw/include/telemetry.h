@@ -35,7 +35,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0010   /* 0010: boot-ROM handoff snapshot */
+#define TLM_BUILD_ID     0x0012   /* 0012: 0011 + PID 0x2000 for kernel binding */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01

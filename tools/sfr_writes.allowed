@@ -47,7 +47,6 @@
 0xffaf  runtime   -       # usb
 0xffb0  or        0x01    # hw_init
 0xffb1  or        0x01    # hw_init
-0xffb1  runtime   -       # hw_init
 0xffb2  assign    0x00    # usb
 0xffb2  runtime   -       # usb
 0xffc0  and_not   0x54    # eeprom
@@ -102,11 +101,3 @@
 0xfffd  runtime   -       # power
 0xffff  assign    0x00    # usb
 0xffff  runtime   -       # usb
-
-# 0xfffc rmw (main) -- NOT a new write. Build 0x0010's boot-handoff snapshot
-# reads USBCTL into telemetry block 8 immediately before main()'s existing
-# `USBCTL = 0`, and SDCC keeps DPTR loaded across both, so the scanner sees
-# read-then-store on one DPTR and classifies it rmw. Verified in main.rst: the
-# store is `clr a / movx @dptr,a`, i.e. still exactly = 0, POLICY §2 carve-out A
-# as before. The read has to be there and has to be first -- it is the only way
-# to recover USBCTL's handoff value, which the very next line destroys.

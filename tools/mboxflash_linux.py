@@ -19,6 +19,8 @@ Device modes:
 
 import argparse
 import struct
+import shutil
+import subprocess
 import sys
 import time
 
@@ -400,6 +402,31 @@ def cmd_info(args):
     return 0
 
 
+
+def _hub_port_for(dev):
+    """
+    Map a pyusb device to its (hub-location, port) for uhubctl, via sysfs.
+    Returns (None, None) if it cannot be determined.
+    """
+    try:
+        import glob, os
+        for p in glob.glob("/sys/bus/usb/devices/*"):
+            try:
+                v = open(os.path.join(p, "idVendor")).read().strip()
+                d = open(os.path.join(p, "idProduct")).read().strip()
+            except OSError:
+                continue
+            if int(v, 16) != dev.idVendor or int(d, 16) != dev.idProduct:
+                continue
+            name = os.path.basename(p)          # e.g. "2-1.2"
+            if "-" not in name or "." not in name:
+                continue
+            hub, port = name.rsplit(".", 1)     # ("2-1", "2")
+            return hub, int(port)
+    except Exception:
+        pass
+    return None, None
+
 def cmd_flash(args):
     recs = validate(args.image, quiet=True)
     if recs is None:
@@ -548,17 +575,50 @@ def cmd_flash(args):
     # The boot ROM's dfuSetup loop only exits when RSTR_INT fires
     # (UsbDfu.c:697-704), so without a bus reset it sits in DFU forever and
     # the freshly-flashed app never runs. Force the reset.
-    print("issuing USB bus reset to trigger app switch...")
+    # MEASURED 2026-07-29, and the old advice here was actively wrong.
+    #
+    # dev.reset() fails with [Errno 2] Entity not found on the void box, and
+    # worse, it knocks the device OFF THE BUS -- after which no bus reset can be
+    # delivered at all and the download is stranded. This used to be reported as
+    # "non-fatal; a physical replug works too". A physical replug is a POWER
+    # CYCLE, which restarts the boot ROM and DISCARDS the RAM image, so the
+    # device comes back in bulletproof-DFU and the flash appears to have failed.
+    # That advice cost three replug cycles and produced the false conclusion
+    # that a clean 186/186 + dfuMANIFEST flash "did not take".
+    #
+    # What actually works: leave the device attached and deliver a BUS RESET
+    # (RSTR_INT), which is what the boot ROM's dfuSetup loop waits for
+    # (UsbDfu.c:697-704). `uhubctl -a cycle` does exactly that on this hardware
+    # -- it does NOT switch VBUS (see the void-box notes), so the 8051 keeps
+    # running and only the bus is reset. Verified: known-good image, app running
+    # 3 s later.
+    print("triggering app switch with a BUS RESET (not a power cycle)...")
+    switched = False
     try:
         dev.reset()
+        switched = True
+        print("  dev.reset() OK")
     except usb.core.USBError as e:
-        print("  (reset returned %s — non-fatal; a physical replug works too)" % e)
+        print("  dev.reset() failed: %s" % e)
+        hub, port = _hub_port_for(dev)
+        if hub and shutil.which("uhubctl"):
+            cmd = ["uhubctl", "-l", hub, "-p", str(port), "-a", "cycle", "-d", "2"]
+            print("  delivering RSTR_INT via: %s" % " ".join(cmd))
+            try:
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
+                switched = True
+            except Exception as e2:
+                print("  uhubctl failed: %s" % e2)
+        if not switched:
+            print("\n  DO NOT POWER-CYCLE / REPLUG: that discards the RAM image.")
+            print("  Deliver a bus reset instead, e.g.:")
+            print("      sudo uhubctl -l <hub> -p <port> -a cycle")
 
     print("\n=== FLASH COMPLETE ===")
     print("Wait ~2 s, then run `probe` to see the current VID/PID.")
-    print("Flashing this device often takes two attempts: a run that reports every")
-    print("block OK and reaches dfuMANIFEST can still leave the old mode after the")
-    print("replug. Retry the flash before theorising about a new failure.")
+    if not switched:
+        print("The app switch was NOT triggered — the image is downloaded but the")
+        print("boot ROM is still in dfuSetup waiting for a bus reset.")
     return 0
 
 
