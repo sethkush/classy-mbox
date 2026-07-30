@@ -457,3 +457,95 @@ Listed earlier as an open question. Stock gates it:
 The republish happens only when the handler reports it acted, via the 0x06
 accumulator returned in R7. mboxfw's `codec_commit()`-on-change does the same
 thing. **Not a divergence.**
+
+---
+
+# What the three remaining bits DO, from usage
+
+An earlier version of this document said these "cannot be determined from the
+material we have". That conflated two different questions and I should not have
+merged them:
+
+  * *Which physical pin of which part* a bit drives — needs the schematic.
+  * *What function the bit performs* — determinable from how the firmware uses
+    it, which is exactly how 0x23.2/0x23.3 were pinned as the mute pair.
+
+The second is answerable here. What follows is the second, not the first.
+
+## The polarity of the whole word is fixed
+
+The suspend handler publishes **0x0000** and simultaneously disables the master
+clock outputs (`ACGCTL &= 0x3F` at Rev 20 0x052C). An all-zero word is therefore
+the all-off state, which makes **every bit in this word active-high**. That
+settles polarity for all three unknowns without knowing what they drive.
+
+## The power-up sequence, identical in both images
+
+Rev 20 0x080B–0x0852; Rev 22 0x09B6–0x09F5, which differs only in using R7 for
+the delay counters instead of the IRAM 0x2E overlay slot. Bit order is
+byte-identical:
+
+    word = 0x0000                    everything off
+    SETB 0x25.6 ; delay ; publish    <-- asserted FIRST, then a settling delay
+    load ACG1/ACG2 frequency words, ACGDCTL
+    mode = 3
+    ACGCTL |= 0xC0                   master clock outputs ON
+    delay
+    SETB 0x23.2 ; SETB 0x23.3 ; publish     unmute
+    delay
+    SETB 0x25.7 ; SETB 0x23.4 ; publish     <-- asserted LAST
+    delay
+    CLR  0x25.7 ; publish            <-- single LOW pulse
+    SETB 0x25.7 ; publish            <-- restored high
+
+## 0x25.6 — master enable / powered-up
+
+Asserted **first**, out of the all-off word, before any clock is loaded, and
+followed by its own settling delay before anything else is published. Held
+thereafter; cleared only at Rev 20 0x037B and at suspend. It is additionally
+*tested* internally at 0x038F to gate the boot-initialisation run, and at
+0x035D, 0x0416 and 0x04C4.
+
+A bit you raise before the clocks, wait on, hold for the whole session, and also
+keep as your "already initialised" flag is a **master enable / power-up** line.
+
+## 0x23.4 — final-stage enable, latching
+
+Asserted **last**, after the master clocks are running *and* after the mute has
+been released, and **never cleared anywhere in either image** except by the
+wholesale zeroing of the word. Whatever it switches on is the last thing in the
+chain to come up and is never switched off again while the device is awake.
+
+## 0x25.7 — a one-shot strobe
+
+Held high, pulsed **low once**, then restored — three publishes with a delay
+before the pulse. Issued at the very end, after clocks, unmute and 0x23.4.
+
+The ordering rules out a reset: a reset is asserted *before* configuration, not
+after it. A trigger issued once, after the clocks are stable and audio is
+already unmuted, is a **one-shot strobe** — the firmware asking the hardware to
+do something now, rather than setting a state.
+
+(Rev 20 0x084B, the `CLR 0x25.7` in this pulse, is the instruction logged in
+`FINDING_open_questions.md` as "the bare chip-select pulse". It is a pulse, but
+of a control-word bit, not a chip select.)
+
+## 0x23.0 / 0x23.1 — the independent-rate input path
+
+Set together, and **only** in the mode-5 branch (Rev 20 0x07B8/0x07BA),
+immediately after that branch switches the receive path to its own divided clock
+(`CPTRXCNF4 = 0x01`, with MEMCFG toggled either side). Never set in modes 1, 2
+or 3, and never cleared individually — they are simply re-asserted whenever mode
+5 is re-entered after a word zeroing.
+
+Mode 5 is the TAS1020B's "1 OUT and 1 IN at different frequencies" I2S mode, so
+these two bits configure whatever the second, independent-rate **input** path
+needs. Two bits, always together, for one path.
+
+## The boundary
+
+Functions above are determined from usage. The vendor's *name* for each line,
+and which package pin it lands on, are not in either image, are not in the TI
+reference (whose application has no such shift register — it uses P1.0/P1.1 as
+AC'97 mode pins and P1.6 to mute an amp), and cannot come from a codec register
+map because the word is flat. That last step needs the board.
