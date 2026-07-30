@@ -171,7 +171,8 @@ def block2(b):
 def block3(b):
     out = ["VECINT histogram (saturating at 255):",
            "  setup=%d iep0=%d oep0=%d rstr=%d none=%d other=%d"
-           % (b[0], b[1], b[2], b[3], b[4], b[5])]
+           % (b[0], b[1], b[2], b[3], b[4], b[5]),
+           "  susr=%d resr=%d   (bus suspend / resume)" % (b[6], b[7])]
     if b[4]:
         out.append("  NOTE: nonzero 'none' -- ISR firing with no vector set")
     if b[5]:
@@ -245,17 +246,18 @@ def block7(b):
         "IEPDCNTX0=0x%02X (EP0 IN  X count; bit 7 = NAK)" % b[2],
         "OEPDCNTX0=0x%02X (EP0 OUT X count)" % b[3],
         "suspends:  %3d   (completed suspend+resume cycles)" % b[4],
-        "vec_susr:  %3d   (SUSR vectors seen)" % b[5],
-        "vec_resr:  %3d   (RESR vectors seen)" % b[6],
+        "pb_resyncs:%3d   (playback frame-alignment resyncs -- Rev 22's SOF"
+        " watchdog)" % b[5],
         "PCON=0x%02X     (bit 0 = IDL; reads 0 once awake)" % b[7],
     ]
     if b[0] or b[1]:
         out.append("  NOTE: a Y count is NON-ZERO -- the UBM is using a buffer"
                    " the firmware does not manage. This is the EP0-loss"
                    " mechanism, confirmed.")
-    if b[5] and not b[4]:
-        out.append("  NOTE: SUSR seen but no completed suspend -- the guard"
-                   " rejected it, i.e. the device was not configured.")
+    if b[5]:
+        out.append("  NOTE: the playback watchdog HAS fired -- the DMA buffer"
+                   " held a partial sample frame and the path was restarted."
+                   " Rev 20 has no such check; this is the Rev 22 behaviour.")
     return out
 
 

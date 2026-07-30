@@ -31,6 +31,7 @@ volatile __data unsigned char tlm_vec_other = 0;
 volatile __data unsigned char tlm_vec_susr  = 0;
 volatile __data unsigned char tlm_vec_resr  = 0;
 volatile __data unsigned char tlm_suspends  = 0;
+volatile __data unsigned char tlm_playback_resyncs = 0;
 
 volatile __data unsigned char tlm_eeprom_ok     = 0xFF;  /* 0xFF = not run */
 volatile __data unsigned char tlm_cs8427_status = 0xFF;
@@ -101,8 +102,11 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[3] = tlm_vec_rstr;
         out[4] = tlm_vec_none;
         out[5] = tlm_vec_other;
-        out[6] = 0;
-        out[7] = 0;
+        /* SUSR/RESR belong in the VECINT histogram -- this is what a "VECINT
+         * histogram" means -- and these two bytes were spare. Block 7 reported
+         * them first only because it was the block being added at the time. */
+        out[6] = tlm_vec_susr;
+        out[7] = tlm_vec_resr;
         return 1;
 
     case 4:
@@ -191,8 +195,11 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[2] = IEPDCNTX0;
         out[3] = OEPDCNTX0;
         out[4] = tlm_suspends;
-        out[5] = tlm_vec_susr;
-        out[6] = tlm_vec_resr;
+        /* Playback frame-alignment resyncs -- Rev 22's SOF watchdog firing.
+         * See streaming_sof(). Non-zero is the watchdog doing its job; a count
+         * that climbs steadily means something keeps misaligning the stream. */
+        out[5] = tlm_playback_resyncs;
+        out[6] = 0;                 /* spare */
         out[7] = PCON;
         return 1;
 
@@ -218,6 +225,10 @@ void tlm_reset_counters(void)
     tlm_vec_rstr  = 0;
     tlm_vec_none  = 0;
     tlm_vec_other = 0;
+    tlm_vec_susr  = 0;
+    tlm_vec_resr  = 0;
+    tlm_suspends  = 0;
+    tlm_playback_resyncs = 0;
     tlm_sof_count = 0;
     tlm_vec_iep1  = 0;
     tlm_vec_oep2  = 0;

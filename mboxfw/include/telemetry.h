@@ -35,7 +35,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x000C   /* 000C: panel/button + EP0 Y + suspend fixes */
+#define TLM_BUILD_ID     0x000D   /* 000D: Rev 22 playback SOF watchdog */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01
@@ -74,6 +74,12 @@ extern volatile __data unsigned char tlm_vec_none;
 extern volatile __data unsigned char tlm_vec_other;
 extern volatile __data unsigned char tlm_vec_susr;
 extern volatile __data unsigned char tlm_vec_resr;
+
+/* Playback frame-alignment resyncs performed by streaming_sof(). Non-zero
+ * means the playback DMA buffer was found holding a partial sample frame and
+ * the path was torn down and restarted -- Rev 22's watchdog firing. A steadily
+ * climbing count means something upstream keeps misaligning the stream. */
+extern volatile __data unsigned char tlm_playback_resyncs;
 
 /* Completed suspend cycles — incremented in do_suspend() just before PCON
  * idle, so reading a non-zero value proves the device both entered and left

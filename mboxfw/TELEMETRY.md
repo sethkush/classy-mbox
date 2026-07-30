@@ -74,10 +74,24 @@ Block 2 — last SETUP seen. Answers "which request is failing?"
 | 4-5 | wIndex |
 | 6-7 | wLength |
 
-Block 3 — VECINT histogram. Counts per vector code (SETUP, IEP0, OEP0, RSTR,
-NONE, other), one byte each, saturating at 255. A large `NONE` count means the
-ISR is firing spuriously; `other` being nonzero means a vector we do not handle
-is arriving.
+Block 3 — VECINT histogram, one byte per vector code, saturating at 255. A large
+`none` count means the ISR is firing spuriously; `other` being nonzero means a
+vector we do not handle is arriving.
+
+| byte | field |
+|---|---|
+| 0 | SETUP |
+| 1 | IEP0 |
+| 2 | OEP0 |
+| 3 | RSTR (bus reset) |
+| 4 | `none` — ISR fired with no vector set |
+| 5 | `other` — a vector we do not handle arrived |
+| 6 | SUSR (bus suspend) |
+| 7 | RESR (bus resume) |
+
+Bytes 6-7 were spare until 2026-07-29. SUSR/RESR were briefly reported in block
+7 instead, which was simply where the work happened to be; a VECINT histogram is
+their right home.
 
 Block 4 — peripheral results, so a hardware fault is distinguishable from a
 firmware fault without a scope.
@@ -132,8 +146,8 @@ this there was no way to look at them at all.
 | 2 | **live** `IEPDCNTX0` (0xFF6B) — bit 7 is the NAK flag |
 | 3 | **live** `OEPDCNTX0` (0xFFAB) |
 | 4 | completed suspend+resume cycles |
-| 5 | SUSR vectors seen |
-| 6 | RESR vectors seen |
+| 5 | playback frame-alignment resyncs — Rev 22's SOF watchdog firing |
+| 6 | spare |
 | 7 | **live** `PCON` — bit 0 is IDL, and reads 0 once awake |
 
 On bytes 0-1: `usb_ep0_setup()` now clears both, so this cannot recover the
@@ -143,10 +157,18 @@ survives the fix. Non-zero confirms the EP0-loss mechanism; a persistent zero
 alongside continued loss rules it out. See
 `firmware_stock/decomp/FINDING_ep0_y_buffer_residue.md`.
 
-On bytes 4-5: `tlm_suspends` is incremented immediately before `PCON |= 0x01`,
-so the read itself proves the device came back out of idle — any non-zero value
-is a completed round trip. SUSR climbing while suspends stays 0 means the
-configured-only guard is rejecting them.
+On byte 4: `tlm_suspends` is incremented immediately before `PCON |= 0x01`, so
+the read itself proves the device came back out of idle — any non-zero value is a
+completed round trip. Read it against block 3 bytes 6-7: SUSR climbing while
+suspends stays 0 means the configured-only guard is rejecting them.
+
+On byte 5: the playback frame-alignment watchdog ported from Rev 22's SOF handler
+(`fcn.0x0D58`). Non-zero means the playback DMA buffer was found holding a
+partial sample frame and the path was torn down and restarted. Rev 20 has no such
+check at all, and mboxfw had Rev 20's behaviour until this was added. A count that
+climbs steadily under playback means something upstream keeps misaligning the
+stream, which is a different problem from the watchdog catching a one-off. See
+`streaming_sof()` in `mboxfw/src/streaming.c`.
 
 ## What this buys
 

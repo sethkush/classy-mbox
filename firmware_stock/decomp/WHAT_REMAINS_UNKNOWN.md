@@ -96,11 +96,27 @@ clears them before any host can ask. Block 7 answers the surviving question
 (does the UBM write back into Y during a session?). See
 `FINDING_ep0_y_buffer_residue.md`.
 
-**b. What `DMABCNT0L/H` (0xFFEB/0xFFEC) are for.** Read-only playback DMA byte
-counters, updated every SOF. Stock reads them; mboxfw never does. Still
-untraced: *what stock does with the value*. A per-frame byte count is what an
-adaptive-rate scheme needs, and mboxfw declares adaptive endpoints, so this is
-the most likely remaining functional gap in the audio path.
+**b. ~~What `DMABCNT0L/H` (0xFFEB/0xFFEC) are for.~~ RESOLVED 2026-07-29** --
+and it was the right thing to rank first. See
+`FINDING_rev22_playback_sof_watchdog.md`. Summary:
+
+  * The premise here was wrong: "stock reads them" implied both images. **Only
+    Rev 22 reads them** (0x0D58/0x0D5D); Rev 20 reads neither.
+  * They are the playback circular buffer's FILL LEVEL, and the datasheet names
+    USB audio synchronisation as their purpose.
+  * Rev 22 uses them in a real SOF handler that Rev 20 lacks entirely (Rev 20's
+    VECINT SOF entry is a bare RET): once per frame it checks whether the buffer
+    holds a whole number of 6-byte sample frames, and if not, restarts the
+    playback DMA and endpoint.
+  * Corroborated structurally: Rev 22's EP0 pointer moved from 0x1B:0x1C to
+    0x1D:0x1E precisely because the watchdog needed those two bytes for its
+    saved count -- the one low-IRAM difference between the images that had no
+    recorded reason.
+  * This is a playback-only fix present in Rev 22 and absent from Rev 20, and
+    Rev 20 is the firmware documented as needing a v22 flash before playback
+    works. Strongest candidate yet for what that bug is.
+  * Ported to `streaming_sof()`, which was an empty function whose comment
+    reasoned from Rev 20's *Timer 0* stub -- a different interrupt entirely.
 
 **c. Bit 7 of the panel word (`RAM[0x22].7`).** Rests set, cleared at Rev 20
 0x03A0 / Rev 22 0x03A4 in the SET_INTERFACE handler, set again at 0x03E6 /

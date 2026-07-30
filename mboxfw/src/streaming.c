@@ -19,6 +19,14 @@
 #include "usb.h"
 #include "streaming.h"
 #include "codec.h"
+#include "telemetry.h"
+
+/* SOF watchdog shadow of the playback DMA buffer content — Rev 22's
+ * RAM[0x1B]:RAM[0x1C]. 0xFF/0xFF is an impossible real count for a 512-byte
+ * buffer, so it doubles as "no reading yet" and forces the first frame of a
+ * stream to be evaluated. See streaming_sof(). */
+static __data unsigned char sof_bcnt_hi = 0xFF;
+static __data unsigned char sof_bcnt_lo = 0xFF;
 
 /* Currently-active sample rate — mirrors g_sample_rate in usb.c. */
 static __data unsigned long stream_rate = 48000UL;
@@ -211,9 +219,19 @@ void streaming_set_rate(unsigned long hz)
  * than arming both channels together, so a host streaming in one direction
  * only does not leave the other channel running.
  */
+/* Non-zero while the host has playback selected (SET_INTERFACE alt=1 on the
+ * playback interface). streaming_sof() gates on this -- see the note there. */
+static __data unsigned char playback_running = 0;
+
 void streaming_playback_enable(unsigned char on)
 {
+    playback_running = on ? 1 : 0;
     if (on) {
+        /* Reset the SOF watchdog's shadow so the first frame of a new stream
+         * is always evaluated rather than compared against a stale count from
+         * the previous stream. */
+        sof_bcnt_hi = 0xFF;
+        sof_bcnt_lo = 0xFF;
         OEPBBAX2 = EP_BBAX(EP2_OUT_BUF_ADDR);
         OEPBSIZ2 = EP_BSIZE(EP_AUDIO_BUF_SIZE);
         OEPDCNTX2 = 0;
@@ -247,20 +265,101 @@ void streaming_capture_enable(unsigned char on)
     }
 }
 
-/* SOF-tick service — called from usb_service() when VEC_SOF fires.
+/*
+ * SOF service — playback frame-alignment watchdog.
  *
- * Deliberately a no-op. Rev 20's Timer 0 ISR at 0x101E turned out to be
- * a 9-byte "just set a pending flag" stub (`clr EA; setb 0x24.0; reload
- * TH0; setb EA; reti`). The actual audio buffer shuttling is done in
- * hardware by the TAS1020A's DMA engine, which autoruns between the C-port
- * (I²S) and USB packet memory once endpoints are enabled. Our polling
- * usb_service() loop is the direct equivalent of Rev 20's "check pending
- * flag" idiom — no per-SOF work needed.
+ * This was a no-op, on the reasoning that "Rev 20's Timer 0 ISR at 0x101E is a
+ * 9-byte set-a-flag stub, the DMA engine autoruns, so no per-SOF work is
+ * needed". Two things wrong with that. Timer 0 is not SOF — SOF is VECINT
+ * source 0x14, a different interrupt entirely, so the timer stub said nothing
+ * about it. And while Rev 20 genuinely has no SOF handler (its VECINT table
+ * entry 20 at 0x0C93+40 points to 0x1034, a bare RET), **Rev 22 does**:
  *
- * If we later add async endpoint feedback or drift correction (both
- * useful upgrades over Digi's adaptive-sync design), that logic lands
- * here.
+ *   Rev 22 VECINT table 0x0C7D + 20*2 = 0x0CA5 -> 0x0D58
+ *
+ *   0d58  R6 = DMABCNT0H (0xFFEC)      ; playback buffer content, high byte
+ *   0d5d  A  = DMABCNT0L (0xFFEB)      ; ... low byte
+ *   0d61  R4 = 0 ; ADD A,#0 ; ADDC     ; widen to 24-bit R4:R6:R7
+ *   0d6a  XRL A,0x1C / XRL A,0x1B      ; compare against the saved count
+ *   0d71  JZ 0x0D9D                    ; unchanged -> nothing to do
+ *   0d73  0x1B = R6 ; 0x1C = R7        ; save the new count
+ *   0d77  R5 = 6 ; LCALL 0x0B7F        ; divide by 6, remainder in R5
+ *   0d7c  A = R5 ; ORL A,R4 ; JZ 0x0D9D  ; remainder 0 -> aligned, done
+ *   0d80  DMACTL0  &= 0x7F             ; ---- resync: stop playback DMA
+ *   0d87  OEPDCNTX2 = 0
+ *   0d8c  OEPDCNTY2 = 0
+ *   0d90  OEPCNF2   = 0xC5             ; re-enable the endpoint
+ *   0d96  DMACTL0  |= 0x80             ; restart the DMA
+ *
+ * `0x0B7F` is a divide-with-remainder helper (8-bit fast path when the
+ * dividend fits in R7, long division otherwise; either way R5 holds the
+ * remainder on return).
+ *
+ * What the register is, from the datasheet rather than inference —
+ * §6.5.2.4/§6.5.2.5, DMABCNT0L/H: "This register shows the buffer content
+ * (bytes) for an ISO OUT endpoint. This register is updated every SOF and is
+ * stable for the following USB frame, during which the MCU can read it **to
+ * implement USB audio synchronization**." And §2.2.7: "the count in the
+ * register represents the number of bytes being transferred from the OUT
+ * endpoint buffer to the C-port during the current USB frame... the value of
+ * the write pointer address setting minus the read pointer address setting at
+ * the time of the USB SOF event."
+ *
+ * So it is the playback circular buffer's FILL LEVEL, and 6 is one stereo
+ * 24-bit sample frame (2 ch x 3 B). Rev 22 is checking whether the buffer
+ * holds a whole number of sample frames, and if it does not — meaning the DMA
+ * would thereafter emit bytes offset within the frame, splitting samples and
+ * swapping channels — it tears the playback path down and restarts it.
+ *
+ * Why this matters beyond parity: Rev 20 is the firmware documented as needing
+ * a v22 flash before playback works, and this watchdog is a playback-only fix
+ * that Rev 22 added and Rev 20 lacks. Rev 22 also had to find two IRAM bytes
+ * for the saved count, which is why its EP0 pointer moved from 0x1B:0x1C to
+ * 0x1D:0x1E — the one otherwise-unexplained low-IRAM difference between the
+ * two images (see IRAM_OVERLAY_ANNOTATION.md). mboxfw had Rev 20's behaviour
+ * here, i.e. none.
+ *
+ * DELIBERATE DIVERGENCE: gated on playback_running. Rev 22 runs this on every
+ * SOF unconditionally, so a stale misaligned count while playback is stopped
+ * would make it write OEPCNF2 = 0xC5 and set DMAEN — enabling playback the
+ * host never asked for. Rev 22 gets away with it because the count goes to
+ * zero and stops changing, but "gets away with it" is not a reason to copy it.
  */
 void streaming_sof(void)
 {
+    unsigned char hi, lo;
+    unsigned int  content;
+
+    if (!playback_running) {
+        return;
+    }
+
+    /* Read high then low, matching Rev 22's order (0x0D58 then 0x0D5D). The
+     * datasheet guarantees the pair is stable for the whole frame after SOF,
+     * so there is no tearing window to worry about. */
+    hi = DMABCNT0H;
+    lo = DMABCNT0L;
+
+    if (hi == sof_bcnt_hi && lo == sof_bcnt_lo) {
+        return;                      /* Rev 22 @ 0x0D71 */
+    }
+    sof_bcnt_hi = hi;                /* Rev 22 @ 0x0D73 */
+    sof_bcnt_lo = lo;                /* Rev 22 @ 0x0D75 */
+
+    content = ((unsigned int)hi << 8) | lo;
+
+    /* Derived from the declared format rather than hardcoded, so a channel
+     * count or subframe change cannot silently leave the divisor wrong. Equals
+     * Rev 22's literal `MOV R5,#0x6` for the format we declare. */
+    if (content % (AUDIO_NUM_CHANNELS * AUDIO_SUBFRAME_BYTES) == 0) {
+        return;                      /* aligned — Rev 22 @ 0x0D7E */
+    }
+
+    tlm_playback_resyncs++;
+
+    DMACTL0 &= (unsigned char)~DMA_EN;  /* Rev 22 fcn.0x0D58 @ 0x0D80 */
+    OEPDCNTX2 = 0;                      /* Rev 22 fcn.0x0D58 @ 0x0D87 */
+    OEPDCNTY2 = 0;                      /* Rev 22 fcn.0x0D58 @ 0x0D8C */
+    OEPCNF2   = 0xC5;                   /* Rev 22 fcn.0x0D58 @ 0x0D90 */
+    DMACTL0 |= DMA_EN;                  /* Rev 22 fcn.0x0D58 @ 0x0D96 */
 }

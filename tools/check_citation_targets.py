@@ -35,11 +35,24 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FW = os.path.join(ROOT, "firmware_stock")
-IMG = os.path.join(FW, "rev20_firmware_code.bin")
 REGS_H = os.path.join(ROOT, "mboxfw", "include", "regs.h")
-GHIDRA = os.path.join(FW, "disasm", "rev20_ghidra.txt")
 
-CITE = re.compile(r"Rev\s*20\s+fcn\.0x([0-9A-Fa-f]{4})\s*@\s*0x([0-9A-Fa-f]{4})")
+# Both stock images. This gate checked ONLY Rev 20 until 2026-07-29, which was
+# fine while every ported routine came from Rev 20 -- and stopped being fine the
+# moment streaming.c gained five `Rev 22 fcn.0x0D58 @ ...` citations for the
+# playback SOF watchdog, a routine that exists only in Rev 22. Those citations
+# were unverified by any gate, which is exactly the condition this tool was
+# written to eliminate. Note the irony recorded in the docstring above: two of
+# the seven errors it first caught were Rev 22 addresses mislabelled as Rev 20,
+# so the tool already knew the two images were easy to confuse.
+IMAGES = {
+    "20": (os.path.join(FW, "rev20_firmware_code.bin"),
+           os.path.join(FW, "disasm", "rev20_ghidra.txt")),
+    "22": (os.path.join(FW, "rev22_firmware_code.bin"),
+           os.path.join(FW, "disasm", "rev22_ghidra.txt")),
+}
+
+CITE = re.compile(r"Rev\s*(20|22)\s+fcn\.0x([0-9A-Fa-f]{4})\s*@\s*0x([0-9A-Fa-f]{4})")
 ASSIGN = re.compile(r"\b([A-Z][A-Z0-9_]{2,})\s*(?:=|\|=|&=|\^=)")
 # How far from the cited address to look for the DPTR load that selects the
 # register. Keil emits `MOV DPTR,#reg` then the access within a few bytes, and
@@ -60,11 +73,11 @@ def load_regs():
     return out
 
 
-def code_extents():
+def code_extents(ghidra):
     """Address ranges the Ghidra listing decodes as instructions."""
     ok = set()
     insn = re.compile(r"^CODE:([0-9a-f]{4})\s+([0-9a-f]+)\s+[A-Z]")
-    for line in open(GHIDRA):
+    for line in open(ghidra):
         m = insn.match(line)
         if m:
             a, n = int(m.group(1), 16), len(m.group(2)) // 2
@@ -73,13 +86,15 @@ def code_extents():
 
 
 def main():
-    if not os.path.exists(IMG):
-        sys.exit(f"missing {IMG}")
-    d = open(IMG, "rb").read()
+    imgs = {}
+    for rev, (binp, ghp) in IMAGES.items():
+        if not os.path.exists(binp):
+            sys.exit(f"missing {binp}")
+        imgs[rev] = (open(binp, "rb").read(), code_extents(ghp))
     regs = load_regs()
-    code = code_extents()
 
     bad, checked = [], 0
+    per_rev = {r: 0 for r in IMAGES}
     for sub in ("mboxfw/src", "mboxfw/include", "safety_net/src"):
         base = os.path.join(ROOT, sub)
         if not os.path.isdir(base):
@@ -95,12 +110,16 @@ def main():
                 m = CITE.search(line)
                 if not m:
                     continue
-                at = int(m.group(2), 16)
+                rev = m.group(1)
+                at = int(m.group(3), 16)
+                d, code = imgs[rev]
                 checked += 1
+                per_rev[rev] += 1
 
                 if at >= len(d) or at not in code:
-                    bad.append((rel, n, f"0x{at:04X} is not instruction bytes "
-                                        f"(data table or erase fill)",
+                    bad.append((rel, n, f"Rev {rev} 0x{at:04X} is not "
+                                        f"instruction bytes (data table or "
+                                        f"erase fill)",
                                 line.strip()[:90]))
                     continue
 
@@ -123,7 +142,8 @@ def main():
                          if d[i:i + 3] == sel][:4]
                 bad.append((rel, n,
                             f"{name} (0x{want:04X}) is not accessed at "
-                            f"0x{at:04X}; it is accessed at "
+                            f"Rev {rev} 0x{at:04X}; in that image it is "
+                            f"accessed at "
                             + (", ".join(where) if where else "no site found"),
                             line.strip()[:90]))
 
@@ -134,7 +154,8 @@ def main():
         print("\nA citation that points at the wrong address reads as verified and")
         print("is worse than no citation. Fix the address, or drop the claim.")
         return 1
-    print(f"CITATION-TARGET PASS: {checked} Rev-20 citation(s) land on code "
+    print(f"CITATION-TARGET PASS: {checked} citation(s) "
+          f"(Rev 20: {per_rev['20']}, Rev 22: {per_rev['22']}) land on code "
           f"that touches the register they name")
     return 0
 

@@ -98,6 +98,15 @@ which together with Rev 22's extra use of 0x07 and the EP0 pointer move from
 0x1B:0x1C to 0x1D:0x1E accounts for every low-IRAM difference between the two
 images.
 
+**Why Rev 22 moved the EP0 pointer — resolved 2026-07-29.** This document listed
+the 0x1B:0x1C -> 0x1D:0x1E move as a difference without a reason. The reason is
+that Rev 22 needed those two bytes for something Rev 20 does not have: they are
+the saved copy of the playback DMA buffer fill level in Rev 22's SOF handler
+(`MOV 0x1B,R6` / `MOV 0x1C,R7` at 0x0D73/0x0D75, compared at 0x0D6A/0x0D6F).
+Rev 20 has no SOF handler at all, so it never needed the pair. See
+`decomp/FINDING_rev22_playback_sof_watchdog.md`; the IRAM move is independent
+structural corroboration of that reading.
+
 ## Coverage note
 
 Every address in 0x27–0x33 that either image touches is accounted for, with

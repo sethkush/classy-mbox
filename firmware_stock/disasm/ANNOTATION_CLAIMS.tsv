@@ -589,8 +589,8 @@ rev22	xdata	0xFFE7	ACG1FRQ0: 2 site(s), write	disasm/XDATA_ACCESS_MAP.md	explain
 rev22	xdata	0xFFE8	DMACTL0: 6 site(s), clr-bits/set-bits/write	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFE9	DMATSH0: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFEA	DMATSL0: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
-rev22	xdata	0xFFEB	DMABCNT0L: 1 site(s), read	disasm/XDATA_ACCESS_MAP.md	explained
-rev22	xdata	0xFFEC	DMABCNT0H: 1 site(s), read	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFEB	DMABCNT0L: playback DMA buffer fill level, read once per SOF at 0x0D5D by the frame-alignment watchdog	decomp/FINDING_rev22_playback_sof_watchdog.md	explained
+rev22	xdata	0xFFEC	DMABCNT0H: high byte of the same, read at 0x0D58; Rev 20 reads neither register	decomp/FINDING_rev22_playback_sof_watchdog.md	explained
 rev22	xdata	0xFFEE	DMACTL1: 4 site(s), clr-bits/set-bits/write	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFEF	DMATSH1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFF0	DMATSL1: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
