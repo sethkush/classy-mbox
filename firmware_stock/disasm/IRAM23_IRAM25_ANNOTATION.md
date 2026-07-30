@@ -13,14 +13,48 @@ correspondence between revisions.
 
 # IRAM 0x23 — the codec control shift word
 
-## Consumer
+## Consumer — a SIXTEEN-bit word: 0x23 then 0x25
 
-    Rev 20  0x0E62  MOV R6,#0x8      Rev 22  0x0E56
-            0x0E64  MOV R5,0x23              0x0E58  MOV R7,0x23
-            0x0E66  SETB 0x30
+    0e62  MOV R6,#0x8        ; 8 bits
+    0e64  MOV R5,0x23        ; FIRST byte = IRAM 0x23
+    0e66  SETB 0x26.0        ; "second byte still to come"
+    0e68  MOV A,R6 / JZ 0x0E8B
+    0e6b  MOV R0,#1 / MOV R7,0x05 / MOV A,R7 / INC R0
+    0e73  RL A               ; rotate left: ACC.0 becomes the old bit 7
+    0e76  MOV R5,A
+    0e77  JNB ACC.0,0x0E7F
+    0e7a    P1 |= 0x01       ;   SDIN = 1   (P1.0)
+    0e7f    P1 &= 0xFE       ;   SDIN = 0
+    0e82  P1 |= 0x04         ; SCLK high    (P1.2)
+    0e85  P1 &= 0xFB         ; SCLK low
+    0e88  DEC R6 / loop
+    0e8b  JNB 0x26.0,0x0E96  ; both bytes done -> latch
+    0e8e  CLR 0x26.0
+    0e90  MOV R5,0x25        ; SECOND byte = IRAM 0x25
+    0e92  MOV R6,#0x8
+    0e94  loop again
+    0e96  P1 |= 0x02         ; LATCH high   (P1.1)
+    0e99  P1 &= 0xFD         ; LATCH low
+    0e9c  RET
 
-Eight bits clocked out — a second shift chain, separate from the 0x22
-panel/mux chain at Rev 20 0x0F0C. Called from Rev 20 0x037D, 0x0818, 0x0835,
+`RL A` before testing ACC.0 means the **most significant bit is sent first**.
+The routine runs twice, so the codec receives a **16-bit word: 0x23 as the high
+byte, 0x25 as the low byte**, latched by one pulse on P1.1 at the end.
+
+**This corrects a claim made earlier in this document.** IRAM 0x25 was written
+up as "no shift-out call ... this byte is internal state, not a hardware word".
+That is wrong: 0x25 is the low half of the codec control word. It is *both*
+internal state and hardware payload, which is why bits of it are pulsed with an
+immediate publish either side (0x25.7 at 0x083E-0x0852) — behaviour that makes
+no sense for a purely internal variable and complete sense for a codec bit.
+
+A consequence worth stating: **0x25.0-0x25.3, the two per-channel source state
+machines, are clocked into the codec.** The "state machine" is not a private
+counter that later gets translated; those bits are themselves part of the codec
+payload, while 0x22 separately drives the panel LEDs and the analog mux.
+
+This is a second shift chain, separate from the 0x22 panel/mux chain at Rev 20
+0x0F0C, and it uses different pins (P1.0/1/2 versus P1.5/6/7). Called from Rev 20 0x037D, 0x0818, 0x0835,
 0x0842, 0x084D, 0x0852, 0x096C, 0x0AE9.
 
 Byte-level writes are all computed stores (`MOV 0x23,A`): Rev 20 0x0536,
@@ -131,9 +165,10 @@ Follow-on for mboxfw, not yet done:
 
 # IRAM 0x25 — panel/source state bits
 
-No shift-out call. Read into a register at Rev 20 0x0E90 / Rev 22 0x0E82;
-computed stores at Rev 20 0x0534, 0x080C, 0x0968 / Rev 22 0x0533, 0x0889,
-0x09B7. This byte is internal state, not a hardware word.
+**Shifted out as the low byte of the 16-bit codec word** — see the consumer
+section above; the load is `MOV R5,0x25` at Rev 20 0x0E90 / Rev 22 0x0E82.
+Computed stores at Rev 20 0x0534, 0x080C, 0x0968 / Rev 22 0x0533, 0x0889,
+0x09B7. So this byte is internal state AND hardware payload at once.
 
 ## Boot state — explicitly cleared
 
@@ -310,3 +345,47 @@ Candidate 2 is testable with a diagnostic image that drives the panel and
 reports P3. Note also that P3 bits 0, 1, 6 and 7 are untouched by stock's
 handler -- the TRS jack presence switches, if the firmware sees them at all,
 would be there.
+
+---
+
+# The codec control word is FLAT, not register-addressed
+
+`disasm/NOTES.md` records that the two-byte word "matches the Cirrus CS4272 (or
+similar) audio codec control register format". The routine above argues against
+that, and the point matters because it changes how the remaining bits can be
+identified.
+
+CS4272 is controlled over I2C or SPI with **addressed registers**: a write
+carries a register number and then a data byte. A 16-bit word whose bits are
+individually meaningful — 0x23.6 mono, 0x23.2/0x23.3 a stereo mute pair,
+0x23.4 a one-shot power-up bit, 0x25.0-0x25.3 per-channel source state — is not
+an (address, data) pair. It is a **flat control word**: every bit is a function,
+latched in parallel by the P1.1 pulse.
+
+Three further observations against an addressed protocol:
+
+  * There is no register-address field. If bits 12-8 were an address, the mute
+    pair and the mono bit could not sit in the high byte together and still be
+    published by a single write.
+  * Every publish sends the *whole* word. An addressed protocol writes one
+    register at a time; this routine always shifts both bytes and latches once.
+  * The bits are set and cleared independently in IRAM and only then published,
+    which is shadow-register behaviour for a flat word, not a register write.
+
+**Consequence for the remaining unknowns.** Bits 0x23.0, 0x23.1 and 0x23.4
+cannot be named by looking up a CS4272 register map, because there is no
+register map in play. They have to be identified the same way the mute pair was
+— from what the firmware does around each write — or from the board itself.
+That is a narrower and more honest statement than "it is a datasheet lookup",
+which is what this document previously said.
+
+What each is already pinned to, by context:
+
+    0x23.0 / 0x23.1   set together, ONLY in the mode-5 branch, immediately
+                      after the receive path is switched to its own /2 clock.
+                      The independent-input configuration pair.
+    0x23.4            set once in the timed power-up run, after the mute
+                      release, bracketed by delays, never cleared.
+    0x23.5 / 0x23.7   never bit-addressed in either image. They can still be
+                      set by the computed stores to 0x23, so "unused" is not
+                      established -- only "never individually addressed".
