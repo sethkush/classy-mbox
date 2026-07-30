@@ -88,6 +88,11 @@ else
     check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
     check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py
     check "Rev-20 SFR diff justified"           python3 tools/diff_vs_rev20.py
+    # Core-SFR diff. The two gates above are MOVX-only, so the 8051 direct SFR
+    # space (TCON/TMOD/IE/IP/PCON/P1/P3) and every bit-addressable SFR bit were
+    # never compared against stock. That is how TR0 stayed unset for weeks with
+    # every gate green -- Timer 0 never ran. Mutation-verified.
+    check "Core-SFR + bit diff vs stock"        python3 tools/sfr_direct_diff.py
     check "DFU response timing"                 bash    tools/dfu_timing_profile.sh
     check "mboxflash --validate on target"      ./mboxflash/mboxflash --validate "$IMG"
 fi
