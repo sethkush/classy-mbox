@@ -26,8 +26,13 @@ static void bit_delay(void)
 static void inter_reg_delay(void)
 {
     /* Rev 20 djnz 0x2E from 0xFF gives ~256 machine cycles.
-     * Count down to avoid the compare-at-uchar-max overflow warning. */
-    unsigned char i = 0xFF;
+     * Count down to avoid the compare-at-uchar-max overflow warning.
+     *
+     * `i` MUST be volatile -- see the note in hw_init.c short_delay(). Without
+     * it SDCC deletes all nine call sites in cs8427_boot_init() while leaving
+     * this body in the image, so the whole register sequence ran with no
+     * settling time between writes and the listing gave no hint of it. */
+    volatile unsigned char i = 0xFF;
     do { } while (--i);
 }
 

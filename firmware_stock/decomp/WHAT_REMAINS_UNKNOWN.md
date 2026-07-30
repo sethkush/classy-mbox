@@ -281,11 +281,57 @@ Addendum 4 diffs the 0xFFC0-0xFFFF range against this map, and its conclusion
 survives, because the only correction in that range is `I2C_RX` (a read in both
 stock and mboxfw).
 
-## 5. What this document does not cover
+## 5. Reachability -- CLOSED 2026-07-29, and it found a worse bug than it was for
 
-Reachability. Every check described here is whole-image: "does the firmware
-anywhere set this bit / write this register". None of them prove a write is
-reached on the path that needs it. The `TR0` mutation test makes the limit
-concrete -- with `power.c` present, deleting the `main()` site alone leaves the
-gate green, because the resume path still sets it. Closing that needs a
-call-graph-aware check, which does not exist yet.
+The gap as it stood: every check here is whole-image, "does the firmware
+anywhere set this bit / write this register", and none prove a write is reached
+on the path that needs it. The `TR0` mutation test made it concrete -- with
+`power.c` present, deleting the `main()` site alone left the gate green, because
+the resume path still sets it.
+
+Closed by `tools/verify_reachability.py`, now a preflight gate. It builds a call
+graph from the SDCC listings (`lcall`/`ljmp` edges, `_main` plus the interrupt
+vector table as entry points) and checks each boot-critical property is
+satisfied in a function reachable from `_main` **with the resume entry point
+removed**. Mutation-verified against exactly the case that used to slip through:
+deleting `main()`'s `TR0 = 1` alone now FAILS this gate while `sfr_direct_diff`
+still passes.
+
+Two things it got wrong first, both worth recording:
+
+  * **It passed vacuously.** The excluded resume function was named
+    `_power_suspend`, which does not exist -- power.c's function is
+    `_do_suspend`. Excluding a non-existent function excludes nothing, so the
+    central idea of the gate was doing no work while the gate reported success.
+    It now fails outright if either the resume function or the vector-table
+    label is missing, rather than quietly checking less than it claims.
+  * **It reported a false defect.** `EX0` looked absent from the boot path
+    because the matcher only recognised `setb _EX0`, and `hw_init` enables it
+    with the byte write `IE = 0x03`. This is the mirror of the trap
+    `sfr_direct_diff` documents: there a byte write of `0x00` must not count as
+    setting a bit, here a byte write of `0x03` must.
+
+### What it found: every busy-wait delay had its call site deleted
+
+Full write-up in `FINDING_delay_calls_elided.md`. SDCC proves a `static`
+function whose body loops over a non-volatile local has no observable effect and
+removes **the call**, leaving the body in the image as an unreferenced symbol.
+Three were live: `short_delay` in the `hw_init` boot panel sequence,
+`inter_reg_delay` at nine sites in the CS8427 init, and `eeprom_write_hold`
+after every EEPROM byte write.
+
+The `hw_init` one is the uncomfortable part: the boot panel sequence was
+verified **earlier in this same session** as matching stock exactly, and at the
+level of which values are written it did. The delay between the `0x00` and
+`0xF6` publishes was present in the source and absent from the binary. No
+source-level review can see that; only the listing or the call graph can.
+
+Fixed with `volatile` on each counter -- the precedent already in the repo, since
+`canary_delay` declares it and survives for that reason. The gate now also fails
+on any emitted-but-uncalled function, which is the durable check for this class.
+
+Remaining limits, stated so this section does not overclaim: reachability is
+computed over direct `lcall`/`ljmp` edges only, so a call through a function
+pointer would be invisible (mboxfw has none today). It proves a property holds
+somewhere on the boot path, not that it holds in the right ORDER relative to
+other writes -- ordering remains unchecked by every gate.

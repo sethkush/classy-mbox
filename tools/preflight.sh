@@ -96,6 +96,11 @@ else
     # never compared against stock. That is how TR0 stayed unset for weeks with
     # every gate green -- Timer 0 never ran. Mutation-verified.
     check "Core-SFR + bit diff vs stock"        python3 tools/sfr_direct_diff.py
+    # Call-graph gate. Every check above is whole-image, so none can tell
+    # "the firmware sets TR0" from "TR0 is set on a path that runs at boot".
+    # Also catches emitted-but-uncalled function bodies, which is how three
+    # busy-wait delays came to be deleted at every call site.
+    check "boot-path reachability + orphans"     python3 tools/verify_reachability.py
     check "DFU response timing"                 bash    tools/dfu_timing_profile.sh
     check "mboxflash --validate on target"      ./mboxflash/mboxflash --validate "$IMG"
 fi

@@ -33,7 +33,14 @@
  * program cycle to finish before the next START condition. */
 static void eeprom_write_hold(void)
 {
-    unsigned int i;
+    /* `i` MUST be volatile -- see the note in hw_init.c short_delay(). Without
+     * it SDCC deleted this call from eeprom_write_byte() entirely, so every
+     * write returned without waiting for the program cycle. eeprom_smoke_test()
+     * writes and reads back three times in a row, so its result -- reported as
+     * a hardware fault in telemetry block 4 byte 0 -- could be this bug rather
+     * than the part. eeprom_invalidate_signature() writes a single byte and is
+     * followed by a power cycle, so the DFU path was not affected. */
+    volatile unsigned int i;
     for (i = 0; i < 0xFF00; i++) { }
 }
 

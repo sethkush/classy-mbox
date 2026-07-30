@@ -12,8 +12,15 @@ extern __bit g_mono;               /* mirror of Rev 20 RAM[0x23].6 */
 
 static void short_delay(void)
 {
-    /* Rev 20 spins RAM[0x2E] from 0 up to 0x0F00 (~4000 cycles). */
-    unsigned int i;
+    /* Rev 20 spins RAM[0x2E] from 0 up to 0x0F00 (~4000 cycles).
+     *
+     * `i` MUST be volatile. Without it SDCC proves this function has no
+     * observable effect and deletes the CALL SITE outright -- the body stays
+     * in the image, unreferenced, so nothing looks wrong. Found 2026-07-29:
+     * hw_init.c:204 emitted zero instructions, so the boot panel sequence
+     * published 0x00 and 0xF6 back-to-back with no gap where stock delays
+     * between them. Every delay helper in mboxfw had the same defect. */
+    volatile unsigned int i;
     for (i = 0; i < 0x0F00; i++) { }
 }
 
