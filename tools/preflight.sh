@@ -51,7 +51,10 @@ check "SDCC version matches pin"            bash    tools/check_sdcc_version.sh
 check "wrap_hex golden regression"          python3 tools/test_wrap_hex_golden.py
 check "SFR register names consistent"       python3 tools/check_sfr_names.py
 check "quoted bytes match the images"       python3 tools/check_byte_quotes.py
-check "Rev-20 citations land on target"    python3 tools/check_citation_targets.py
+check "citations land on target (both revs)" python3 tools/check_citation_targets.py
+# The access map's direction classifier got 26 entries wrong once; these are the
+# hand-verified sites that pinned each failure mode.
+check "access-map classifier self-test"     python3 tools/xdata_access_map.py --selftest
 # The decompilation is only a claim about the stock image if it still
 # reproduces it. match51 checks each candidate standalone; link51 places them
 # all at their stock addresses and resolves every inter-function call for real,

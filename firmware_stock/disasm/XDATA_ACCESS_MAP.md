@@ -20,37 +20,37 @@ with OR/AND of the given mask.
     0x0A50  code-table (MOVC)
 
 ### 0xFF28  SETPACK_BMREQ
-    0x003F  write-via-helper 0x0118
+    0x003F  read
     0x0144  read
 
 ### 0xFF29  SETPACK_BREQ
     0x0055  read
-    0x0118  write-via-helper 0x0F70
+    0x0118  read
 
 ### 0xFF2A  SETPACK_WVAL_L
     0x0192  code-table (MOVC)
     0x01B8  read
     0x01C4  read
-    0x01D1  write-via-helper 0x0B6E
+    0x01D1  read
     0x0250  read
-    0x025B  write-via-helper 0x1009
+    0x025B  read
     0x0267  read
     0x0275  read
-    0x0284  write-via-helper 0x0B5F
+    0x0284  read
     0x02A8  read
     0x02BD  read
-    0x02D1  write-via-helper 0x1009
+    0x02D1  read
 
 ### 0xFF2B  SETPACK_WVAL_H
-    0x008A  write-via-helper 0x1009
-    0x0173  write-via-helper 0x0B6E
+    0x008A  read
+    0x0173  read
     0x018A  read
     0x01B0  read
 
 ### 0xFF2C  SETPACK_WIDX_L
-    0x014C  write-via-helper 0x0B50
-    0x01F7  write-via-helper 0x0B3E
-    0x0212  write-via-helper 0x0B17
+    0x014C  read
+    0x01F7  read
+    0x0212  read
     0x029F  read
     0x02B6  read
     0x02CA  read
@@ -97,7 +97,7 @@ with OR/AND of the given mask.
 ### 0xFF6A  IEPBSIZ0
     0x0991  write-computed
 
-### 0xFF6B  IEPBCTX0
+### 0xFF6B  IEPDCNTX0
     0x010D  write 0x03
     0x0242  write 0x02
     0x0980  write-computed
@@ -109,7 +109,7 @@ with OR/AND of the given mask.
     0x0BC6  write 0x80
     0x0FEA  write 0x00
 
-### 0xFF6F  (unnamed)
+### 0xFF6F  IEPDCNTY0
     0x0988  write-computed
 
 ### 0xFF98  OEPCNF2
@@ -133,13 +133,13 @@ with OR/AND of the given mask.
     0x07E0  write-computed
 
 ### 0xFFA8  OEPCNF0
-    0x0030  write-via-helper 0x0B2B
+    0x0030  set-bits-via-helper 0x0B2B 0x20
     0x0995  write 0x84
     0x0B25  clr-bits 0xD7
     0x0B57  clr-bits 0xF7
     0x0F52  write 0x84
-    0x0FCF  write-via-helper 0x0B2B
-    0x1010  write-via-helper 0x0B2B
+    0x0FCF  set-bits-via-helper 0x0B2B 0x20
+    0x1010  set-bits-via-helper 0x0B2B 0x08
 
 ### 0xFFA9  OEPBBAX0
     0x0970  write 0x42
@@ -147,7 +147,7 @@ with OR/AND of the given mask.
 ### 0xFFAA  OEPBSIZ0
     0x098C  write-computed
 
-### 0xFFAB  OEPBCTX0
+### 0xFFAB  OEPDCNTX0
     0x051F  write 0x00
     0x097B  write 0x00
     0x0B31  write-computed
@@ -155,7 +155,7 @@ with OR/AND of the given mask.
     0x0B82  write 0x00
     0x0FEF  write-computed
 
-### 0xFFAF  (unnamed)
+### 0xFFAF  OEPDCNTY0
     0x0984  write-computed
 
 ### 0xFFB0  MEMCFG
@@ -164,7 +164,7 @@ with OR/AND of the given mask.
 ### 0xFFB1  GLOBCTL
     0x0334  clr-bits 0xFE
     0x0799  clr-bits 0xFE
-    0x07A6  write-via-helper 0x0DEB
+    0x07A6  set-bits-via-helper 0x0DEB 0x01
     0x0934  set-bits 0x01
     0x0FF9  set-bits 0x01
 
@@ -192,7 +192,7 @@ with OR/AND of the given mask.
     0x0D0B  write 0x00
 
 ### 0xFFC2  I2C_RX
-    0x0D1E  write-via-helper 0x0B11
+    0x0D1E  read
 
 ### 0xFFC3  I2C_SADDR
     0x0BF7  write 0xA0
@@ -320,37 +320,37 @@ with OR/AND of the given mask.
     0x0971  code-table (MOVC)
 
 ### 0xFF28  SETPACK_BMREQ
-    0x003F  write-via-helper 0x010B
+    0x003F  read
     0x0145  read
 
 ### 0xFF29  SETPACK_BREQ
-    0x0055  write-via-helper 0x02E8
-    0x010B  write-via-helper 0x02EF
+    0x0055  read
+    0x010B  read
 
 ### 0xFF2A  SETPACK_WVAL_L
-    0x018E  write-via-helper 0x0B6E
+    0x018E  read
     0x01B1  read
     0x01BD  read
-    0x01CA  write-via-helper 0x0B6E
-    0x0250  write-via-helper 0x02E8
-    0x0259  write-via-helper 0x02EF
+    0x01CA  read
+    0x0250  read
+    0x0259  read
     0x0265  read
     0x0273  read
-    0x0282  write-via-helper 0x0B2E 0x80
+    0x0282  read
     0x02A6  read
     0x02BB  read
     0x02CF  read
 
 ### 0xFF2B  SETPACK_WVAL_H
-    0x0086  write-via-helper 0x02EF
+    0x0086  read
     0x0177  read
     0x0186  read
     0x01A9  read
 
 ### 0xFF2C  SETPACK_WIDX_L
-    0x014D  write-via-helper 0x0B3E
-    0x01F3  write-via-helper 0x0B37
-    0x020E  write-via-helper 0x0B25
+    0x014D  read
+    0x01F3  read
+    0x020E  read
     0x029D  read
     0x02B4  read
     0x02C8  read
@@ -397,10 +397,10 @@ with OR/AND of the given mask.
 ### 0xFF6A  IEPBSIZ0
     0x08B2  write-computed
 
-### 0xFF6B  IEPBCTX0
+### 0xFF6B  IEPDCNTX0
     0x0103  write-via-helper 0x0247 0x03
     0x016F  write-via-helper 0x0247 0x01
-    0x0225  write-via-helper 0x02EF 0x01
+    0x0225  write 0x01
     0x0242  write 0x02
     0x02DE  write 0x80
     0x044E  write 0x00
@@ -410,7 +410,7 @@ with OR/AND of the given mask.
     0x0B66  clr-bits 0x7F
     0x0B7A  write-computed
 
-### 0xFF6F  (unnamed)
+### 0xFF6F  IEPDCNTY0
     0x08A9  write-computed
 
 ### 0xFF98  OEPCNF2
@@ -437,13 +437,13 @@ with OR/AND of the given mask.
     0x0D8C  write-computed
 
 ### 0xFFA8  OEPCNF0
-    0x0030  write-via-helper 0x0B2C
+    0x0030  set-bits-via-helper 0x0B2C 0x20
     0x08B6  write 0x84
     0x0B45  clr-bits 0xF7
     0x0B54  clr-bits 0xD7
     0x0F73  write 0x84
-    0x0F9D  read
-    0x1008  write-via-helper 0x0B2C
+    0x0F9D  set-bits-via-helper 0x0B2C 0x20
+    0x1008  set-bits-via-helper 0x0B2C 0x08
 
 ### 0xFFA9  OEPBBAX0
     0x0891  write 0x42
@@ -451,7 +451,7 @@ with OR/AND of the given mask.
 ### 0xFFAA  OEPBSIZ0
     0x08AD  write-computed
 
-### 0xFFAB  OEPBCTX0
+### 0xFFAB  OEPDCNTX0
     0x02E4  write-computed
     0x0453  write-computed
     0x051E  write 0x00
@@ -459,7 +459,7 @@ with OR/AND of the given mask.
     0x0B32  write-computed
     0x0B75  write 0x00
 
-### 0xFFAF  (unnamed)
+### 0xFFAF  OEPDCNTY0
     0x08A5  write-computed
 
 ### 0xFFB0  MEMCFG
@@ -468,7 +468,7 @@ with OR/AND of the given mask.
 ### 0xFFB1  GLOBCTL
     0x0340  clr-bits 0xFE
     0x0777  clr-bits 0xFE
-    0x0784  write-via-helper 0x0EC7
+    0x0784  set-bits-via-helper 0x0EC7 0x01
     0x0855  set-bits 0x01
     0x0FEA  set-bits 0x01
 

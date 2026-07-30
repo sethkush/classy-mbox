@@ -202,6 +202,85 @@ has a task:
     a firmware fault.
   * S/PDIF clock slaving (#145) -- work codes 0x0B and 0x0C above.
 
+## 4a. The read-direction blind spot — probed 2026-07-29, and it is empty
+
+Asked a third time. §1 closed the direct-SFR blind spot; the obvious next
+question is what class of difference the gates *still* cannot see, and there was
+a clean answer: **every gate in `preflight.sh` is a write-scanner.**
+`audit_sfr_writes`, `diff_vs_rev20` and `sfr_direct_diff` all answer "does the
+firmware write this register / set this bit". None of them answers "does the
+firmware READ a register that stock reads to make a decision". That is precisely
+the class `DMABCNT0L/H` (§3b) lived in, and it was found by hand -- no gate
+would ever have flagged it.
+
+So the class was probed directly: for every address either stock image reads,
+does mboxfw read it too? **The answer is that the class is empty.** After the
+classifier fixes below there is no register stock reads that mboxfw fails to
+read. The one asymmetry in the other direction is benign: mboxfw reads
+`SETPACK_WIDX_H` (0xFF2D) and neither stock image ever does, because mboxfw
+records the full wIndex in telemetry block 2 and stock has nothing to record it
+into. Nothing functional depends on it.
+
+Two false alarms on the way to that answer, both worth recording because both
+were tool bugs rather than firmware bugs:
+
+  * `DMABCNT0L` and `SETPACK_WLEN_L` first appeared as "stock reads, mboxfw
+    never touches". Both were wrong: SDCC reaches a neighbouring register with
+    `dec dpl` / `inc dptr` rather than a fresh `MOV DPTR,#imm`, keeping DPH. A
+    scanner that only recognises full DPTR loads misses the second register of
+    any adjacent pair. `streaming_sof()` does read both halves of DMABCNT0 --
+    `dec dpl` at 0x0CBD.
+  * `OEPCNF0` appeared as "stock reads it, mboxfw only writes it". It is not a
+    read at all; see below.
+
+### The classifier was wrong 26 times
+
+Chasing that last false alarm found a real defect in
+`tools/xdata_access_map.py`, which generates `disasm/XDATA_ACCESS_MAP.md` and
+whose docstring claimed it "is complete, so it cannot flatter". Completeness of
+*sites* is guaranteed by construction; correctness of *direction* is not, and 26
+entries were wrong:
+
+  * **23 pure reads labelled as writes.** The idiom `LCALL helper` after a read
+    was taken to mean the helper performs the caller's store. Often it does
+    (Rev 20 0x0FF4 is a bare `MOVX @DPTR,A`), but Rev 20 0x0B5F opens with
+    `MOV DPTR,#0xff6b` -- it is an EP0 ack tail and says nothing about the
+    caller's register. Fixed by requiring a helper to reach `MOVX @DPTR,A`
+    *without reloading DPTR* before it counts. All 23 corrections land in the
+    SETUP-packet buffer 0xFF28-0xFF2C plus `I2C_RX`, i.e. exactly the registers
+    the UBM writes and the firmware only reads. The corrected map is the first
+    one that is internally coherent about the SETUP buffer.
+  * **3 writes labelled as reads**, including Rev 22 0x0F9D = `OEPCNF0 |= 0x20`
+    (stall EP0-OUT). The walk broke on `LCALL`/`LJMP` to catch store-via-helper
+    but ran straight past `SJMP`, which Keil also uses to reach a store tail --
+    and those hops chain (0x0F9D SJMPs to 0x0FB6, which LCALLs 0x0B2C).
+  * **2 wrong helper attributions** and **8 dropped RMW masks**: sites reported
+    as an opaque `write-via-helper` are now `set-bits 0x20` / `0x08` / `0x01`,
+    which distinguishes two different `OEPCNF0` operations the old map rendered
+    identically.
+
+Following `SJMP` naively introduced a *new* false positive first -- Rev 22
+0x0177 reads `SETPACK_WVAL_H`, `CJNE`s on the descriptor type and jumps to the
+matching arm, which is control flow, not a store tail. Guarded by refusing to
+follow an `SJMP` that sits behind a conditional branch. Regression-checked
+against the three genuine helper cases the docstring itself cites.
+
+Guarded by `xdata_access_map.py --selftest`, now a preflight gate: 8 sites read
+by hand, one per failure mode. Mutation-testing it produced a result worth
+keeping -- the first two mutations did not trip it, because the SJMP guard and
+the helper-validation each masked the other. That is why the self-test has a
+site (Rev 20 0x0173, a plain `LCALL` with no `SJMP` in between) chosen
+specifically to pin the helper check on its own. It also showed the
+conditional-branch guard is **redundant**: deleting it changes no entry in the
+generated map, and it is labelled as such in the source rather than left looking
+load-bearing.
+
+None of this reaches the gates -- no gate consumes the map, and all 15 still
+pass. The blast radius is documentation, plus one open investigation: #147's
+Addendum 4 diffs the 0xFFC0-0xFFFF range against this map, and its conclusion
+survives, because the only correction in that range is `I2C_RX` (a read in both
+stock and mboxfw).
+
 ## 5. What this document does not cover
 
 Reachability. Every check described here is whole-image: "does the firmware
