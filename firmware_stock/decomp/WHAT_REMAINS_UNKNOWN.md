@@ -76,17 +76,39 @@ knowing:
 
   1. **`RAM[0x08]` is stock's persisted "current mode"** -- set to 3 in hw_init
      (0x093B), to 1 in the mode-1 branch (0x0753), and read back by code 0x04
-     (`MOV R7,0x08` at 0x045E). mboxfw has no equivalent; it tracks a sample
-     rate, not a mode. Whether anything needs the distinction is open.
+     (`MOV R7,0x08` at 0x045E). **RESOLVED 2026-07-29**: the distinction that
+     matters is internal-vs-external clock, not sample rate. Mode 1 sources both
+     codec clocks from the EXTERNAL clock input; modes 2 and 3 source them from
+     the two internal synthesizers at 44.1 and 48 kHz. Datasheet-confirmed from
+     ACGCTL's MCLKO1S/MCLKO2S select fields -- see
+     `decomp/FINDING_clock_modes_and_p31.md`. mboxfw is always internally
+     clocked, which for a class-compliant device is a legitimate simplification
+     rather than a missing feature.
   2. **Mode 4 is not implemented in stock either.** `fcn.0x0728`'s dispatch at
      0x073C tests for modes 2, 3, 5, 1 in that order and falls through to the
      common tail for anything else. Work code 0x09 passes mode 4 and no
      frequency programming happens. It also has no posting site. Dead.
   3. **Modes 1 and 5 are never invoked by mboxfw.** streaming.c uses only the
      mode-2 (44.1 kHz) and mode-3 (48 kHz) frequency words. Mode 1 is the
-     S/PDIF-slave path (`ACGCTL = 0x0D`, CS8427 CLOCKSOURCE via 0x31/0x32);
-     mode 5 is I2S "1 OUT and 1 IN at different frequencies", the branch that
-     writes `CPTRXCNF4 = 0x01`.
+     slave-to-external-clock path (`ACGCTL = 0x0D` -> both MCLKO from `mclki`,
+     no frequency word programmed at all, CS8427 CLOCKSOURCE RUN set); mode 5 is
+     I2S "1 OUT and 1 IN at different frequencies", the branch that writes
+     `CPTRXCNF4 = 0x01`. Mode 4 is dead in stock too.
+
+**NEW UNKNOWN, promoted out of §2 -- what P3.1 actually is.** Tracing the two
+handlers that select between the clock modes (work codes 0x0B and 0x0C) showed
+that the meaning recorded in project notes, "P3.1 = S/PDIF clock presence, active
+low", **cannot be right**: it maps present -> internal 48 kHz and absent ->
+external clock, and the second of those would leave the codec with no clock at
+all. P3 also has pull-ups and hw_init writes `P3 = 0xFF`, so idle reads 1 -- the
+state that selects the external clock. A CS8427 lock/error reading is coherent
+and is written up as a candidate, but it is not established, and one detail
+(code 0x0B setting the "slaved" latch while selecting the internal clock) does
+not fit it cleanly. **Task #145 is blocked on this**, deliberately: the modes are
+understood well enough to implement, but a backwards trigger switches the codec
+clock at exactly the wrong moments, which produces intermittent audio that
+depends on what is plugged in -- the worst possible failure mode at 2 km per power
+cycle. See `decomp/FINDING_clock_modes_and_p31.md`.
 
 ## 3. Genuinely unknown, in descending order of consequence
 
