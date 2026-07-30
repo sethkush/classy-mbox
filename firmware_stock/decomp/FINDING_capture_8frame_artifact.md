@@ -309,3 +309,86 @@ CPTRXCNF2/4, CPTSTA, CPTCNF1-4, ACGDCTL, ACG1FRQ0-2, ACG2FRQ0-2, ACG2DCTL,
 DMACTL0/1, DMATSH0/1, DMATSL0/1. CPTRXCNF4 deserves a note: stock writes 0x01
 at 0x07A0 and 0x03 via the helper at 0x0929, and mboxfw's 0x03 mirrors the boot
 init, which is the correct one of the two.
+
+## Addendum 5: the C-port decoded against the TAS1020B datasheet
+
+Every C-port register mboxfw writes, decoded from
+`reference/tas1020a/sles025b_tas1020b_datasheet.pdf` sections 6.5.4.x. This
+settles two of the three open items and retracts one of my own claims.
+
+### CPTCNF1 = 0x0D (both) -- correct
+
+    NTSL(4:0) = bits 7:3 = 00001 = 2 time slots per frame
+    MODE(2:0) = bits 2:0 = 101   = I2S mode 5, 1 OUT and 1 IN at
+                                   different frequencies
+
+### CPTCNF2 = 0xE5, CPTRXCNF2 = 0x25 (both) -- correct
+
+    CPTCNF2   TSL0L = 11 (32 CSCLK for slot 0), BPTSL = 100 (24 data bits),
+              TSLL = 101 (32 CSCLK per slot)
+    CPTRXCNF2 BPTSL = 100 (24 data bits), TSLL = 101 (32 SCLK2 per slot)
+
+24 data bits inside 32-clock slots, two slots per frame. Consistent with
+DMATSH = 0x80 (BPTS = 10b = 3 bytes per slot) and DMATSL = 0x03 (slots 0 and 1)
+= 6 bytes per stereo frame. Word length and slot geometry are NOT the fault.
+
+### ACGCTL -- RETRACTION, this is not a divergence
+
+Addendum 4 said mboxfw "is missing two of stock's four operations" on ACGCTL and
+called it a live suspect. That was wrong: I compared the set of writes without
+checking which branch each belongs to.
+
+    bit 7 MCLKO2EN   bit 6 MCLKO1EN   bit 5 reserved
+    bits 4:3 MCLKO1 source   bit 2 DIVEN   bits 1:0 MCLKO2 source
+      source 00 = acg_clk after /M, x1 = mclki after /I, 10 = acg2_clk after /M
+
+    stock 0x074D  write 0x0D  -> both clocks from MCLKI after /I, DIVEN on.
+                                 This is inside the MODE 1 branch (MOV 0x08,#1
+                                 immediately follows). mboxfw does not
+                                 implement mode 1.
+    stock 0x052C  clr-bits 0x3F -> clears the source selects and DIVEN, leaving
+                                 the output enables: an idle/stop path.
+    stock 0x0E10  write 0x06  -> MCLKO1 = acg_clk//M, MCLKO2 = acg2_clk//M,
+                                 DIVEN on
+    stock 0x07CC / 0x0824  set-bits 0xC0 -> enable both clock outputs
+
+mboxfw does `= 0x06` then `|= 0xC0`, giving **0xC6**, which is exactly what
+stock produces on the mode-2/3 path. Telemetry block 6 read ACGCTL = 0xC6 on the
+running device, confirming it. ACGCTL is correct and is not a suspect.
+
+### CPTRXCNF3 -- the one real divergence, and the datasheet sharpens it
+
+    CPTCNF3 / CPTRXCNF3 layout (6.5.4.3, 6.5.4.12 -- identical):
+      7 DDLY  6 TRSEN  5 CSCLKP  4 CSYNCP  3 CSYNCL  2 BYOR  1 CSCLKD  0 CSYNCD
+
+    0xAC = DDLY 1, TRSEN 0, CSCLKP 1, CSYNCP 0, CSYNCL 1, BYOR 1
+    0xA8 = the same with BYOR 0
+
+    stock   CPTCNF3 = 0xAC (transmit)   CPTRXCNF3 = 0xAC (receive)   SYMMETRIC
+    mboxfw  CPTCNF3 = 0xAC (transmit)   CPTRXCNF3 = 0xA8 (receive)   ASYMMETRIC
+
+The datasheet's AC'97 walk-through states the semantics directly: with BYOR not
+set, "the byte ordering of the data as received is preserved - both from the USB
+bus (OUT transactions) and from the external codec (IN transactions)."
+
+And `reference/mbox1_quirks-table.h.snippet` declares stock as
+`SNDRV_PCM_FMTBIT_S24_3BE` for **both** endpoints -- 0x02 (OUT) and 0x81 (IN).
+
+So: stock is symmetric in BYOR and Linux observes it symmetric in endianness,
+big-endian both directions. mboxfw broke that symmetry on exactly the one
+direction that is broken.
+
+**Recommendation, on this evidence: restore CPTRXCNF3 = 0xAC** and, if
+little-endian output is wanted, get it by declaring the format honestly rather
+than by flipping BYOR on one path only. The `7590af1` reasoning -- "mboxfw
+declares S24_3LE so it wants BYOR=0" -- assumed BYOR=1 produces big-endian. The
+datasheet says BYOR=0 *preserves* the received order, which for MSB-first I2S is
+big-endian, making BYOR=1 the little-endian setting. One of those two readings is
+wrong, and stock plus the quirk table both favour the datasheet's.
+
+### P3MSK ruled out for the buttons
+
+Section 6.5.5.1: P3MSK at 0xFFCA, one mask bit per P3 pin, 1 = masked, **default
+0x00 = all unmasked**. A byte scan for `MOV DPTR,#0xFFCA` finds **no site in
+either stock image**, so neither firmware ever touches it and stock works with it
+at its default. It cannot explain mboxfw's dead buttons.
