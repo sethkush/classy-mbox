@@ -118,23 +118,52 @@ and it was the right thing to rank first. See
   * Ported to `streaming_sof()`, which was an empty function whose comment
     reasoned from Rev 20's *Timer 0* stub -- a different interrupt entirely.
 
-**c. Bit 7 of the panel word (`RAM[0x22].7`).** Rests set, cleared at Rev 20
-0x03A0 / Rev 22 0x03A4 in the SET_INTERFACE handler, set again at 0x03E6 /
-0x03EA -- each with an immediate publish. Tracks something an alt-setting change
-turns off and back on. Two sites, no name.
+**c+d. ~~Bits 7 and 6 of the panel word.~~ RESOLVED 2026-07-29**, together,
+because they turned out to be the same question: **the whole byte is
+ACTIVE-LOW.** Full write-up in `disasm/MUX_IRAM22_ANNOTATION.md`, section "The
+byte is ACTIVE-LOW". What settles it:
 
-**d. Bit 6 of the panel word**, beyond its derivation
-`22.6 = !25.4 && !25.5`. Codes 0x04 and 0x05 pair it with 0x25.4 in opposite
-senses, which is consistent with an internal-vs-external clock indicator, but
-that is a reading, not a determination.
+  * The three source patterns are **one-cold** -- 0x06/0x05/0x03 each have
+    exactly one bit clear (b0/b1/b2 respectively). They are three per-source
+    lines, not a binary code.
+  * Under that convention all four immediates the byte ever receives read
+    cleanly: 0x00 = all eight asserted (a lamp-test flash at boot), 0xF6 = b0+b3
+    (mic on both channels), 0x76 = mic/mic plus b7, 0xFF = nothing asserted
+    (suspend). The 0x00 and 0xFF values were the two that resisted an
+    active-high reading.
+  * **Bit 7 = streaming active.** Branch analysis of `fcn.0x0386`: 0x0389's
+    `JNB 0x21.6` sends the no-alt-selected case to the STOP branch, so the
+    fall-through at 0x0397 is stream START -- and it CLEARS b7, while the STOP
+    branch at 0x03E6 SETs it. Cleared = asserted = streaming.
+  * **Bit 6 = external (S/PDIF) clock in use.** Its derivation
+    `22.6 = !(25.4) && !(25.5)` means asserted-low exactly when either is set,
+    and work codes 0x04/0x05 confirm the sense: code 0x05 sets 0x25.4, clears
+    22.6, and selects mode 1 (the S/PDIF-slave clock path); code 0x04 does the
+    inverse and restores the mode persisted in `RAM[0x08]`.
+
+This also resolved item **f** below, and produced a defect: **mboxfw never
+touched bit 7.** `g_mux_state` starts at 0xF6 with b7 high and nothing lowered
+it, so whatever the line drives sat in its not-streaming state permanently. If it
+gates the analog output, that alone would make mboxfw silent on playback with
+every other measurement correct. Now driven from
+`panel_update_streaming()` in streaming.c under stock's condition.
+
+What is left is a board question, not a firmware one: what bits 6 and 7 are
+physically wired to. Every condition under which each is asserted is determined.
 
 **e. The vendor's name and package pin for the codec-word lines.** Every bit's
 *function* is determined (see `IRAM23_IRAM25_ANNOTATION.md`); the part number
 needs the board.
 
-**f. Which bits drive panel LEDs versus the analog mux.** All 8 bits of
-`RAM[0x22]` are accounted for as source fields plus two control bits, so the
-LEDs are presumably decoded from the same fields. Unconfirmed.
+**f. ~~Which bits drive panel LEDs versus the analog mux.~~ PARTLY RESOLVED
+2026-07-29** by the one-cold finding in c+d above. The six source bits map
+one-to-one onto six per-source lines with no bit left over:
+
+    b0 ch1 mic   b1 ch1 line   b2 ch1 inst
+    b3 ch2 mic   b4 ch2 line   b5 ch2 inst
+
+Whether each line drives an LED, a mux enable, or both in parallel needs the
+board. Which bit belongs to which source is no longer in question.
 
 ## 4. Determined but never verified on silicon
 

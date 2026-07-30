@@ -20,6 +20,7 @@
 #include "streaming.h"
 #include "codec.h"
 #include "telemetry.h"
+#include "mux.h"
 
 /* SOF watchdog shadow of the playback DMA buffer content — Rev 22's
  * RAM[0x1B]:RAM[0x1C]. 0xFF/0xFF is an impossible real count for a 512-byte
@@ -222,10 +223,59 @@ void streaming_set_rate(unsigned long hz)
 /* Non-zero while the host has playback selected (SET_INTERFACE alt=1 on the
  * playback interface). streaming_sof() gates on this -- see the note there. */
 static __data unsigned char playback_running = 0;
+static __data unsigned char capture_running  = 0;
+
+/*
+ * Panel bit 7 = "streaming active", asserted LOW.
+ *
+ * The panel/mux shift word RAM[0x22] is active-low throughout: each source
+ * field holds exactly one bit low ("one-cold"), suspend writes 0xFF for
+ * everything-off, and hw_init's first publish writes 0x00 as an all-on lamp
+ * flash. See disasm/MUX_IRAM22_ANNOTATION.md, section "The byte is ACTIVE-LOW".
+ *
+ * Stock drives bit 7 from its SET_INTERFACE handler, one branch each way:
+ *
+ *   Rev 20 fcn.0x0386 @ 0x03A0  CLR  bit 0x17   ; stream START -> assert
+ *   Rev 20 fcn.0x0386 @ 0x03E6  SETB bit 0x17   ; stream STOP  -> release
+ *   Rev 22 fcn.0x038A @ 0x03A4 / @ 0x03EA, identically
+ *
+ * and republishes the word immediately after each (0x03A2 / 0x03E8).
+ *
+ * mboxfw never touched this bit. g_mux_state starts at 0xF6 with bit 7 high and
+ * nothing lowered it, so whatever the line drives stayed in its
+ * not-streaming state permanently. If it gates the analog output -- a mute
+ * released only while a stream is up is a completely ordinary design for an
+ * interface, and "released while streaming" is exactly the condition stock
+ * encodes -- that alone would make mboxfw silent on playback while everything
+ * else measured correct. Unverified, because what the line physically drives
+ * needs the board; asserting it under stock's condition costs nothing either
+ * way and removes the divergence.
+ *
+ * Stock's single handler covers both directions at once, so "streaming" there
+ * means any alt setting selected. mboxfw splits the two directions into
+ * separate enable calls, so the equivalent is "either direction running".
+ */
+static void panel_update_streaming(void)
+{
+    unsigned char before = g_mux_state;
+
+    if (playback_running || capture_running) {
+        g_mux_state &= (unsigned char)~0x80;   /* assert  — Rev 20 @ 0x03A0 */
+    } else {
+        g_mux_state |= (unsigned char)0x80;    /* release — Rev 20 @ 0x03E6 */
+    }
+    /* Republish only on a real change. Stock publishes unconditionally, but its
+     * two sites are the two transitions; ours is called on every enable call,
+     * including the redundant ones a host is free to send. */
+    if (g_mux_state != before) {
+        mux_write(g_mux_state);                /* Rev 20 @ 0x03A2 / @ 0x03E8 */
+    }
+}
 
 void streaming_playback_enable(unsigned char on)
 {
     playback_running = on ? 1 : 0;
+    panel_update_streaming();
     if (on) {
         /* Reset the SOF watchdog's shadow so the first frame of a new stream
          * is always evaluated rather than compared against a stale count from
@@ -251,6 +301,8 @@ void streaming_playback_enable(unsigned char on)
 
 void streaming_capture_enable(unsigned char on)
 {
+    capture_running = on ? 1 : 0;
+    panel_update_streaming();
     if (on) {
         IEPBBAX1 = EP_BBAX(EP1_IN_BUF_ADDR);
         IEPBSIZ1 = EP_BSIZE(EP_AUDIO_BUF_SIZE);

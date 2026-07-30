@@ -27,11 +27,20 @@ Callers (Rev 20): 0x03A2, 0x03E8, 0x045B, 0x046D, 0x04FF, 0x0943, 0x0964,
 
 ## Bit map
 
-    bits [2:0]   channel 1 source select
-    bits [5:3]   channel 2 source select
-    bit  6       = !(IRAM 0x25.4) && !(IRAM 0x25.5)   — see below
-    bit  7       cleared at Rev 20 0x03A0 / Rev 22 0x03A4,
-                 set     at Rev 20 0x03E6 / Rev 22 0x03EA
+**The whole byte is ACTIVE-LOW** — see the dedicated section below, which is what
+makes the rest of this map read cleanly. A bit CLEAR means the line is asserted.
+
+    b0   ch1 MIC          b3   ch2 MIC
+    b1   ch1 LINE         b4   ch2 LINE
+    b2   ch1 INST         b5   ch2 INST
+    b6   external (S/PDIF) clock in use
+         = !(IRAM 0x25.4) && !(IRAM 0x25.5), so asserted when either is set
+    b7   streaming active
+         cleared (asserted) on stream start  — Rev 20 0x03A0 / Rev 22 0x03A4
+         set     (released) on stream stop   — Rev 20 0x03E6 / Rev 22 0x03EA
+
+Each source field holds exactly one bit low ("one-cold"), so the three patterns
+are three per-source lines rather than a binary code.
 
 Bit 6 is derived, not stored independently. Rev 20 0x0E52-0x0E61:
 
@@ -123,16 +132,19 @@ Four sites write 0x22. Listed in the order the boot path reaches them:
     hw_init, 2nd publish    0x095B + clears   0x087C + clears   0xF6
       (CLR b0, b3, and CLR bit 0x1e -> mono OFF)
       publish: LCALL 0x0F0C at Rev 20 0x0964 / Rev 22 0x0885
-    SET_INTERFACE alt       0x0397 + clears   0x039B + clears   0x76
-      (CLR b0, b3, b7, and CLR bit 0x1e)
+    SET_INTERFACE, stream   0x0397 + clears   0x039B + clears   0x76
+      START branch            (CLR b0, b3, b7, and CLR bit 0x1e)
       publish: LCALL 0x0F0C at Rev 20 0x03A2
+      (this row said "alt teardown" until the active-low section below
+       corrected it -- 0x0397 is the stream-START branch)
     suspend                 0x053B            0x053A            0xFF
       (no bit clears follow; then PCON |= 0x01)
 
 **Retraction 1.** This document called 0x0397 the "boot init". It is not:
 0x0397 sits inside `cmd2_apply_iface1_alt` @ Rev 20 0x0386 (Rev 22 0x038A),
-the SET_INTERFACE alt-setting handler. 0x76 is a stream-teardown state, not a
-boot state. The real boot value is **0xF6**, from what this document called the
+the SET_INTERFACE alt-setting handler. 0x76 is a streaming state, not a boot
+state. (This first read it as "teardown"; the branch analysis in the active-low
+section below shows it is the stream-START branch.) The real boot value is **0xF6**, from what this document called the
 "second init" — which is the ONLY immediate write to this byte inside stock's
 master hw init (Rev 20 fcn.0x08CB / Rev 22 fcn.0x07EC).
 
@@ -180,15 +192,104 @@ not read as +/-full-scale at Fs/8, whichever source is selected.
 See `FINDING_capture_8frame_artifact.md`, whose conclusions about "no audio in
 capture" are superseded on this point.
 
+## The byte is ACTIVE-LOW, and that settles bits 6 and 7 — 2026-07-29
+
+Three observations that were each recorded separately here turn out to be one
+fact.
+
+**1. The source patterns are one-cold, not arbitrary.** Each of the three legal
+3-bit patterns has exactly one bit CLEAR:
+
+    0x06 = 110   b0 clear    -> MIC   (established as boot = mic)
+    0x05 = 101   b1 clear    -> LINE
+    0x03 = 011   b2 clear    -> INST
+
+So the three bits of a source field are not a binary code; they are three
+per-source lines, asserted LOW. That is also why the set {0x05, 0x03, 0x06} looked
+arbitrary: it is just "one of three lines pulled down".
+
+**2. Under that convention every immediate this byte ever receives makes sense.**
+All four, with their asserted (low) bits:
+
+    site                       value   asserted bits    reading
+    hw_init 1st publish        0x00    all eight        lamp test / all-on flash
+    hw_init 2nd (boot rest)    0xF6    b0, b3           mic on both channels
+    SET_INTERFACE, stream up   0x76    b0, b3, b7       mic/mic + b7
+    suspend                    0xFF    none             everything off
+
+The all-on flash at boot and the all-off state at suspend are the two extremes,
+and they are the two values that were hardest to explain while the byte was read
+as active-high.
+
+**3. Bit 7 tracks streaming, and it is cleared to assert it.** From
+`fcn.0x0386` (Rev 20; Rev 22 `fcn.0x038A` identically):
+
+    0389  JNB 0x21.6,0x03D6      ; 0x21.6 = "an alt setting was selected".
+                                 ;   NOT selected -> 0x03D6, the STOP branch
+    --- START branch, 0x038F-0x03D4 ---
+    0397  0x22 = 0xFF ; CLR b0, b3, mono, and CLR b7 (bit 0x17)  -> 0x76
+    03a2  publish
+    03b2  IEPCNF1 = 0xC5 ; 03B8 mode 3 ; 03BD DMACTL1 |= 0x80    ; capture up
+    03c7  OEPCNF2 = 0xC5 ; 03CD DMACTL0 |= 0x80                  ; playback up
+    --- STOP branch, 0x03D6-0x03EE ---
+    03df  DMACTL1 &= 0x7F                                        ; capture down
+    03e6  SETB b7 (bit 0x17)
+    03e8  publish
+    03ee  LCALL 0x1001  ->  DMACTL0 &= 0x7F                      ; playback down
+
+**Bit 7 is cleared on stream START and set on stream STOP.** Active-low, so
+asserted means "streaming". Boot leaves it high (0xF6), i.e. idle, and suspend
+leaves it high too. What a panel line asserted only while audio is streaming
+drives is not settled by the firmware -- an output mute/relay released while
+streaming, or a "USB active" indicator, both fit -- but the CONDITION is now
+determined, which is what the reimplementation needs.
+
+**Correction to this document, introduced earlier the same day.** The section
+above called 0x0397 a "stream-teardown state". That is wrong and the branch
+analysis shows why: 0x0389's `JNB` sends the NOT-selected case to 0x03D6, so
+falling through to 0x0397 is the SELECTED case, and the code there enables both
+endpoints and both DMA channels. **0x76 is the streaming-active panel state.**
+The teardown branch never writes this byte with an immediate at all; it only sets
+bit 7 and republishes. The earlier correction was right that 0x76 is not a boot
+value and right about the mic mapping; it was wrong about the direction.
+
+**Bit 6 is the external-clock line, also active-low.** Its derivation
+`22.6 = !(25.4) && !(25.5)` means it is ASSERTED (low) exactly when 0x25.4 or
+0x25.5 is set. The two work codes that drive 0x25.4 directly confirm the sense:
+
+    code 0x04 @ 0x0454: CLR 0x25.4 ; SETB 22.6 (de-assert) ; mode = RAM[0x08]
+    code 0x05 @ 0x0466: SETB 0x25.4 ; CLR 22.6 (assert)    ; mode 1
+
+Mode 1 is the S/PDIF-slave clock path (`ACGCTL = 0x0D`, CS8427 CLOCKSOURCE via
+the 0x31:0x32 pair), and 0x25.5 is already established as the "clock slaved to
+S/PDIF" latch. So 0x25.4 is "external clock selected", code 0x04 restores the
+internal clock at the previously persisted mode, and **0x22.6 asserted = external
+clock in use** -- the S/PDIF-lock indicator or the clock-source mux line.
+
+## Consequence for bits 0-5 versus the LEDs
+
+The "still open" item below asked which bits drive panel LEDs versus the analog
+mux. One-cold source fields make bits 0-5 a clean one-to-one map onto six
+per-source lines:
+
+    b0 = ch1 mic    b1 = ch1 line    b2 = ch1 inst
+    b3 = ch2 mic    b4 = ch2 line    b5 = ch2 inst
+
+Whether each line drives an LED, a mux enable, or both in parallel still needs
+the board -- but there is no longer any question about which bit belongs to which
+source, and no bit is left over.
+
 ## Still open on this byte
 
-  * Bit 7's meaning. It rests SET (inherited from the `#0xFF` seed at Rev 20
-    0x095B), is CLEARED at Rev 20 0x03A0 / Rev 22 0x03A4 in the SET_INTERFACE
-    handler, and is SET again at Rev 20 0x03E6 / Rev 22 0x03EA — each with an
-    immediate publish. So it tracks something the alt-setting change turns off
-    and back on, which fits a streaming or analog-output enable, but only two
-    sites touch it and neither names it.
-  * Bit 6's meaning, beyond its derivation from IRAM 0x25.4 / 0x25.5.
-  * Which bits, if any, drive the panel LEDs versus the analog mux. The shift
-    register is 8 bits and all 8 are accounted for as above, so the LEDs are
-    presumably decoded from the same source fields — unconfirmed.
+  * ~~Bit 7's meaning.~~ RESOLVED: asserted (low) exactly while streaming. See
+    the active-low section. What the line physically drives — output mute relay,
+    "USB active" LED, or both — needs the board; the condition does not.
+  * ~~Bit 6's meaning.~~ RESOLVED: asserted (low) when the external S/PDIF clock
+    is in use, corroborated by work codes 0x04 and 0x05.
+  * ~~Which bits drive the panel LEDs versus the analog mux.~~ PARTLY RESOLVED:
+    one-cold source fields give a one-to-one map of b0-b5 onto six per-source
+    lines with no bit left over. Whether each line drives an LED, a mux enable,
+    or both in parallel still needs the board.
+  * What bit 7 and bit 6 are physically wired to. This is now a board question,
+    not a firmware question — every condition under which each is asserted is
+    determined.
