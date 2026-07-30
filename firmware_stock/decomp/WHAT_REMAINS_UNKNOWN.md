@@ -364,10 +364,22 @@ sites per image; `check_citation_targets.py` consults the map when no immediate
 load sits near a cited address, since rejecting such a citation is exactly how a
 real write becomes an "artifact".
 
-**New open question from the same pass, deliberately not acted on:** both stock
-images write `USBIMSK = 0x9F` in their bus-reset handler (Rev 20 0x0F6E, Rev 22
-0x0F8F), and mboxfw's `VEC_RSTR` deliberately does not touch USBIMSK. Whether
-that is correct depends on whether a bus reset clears USBIMSK, which the listings
-cannot settle -- and USBIMSK bits 1 and 3 in that 0x9F are themselves recorded
-unknowns, with a past bug already traced to masking SOF off. Needs the
-datasheet's bus-reset behaviour.
+**The USBIMSK question that pass raised is now RESOLVED (#152), from the
+datasheet, and mboxfw needs no change.** Both stock images write
+`USBIMSK = 0x9F` in their bus-reset handler (Rev 20 0x0F6E, Rev 22 0x0F8F) and
+mboxfw's `VEC_RSTR` does not. Datasheet §2.1.9: with FRSTE clear, "USB resets
+have no effect on the TAS1020B, other than resetting the USB serial interface
+engine (SIE) and the USB buffer manager (UBM)". USBIMSK is neither, so it
+survives; stock's write is redundant. mboxfw never sets FRSTE, so it is on that
+branch. The same paragraph confirms the writes mboxfw *does* make there are the
+required ones (FEN is cleared by reset; the UBM owns the endpoint config).
+
+The same read closed two long-standing open items from
+`rev20_STARTUP_TRACE.md` -- "USBIMSK bits 1 and 3 UNKNOWN": bit 1 is **Reserved,
+read-only** (so stock setting it is inert), and bit 3 is **PSOF**. mboxfw leaves
+PSOF masked where stock enables it, which looked like a defect because the
+datasheet ties PSOF to "maintain the fidelity [of] any on going streaming audio
+application" -- but **the PSOF vector is a bare `RET` in both images** (Rev 20
+0x1033, Rev 22 0x102B), so not even Rev 22's SOF watchdog runs on a PSOF frame.
+Stock enables an interrupt it discards; masking it is equivalent. Details in
+`FINDING_globctl_bit1_missed.md`.

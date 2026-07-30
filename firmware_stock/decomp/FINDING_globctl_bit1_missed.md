@@ -112,15 +112,64 @@ Two mistakes made building it, both worth keeping:
     block passed. Now asserted explicitly in `check_cpten_last()`, which
     mutation-testing confirms names the real violation.
 
-## New open question, deliberately not acted on
+## The USBIMSK question it raised — RESOLVED from the datasheet, no change needed
 
 Both stock images write `USBIMSK = 0x9F` in their **bus-reset** handler
-(Rev 20 0x0F6E, Rev 22 0x0F8F) — sites the map only now shows. mboxfw's
-`VEC_RSTR` case deliberately does not touch USBIMSK, on the stated reasoning
-that a bus reset leaves it alone and re-ORing 0xE5 would be pointless work.
+(Rev 20 0x0F6E, Rev 22 0x0F8F) — sites the map only shows since it learned DPTR
+arithmetic. mboxfw's `VEC_RSTR` deliberately does not touch USBIMSK, on the
+stated reasoning that a bus reset leaves it alone. Read the datasheet (task
+#152) rather than guess, and **mboxfw is right**.
 
-Whether that reasoning holds depends on whether a bus reset clears USBIMSK,
-which the listings cannot settle. Not changed, for two reasons: USBIMSK bits 1
-and 3 within that 0x9F are themselves recorded unknowns, and masking SOF off in
-USBIMSK has already cost this project one real bug. Needs the datasheet's
-bus-reset behaviour, and then either an implementation or a justification row.
+Datasheet §2.1.9 Reset, on the FRSTE-clear branch:
+
+> if the MCU has cleared FRSTE, incoming USB resets is treated as interrupts to
+> the MCU (via INT0) if the corresponding function reset bit RSTR in the USB
+> interrupt mask register USBMSK has been set by the MCU. If neither FRSTE or
+> RSTR has been set by the MCU, **USB resets have no effect on the TAS1020B,
+> other than resetting the USB serial interface engine (SIE) and the USB buffer
+> manager (UBM)**.
+
+USBIMSK is neither SIE nor UBM state, so it survives a bus reset. Stock's write
+is redundant re-assertion. The precondition holds for mboxfw: it never sets
+FRSTE — every `USBCTL` write is an RMW of CONN/FEN only — and FRSTE's default is
+0 and is itself "not affected by USB reset".
+
+The same paragraph confirms the writes mboxfw *does* perform there are the
+required ones: `FEN` is documented per-bit as "cleared by a USB reset", and the
+UBM owns the endpoint configuration, hence re-arming `OEPCNF0`/`IEPCNF0` and
+`USBFADR`. `CONT` is "not affected by USB reset", so OR-ing it back is harmless.
+
+## Two more open items closed by the same read
+
+`rev20_STARTUP_TRACE.md` carried "**USBIMSK bits 1 and 3** in the 0x9F written
+at 0x09F1 — **UNKNOWN**". The register table (§6.5.1.3) answers both:
+
+    bit 7 RSTR   6 SUSR   5 RESR   4 SOF   3 PSOF   2 SETUP   1 — (R)   0 STPOW
+
+  * **bit 1 is Reserved, type R — read-only.** Stock setting it in 0x9F is inert,
+    which is why the value looked odd.
+  * **bit 3 is PSOF**, pseudo start-of-frame.
+
+Stock's `0x9F` therefore enables RSTR + SOF + PSOF + SETUP + STPOW and masks
+SUSR/RESR off. mboxfw's `0xF5` enables RSTR + SUSR + RESR + SOF + SETUP + STPOW:
+it takes suspend/resume (deliberate — it has a suspend path, and stock's cannot
+suspend twice) and leaves **PSOF masked**.
+
+PSOF looked like it might matter, because the datasheet ties it directly to audio:
+
+> a counter ... included in the TAS1020B to generate pseudo start-of-frame
+> interrupt in case the SOF packet on the USB bus is corrupted. This is done to
+> maintain synchronization to the USB bus and maintain the fidelity any on going
+> streaming audio application.
+
+It does not, and the reason is worth recording rather than acting on the
+paragraph above: **the PSOF vector is a bare `RET` in both images** — VECINT 0x13
+points at Rev 20 0x1033 and Rev 22 0x102B, both single-byte `RET` stubs. So even
+Rev 22's SOF watchdog does not run on a PSOF frame; stock enables an interrupt
+and then discards it. Leaving PSOF masked in mboxfw is behaviourally equivalent
+to stock's handling of it, and costs one fewer ISR entry per corrupted frame.
+
+If a future change makes `streaming_sof()` work that must happen on every frame
+including corrupted ones, PSOF becomes worth enabling — and it would then need a
+`VEC_PSOF` case, since the datasheet requires the interrupt and the status bit be
+cleared by writing VECINT.

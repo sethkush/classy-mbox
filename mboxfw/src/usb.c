@@ -899,10 +899,27 @@ void usb_service(void)
              *
              * DO NOT call usb_init() here — that would re-run the 65k
              * settle loop inside an ISR-adjacent context, blow away
-             * USBIMSK (RMW OR of 0xE5 is idempotent, but the extra work
+             * USBIMSK (RMW OR is idempotent, but the extra work
              * is pointless), and reset g_pending_address/g_ep0_reply_*
              * state that a mid-enum reset shouldn't clobber. Mirrors
-             * safety_net/src/main.c:402-433 exactly. */
+             * safety_net/src/main.c:402-433 exactly.
+             *
+             * Not restoring USBIMSK here is CORRECT, and now datasheet-backed
+             * rather than assumed. Both stock images DO write USBIMSK = 0x9F
+             * in their bus-reset handler (Rev 20 0x0F6E, Rev 22 0x0F8F), which
+             * looked like a write we were missing. It is redundant. Datasheet
+             * §2.1.9 Reset: with FRSTE clear, "USB resets have no effect on the
+             * TAS1020B, other than resetting the USB serial interface engine
+             * (SIE) and the USB buffer manager (UBM)". USBIMSK is neither, so a
+             * bus reset leaves it intact. mboxfw never sets FRSTE — every
+             * USBCTL write here is an RMW of CONN/FEN only — so that branch is
+             * the one we are on.
+             *
+             * What the same paragraph DOES require is exactly what the three
+             * writes below do: FEN is documented per-bit as "cleared by a USB
+             * reset", and the UBM owns the endpoint config, hence re-arming
+             * OEPCNF0/IEPCNF0 and USBFADR. CONN is "not affected by USB reset",
+             * so OR-ing it back is harmless. */
             /* TI UsbEng.c engUsbInit: IEPCNF0=OEPCNF0=0x84, USBFADR=0.
              * Rev 20 fcn.0x0F43 @ 0x0F5C: USBCTL |= 0xC0
              * (`90 ff fc e0 44 c0 f0`). Was cited as fcn.0x0F72 @ 0x0F7C,

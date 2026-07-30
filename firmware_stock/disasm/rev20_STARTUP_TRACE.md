@@ -579,7 +579,25 @@ Bit 0x01 (byte 0x20 bit 1) gates a pair of edge-triggered events 0x0B and
 
 - **GLOBCTL bit 1** (value 0x06 at step 14) — TI's ROM only ever documents
   bit 2 (LPWR) and bit 7 (CPU speed). Bit 1's function is **UNKNOWN**.
-- **USBIMSK bits 1 and 3** in the 0x9F written at 0x09F1 — **UNKNOWN**.
+- ~~**USBIMSK bits 1 and 3** in the 0x9F written at 0x09F1~~ — **RESOLVED
+  2026-07-29** from the datasheet register table (§6.5.1.3, USBIMSK 0xFFFD):
+  bit 1 is **Reserved, type R (read-only)**, so stock setting it in 0x9F is
+  inert; bit 3 is **PSOF, pseudo start-of-frame**. Full mask decode of stock's
+  0x9F: RSTR + SOF + PSOF + SETUP + STPOW enabled, SUSR and RESR masked off.
+  mboxfw writes 0xF5 = RSTR + SUSR + RESR + SOF + SETUP + STPOW, i.e. it enables
+  suspend/resume (deliberate, it has a suspend path where stock's cannot suspend
+  twice) and leaves PSOF masked. Leaving PSOF masked is benign: PSOF substitutes
+  for a corrupted SOF packet, but the PSOF vector (VECINT 0x13) is a bare `RET`
+  in BOTH images — Rev 20 0x1033, Rev 22 0x102B — so not even Rev 22's SOF
+  watchdog runs on a PSOF frame. Stock enables an interrupt it then discards.
+- **Does a USB reset clear USBIMSK?** — **RESOLVED 2026-07-29: no.** Both images
+  rewrite USBIMSK = 0x9F in the bus-reset handler (Rev 20 0x0F6E, Rev 22
+  0x0F8F), which looked like a write mboxfw was missing. Datasheet §2.1.9 Reset:
+  with FRSTE clear, "USB resets have no effect on the TAS1020B, other than
+  resetting the USB serial interface engine (SIE) and the USB buffer manager
+  (UBM)". USBIMSK is neither. Stock's write is redundant re-assertion, and
+  mboxfw's VEC_RSTR is right to omit it. What the reset DOES clear is FEN
+  (documented per-bit) and UBM-owned endpoint config, which mboxfw re-arms.
 - **All CPT* and ACG* register field meanings** — the values are recorded
   exactly, but decoding them into sample rates, frame formats and clock
   divisors needs the datasheet register tables, which were not worked
