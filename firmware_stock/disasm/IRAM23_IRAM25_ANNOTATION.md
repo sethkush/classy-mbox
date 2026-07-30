@@ -386,6 +386,74 @@ What each is already pinned to, by context:
                       The independent-input configuration pair.
     0x23.4            set once in the timed power-up run, after the mute
                       release, bracketed by delays, never cleared.
-    0x23.5 / 0x23.7   never bit-addressed in either image. They can still be
-                      set by the computed stores to 0x23, so "unused" is not
-                      established -- only "never individually addressed".
+    0x23.5 / 0x23.7   ALWAYS ZERO. Upgraded from "never individually
+                      addressed": all three computed stores to 0x23 are the
+                      same idiom, `CLR A / MOV 0x25,A / MOV 0x23,A` (Rev 20
+                      0x0536, 0x080E, 0x096A), i.e. the only byte-level writes
+                      ZERO the word. With no SETB and no MOV bit,C anywhere for
+                      these two bits, they can never be 1.
+
+---
+
+# The codec word is a pure bit-shadow, and 0x0526 is the suspend handler
+
+All three byte-level writes to 0x23 -- and to 0x25 -- are the identical
+zeroing idiom:
+
+    Rev 20 0x0533  CLR A / MOV 0x25,A (0x0534) / MOV 0x23,A (0x0536)
+    Rev 20 0x080B  CLR A / MOV 0x25,A (0x080C) / MOV 0x23,A (0x080E)
+    Rev 20 0x0967  CLR A / MOV 0x25,A (0x0968) / MOV 0x23,A (0x096A)
+
+So the 16-bit codec word is never *computed*. It is zeroed at boot, at codec
+re-init, and at suspend, and every other change is an individual bit operation
+on an IRAM shadow which is then published. That is what makes the bit-by-bit
+annotation in this document a complete account of the word.
+
+0x080B is the "reset the codec word to all-off" helper, called from Rev 20
+0x0360, 0x0392, 0x0419 and 0x04C7 — the last of which is the S/PDIF-present
+path, immediately before it switches to clock mode 3.
+
+## Rev 20 0x0526 — the USB suspend handler
+
+Reached as work code **0x0E** (`MOV 0x0A,#0x0E` at Rev 20 0x0006, inside the
+INT0/USB vector slot, cross-referenced from 0x0CBF), dispatched through the
+0x0300 jump table:
+
+    0526  MOV CY,0x21.6 / ORL CY,0x21.2 / JNC 0x0564   ; only if streaming
+    052c  ACGCTL &= 0x3F        ; clear MCLKO2EN and MCLKO1EN -- master clocks off
+    0533  CLR A
+    0534  MOV 0x25,A            ; codec word low  = 0
+    0536  MOV 0x23,A            ; codec word high = 0
+    0538  LCALL 0x0E62          ; publish 0x0000
+    053b  MOV 0x22,#0xFF        ; panel word = blank
+    053e  CLR 0x23.6            ; mono off
+    0540  LCALL 0x0F0C          ; publish panel
+    0543  PCON |= 0x01          ; IDL -- put the MCU into idle mode
+
+Two things follow.
+
+**It independently confirms the mute polarity.** Suspend publishes 0x0000 to the
+codec, which must mean everything off. Since 0x23.2/0x23.3 are 0 in that word,
+**clear = muted** — the same conclusion the clock-change bracket gave, reached by
+a different route.
+
+**Stock uses 0xFF as the panel blank word.** 0xFF has 111 in both 3-bit source
+fields, and 111 is not one of the three source patterns (0x05/0x03/0x06). So
+non-source patterns are legitimate *off* states for this word, and calling
+mboxfw's boot value of 0x00 "illegal" (in `MUX_IRAM22_ANNOTATION.md`) was too
+strong. 0x00 remains a divergence — stock boots 0x76 and blanks with 0xFF, never
+0x00 — but the word does tolerate patterns outside the source set.
+
+## Resolved: the panel republish is change-triggered in stock too
+
+Listed earlier as an open question. Stock gates it:
+
+    0adf  LCALL 0x0ED5          ; button handler
+    0ae2  MOV A,R7
+    0ae3  JNB ACC.0,0x0AEC      ; handler returned 0 -> skip both publishes
+    0ae6  LCALL 0x0F0C          ; panel word
+    0ae9  LCALL 0x0E62          ; codec word
+
+The republish happens only when the handler reports it acted, via the 0x06
+accumulator returned in R7. mboxfw's `codec_commit()`-on-change does the same
+thing. **Not a divergence.**
