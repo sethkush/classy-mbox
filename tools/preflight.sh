@@ -101,6 +101,10 @@ else
     # Also catches emitted-but-uncalled function bodies, which is how three
     # busy-wait delays came to be deleted at every call site.
     check "boot-path reachability + orphans"     python3 tools/verify_reachability.py
+    # Ordering gate. Every check above is a set/value question; this is the only
+    # one that asks about SEQUENCE, including "CPTEN is set only after the
+    # codec-port registers are configured".
+    check "hw_init write order vs stock"         python3 tools/verify_init_order.py
     check "DFU response timing"                 bash    tools/dfu_timing_profile.sh
     check "mboxflash --validate on target"      ./mboxflash/mboxflash --validate "$IMG"
 fi

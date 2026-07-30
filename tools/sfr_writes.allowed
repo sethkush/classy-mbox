@@ -8,40 +8,6 @@
 # (assign,0xc0) at 0xfffc when Rev 20 has (or,0x80). A baseline
 # generated from a working image would have flagged that
 # specific tuple as a diff before flash.
-#
-# NOTE: --update rewrites this file and DROPS per-entry annotations.
-# Re-add the standing annotations below after any --update.
-#
-# RE-BASELINED 2026-07-28 (sixth time today), for sample byte order.
-#   0xffd5 assign 0xac -> 0xa8  CPTRXCNF3 bit 2 is BYOR, the DMA byte-order
-#     reversal for the capture path. Stock sets it and is documented as
-#     S24_3BE; mboxfw declares S24_3LE, so it wants BYOR clear. Inferred
-#     statically -- Linux quirks table + both stock images -- rather than
-#     measured, which is why the first capture looked like full-scale
-#     noise (correct audio, bytes in the other order).
-#   0xffde (CPTCNF3) is now selected by MBOX_PLAYBACK_BYOR: 0xac (default,
-#     stock boot value) or 0xa8. The manifest carries whichever the default
-#     build emits; the two units run opposite settings to settle playback
-#     byte order over a loopback cable.
-#
-# RE-BASELINED 2026-07-29, for the panel/EP0/suspend defect pass. Five new
-# writes, each matching a stock site:
-#   0xff6f runtime  IEPDCNTY0 = 0, and
-#   0xffaf runtime  OEPDCNTY0 = 0 -- the EP0 Y-buffer counts, cleared in
-#     usb_ep0_setup(). Rev 20 fcn.0x0970 @ 0x0988 / @ 0x0984; Rev 22
-#     fcn.0x0891 @ 0x08A9 / @ 0x08A5. Defensive clears against boot-ROM
-#     residue, not configuration -- neither firmware writes the Y BASE
-#     registers. Candidate for the ~12% geometric EP0 IN loss.
-#   0xffe1 and_not 0x3f  ACGCTL, idling both clock generators on suspend.
-#     Rev 20 @ 0x0530, Rev 22 @ 0x052F. Inverse of the `or 0xc0` that
-#     streaming.c already emits at Rev 20 0x07CC.
-#   0xfffc and_not 0x7f  USBCTL, dropping CONN on resume before the
-#     re-init tail. Rev 20 @ 0x054A, Rev 22 @ 0x0549.
-#   0xfffd runtime  USBIMSK on resume. DELIBERATE DIVERGENCE: stock
-#     assigns 0x9F here (Rev 20 @ 0x054E), which masks SUSR and RESR off
-#     and makes suspend a one-shot per attach. We OR our own 0xF5 back
-#     instead, so later suspends still work, and OR rather than assign per
-#     task #48. See the comment in mboxfw/src/power.c.
 
 0xff2e  rmw       -       # usb
 0xff60  assign    0x00    # streaming,usb
@@ -81,6 +47,7 @@
 0xffaf  runtime   -       # usb
 0xffb0  or        0x01    # hw_init
 0xffb1  or        0x01    # hw_init
+0xffb1  runtime   -       # hw_init
 0xffb2  assign    0x00    # usb
 0xffb2  runtime   -       # usb
 0xffc0  and_not   0x54    # eeprom
@@ -134,3 +101,11 @@
 0xfffd  runtime   -       # power
 0xffff  assign    0x00    # usb
 0xffff  runtime   -       # usb
+
+# 0xffb1 runtime (hw_init) -- GLOBCTL |= 0x02, added 2026-07-29. Mirrors the
+# stock boot write GLOBCTL = 0x06 (Rev 20 0x08FE, Rev 22 0x081F), which every
+# scanner had missed because DPTR reaches 0xFFB1 by INC DPTR from the MEMCFG
+# write at 0xFFB0 rather than by an immediate load. It had been recorded in
+# rev20_diff_justifications.md as a FALSE_POSITIVE on that basis; retracted.
+# GLOBCTL bit 1's function is UNKNOWN -- this matches stock's boot state, which
+# is the argument for it, not a claim about what the bit does.

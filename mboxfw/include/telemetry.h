@@ -35,7 +35,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x000E   /* 000E: busy-wait delays restored (volatile) */
+#define TLM_BUILD_ID     0x000F   /* 000F: stock GLOBCTL bit 1 restored */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01

@@ -231,7 +231,7 @@ Grouped by SFR function.
 | Addr | Category | Verdict | Reason |
 |------|----------|---------|--------|
 | 0xffb0 | CHANGED_REV runtime | **FALSE_POSITIVE** | `MEMCFG` — Rev 20 runtime writes SDW-related; mboxfw `\|= 0x01`. Same terminal SDW state. |
-| 0xffb1 | CHANGED_REV and_not 0xfe + assign 0x06 | **SAFE_OMIT** | `GLOBCTL` — Rev 20 disasm shows `anl a, #0xfe; ...; orl a, #0x01` (clear-then-set bit-0 dance during mode switches). mboxfw does `\|= 0x01` once at boot. `assign 0x06` is a scanner artifact — no `mov a, #0x06; movx @dptr, a` to 0xffb1 exists in rev20_flat.asm; the 0x06 is a nearby `mov 0x06, a` direct-memory write. Setting bit 0 once is sufficient. |
+| 0xffb1 | CHANGED_REV and_not 0xfe + assign 0x06 | **IMPLEMENTED** (was wrongly SAFE_OMIT) | `GLOBCTL` — the `and_not 0xfe` half stands: that is the clear-then-set bit-0 dance in Rev 20's mode-switch paths, and mboxfw's single `\|= 0x01` is sufficient. The `assign 0x06` half was **RETRACTED 2026-07-29**. It was called a scanner artifact because no `mov a,#0x06; movx @dptr,a` to 0xffb1 exists — true, and the wrong conclusion. DPTR is never loaded with 0xFFB1 there; it arrives by `INC DPTR` from the MEMCFG write at 0xFFB0, 27 instructions earlier (Rev 20 0x08D4 → 0x08FB, Rev 22 0x07F5 → 0x081C). Byte-scanned: `a3 74 06 f0` occurs exactly once per image. `rev20_STARTUP_TRACE.md` step 14 recorded it correctly all along, so two docs contradicted each other. Also note the dismissal cited rev20_flat.asm, the known-bad disassembly. Now implemented as `GLOBCTL \|= 0x02` in hw_init.c (RMW per #48 reaches the same 0x06 from the ROM's 0x04). **GLOBCTL bit 1's function remains UNKNOWN.** |
 | 0xffb2 | CHANGED_REV rmw + runtime | **FALSE_POSITIVE** | `VECINT` — both firmwares write 0 to ack after service. Scanner tags one side as assign and the other as runtime. |
 
 ### I²C peripheral (EEPROM driver)
@@ -321,7 +321,8 @@ sections above.
 | 0xffb0 | or | 0x01 | mboxfw | JUSTIFIED — MEMCFG SDW idempotent set (boot ROM already set it). Cite: TI Utils.c UtilResetCPU. |
 | 0xffb0 | runtime | - | rev20 | FALSE_POSITIVE — Rev 20 arrives at same SDW state via runtime write. |
 | 0xffb1 | and_not | 0xfe | rev20 | SAFE_OMIT — GLOBCTL clear-bit-0 dance in Rev 20 mode-switch paths. mboxfw only sets (|= 0x01) — sufficient since USB-enable bit stays high. |
-| 0xffb1 | assign | 0x06 | rev20 | FALSE_POSITIVE — no `mov a,#0x06; movx @dptr,a` to 0xffb1 exists in rev20_flat.asm. Scanner artifact from a nearby `mov 0x06, a` direct-memory write. |
+| 0xffb1 | assign | 0x06 | rev20 | **RETRACTED 2026-07-29 — REAL, now implemented.** Reached via `INC DPTR` from 0xFFB0, so the direct form correctly did not exist; the inference from its absence was wrong. Both images do it (Rev 20 0x08FB, Rev 22 0x081C). See the 0xffb1 row above. |
+| 0xffb1 | runtime | - | mboxfw | GLOBCTL `|= 0x02` in hw_init, added 2026-07-29. Emitted as a runtime RMW (SDCC routes the mask through ar7 when it fuses this with the adjacent MEMCFG (0xFFB0) RMW), which is why the pattern reads `runtime` rather than an immediate. Mirrors stock's boot `GLOBCTL = 0x06` (Rev 20 0x08FE, Rev 22 0x081F); RMW per #48 reaches the same value from the boot ROM's 0x04. See the retraction above. |
 | 0xffb2 | rmw | - | rev20 | FALSE_POSITIVE — VECINT ack pattern (read+write 0). mboxfw does the same. |
 | 0xffb2 | runtime | - | rev20 | FALSE_POSITIVE — same. |
 | 0xffc0 | and_not | 0x54 | mboxfw | JUSTIFIED — I²C CLEAR_ALL mask per TI I2c.h. Stricter than Rev 20's 0xFC. Superset behavior. |

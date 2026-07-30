@@ -332,6 +332,42 @@ on any emitted-but-uncalled function, which is the durable check for this class.
 
 Remaining limits, stated so this section does not overclaim: reachability is
 computed over direct `lcall`/`ljmp` edges only, so a call through a function
-pointer would be invisible (mboxfw has none today). It proves a property holds
-somewhere on the boot path, not that it holds in the right ORDER relative to
-other writes -- ordering remains unchecked by every gate.
+pointer would be invisible (mboxfw has none today).
+
+## 5a. Ordering -- CLOSED 2026-07-29, and it also found a retraction
+
+Reachability proves a property holds somewhere on the boot path, not that it
+holds in the right ORDER relative to other writes. That was the last dimension
+no gate covered, and it is the dimension the delay-elision bug lived in.
+
+Closed by `tools/verify_init_order.py`: it compares the order of mboxfw's
+`hw_init` writes against both stock boot-init functions, and asserts separately
+that CPTEN (GLOBCTL bit 0) is set only after every codec-port register. 14
+common registers, 8 inversions, all listed in `ORDER_EXEMPT` with a reason
+(mboxfw does timers -> IE -> ports -> MEMCFG where stock does MEMCFG -> ports ->
+timers -> IE; each is benign because SDW is already set by the ROM, EA stays
+clear for all of hw_init, and no timer runs yet). The codec block and CPTEN match
+stock exactly.
+
+**What it found: stock writes `GLOBCTL = 0x06` at boot and mboxfw did not.**
+Full write-up in `FINDING_globctl_bit1_missed.md`. The write is invisible to
+every scanner here because DPTR reaches 0xFFB1 by `INC DPTR` from the MEMCFG
+write 27 instructions earlier, never by an immediate load -- and on that basis
+`rev20_diff_justifications.md` had recorded it as a **scanner artifact**, while
+`rev20_STARTUP_TRACE.md` step 14 had it right. Two docs in this repo contradicted
+each other for as long as both existed. Retracted; implemented as
+`GLOBCTL |= 0x02`; GLOBCTL bit 1's function remains UNKNOWN and the code says so.
+
+Fixed as a consequence: `xdata_access_map.py` now tracks DPTR arithmetic
+(straight-line only, ending at any control-flow edge), which surfaced 5 more
+sites per image; `check_citation_targets.py` consults the map when no immediate
+load sits near a cited address, since rejecting such a citation is exactly how a
+real write becomes an "artifact".
+
+**New open question from the same pass, deliberately not acted on:** both stock
+images write `USBIMSK = 0x9F` in their bus-reset handler (Rev 20 0x0F6E, Rev 22
+0x0F8F), and mboxfw's `VEC_RSTR` deliberately does not touch USBIMSK. Whether
+that is correct depends on whether a bus reset clears USBIMSK, which the listings
+cannot settle -- and USBIMSK bits 1 and 3 in that 0x9F are themselves recorded
+unknowns, with a past bug already traced to masking SOF off. Needs the
+datasheet's bus-reset behaviour.

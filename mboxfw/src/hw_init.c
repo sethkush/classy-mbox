@@ -57,6 +57,42 @@ void hw_init(void)
                          * RMW because boot ROM's UtilResetCPU already
                          * did MEMCFG |= SDW_BIT; we're just being
                          * idempotent. Reference: TI Utils.c UtilResetCPU. */
+    /* Both stock images set GLOBCTL bit 1 HERE -- before the codec-port block
+     * and long before CPTEN -- and mboxfw did not, so mboxfw ran the whole
+     * audio path with bit 1 clear where stock has it set.
+     *
+     * This write was missed by every scanner and then explicitly dismissed.
+     * `rev20_diff_justifications.md` carried it as
+     * "FALSE_POSITIVE -- no `mov a,#0x06; movx @dptr,a` to 0xffb1 exists ...
+     * scanner artifact from a nearby `mov 0x06, a`". That search was correct
+     * and its conclusion was not: DPTR is never loaded with 0xFFB1 here. It
+     * arrives by INC DPTR from the MEMCFG write at 0xFFB0:
+     *
+     *   Rev 20 0x08D4  MOV DPTR,#0xffb0   ; MEMCFG
+     *          0x08FB  INC DPTR           ; -> 0xFFB1 GLOBCTL
+     *          0x08FC  MOV A,#0x06
+     *          0x08FE  MOVX @DPTR,A
+     *   Rev 22 0x081C  same, MOV A,#0x06 at 0x081D, store at 0x081F
+     *
+     * Byte-scanned both images: `a3 74 06 f0` occurs exactly once each, and
+     * `90 ff b1 74 06 f0` occurs nowhere -- which is why looking for the
+     * direct form found nothing. 27 instructions separate the DPTR load from
+     * the INC, so a windowed scanner cannot connect them either. The
+     * dismissal also cited rev20_flat.asm, which is the known-bad
+     * disassembly. rev20_STARTUP_TRACE.md step 14 had it right all along.
+     *
+     * RMW rather than stock's outright `= 0x06`, per task #48: the boot ROM
+     * leaves GLOBCTL = 0x04 (LPWR on), so |= 0x02 reaches the same 0x06
+     * without blindly clearing bits the ROM may own.
+     *
+     * GLOBCTL bit 1's FUNCTION IS UNKNOWN -- TI's ROM documents only bit 2
+     * (LPWR) and bit 7 (CPU speed), and rev20_STARTUP_TRACE.md's open-items
+     * list has carried "GLOBCTL bit 1 -- UNKNOWN" since it was written. The
+     * argument for setting it is not that we know what it does; it is that
+     * both stock images set it at boot and mboxfw is meant to mirror stock's
+     * boot state. */
+    GLOBCTL |= 0x02;    /* Rev 20 fcn.0x08CB @ 0x08FE */
+
     /* Codec-port config. Addresses and values verified byte-for-byte
      * against both stock images by static scan (see the SFR tables in
      * firmware_stock/disasm/rev2{0,2}_STARTUP_TRACE.md). The register

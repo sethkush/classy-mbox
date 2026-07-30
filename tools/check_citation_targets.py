@@ -138,6 +138,19 @@ def main():
                         d[i] in (0xF5, 0xE5, 0x75) and d[i + 1] == (want & 0xFF)
                         for i in range(lo, hi - 1)):
                     continue
+                # Last resort: ask the access map. A register can be reached
+                # without any `MOV DPTR,#imm` nearby -- stock writes GLOBCTL at
+                # Rev 20 0x08FE with DPTR arrived at by INC DPTR from the
+                # MEMCFG write 27 instructions earlier. Byte-matching the
+                # immediate load cannot see that, and rejecting such a citation
+                # is how a REAL stock write came to be recorded as a scanner
+                # artifact in rev20_diff_justifications.md.
+                sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                from xdata_access_map import analyse      # noqa: E402
+                if any(lo <= site <= hi
+                       for site, _k, _v in analyse(f"rev{rev}").get(want, ())):
+                    continue
+
                 where = [f"0x{i:04X}" for i in range(len(d) - 2)
                          if d[i:i + 3] == sel][:4]
                 bad.append((rel, n,

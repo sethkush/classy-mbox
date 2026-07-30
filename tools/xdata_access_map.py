@@ -218,6 +218,57 @@ def analyse(image):
         elif 0xE0 in seq:
             kind = "read"
         acc.setdefault(reg, []).append((a, kind, val))
+
+    # Second pass: accesses reached by DPTR ARITHMETIC rather than a fresh
+    # `MOV DPTR,#imm`. The walk above starts at each immediate load and looks a
+    # bounded number of instructions ahead, so it cannot connect a load to an
+    # access an arbitrary distance later. Rev 20 loads DPTR = 0xFFB0 at 0x08D4
+    # and then, 27 instructions further on, does `INC DPTR / MOV A,#6 /
+    # MOVX @DPTR,A` at 0x08FB -- GLOBCTL = 0x06, in both stock images. Every
+    # scanner in this repo missed it, and rev20_diff_justifications.md then
+    # dismissed it as an artifact because the direct form does not exist.
+    #
+    # Tracking is STRAIGHT-LINE only: the run ends at any branch, call, jump or
+    # return, so a tracked DPTR is never carried across a control-flow edge
+    # where its value would be unknown.
+    ENDS_RUN = {0x02, 0x12, 0x22, 0x32, 0x73}
+    for i, (a, _n) in enumerate(starts):
+        if d[a] != 0x90:
+            continue
+        dptr = (d[a + 1] << 8) | d[a + 2]
+        off = 0
+        for j in range(i + 1, len(starts)):
+            addr, _ln = starts[j]
+            op = d[addr]
+            if op == 0x90:
+                break
+            if op in ENDS_RUN or (op & 0x1F) in (0x01, 0x11) \
+                    or op in (0x40, 0x50, 0x60, 0x70, 0x10, 0x20, 0x30, 0xD5) \
+                    or 0xB4 <= op <= 0xBF or 0xD8 <= op <= 0xDF:
+                break
+            if op == 0xA3:
+                off += 1
+            elif op == 0x15 and d[addr + 1] == 0x82:
+                off -= 1
+            elif op == 0x75 and d[addr + 1] == 0x82:
+                dptr, off = (dptr & 0xFF00) | d[addr + 2], 0
+            elif op in (0xF0, 0xE0) and off != 0:
+                reg2 = dptr + off
+                kind2 = "write" if op == 0xF0 else "read"
+                if kind2 == "write":
+                    for k in range(max(0, j - 3), j):
+                        if d[starts[k][0]] == 0x74:
+                            kind2, v2 = "write", d[starts[k][0] + 1]
+                            break
+                    else:
+                        v2 = None
+                else:
+                    v2 = None
+                sites = acc.setdefault(reg2, [])
+                if not any(s == addr for s, _k, _v in sites):
+                    sites.append((addr, kind2 + " (via DPTR arithmetic)", v2))
+    for reg in acc:
+        acc[reg].sort()
     return acc
 
 

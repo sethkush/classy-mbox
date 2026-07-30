@@ -62,6 +62,7 @@ with OR/AND of the given mask.
 
 ### 0xFF2F  SETPACK_WLEN_H
     0x0D6B  read
+    0x0D8C  read (via DPTR arithmetic)
 
 ### 0xFF60  IEPCNF1
     0x03B2  write 0xC5
@@ -165,6 +166,7 @@ with OR/AND of the given mask.
     0x0334  clr-bits 0xFE
     0x0799  clr-bits 0xFE
     0x07A6  set-bits-via-helper 0x0DEB 0x01
+    0x08FE  write (via DPTR arithmetic) 0x06
     0x0934  set-bits 0x01
     0x0FF9  set-bits 0x01
 
@@ -187,6 +189,7 @@ with OR/AND of the given mask.
 ### 0xFFC1  I2C_TX
     0x0C0A  write-computed
     0x0C16  write-computed
+    0x0C2B  write (via DPTR arithmetic)
     0x0CEB  write-computed
     0x0CF7  write-computed
     0x0D0B  write 0x00
@@ -298,8 +301,10 @@ with OR/AND of the given mask.
 
 ### 0xFFFD  USBIMSK
     0x03F1  write 0xFF
+    0x0550  write (via DPTR arithmetic) 0x9F
     0x09EC  write 0x9F
     0x0AA6  write 0x00
+    0x0F6E  write (via DPTR arithmetic) 0x9F
 
 ### 0xFFFF  USBFADR
     0x09F2  write 0x00
@@ -362,6 +367,7 @@ with OR/AND of the given mask.
 
 ### 0xFF2F  SETPACK_WLEN_H
     0x0D9E  read
+    0x0DBF  read (via DPTR arithmetic)
 
 ### 0xFF60  IEPCNF1
     0x03B6  write 0xC5
@@ -469,6 +475,7 @@ with OR/AND of the given mask.
     0x0340  clr-bits 0xFE
     0x0777  clr-bits 0xFE
     0x0784  set-bits-via-helper 0x0EC7 0x01
+    0x081F  write (via DPTR arithmetic) 0x06
     0x0855  set-bits 0x01
     0x0FEA  set-bits 0x01
 
@@ -491,6 +498,7 @@ with OR/AND of the given mask.
 ### 0xFFC1  I2C_TX
     0x0BF6  write-computed
     0x0C02  write-computed
+    0x0C17  write (via DPTR arithmetic)
     0x0D1F  write-computed
     0x0D2B  write-computed
     0x0D3F  write 0x00
@@ -608,8 +616,10 @@ with OR/AND of the given mask.
 
 ### 0xFFFD  USBIMSK
     0x03F5  write 0xFF
+    0x054F  write (via DPTR arithmetic) 0x9F
     0x090D  write 0x9F
     0x0A50  write 0x00
+    0x0F8F  write (via DPTR arithmetic) 0x9F
 
 ### 0xFFFF  USBFADR
     0x0913  write 0x00
