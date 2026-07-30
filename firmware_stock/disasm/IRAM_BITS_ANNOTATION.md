@@ -23,10 +23,15 @@ already pressed" half of the edge detection:
     Rev 20 0x0AFC  JNB 0x01,0x0B0D
 
 That is P3.1, tested twice in the function at 0x0A96 — the same function that
-owns the overlaid locals 0x27–0x2B. P3.1 is therefore an input the firmware
-reads and acts on, distinct from the source and mono buttons. This is the first
-place to look for the TRS jack-presence switches; what it physically connects
-to is not determined by the firmware.
+owns the overlaid locals 0x27–0x2B. **P3.1 is the S/PDIF / external-clock
+presence input.** Asserted, it raises work code 0x0B, whose handler at 0x04C4
+switches to clock mode 3 and starts the CS8427 with CLOCKSOURCE = 0x41;
+released, it raises code 0x0C, whose handler at 0x0511 reverts to mode 1
+(internal clock). Full derivation in `DISPATCH_TABLE_011F.md`.
+
+An earlier draft here guessed "the first place to look for the TRS jack-presence
+switches". That guess is withdrawn — the handlers name the function outright, and
+nothing in either image reads a TRS jack.
 
 ## 0x22.7 — panel shift word, top bit
 

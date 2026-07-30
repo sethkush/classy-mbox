@@ -43,17 +43,53 @@ to 0x02E7, and only this decode reproduces all three. Reading the entries as
 3-byte `LJMP` instructions instead yields targets like 0x9C03, outside the
 8174-byte image.
 
-The request codes are the values written to **IRAM byte 0x0A**, the pending-work
-code the main loop dispatches through 0x02EE (see `IRAM_LOW_ANNOTATION.md`).
-Two of them were pinned by today's other work:
+### CORRECTION: these are USB bRequest codes, not byte-0x0A work codes
 
-  * **0x0B** and **0x0C** are the P3.1 insert and remove events, raised at
-    Rev 20 0x0AF6 and 0x0B07 (see `IRAM_BITS_ANNOTATION.md`). Their handlers
-    are 0x029F and 0x02E7.
-  * **0x0D** is written by the setter at 0x005B — and note it has **no entry in
-    this table**, so codes above 0x0C are handled elsewhere or fall through.
+An earlier version of this document said the case values "are the values written
+to IRAM byte 0x0A" and that 0x0B/0x0C were the P3.1 insert/remove events. **Both
+claims were wrong.** I saw that byte 0x0A also takes the values 0x0B and 0x0C and
+treated the coincidence as identity, without checking what the dispatcher keys
+on.
 
-Codes 0x02 and 0x04 are absent from the table entirely.
+The key is at 0x0118: `MOV DPTR,#0xFF29` — and 0xFF29 is **SETPACK_BREQ**, the
+USB setup packet's bRequest byte. So the case values are USB **standard request
+codes**, and they match the standard set exactly:
+
+    0x00 GET_STATUS         -> 0x022F      0x07 SET_DESCRIPTOR   -> 0x0299
+    0x01 CLEAR_FEATURE      -> 0x0144      0x08 GET_CONFIGURATION-> 0x015D
+    0x03 SET_FEATURE        -> 0x029C      0x09 SET_CONFIGURATION-> 0x025B
+    0x05 SET_ADDRESS        -> 0x024D      0x0A GET_INTERFACE    -> 0x01F1
+    0x06 GET_DESCRIPTOR     -> 0x0173      0x0B SET_INTERFACE    -> 0x029F
+                                           0x0C SYNCH_FRAME      -> 0x02E7
+
+0x02 and 0x04 are absent because they are **reserved in the USB specification** —
+which is the confirmation that this is the standard-request table and not an
+arbitrary numbering. The default handler 0x02EA covers unrecognised requests.
+
+That also explains something that should have tipped me off immediately: handler
+0x029F begins `MOV DPTR,#0xFF2C` (SETPACK_WIDX_L), which is exactly what
+SET_INTERFACE needs and makes no sense for a panel event.
+
+### The byte-0x0A work-code dispatcher is a SEPARATE table at 0x0300
+
+    02ee  MOV A,0x0A
+    02f0  DEC A
+    02f1  CJNE A,#0x0E,0x02F4     ; range-check 1..14
+    02f4  JC 0x02F9
+    02f9  MOV DPTR,#0x0300
+    02fc  MOV R0,A / ADD A,R0 / ADD A,R0   ; A = index * 3
+    02ff  JMP @A+DPTR
+
+A plain jump table of 3-byte LJMPs, index = code - 1:
+
+    code 0x01 -> 0x032A   0x06 -> 0x0478   0x0B -> 0x04C4
+    code 0x02 -> 0x0386   0x07 -> 0x0480   0x0C -> 0x0511
+    code 0x03 -> 0x03FD   0x08 -> 0x049A   0x0D -> 0x0518
+    code 0x04 -> 0x0454   0x09 -> 0x04B4   0x0E -> 0x0526
+    code 0x05 -> 0x0466   0x0A -> 0x04BC   0x0F -> 0x1001 (LCALL, not LJMP)
+
+So the P3.1 events raised at 0x0AF6 (code 0x0B) and 0x0B07 (code 0x0C) dispatch
+to **0x04C4 and 0x0511**, not to 0x029F and 0x02E7.
 
 ## Consequence for the annotation ledger
 
@@ -114,3 +150,48 @@ eleven handler addresses, because that just re-reads the same big-endian
 address fields at a different offset. The two encodings are only
 distinguishable by the third byte and by the surrounding code, so the
 `LCALL 0x0F70` above is what settles it.
+
+---
+
+# What P3.1 actually is: S/PDIF / external clock presence
+
+Decoding the two handlers the 0x0300 table points at settles the question left
+open in `IRAM_BITS_ANNOTATION.md`.
+
+**Code 0x0B — P3.1 asserted — handler 0x04C4:**
+
+    04c4  JB   0x25.5,0x04CA      ; already in this state? skip the init
+    04c7  LCALL 0x080B
+    04ca  SETB 0x25.5
+    04cc  MOV  R7,#3
+    04ce  LCALL 0x0728            ; audio_clock_mode_apply(MODE 3)
+    04d1  0x2C = 0x04 ; 0x2D = 0x41
+    04d7  MOV R5,0x2D / MOV R7,0x2C
+    04db  LCALL 0x0C45            ; CS8427 write: CLOCKSOURCE = 0x41 (RUN set)
+
+**Code 0x0C — P3.1 released — handler 0x0511:**
+
+    0511  MOV  R7,#1
+    0513  LCALL 0x0728            ; audio_clock_mode_apply(MODE 1)
+    0516  SJMP 0x0564
+
+P3.1 asserted switches the part to **clock mode 3 and starts the CS8427 with
+CLOCKSOURCE = 0x41**; P3.1 released reverts to **mode 1**. Mode 1 sources both
+master clocks from MCLKI (see the ACGCTL decode in
+`FINDING_capture_8frame_artifact.md`), i.e. the internal reference.
+
+**So P3.1 is the S/PDIF / external-clock presence input, not a TRS jack
+detect.** Signal present -> slave the audio clock to the incoming S/PDIF stream
+via the CS8427; signal gone -> fall back to the internal clock. The two
+"insert/remove" edges I described are lock-acquired and lock-lost.
+
+This also resolves the mechanism behind task #145 (S/PDIF clock slaving, Rev 20
+modes 3 and 5): the trigger is P3.1, the switch is `audio_clock_mode_apply(3)`
+plus CS8427 CLOCKSOURCE = 0x41, and the revert is
+`audio_clock_mode_apply(1)`.
+
+And it gives 0x25.5 a meaning: it is the **"clock is slaved to S/PDIF" latch**,
+set at 0x04CA and cleared at Rev 20 0x0395 (boot) and 0x041C. Since
+`0x22.6 = !(0x25.4) && !(0x25.5)`, the panel bit 0x22.6 goes low whenever either
+clock-source latch is set — consistent with a front-panel indicator that is lit
+only on the internal clock, though which LED is not established here.
