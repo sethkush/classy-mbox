@@ -130,6 +130,7 @@ def survey(image):
     """Enumerate what the image touches: call targets, IRAM bytes/bits, XDATA."""
     d, starts = load(image)
     calls, iram_b, iram_bit, xdata = set(), defaultdict(set), defaultdict(set), defaultdict(set)
+    sfr = defaultdict(set)
     for i in sorted(starts):
         op = d[i]
         if i + 2 >= len(d):
@@ -147,8 +148,16 @@ def survey(image):
             xdata[(d[i + 1] << 8) | d[i + 2]].add(i)
         if op in DIRECT_OPS:
             a = d[i + 1]
-            if a < 0x80:                              # IRAM, not an SFR
+            if a < 0x80:                              # IRAM
                 iram_b[a].add(i)
+            else:
+                # Direct-addressed SFRs. These were omitted from all four
+                # original categories, so "100% on four numbers" silently
+                # excluded 16 SFRs and ~60 sites per image -- including the
+                # timer setup and PCON, where the missing mboxfw suspend path
+                # was hiding. The categories were my choice, so this was my
+                # gap, not a technicality.
+                sfr[a].add(i)
         if op in BIT_OPS:
             b = d[i + 1]
             if b < 0x80:                              # bit-addressable IRAM
@@ -163,7 +172,7 @@ def survey(image):
             off = base + k * 3
             calls.add((d[off] << 8) | d[off + 1])
     calls |= BOOT_ROM_ENTRIES
-    return calls, iram_b, iram_bit, xdata
+    return calls, iram_b, iram_bit, xdata, sfr
 
 
 def repo_text(patterns):
@@ -249,7 +258,7 @@ def main():
     emit()
 
     for image in IMAGES:
-        calls, iram_b, iram_bit, xdata = survey(image)
+        calls, iram_b, iram_bit, xdata, sfr = survey(image)
         emit(f"--- {image} ---")
 
         rows = [("func", a, f"0x{a:04X}") for a in sorted(calls)]
@@ -257,11 +266,13 @@ def main():
         rows += [("irambyte", a, f"0x{a:02X}") for a in sorted(iram_b)]
         rows += [("irambit", b, f"0x{0x20+(b>>3):02X}.{b&7}")
                  for b in sorted(iram_bit)]
+        rows += [("sfr", a, f"0x{a:02X}") for a in sorted(sfr)]
 
         for kind, label in (("func", "call targets   "),
                             ("xdata", "XDATA addresses"),
                             ("irambyte", "IRAM bytes     "),
-                            ("irambit", "IRAM bits      ")):
+                            ("irambit", "IRAM bits      "),
+                            ("sfr", "direct SFRs    ")):
             items = [(a, t) for k, a, t in rows if k == kind]
             n = len(items)
             if not n:

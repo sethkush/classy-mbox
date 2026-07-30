@@ -603,3 +603,35 @@ rev22	xdata	0xFFFD	USBIMSK: 3 site(s), write	disasm/XDATA_ACCESS_MAP.md	explaine
 rev22	xdata	0xFFFF	USBFADR: 3 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
 rev20	func	0x2F00	boot ROM standard-request handler; entered by LCALL from the SETUP path	disasm/rev20_std_requests.md	explained
 rev22	func	0x2F00	boot ROM standard-request handler; entered by LCALL from the SETUP path	disasm/rev20_std_requests.md	explained
+rev20	sfr	0x81	SP - stack pointer, set to 0x33 (rev20) / 0x32 (rev22)	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x82	DPL - data pointer low, saved/restored and loaded from IRAM pointer pairs	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x83	DPH - data pointer high, same	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x87	PCON - IDL bit set on USB suspend	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x88	TCON - timer control, cleared at init (IT0=0, level-triggered INT0)	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x89	TMOD - 0x11, both timers 16-bit mode 1	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x8A	TL0 - timer 0 low, tick timer	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x8B	TL1 - timer 1 low, unused	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x8C	TH0 - 0xCE, the panel tick reload; also reloaded in the ISR	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x8D	TH1 - timer 1 high, unused	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0x90	P1 - two bit-banged shift chains: 0/1/2 codec word, 5/6/7 panel word	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0xB0	P3 - written 0xFF (pull-ups); read for buttons P3.3/4/5 and S/PDIF P3.1	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0xB8	IP - interrupt priority, cleared (no priorities)	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0xD0	PSW - pushed and set to 0x10 (register bank 2) in the ISR prologue	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0xE0	ACC - accumulator, direct-addressed for bit tests and ISR save	disasm/SFR_ANNOTATION.md	explained
+rev20	sfr	0xF0	B - B register, ISR save and MUL AB table strides	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x81	SP - stack pointer, set to 0x33 (rev20) / 0x32 (rev22)	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x82	DPL - data pointer low, saved/restored and loaded from IRAM pointer pairs	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x83	DPH - data pointer high, same	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x87	PCON - IDL bit set on USB suspend	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x88	TCON - timer control, cleared at init (IT0=0, level-triggered INT0)	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x89	TMOD - 0x11, both timers 16-bit mode 1	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x8A	TL0 - timer 0 low, tick timer	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x8B	TL1 - timer 1 low, unused	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x8C	TH0 - 0xCE, the panel tick reload; also reloaded in the ISR	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x8D	TH1 - timer 1 high, unused	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0x90	P1 - two bit-banged shift chains: 0/1/2 codec word, 5/6/7 panel word	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0xB0	P3 - written 0xFF (pull-ups); read for buttons P3.3/4/5 and S/PDIF P3.1	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0xB8	IP - interrupt priority, cleared (no priorities)	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0xD0	PSW - pushed and set to 0x10 (register bank 2) in the ISR prologue	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0xE0	ACC - accumulator, direct-addressed for bit tests and ISR save	disasm/SFR_ANNOTATION.md	explained
+rev22	sfr	0xF0	B - B register, ISR save and MUL AB table strides	disasm/SFR_ANNOTATION.md	explained
