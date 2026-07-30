@@ -29,6 +29,28 @@ extern void usb_service(void);
 volatile __data unsigned char g_int0_ticks   = 0;
 volatile __data unsigned char g_timer0_ticks = 0;
 
+/* Timer-0 tick PENDING flag — stock's RAM[0x24].0, bit address 0x20.
+ *
+ * Distinct from g_timer0_ticks, which is a free-running count kept only as a
+ * liveness pulse. This one is the handshake the main loop consumes: the ISR
+ * sets it, the loop's panel pass runs once per set, and the loop clears it.
+ * Rev 20 SETB 0x20 @ 0x1020 / test @ 0x0AD3 / CLR @ 0x0B0D;
+ * Rev 22 SETB @ 0x1018 / test @ 0x0A7D / CLR @ 0x0AB7. */
+volatile __bit g_timer0_pending = 0;
+
+/* Deferred work code — stock's RAM[0x0A].
+ *
+ * Stock's USB event handlers do almost nothing in interrupt context: they
+ * store a small code here and return, and the main loop dispatches it through
+ * the jump table at Rev 20 0x0300 (index = code - 1). The suspend handler is
+ * the clearest case — Rev 20's SUSR vector (VECINT slot 0x16) is the two
+ * instructions at 0x0006, `MOV 0x0A,#0x0E; RET`, and every slow thing suspend
+ * does (idling the clock generators, muting, entering PCON idle) happens later
+ * at 0x0526 with interrupts on. Rev 22 is identical at 0x0006.
+ *
+ * 0 = nothing pending. */
+volatile __data unsigned char g_work_code = 0;
+
 /* INT0 (vector 0x03). Rev 20's handler (fcn.0x0DAC) reads VECINT to
  * dispatch USB events; for first flash we just acknowledge and count.
  * usb_service() polls VECINT independently, so we don't lose events. */
@@ -48,16 +70,35 @@ void isr_int0(void) __interrupt(0)
     usb_service();
 }
 
-/* Timer 0 (vector 0x0B). Rev 20 reloads TH0 = 0xCE and sets a "pending"
- * flag (RAM[0x24].0). We do the same, minus the RAM flag which nothing
- * currently consumes. Reload is essential — Timer 0 is in mode 1
- * (16-bit, no auto-reload) so leaving TH0/TL0 unset would let the timer
- * roll all the way through 0x0000..0xFFFF between overflows instead of
- * the intended ~13k cycles. */
+/* Timer 0 (vector 0x0B). Stock's whole handler, Rev 20 @ 0x101E and Rev 22
+ * @ 0x1016:
+ *
+ *   101e  CLR EA
+ *   1020  SETB 0x20          ; RAM[0x24].0 — tick pending
+ *   1022  MOV TH0,#0xCE
+ *   1025  SETB EA
+ *   1027  RETI
+ *
+ * The pending flag is what the main loop gates its panel pass on. It used to
+ * be missing here — the comment said "minus the RAM flag which nothing
+ * currently consumes", and nothing did, because main() called buttons_poll()
+ * unconditionally on every pass of a loop that spins as fast as the CPU can
+ * go. That polls P3 at hundreds of kHz and re-publishes the panel shift chain
+ * on every contact bounce; stock polls it once per timer tick.
+ *
+ * Reload is essential — Timer 0 is in mode 1 (16-bit, no auto-reload) so
+ * leaving TH0 unset would let the timer roll all the way through
+ * 0x0000..0xFFFF between overflows instead of the intended ~13k cycles.
+ *
+ * Deliberate divergence: stock reloads TH0 only, leaving TL0 to continue from
+ * wherever it stood, which makes the period jitter by up to 256 cycles. We
+ * reload both for a stable tick. Nothing downstream measures absolute time, so
+ * this is a free improvement rather than a parity break. */
 void isr_timer0(void) __interrupt(1)
 {
     TH0 = 0xCE;
     TL0 = 0x00;
+    g_timer0_pending = 1;
     g_timer0_ticks++;
 }
 

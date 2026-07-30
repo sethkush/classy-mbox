@@ -24,7 +24,7 @@ Body starts at 0x0738 (0x0729-0x0737 are inline data / jump table padding). Call
 ```
 RAM[0x2E] = R7               ; save mode
 clr RAM[0x23].2, .3          ; clear "48 kHz codec" bits (dead — codec is I²S-autoconfig)
-lcall 0x0E62                 ; codec commit (no-op on wire, per NOTES §fcn.0x0E74)
+lcall 0x0E62                 ; shift the 16-bit codec control word out (P1.0/P1.2, latch P1.1)
 DMACTL2 (0xFFE2) = 0         ; via fcn.0x0E18 — halt capture DMA
 ```
 

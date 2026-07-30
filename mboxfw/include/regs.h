@@ -41,15 +41,26 @@
 #define I2C_RCV_DATA_FULL    0x80
 #define I2C_CLEAR_ALL        0x54
 
-/* USB endpoint 0 config */
+/* USB endpoint 0 config.
+ *
+ * Names are TI's, from reference/tas1020a/ti_uac_reference/ROM/Reg_stc1.h
+ * lines 139/159/203/224. The +3 and +7 registers used to be called
+ * IEPBCTX0/OEPBCTX0 here, which is not a TI name and not a datasheet name —
+ * it was invented. The EP1/EP2 pass that corrected the same mistake for the
+ * streaming endpoints (IEPDCNTX1 at 0xFF63, IEPDCNTY1 at 0xFF67) skipped the
+ * EP0 pair, so one endpoint kept the invented spelling while its siblings
+ * carried the real one. Grid: IEPCNFn = 0xFF68 - n*8, +3 = DCNTX, +7 = DCNTY;
+ * OEPCNFn = 0xFFA8 - n*8, same offsets. */
 #define IEPCNF0     XDATA(0xFF68)
 #define IEPBBAX0    XDATA(0xFF69)
 #define IEPBSIZ0    XDATA(0xFF6A)
-#define IEPBCTX0    XDATA(0xFF6B)
+#define IEPDCNTX0   XDATA(0xFF6B)
+#define IEPDCNTY0   XDATA(0xFF6F)   /* Y buffer count — IEPCNFn + 7 */
 #define OEPCNF0     XDATA(0xFFA8)
 #define OEPBBAX0    XDATA(0xFFA9)
 #define OEPBSIZ0    XDATA(0xFFAA)
-#define OEPBCTX0    XDATA(0xFFAB)
+#define OEPDCNTX0   XDATA(0xFFAB)
+#define OEPDCNTY0   XDATA(0xFFAF)   /* Y buffer count — OEPCNFn + 7 */
 
 /* EP0 packet buffers — placed manually in TAS1020A shared-mem window
  * starting at 0xF800. Rev 20's fcn.0x0982 disasm (rev20_flat.asm:1202-1220)
@@ -271,7 +282,11 @@
 /* Front-panel buttons on P3 — active-low with pull-ups. */
 #define P3_BTN_CH1_MASK   0x08   /* P3.3 = channel-1 source cycle button */
 #define P3_BTN_CH2_MASK   0x10   /* P3.4 = channel-2 source cycle button */
-#define P3_BTN_48V_MASK   0x20   /* P3.5 = phantom power toggle */
+/* P3.5 toggles MONO, not 48V phantom power. Rev 20 fcn.0x0ED5 @ 0x0EE7 calls
+ * fcn.0x1028, whose entire body toggles bit 0x1E = RAM[0x23].6; Rev 22
+ * fcn.0x0F31 @ 0x0F41 calls fcn.0x1020, identical. 48V is a mechanical
+ * latching switch and has no firmware bit — see mux.h. */
+#define P3_BTN_MONO_MASK  0x20   /* P3.5 = mono fold-down toggle */
 
 /*
  * RESET_TO_BOOT_ROM — enter the boot ROM immediately, not on next power

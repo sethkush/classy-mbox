@@ -120,8 +120,9 @@ independent ways:
      and the firmware is not in the loop.
 
 48V is a mechanical switch, independent of the firmware. `g_phantom_48v` in
-`mboxfw/include/mux.h` and `P3_BTN_48V_MASK` in `buttons.c` name a control the
-firmware cannot even observe. #144 is resolved.
+`mboxfw/include/mux.h` and `P3_BTN_48V_MASK` in `regs.h` named a control the
+firmware cannot even observe; both are renamed as of 2026-07-29. #144 is
+resolved.
 
 ### What 0x23.6 actually is
 
@@ -155,11 +156,15 @@ It is also clocked out as a 9th bit on the panel shift chain: the mux
 shift-out routine tests it at Rev 20 0x0F32 / Rev 22 0x0F20 to choose the
 trailing latch sequence.
 
-Follow-on for mboxfw, not yet done:
+Follow-on for mboxfw — **done 2026-07-29** (task #144):
 
-  * `mux.h` `g_phantom_48v` -> `g_mono`.
-  * `buttons.c` `P3_BTN_48V_MASK` -> the mono button mask. The handler is
-    toggling the right bit under the name of a switch it cannot see.
+  * `mux.h` `g_phantom_48v` -> `g_mono`, with the evidence in the declaration
+    comment.
+  * `regs.h` `P3_BTN_48V_MASK` -> `P3_BTN_MONO_MASK`, and `buttons.c` names the
+    handler it ports (Rev 20 fcn.0x1028 / Rev 22 fcn.0x1020).
+  * `mux.c`'s latch-tail comment no longer claims the set branch "asserts 48V";
+    it decodes the branch and states that which state the hardware latches on is
+    unverified.
 
 ---
 
@@ -235,9 +240,9 @@ means is still open.
 
 ## Divergences from mboxfw found here
 
-1. `mboxfw/include/mux.h` documents `g_phantom_48v` as mirroring RAM[0x23].6.
-   The bit is right and the toggle mechanism is confirmed; the *name* is still
-   unproven (#144).
+1. ~~`mboxfw/include/mux.h` documents `g_phantom_48v` as mirroring
+   RAM[0x23].6.~~ **RESOLVED 2026-07-29 (#144).** Renamed to `g_mono`
+   throughout mboxfw. The bit was always right; only the name was wrong.
 2. Nothing in mboxfw corresponds to IRAM 0x25 bits 4, 5, 6 or 7, nor to
    0x23 bits 0, 1 or 4. mboxfw models 0x23.2/0x23.3 (the #147 pair) and
    0x23.6 only.

@@ -14,6 +14,10 @@
 #include "eeprom.h"
 #include "telemetry.h"
 #include "usb.h"        /* g_dfu_request_pending */
+#include "power.h"      /* g_work_code, work_dispatch() */
+
+/* Timer-0 tick pending flag, set by isr_timer0 (isr.c). */
+extern volatile __bit g_timer0_pending;
 
 extern void hw_init(void);
 extern void usb_init(void);
@@ -177,7 +181,7 @@ static void canary_emit(unsigned char n)
  * rejecting things or simply never replying. */
 static void canary_blink_forever(void)
 {
-    g_phantom_48v = 0;            /* never assert the unverified 0x23.6 */
+    g_mono = 0;            /* never assert the unverified 0x23.6 */
     for (;;) {
         canary_emit(g_stage);
         canary_delay(40);
@@ -239,8 +243,24 @@ void main(void)
     check_boot_dfu_button();
     STAGE(4);
 
-    /* Interrupts on, then attach — the Rev 20 order (SETB EA at 0x0ACA,
-     * USBCTL |= 0x80 at 0x0AD2, two instructions apart). */
+    /* Start Timer 0, then interrupts on, then attach — the Rev 20 order:
+     *
+     *   0ac8  SETB TR0        ; run Timer 0
+     *   0aca  SETB EA
+     *   0acc  USBCTL |= 0x80  ; attach
+     *
+     * Rev 22 the same at 0x0A72 / 0x0A74 / 0x0A76, and both do it again on
+     * resume (Rev 20 0x0557).
+     *
+     * TR0 was never set anywhere in mboxfw. hw_init() writes TCON = 0x00,
+     * which clears TR0 along with everything else, and nothing turned it back
+     * on — so Timer 0 never counted, the timer ISR never fired, and
+     * g_timer0_ticks has read 0 on every telemetry dump since it was added.
+     * That went unnoticed because the main loop called buttons_poll()
+     * unconditionally and so did not depend on the tick. Gating the poll on
+     * the tick is what surfaced it: sim_smoke.sh breakpoints on
+     * _buttons_poll and stopped being able to reach it. */
+    TR0 = 1;
     EA = 1;
     STAGE(5);
     usb_attach();
@@ -279,14 +299,50 @@ void main(void)
         /* Liveness: a changing counter distinguishes "running but silent"
          * from "wedged", which no static value can. */
         TLM_INC16(tlm_loop_count);
-        /* USB is serviced from isr_int0 ONLY — see isr.c. Calling
-         * usb_service() here as well would let the ISR re-enter it while
-         * the loop is part-way through, and SDCC gives non-reentrant
-         * functions static overlay locals, so the re-entry would corrupt
-         * the EP0 transfer state. Rev 20 has the same division of
-         * labour: its INT0 handler dispatches USB, its main loop handles
-         * deferred panel/codec actions. */
-        buttons_poll();
+
+        /*
+         * Two-rate loop, mirroring Rev 20 0x0AD3-0x0B0F (Rev 22
+         * 0x0A7D-0x0AB9):
+         *
+         *   0ad3  JB 0x20,0x0ADF     ; RAM[0x24].0 — timer-0 tick pending?
+         *   0ad6  MOV A,0x0A         ; else: any deferred work code?
+         *   0ad8  JZ 0x0AD3
+         *   0ada  LCALL 0x02EE       ;   dispatch it
+         *   0add  SJMP 0x0AD3
+         *   0adf  LCALL 0x0ED5       ; tick: poll the buttons
+         *   0ae3  JNB ACC.0,0x0AEC   ;   publish only if it acted
+         *   0ae6  LCALL 0x0F0C / 0x0E62
+         *   0aec  ... P3.1 S/PDIF presence edges -> work codes 0x0B / 0x0C
+         *   0b0d  CLR 0x20           ; consume the tick
+         *
+         * The button poll is gated on the tick; deferred work is not, so a
+         * suspend request is serviced promptly while the panel is sampled at
+         * the timer rate. mboxfw called buttons_poll() unconditionally on
+         * every pass of a loop that spins at CPU speed, which polls P3 at
+         * hundreds of kHz and re-shifts the panel chain on every contact
+         * bounce.
+         *
+         * USB is serviced from isr_int0 ONLY — see isr.c. Calling
+         * usb_service() here as well would let the ISR re-enter it while the
+         * loop is part-way through, and SDCC gives non-reentrant functions
+         * static overlay locals, so the re-entry would corrupt the EP0
+         * transfer state. Rev 20 has the same division of labour: its INT0
+         * handler dispatches USB, its main loop handles deferred panel/codec
+         * actions.
+         *
+         * NOT yet ported from the block above: the P3.1 S/PDIF-presence edge
+         * detection at 0x0AEC-0x0B0A, which posts work codes 0x0B and 0x0C to
+         * slave the clock to an incoming S/PDIF stream. That is task #145 and
+         * needs the clock-mode routines it dispatches to.
+         */
+        if (!g_timer0_pending) {
+            if (g_work_code) {
+                work_dispatch();
+            }
+        } else {
+            buttons_poll();
+            g_timer0_pending = 0;
+        }
 
         /* Enter-DFU, deferred here from the class-request handler so the
          * zero-length status packet drains before we spend ~30 ms in I2C

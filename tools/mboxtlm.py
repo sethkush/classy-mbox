@@ -60,7 +60,7 @@ REQ_IN = 0xC0              # vendor | device-to-host | device
 REQ_OUT = 0x40             # vendor | host-to-device | device
 
 BLOCK_SIZE = 8
-NUM_BLOCKS = 7
+NUM_BLOCKS = 8
 
 PHASE_BITS = [(0x01, "USB_INIT"), (0x02, "HW_INIT"), (0x04, "ATTACH"),
               (0x08, "CS8427"), (0x10, "CODEC"), (0x20, "MAIN_LOOP")]
@@ -229,8 +229,38 @@ def block6(b):
     return out
 
 
+def block7(b):
+    """EP0 buffer counts + suspend/resume tally.
+
+    The Y counts are the point of this block. Both stock images clear them at
+    init and mboxfw did not; build 0x000C clears both. Since the clear happens
+    before any host can ask, a read here cannot recover the boot-ROM handoff
+    value -- what it answers is whether the UBM puts anything BACK into Y while
+    we run, which is the version of the question that survives the fix.
+    See firmware_stock/decomp/FINDING_ep0_y_buffer_residue.md.
+    """
+    out = [
+        "IEPDCNTY0=0x%02X (EP0 IN  Y count -- 0 expected)" % b[0],
+        "OEPDCNTY0=0x%02X (EP0 OUT Y count -- 0 expected)" % b[1],
+        "IEPDCNTX0=0x%02X (EP0 IN  X count; bit 7 = NAK)" % b[2],
+        "OEPDCNTX0=0x%02X (EP0 OUT X count)" % b[3],
+        "suspends:  %3d   (completed suspend+resume cycles)" % b[4],
+        "vec_susr:  %3d   (SUSR vectors seen)" % b[5],
+        "vec_resr:  %3d   (RESR vectors seen)" % b[6],
+        "PCON=0x%02X     (bit 0 = IDL; reads 0 once awake)" % b[7],
+    ]
+    if b[0] or b[1]:
+        out.append("  NOTE: a Y count is NON-ZERO -- the UBM is using a buffer"
+                   " the firmware does not manage. This is the EP0-loss"
+                   " mechanism, confirmed.")
+    if b[5] and not b[4]:
+        out.append("  NOTE: SUSR seen but no completed suspend -- the guard"
+                   " rejected it, i.e. the device was not configured.")
+    return out
+
+
 DECODERS = {0: block0, 1: block1, 2: block2, 3: block3,
-            4: block4, 5: block5, 6: block6}
+            4: block4, 5: block5, 6: block6, 7: block7}
 
 TITLES = {
     0: "identity and liveness",
@@ -240,6 +270,7 @@ TITLES = {
     4: "peripheral results + port state",
     5: "isochronous streaming state",
     6: "DMA and C-port live state",
+    7: "EP0 buffer counts + suspend tally",
 }
 
 

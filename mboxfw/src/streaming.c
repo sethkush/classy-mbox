@@ -176,12 +176,15 @@ void streaming_set_rate(unsigned long hz)
      * 0x03DF. */
     ACGCTL |= 0xC0;         /* Rev 20 fcn.0x0728 @ 0x07CC */
 
-    /* Codec-side state commit. On real silicon fcn.0x0E74 is dead
-     * code (codec self-configures from I²S clocks — see NOTES.md),
-     * so this is effectively a no-op, but we keep it to match Rev 20
-     * behaviour byte-for-byte in case a future codec revision does
-     * listen to the shift-in port. */
-    codec_commit();
+    /* Publish the codec word. This is Rev 20's `LCALL 0x0E62` at 0x07F2,
+     * immediately after the SETB pair above — the unmute half of the bracket
+     * that opened with CLR 0x23.2 / CLR 0x23.3 and its own LCALL 0x0E62 at
+     * 0x072F-0x0733. Rev 22 at 0x07D6 / 0x0714.
+     *
+     * Was codec_commit(), which also republished the mux word and ran the
+     * 0x22.6 derivation. Neither belongs on a clock-mode change: stock's
+     * clock routine calls only 0x0E62, never 0x0F0C. */
+    codec_write_word();
 }
 
 /*

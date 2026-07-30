@@ -17,7 +17,7 @@
 #define MBOXFW_TELEMETRY_H
 
 #define TLM_BLOCK_SIZE   8
-#define TLM_NUM_BLOCKS   7
+#define TLM_NUM_BLOCKS   8
 
 /* Vendor requests. DEVICE recipient, NOT interface: snd-usb-audio claims
  * the audio interfaces, and an interface-recipient request then fails with
@@ -35,7 +35,7 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x000B   /* 000B: BYOR cleared on capture (S24_3LE) */
+#define TLM_BUILD_ID     0x000C   /* 000C: panel/button + EP0 Y + suspend fixes */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01
@@ -72,6 +72,13 @@ extern volatile __data unsigned char tlm_vec_oep0;
 extern volatile __data unsigned char tlm_vec_rstr;
 extern volatile __data unsigned char tlm_vec_none;
 extern volatile __data unsigned char tlm_vec_other;
+extern volatile __data unsigned char tlm_vec_susr;
+extern volatile __data unsigned char tlm_vec_resr;
+
+/* Completed suspend cycles — incremented in do_suspend() just before PCON
+ * idle, so reading a non-zero value proves the device both entered and left
+ * idle (a read is only possible once it is answering EP0 again). */
+extern volatile __data unsigned char tlm_suspends;
 
 /* Peripheral init results (block 4) */
 extern volatile __data unsigned char tlm_eeprom_ok;

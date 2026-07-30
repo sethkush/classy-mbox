@@ -50,23 +50,51 @@ This is a candidate, not a diagnosis. What is established:
     to the firmware but not necessarily to the hardware.
 
 What is not established: that the boot ROM actually leaves those counts
-non-zero. That is one telemetry read away -- IEPDCNTY0 and OEPDCNTY0 are not in
-any telemetry block, and adding them would settle it.
+non-zero.
 
-The fix is two stores at init and costs nothing regardless:
+## Status: fixed, and now measurable — 2026-07-29
+
+Both clears are in, in `usb_ep0_setup()` (split out of `usb_init()` so the
+resume path can re-run exactly the same routine, as stock does):
 
     IEPDCNTY0 = 0;    /* 0xFF6F -- Rev 20 0x0988, Rev 22 0x08A9 */
     OEPDCNTY0 = 0;    /* 0xFFAF -- Rev 20 0x0984, Rev 22 0x08A5 */
 
-## A naming leftover in regs.h
+The open half is now instrumented. **Telemetry block 7** reports both Y counts
+live, plus both X counts:
 
-`regs.h` calls 0xFF6B **IEPBCTX0** and 0xFFAB **OEPBCTX0**. On the endpoint grid
-(`IEPCNFn = 0xFF68 - n*8`, `+3` = DCNTX, `+7` = DCNTY) those are **IEPDCNTX0**
-and **OEPDCNTX0**. This is the same invented-name class that was already
+    byte 0  IEPDCNTY0     byte 2  IEPDCNTX0
+    byte 1  OEPDCNTY0     byte 3  OEPDCNTX0
+
+Note what this can and cannot answer now that the clears are in place. It
+cannot recover the boot-ROM handoff value -- that is overwritten by our own
+clear before any host can ask. What it does answer is the version of the
+question that survives the fix: **whether the UBM puts anything back into the Y
+counts while the firmware runs.** A non-zero read means the hardware is
+alternating into a buffer the firmware does not manage, which would confirm the
+mechanism; a persistent zero across a session that still loses packets rules
+the mechanism out and sends the ~12% loss back to the interrupt-ordering
+explanation already documented in `usb.c`'s VEC_IEP0 case.
+
+To recover the handoff value itself would take a build that samples both
+registers into telemetry variables BEFORE clearing them. That is a one-line
+change if the block-7 reads come back ambiguous; it is not done now because it
+would mean shipping an image that deliberately keeps a suspected defect live.
+
+## A naming leftover in regs.h — fixed
+
+`regs.h` called 0xFF6B **IEPBCTX0** and 0xFFAB **OEPBCTX0**. On the endpoint
+grid (`IEPCNFn = 0xFF68 - n*8`, `+3` = DCNTX, `+7` = DCNTY) those are
+**IEPDCNTX0** and **OEPDCNTX0**, which is also what TI's `Reg_stc1.h` calls
+them (lines 139 and 203). This was the same invented-name class already
 corrected for EP1 and EP2 -- `IEPBCTX1/Y1` and `OEPBCTX2/Y2` were renamed to
 `IEPDCNTX1/Y1` and `OEPDCNTX2/Y2` -- and the EP0 pair was missed in that pass.
-The SFR-name gate does not catch it because it checks internal consistency, not
+The SFR-name gate did not catch it because it checks internal consistency, not
 agreement with TI's names.
+
+Renamed throughout `mboxfw`. `safety_net` and the historical docs still carry
+the old spelling; that is deliberate, since those record what was written at
+the time, and the addresses were never in doubt.
 
 ## Also: DMABCNT0 is read by stock and never by mboxfw
 

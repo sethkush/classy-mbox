@@ -88,7 +88,65 @@ firmware fault without a scope.
 | 1 | cs8427 init status |
 | 2 | codec init status |
 | 3 | stalls issued |
-| 4-7 | reserved |
+| 4 | **live** read of P1 at the moment the host asks |
+| 5 | **live** read of P3 — hold a button while reading to see which bit moves |
+| 6 | P1 sampled in `main()` before `hw_init()` drove any pin |
+| 7 | P3 sampled in `main()` before `hw_init()` drove any pin |
+
+Block 5 — isochronous streaming state. Bytes 4-5 are live register reads, so a
+host can watch the endpoint config change (or fail to) while `arecord` runs.
+
+| byte | field |
+|---|---|
+| 0-1 | SOF count. Zero means no frame clock is reaching us at all |
+| 2 | IEP1 vectors seen (capture transactions completed) |
+| 3 | OEP2 vectors seen (playback transactions completed) |
+| 4 | **live** `IEPCNF1` |
+| 5 | **live** `OEPCNF2` |
+| 6 | sticky alt-setting-seen bitmap |
+| 7 | last SET_INTERFACE: iface in the high nibble, alt in the low |
+
+Block 6 — DMA and C-port live state: the isoc data source. Added to separate
+"the endpoint is not transacting" from "the endpoint transacts but its buffer is
+never filled".
+
+| byte | field |
+|---|---|
+| 0 | **live** `DMACTL1` — capture channel; bit 7 = DMAEN |
+| 1 | **live** `DMACTL0` — playback channel |
+| 2 | **live** `CPTSTA`. Caution: read only on request, in case bits clear on read |
+| 3 | **live** `ACGCTL` |
+| 4 | **live** `IEPCNF1` |
+| 5 | **live** `IEPDCNTX1` |
+| 6 | **live** `IEPBSIZ1` |
+| 7 | **live** `OEPDCNTX2` |
+
+Block 7 — EP0 buffer counts and the suspend tally. Added 2026-07-29 with the
+EP0 Y-count fix; neither Y register appeared in any earlier block, so before
+this there was no way to look at them at all.
+
+| byte | field |
+|---|---|
+| 0 | **live** `IEPDCNTY0` (0xFF6F) |
+| 1 | **live** `OEPDCNTY0` (0xFFAF) |
+| 2 | **live** `IEPDCNTX0` (0xFF6B) — bit 7 is the NAK flag |
+| 3 | **live** `OEPDCNTX0` (0xFFAB) |
+| 4 | completed suspend+resume cycles |
+| 5 | SUSR vectors seen |
+| 6 | RESR vectors seen |
+| 7 | **live** `PCON` — bit 0 is IDL, and reads 0 once awake |
+
+On bytes 0-1: `usb_ep0_setup()` now clears both, so this cannot recover the
+boot-ROM handoff value. What it answers is whether the UBM writes anything
+*back* into the Y counts during a session — the version of the question that
+survives the fix. Non-zero confirms the EP0-loss mechanism; a persistent zero
+alongside continued loss rules it out. See
+`firmware_stock/decomp/FINDING_ep0_y_buffer_residue.md`.
+
+On bytes 4-5: `tlm_suspends` is incremented immediately before `PCON |= 0x01`,
+so the read itself proves the device came back out of idle — any non-zero value
+is a completed round trip. SUSR climbing while suspends stays 0 means the
+configured-only guard is rejecting them.
 
 ## What this buys
 
@@ -109,6 +167,13 @@ no counter can wrap into a misleading value mid-experiment.
 
 ## Status
 
-Design only. Not implemented. Ordering note: implement and build this **before**
-the next trip, since its whole purpose is to be present in the one image that
-trip loads.
+Implemented — 8 blocks, `mboxfw/src/telemetry.c`, read with `tools/mboxtlm.py`.
+The "design only, not implemented" note that stood here was stale: blocks 0-4
+shipped and have been read off hardware, blocks 5-6 were added for the isoc
+investigation, and block 7 came in with the 2026-07-29 EP0/suspend pass.
+
+`TLM_BUILD_ID` is at **0x000C**. Bump it in `include/telemetry.h` on every
+flash — block 0 byte 0-1 is the only thing that proves which image is running
+rather than assuming, and it has already caught one stale-build mismatch (the
+0x0002-vs-0x0003 case that led to the wildcard header dependency in the
+Makefile).

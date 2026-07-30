@@ -118,4 +118,13 @@
  * See handle_digi_enter_dfu() in usb.c for why the work is deferred. */
 extern volatile __data unsigned char g_dfu_request_pending;
 
+/* Non-zero once SET_CONFIGURATION has selected a non-zero configuration.
+ * The suspend path in power.c gates on this, mirroring stock's test of
+ * RAM[0x21].6 at Rev 20 0x0526 / Rev 22 0x0525. */
+unsigned char usb_is_configured(void);
+
+/* EP0 buffer + count setup, re-runnable on resume. Stock calls the same
+ * routine from its resume tail (Rev 20 0x0554 -> fcn.0x0970). */
+void usb_ep0_setup(void);
+
 #endif /* MBOXFW_USB_H */

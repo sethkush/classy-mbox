@@ -194,9 +194,9 @@ Grouped by SFR function.
 | Addr | Category | Verdict | Reason |
 |------|----------|---------|--------|
 | 0xff67 | REV20_ONLY runtime | **SAFE_OMIT** | `IEPDCNTY1` — EP1 IN Y-buffer data count. TAS1020A supports X/Y double-buffering; mboxfw is X-only. Losing Y = potentially more USB jitter at high load, not incorrect audio. Add later if latency requires. |
-| 0xff6f | REV20_ONLY runtime | **SAFE_OMIT** | `IEPDCNTY0` — EP0 IN Y-buffer. EP0 doesn't need double-buffer for control transfers. |
+| 0xff6f | REV20_ONLY runtime | **IMPLEMENTED** | `IEPDCNTY0` — EP0 IN Y-buffer count. Was SAFE_OMIT on "EP0 doesn't need double-buffering for control transfers", which is true and beside the point: stock's write is not configuration, it is a defensive clear of boot-ROM residue, and the boot ROM runs DFU over EP0 immediately before this image starts. `usb_ep0_setup()` now clears it, matching Rev 20 fcn.0x0970 @ 0x0988 / Rev 22 fcn.0x0891 @ 0x08A9. Candidate for the measured ~12% geometric EP0 IN loss — see decomp/FINDING_ep0_y_buffer_residue.md. |
 | 0xff9f | REV20_ONLY runtime | **SAFE_OMIT** | `OEPDCNTY2` — EP2 OUT Y-buffer for playback. Same as 0xff67. |
-| 0xffaf | REV20_ONLY runtime | **SAFE_OMIT** | `OEPDCNTY0` — EP0 OUT Y-buffer. Same rationale. |
+| 0xffaf | REV20_ONLY runtime | **IMPLEMENTED** | `OEPDCNTY0` — EP0 OUT Y-buffer count. Same reasoning as 0xff6f above. Rev 20 fcn.0x0970 @ 0x0984 / Rev 22 fcn.0x0891 @ 0x08A5. |
 
 ### EP1 IN (capture) config — same net state, different write patterns
 
@@ -284,11 +284,11 @@ sections above.
 | 0xff62 | assign | 0x20 | streaming.c | ⚠ BLOCKER — EP_AUDIO_BUF_SIZE=0x100 (→BSIZ=0x20=256B) is smaller than one 48kHz stereo 24-bit USB frame (288B). Rev 20 uses OEPBSIZ2 (0xFF9A)=IEPBSIZ1=0x50 (640B). Bump to ≥0x28 (320B). See "BLOCKER" note above. |
 | 0xff62 | runtime | - | streaming.c | dormant/reset write, matches Rev 20 stream (dis)arm pattern. |
 | 0xff67 | runtime | - | rev20 | SAFE_OMIT — IEPDCNTY1 (EP1 IN Y-buffer). mboxfw is X-buffer-only. |
-| 0xff6f | runtime | - | rev20 | SAFE_OMIT — IEPDCNTY0 (EP0 IN Y-buffer). Same rationale. |
+| 0xff6f | runtime | - | rev20 | IMPLEMENTED — IEPDCNTY0 cleared in usb_ep0_setup(); see the row above. |
 | 0xff9a | assign | 0x20 | streaming.c | ⚠ BLOCKER — see 0xff62. Same buffer-size undersize applies to OEPBSIZ2 (playback). |
 | 0xff9a | runtime | - | streaming.c | dormant/reset write, matches Rev 20 pattern. |
 | 0xff9f | runtime | - | rev20 | SAFE_OMIT — OEPDCNTY2 (EP2 OUT Y-buffer). mboxfw is X-only. |
-| 0xffaf | runtime | - | rev20 | SAFE_OMIT — OEPDCNTY0 (EP0 OUT Y-buffer). Same. |
+| 0xffaf | runtime | - | rev20 | IMPLEMENTED — OEPDCNTY0 cleared in usb_ep0_setup(); see the row above. |
 | 0xff60 | runtime | - | rev20 | FALSE_POSITIVE — IEPCNF1, Rev 20 runtime-computes 0xC5, mboxfw assigns 0xC5. Same terminal. |
 | 0xff61 | assign | 0x94 | rev20 | SAFE — different EP1 buffer layout (Rev 20 @0xFCA0, mboxfw @0xFB00), self-consistent per TI Mmap.h. |
 | 0xff63 | runtime | - | rev20 | FALSE_POSITIVE — IEPDCNTX1, both zero on stream (dis)arm. |

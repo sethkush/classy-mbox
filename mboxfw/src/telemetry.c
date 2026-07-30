@@ -28,6 +28,9 @@ volatile __data unsigned char tlm_vec_oep0  = 0;
 volatile __data unsigned char tlm_vec_rstr  = 0;
 volatile __data unsigned char tlm_vec_none  = 0;
 volatile __data unsigned char tlm_vec_other = 0;
+volatile __data unsigned char tlm_vec_susr  = 0;
+volatile __data unsigned char tlm_vec_resr  = 0;
+volatile __data unsigned char tlm_suspends  = 0;
 
 volatile __data unsigned char tlm_eeprom_ok     = 0xFF;  /* 0xFF = not run */
 volatile __data unsigned char tlm_cs8427_status = 0xFF;
@@ -159,6 +162,38 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[5] = IEPDCNTX1;
         out[6] = IEPBSIZ1;
         out[7] = OEPDCNTX2;
+        return 1;
+
+    case 7:
+        /* EP0 buffer counts, live, plus the suspend/resume tally.
+         *
+         * Bytes 0-3 exist to settle one specific open question: whether the
+         * boot ROM leaves the EP0 *Y* buffer counts non-zero when it hands
+         * over. Both stock images clear them at init and mboxfw did not
+         * (Rev 20 fcn.0x0970 @ 0x0984/0x0988), which is a candidate for the
+         * measured ~12% geometric loss of EP0 IN packets past the second.
+         * usb_ep0_setup() now clears both, so a read here shows 0 whether or
+         * not the residue was ever there — which is exactly why bytes 0-1 are
+         * the Y counts and not a saved copy: they answer "is the UBM putting
+         * anything back into Y while we run?", which is the version of the
+         * question that is still live after the fix.
+         *
+         * Neither Y count appeared in any earlier block, so before this there
+         * was no way to look at them at all.
+         *
+         * Bytes 4-5: the suspend path. tlm_suspends is bumped immediately
+         * before PCON idle, and reading it at all proves the device came back
+         * out — so any non-zero value is a completed suspend/resume cycle. If
+         * susr counts climb while suspends stays 0, the guard is rejecting
+         * them (device not configured). */
+        out[0] = IEPDCNTY0;
+        out[1] = OEPDCNTY0;
+        out[2] = IEPDCNTX0;
+        out[3] = OEPDCNTX0;
+        out[4] = tlm_suspends;
+        out[5] = tlm_vec_susr;
+        out[6] = tlm_vec_resr;
+        out[7] = PCON;
         return 1;
 
     default:

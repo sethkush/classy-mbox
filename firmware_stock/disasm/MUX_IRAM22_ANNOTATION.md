@@ -62,11 +62,12 @@ and the same three on bits [5:3] for channel 2:
 The set {0x05, 0x03, 0x06} matches what `mboxfw/src/buttons.c` `cycle_source()`
 knows. That much of mboxfw is right.
 
-**The mapping IS deducible, and it is now fixed.** Two facts do it:
+**The mapping IS deducible.** Two facts do it:
 
-  1. Stock boots 0x22 = 0x76, i.e. pattern 0x06 on both channels (below), and
-     boots the state bits to (0,0) -- Rev 20 0x03A5-0x03AD / Rev 22
-     0x03A9-0x03B1 clear 0x25 bits 0,1,2,3,4 explicitly.
+  1. Stock's hw_init leaves 0x22 = 0xF6, i.e. pattern 0x06 on both channels
+     (see the corrected boot-value section below), and leaves the state bits at
+     (0,0) -- Rev 20 0x03A5-0x03AD / Rev 22 0x03A9-0x03B1 clear 0x25 bits
+     0,1,2,3,4 explicitly.
   2. Seth reports the hardware boots to MIC, and the source button cycles
      mic -> line -> inst -> mic.
 
@@ -77,9 +78,11 @@ second, 0x06 on the third. Boot is 0x06 and boot is mic, so:
     0x05 = LINE    (first press)
     0x03 = INST    (second press)
 
-`mboxfw/src/buttons.c` asserts 0x05=mic, 0x06=line, 0x03=inst. **mic and line
-are swapped there.** Combined with the cycle-order divergence below, mboxfw
-walks mic -> inst -> line where stock walks mic -> line -> inst.
+`mboxfw/src/buttons.c` asserted 0x05=mic, 0x06=line, 0x03=inst. **mic and line
+were swapped there.** Combined with the cycle-order divergence below, mboxfw
+walked mic -> inst -> line where stock walks mic -> line -> inst. Both are
+**fixed** as of 2026-07-29; the corrected `cycle_source()` cites the byte
+sequences above.
 
 ## The state machine, and a divergence
 
@@ -96,51 +99,80 @@ So the stock cycle is
 
     0x05  ->  0x03  ->  0x06  ->  0x05
 
-`cycle_source()` in `mboxfw/src/buttons.c:23-33` implements
+`cycle_source()` in `mboxfw/src/buttons.c` implemented
 
     0x05  ->  0x06  ->  0x03  ->  0x05
 
-**The middle two positions are swapped.** Pressing a source button on mboxfw
-therefore lands on a different source than stock would from the same starting
-point. This is a real divergence, found in the disassembly, not yet fixed.
+**The middle two positions were swapped.** Pressing a source button on mboxfw
+therefore landed on a different source than stock would from the same starting
+point. Fixed 2026-07-29.
 
-## Boot values — and the one that matters
+## Boot values — corrected 2026-07-29
 
-Three sites write 0x22 with an immediate. All three write `#0xFF` first and
-clear bits down; **neither image ever writes 0x00 to this byte.**
+**This section previously got the site attribution wrong in three ways, and the
+errors mattered because a defect list was built on them. All three are
+retracted below.**
 
-    site                       Rev 20            Rev 22            result
-    boot init                  0x0397 + clears   0x039B + clears   0x76
-      (CLR b0, b3, b7, and CLR bit 0x1e = IRAM 0x23.6)
+Four sites write 0x22. Listed in the order the boot path reaches them:
+
+    site                    Rev 20            Rev 22            result
+    hw_init, 1st publish    0x093F            0x0860            0x00
+      (CLR A / MOV 0x22,A, then SETB bit 0x1e = 0x23.6 -> mono ON)
+      publish: LCALL 0x0F0C at Rev 20 0x0943 / Rev 22 0x0864
+      then a delay loop on RAM[0x2E]:RAM[0x2F]
+    hw_init, 2nd publish    0x095B + clears   0x087C + clears   0xF6
+      (CLR b0, b3, and CLR bit 0x1e -> mono OFF)
+      publish: LCALL 0x0F0C at Rev 20 0x0964 / Rev 22 0x0885
+    SET_INTERFACE alt       0x0397 + clears   0x039B + clears   0x76
+      (CLR b0, b3, b7, and CLR bit 0x1e)
       publish: LCALL 0x0F0C at Rev 20 0x03A2
-    second init                0x095B + clears   0x087C + clears   0xF6
-      (CLR b0, b3 only — bit 7 left SET)
-      publish: LCALL 0x0F0C at Rev 20 0x0964
-    third                      0x053B            0x053A            0xFF
-      (no bit clears follow)
+    suspend                 0x053B            0x053A            0xFF
+      (no bit clears follow; then PCON |= 0x01)
 
-Decoding the boot value 0x76:
+**Retraction 1.** This document called 0x0397 the "boot init". It is not:
+0x0397 sits inside `cmd2_apply_iface1_alt` @ Rev 20 0x0386 (Rev 22 0x038A),
+the SET_INTERFACE alt-setting handler. 0x76 is a stream-teardown state, not a
+boot state. The real boot value is **0xF6**, from what this document called the
+"second init" — which is the ONLY immediate write to this byte inside stock's
+master hw init (Rev 20 fcn.0x08CB / Rev 22 fcn.0x07EC).
 
-    bits [2:0] = 6  -> pattern 0x06 on channel 1
-    bits [5:3] = 6  -> pattern 0x06 on channel 2
-    bit 6 = 1, bit 7 = 0
+**Retraction 2.** "Neither image ever writes 0x00 to this byte" is false. Both
+do, at Rev 20 0x093F and Rev 22 0x0860, as the first of hw_init's two
+publishes.
 
-**Stock boots both channels to pattern 0x06.** mboxfw boots
-`g_mux_state = 0x00` (`hw_init.c:175`), which is not any of the three legal
-patterns and matches no stock site. `hw_init.c:184`'s `0xFF & ~0x01 & ~0x08`
-= 0xF6 does match the second init site, but the 0x00 path does not.
+**Retraction 3.** That write was listed as "a computed store, not yet traced".
+It is traced: the instruction immediately before it is `CLR A`, so it stores
+zero. With `SETB 0x1e` following, the pair is a deliberate all-on panel flash
+(0x00 selects nothing on the source fields, mono asserted), held for the
+delay-loop interval, and then replaced by the real 0xF6 / mono-off state.
 
-There is also a fourth write, `MOV 0x22,A` at Rev 20 0x093F / Rev 22 0x0860 —
-a computed store, not yet traced.
+Decoding the actual boot value 0xF6:
+
+    bits [2:0] = 6  -> pattern 0x06 on channel 1  = MIC
+    bits [5:3] = 6  -> pattern 0x06 on channel 2  = MIC
+    bit 6 = 1, bit 7 = 1
+
+The mapping conclusion above is unaffected: 0x76 and 0xF6 differ only in bit 7,
+and both carry pattern 0x06 on both source fields.
+
+**Consequence for the defect list.** `hw_init.c` was flagged as defective for
+booting `g_mux_state = 0x00` and for that value being "not any of the three
+legal patterns". Both charges are dropped — mboxfw's two-publish sequence
+(0x00 with mono set, delay, 0xF6 with mono clear) already matched stock exactly.
+The only change made there was the `g_phantom_48v` -> `g_mono` rename.
 
 ## Consequences for the capture measurements
 
-The 44.1 kHz loopback on 2026-07-29 was run with mboxfw's mux word at an
-illegal value, so which analog source reached the ADC was undefined. Seth
-reports both front-panel LEDs indicating mic while the loop is wired to source
-2 and S/PDIF. "No tone in the capture" is therefore explained by the source
-routing alone and cannot be used as evidence about the audio path, the #147
-mute bits, or anything else.
+The 44.1 kHz loopback on 2026-07-29 cannot be used as evidence about the audio
+path, the #147 mute bits, or anything else — but **not** for the reason first
+given here, which was that mboxfw's mux word sat at an illegal value. It did
+not; per the retractions above, mboxfw's resting value after hw_init is 0xF6,
+the same as stock.
+
+The measurement is void for a simpler reason: 0xF6 selects **mic on both
+channels**, which is what Seth observed from the front-panel LEDs, while the
+loopback was wired into source 2's line input. The selected source was never
+carrying the test signal. Same conclusion, correct mechanism.
 
 The 8-frame corruption is a separate matter and stands on its own: silence does
 not read as +/-full-scale at Fs/8, whichever source is selected.
@@ -150,10 +182,13 @@ capture" are superseded on this point.
 
 ## Still open on this byte
 
-  * Bit 7's meaning. Cleared at boot, set at Rev 20 0x03E6 with an immediate
-    publish; only those two sites.
+  * Bit 7's meaning. It rests SET (inherited from the `#0xFF` seed at Rev 20
+    0x095B), is CLEARED at Rev 20 0x03A0 / Rev 22 0x03A4 in the SET_INTERFACE
+    handler, and is SET again at Rev 20 0x03E6 / Rev 22 0x03EA — each with an
+    immediate publish. So it tracks something the alt-setting change turns off
+    and back on, which fits a streaming or analog-output enable, but only two
+    sites touch it and neither names it.
   * Bit 6's meaning, beyond its derivation from IRAM 0x25.4 / 0x25.5.
-  * The computed store at Rev 20 0x093F / Rev 22 0x0860.
   * Which bits, if any, drive the panel LEDs versus the analog mux. The shift
     register is 8 bits and all 8 are accounted for as above, so the LEDs are
     presumably decoded from the same source fields — unconfirmed.

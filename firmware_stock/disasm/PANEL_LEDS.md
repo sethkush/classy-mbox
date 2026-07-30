@@ -85,7 +85,8 @@ established is that committing `0x0000` here is what extinguishes spdif/USB/mono
 ## Why this matters for the silent-USB bug
 
 mboxfw's `mux.c` is the 8-bit chain driver and `codec.c` is the 16-bit chain
-driver (`codec_shift_byte` + the `0x0E74` port). In `main()`:
+driver (`codec_shift_byte` + `codec_write_word`, porting `fcn.0x0E62`). In
+`main()`:
 
 ```
 usb_init();  hw_init();  check_boot_dfu_button();

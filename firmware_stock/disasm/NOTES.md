@@ -111,8 +111,10 @@ Every access to `I²CADR (0xFFC3)` writes `0xA0` = 7-bit address `0x50`
 Used only for boot-time firmware load and mode-persistence.
 
 ### Bus 3: bit-banged serial on P1.0 / P1.1 / P1.2 → audio codec
-Second bit-banger at `0x0E74`. Same rotate-and-clock pattern, but on
-different pins:
+Second bit-banger at `0x0E62` (Rev 22 `0x0E56`). Same rotate-and-clock
+pattern, but on different pins. (This document previously gave the entry
+as `0x0E74`, which is the `DJNZ` inside 0x0E62's rotate loop, not a
+function — see the retraction below.)
 
 - **P1.0 (SFR 0x90 bit 0)** = data (SDIN)
 - **P1.2 (SFR 0x90 bit 2)** = clock (SCLK)
@@ -430,7 +432,7 @@ state updaters):
 | 0-2 | Channel 1 source select (mic / line / inst)   |
 | 3-5 | Channel 2 source select (mic / line / inst)   |
 | 6   | Analog-vs-S/PDIF input mux                    |
-| 7   | (unused? — possibly 48V phantom or mono)      |
+| 7   | (unused? — see IRAM23_IRAM25_ANNOTATION.md)   |
 
 Three-state cycling per channel (bits 0-2 or 3-5):
 - Mic:  `1 0 1` (0x22.0=1, .1=0, .2=1)
@@ -465,10 +467,12 @@ both channels because both directions of the audio stream use the same
 sample rate.
 
 ## Codec state model
-The codec + input-mux + 48 V-phantom state is held in three IRAM bytes
+The codec + input-mux + mono state is held in three IRAM bytes
 (0x22, 0x23, 0x25). Two of them (0x23 and 0x25) are shifted out to the
-audio codec chip as a 16-bit MSB-first control word by `fcn.0x0E74`
-(P1.0 = SDIN, P1.2 = SCLK, P1.1 = LATCH). The third (0x22) is shifted
+audio codec chip as a 16-bit MSB-first control word by `fcn.0x0E62`
+(Rev 22 `fcn.0x0E56`); P1.0 = SDIN, P1.2 = SCLK, P1.1 = LATCH. There is
+no 48 V state here — 48 V is a mechanical switch and RAM[0x23].6 is the
+mono flag. The third (0x22) is shifted
 out to the 74HC595 input mux by `fcn.0x0F0C` (P1.7/P1.5/P1.6).
 
 The 16-bit codec write pattern matches the **Cirrus CS4272** style
@@ -494,11 +498,12 @@ fcn.0x0EAF/fcn.0x0E27/fcn.0x0E9D branches:
 
 ### RAM[0x23] — codec control-word MSB (shifted first)
 Manipulated by `fcn.0x0393` (mode-transition prep) and toggled by
-`fcn.0x1028` (P3.5 button = phantom power).
+`fcn.0x1028` (P3.5 button = MONO toggle; not phantom power — 48 V is a
+mechanical switch with no firmware bit).
 
 | Bit | Meaning                                                       |
 |-----|---------------------------------------------------------------|
-| 6   | 48 V phantom-power enable (also branches mux latch behavior)  |
+| 6   | MONO fold-down (also branches mux latch behaviour)            |
 | 0/1/2/3/4 | Set/cleared by fcn.0x0393; roles undecoded — likely codec attenuator or format bits per CS4272 datasheet mapping. Safe default is 0 for first flash. |
 
 ### RAM[0x25] — codec control-word LSB + FSM flags
@@ -533,10 +538,10 @@ two families:
 | 2   | `setb` @ 0x0800/0x0843, `clr` @ 0x0741   | 48 kHz = 1, 44.1 kHz = 0      |
 | 3   | `setb` @ 0x0802/0x0845, `clr` @ 0x0743   | 48 kHz = 1, 44.1 kHz = 0      |
 | 4   | `setb` @ 0x0852 (post-DMA init)          | Set once after codec settles  |
-| 6   | 48 V phantom power (fcn.0x1028)          | Front-panel button-toggled    |
+| 6   | MONO fold-down (fcn.0x1028)              | Front-panel button-toggled    |
 
 The "mode-transition prep" routine at fcn.0x0393 does NOT set the
-23.0-4 bits itself — it only clears 23.6 (phantom) and delegates the
+23.0-4 bits itself — it only clears 23.6 (mono) and delegates the
 per-rate codec config to `fcn.0x0728` (ApplyAudioMode), which is what
 actually populates 23.2/.3 for 48 kHz and clears them for 44.1 kHz.
 
@@ -546,39 +551,60 @@ The mboxfw port mirrors this: `streaming_set_rate()` sets/clears bits
 bit) are currently left at zero — first-flash will tell us whether
 that's audible.
 
-### State-adjuster (`fcn.0x0E62`) side effects
-Runs after every source/mode change AND from `codec_init()`. Pure
-state-machine — forces 22.1, 22.2 high, then computes 22.6 as:
-```
-22.6 = !25.4 && !25.5   (only both-clear leaves the mux LED asserted)
-```
-Ends with `ret` at 0x0E73. Does NOT fall through to `fcn.0x0E74`.
+### RETRACTED 2026-07-29: `fcn.0x0E62` is the codec shift, and there
+### is no function at `0x0E74`
 
-### `fcn.0x0E74` is dead code in Rev 20
-A byte-level scan across every call/jump opcode variant (lcall / acall
-page-0..7 / ajmp page-0..7) finds **zero** references to `0x0E74` in
-the Rev 20 firmware image. The 16-bit codec bit-serial writer at that
-address is compiled in but never invoked.
+The two sections that stood here — "State-adjuster (`fcn.0x0E62`) side
+effects" and "`fcn.0x0E74` is dead code in Rev 20" — were both wrong, and
+they were wrong in a way that reinforced each other. Retracted in full.
 
-Interpretation: **the codec chip in the Mbox 1 does NOT use a
-bit-banged serial control port.** It's autoconfigured from the I²S
-clock signals the CS8427 (or the TAS1020A's C-port) drives directly.
-Digi likely intended a Cirrus-style SPI-configured codec early in
-development, then swapped to a self-configuring part and left the dead
-routine in ROM.
+**What `0x0E62` actually is.** The 16-bit codec control-word shift:
 
-Implications for mboxfw:
-- The `codec_commit()` function is safe but effectively a no-op on the
-  wire — it sets RAM state and pulses P1.0/P1.1/P1.2, but no hardware
-  is listening to those pins for control-word data. Keeping it means
-  we're byte-identical to Rev 20's *intended* behavior even if Rev 20
-  never exercises it in practice.
-- Setting RAM[0x23] bits 0-4 or RAM[0x25] bits 4-7 has NO effect on
-  the audio chain. The mux (RAM[0x22]) is what actually affects the
-  input path, and that IS shipped out via `fcn.0x0F0C`.
-- "Enumerates but audio distorted" risk should be re-attributed away
-  from the codec shift and toward: mux state, CS8427 boot sequence,
-  DMASRC constants, or I²S clock timing from the C-port.
+    0e62  MOV R6,#0x8
+    0e64  MOV R5,0x23          ; high byte first
+    0e66  SETB 0x30            ; RAM[0x26].0 = "still on the high byte"
+    0e68  ... 8x { present ACC bit 7 on P1.0; pulse P1.2 } ...
+    0e8b  JNB 0x30,0x0e96      ; high byte done?
+    0e8e  CLR 0x30 ; MOV R5,0x25 ; MOV R6,#8 ; loop again
+    0e96  ORL P1,#0x02 ; ANL P1,#0xFD    ; latch pulse
+    0e9c  RET
+
+It has **eight callers** in Rev 20 — 0x0AE9 (main loop, after a button
+action), 0x096C (hw_init tail), 0x037D, 0x0818, 0x0835, 0x0842, 0x084D,
+0x0852 — plus 0x0538 in the suspend path and 0x0733 / 0x07F2 bracketing the
+clock-mode change. Rev 22 has the same routine at 0x0E56.
+
+**Why the "zero references to 0x0E74" scan came back empty.** Because
+`0x0E74` is not a function entry point. It is the `DJNZ R0` **inside**
+0x0E62's rotate loop, two instructions past `SJMP 0x0e74` at 0x0E71.
+Nothing calls it because there is nothing there to call. The scan was
+correct and the inference from it was not: absence of callers to a
+mid-instruction-stream address says nothing about whether the routine
+containing it runs.
+
+**Why this mattered.** The retracted text concluded that the Mbox 1 codec
+"does NOT use a bit-banged serial control port", that the control word has
+"NO effect on the audio chain", and that audio faults should be attributed
+away from the codec shift. All three are unsupported. Stock shifts this word
+out on every button press, at the end of hw init, on every clock-mode change,
+and to 0x0000 on suspend. A part that is ignoring those 16 bits would not be
+worth ten call sites.
+
+**What the bit-fiddling section described** is real, but it is not 0x0E62 and
+it does not run on every publish. It is the shared tail of the two
+source-cycle handlers (Rev 20 0x0E52-0x0E61 for channel 1, 0x0EC5-0x0ED4 for
+channel 2; Rev 22 0x0E46-0x0E55 and 0x0EB7-0x0EC6), reached only from those
+two handlers, and it computes exactly one thing:
+
+    22.6 = !25.4 && !25.5
+
+It does NOT "force 22.1, 22.2 high". Bit 0x12 (= 22.2) is set at 0x0E32 and
+0x0E50 and cleared at 0x0E4C — those are the three source-pattern emissions,
+b2 of the channel-1 field, not a separate control line. `mboxfw`'s
+`codec_state_adjust()` implemented the forcing as written here and ran it on
+every publish, which rewrote source pattern 0x03 (INST, b2=0) to 0x07 on
+every commit and made instrument input unselectable. Fixed 2026-07-29; see
+`mboxfw/include/codec.h`.
 
 ## Readiness checklist for writing custom class-compliant firmware
 
@@ -591,7 +617,8 @@ Implications for mboxfw:
 - CS8427 write protocol: bit-banged I²C on P1.3/P1.4, 3-byte packets
 - Codec write protocol: bit-banged serial on P1.0/P1.1/P1.2, 16 bits
 - Mux write protocol: bit-banged 74HC595-style on P1.5/P1.6/P1.7, 8 bits
-- Button poller: reads P3.3/P3.4/P3.5 (source-cycle + phantom toggle)
+- Button poller: reads P3.3/P3.4/P3.5 (source-cycle x2 + mono toggle),
+  acting on RELEASE (prev bit 0 -> cur 1), gated on the timer-0 tick
 
 **✅ Everything on the USB side that a class-compliant device needs:**
 - Standard USB Audio Class 1 descriptors (from TI reference, adjusted
@@ -603,13 +630,20 @@ Implications for mboxfw:
 **🟡 Refinements before v1:**
 1. Enumerate exact codec register bits in RAM[0x23]/[0x25]. Not blocking
    — we can start by dumping Digi's boot state verbatim.
-2. Identify P3.5 button semantics precisely (`fcn.0x1028` toggles bit
-   `0x23.6` which affects mux-latch style — likely **48V phantom power
-   toggle**). Confirmed with front-panel layout (user has a "48V switch").
+2. ~~Identify P3.5 button semantics.~~ **RESOLVED, and the guess here was
+   wrong.** `fcn.0x1028` toggles `0x23.6`, and that bit is **MONO**, not
+   48 V. The "confirmed with front-panel layout (user has a 48V switch)"
+   reasoning was the error: the panel does have a 48 V switch, but it is a
+   mechanical latching switch, not one of the three momentary buttons, and
+   Seth confirmed on hardware that flipping it lights its own LED with no
+   firmware running that could have done so. `fcn.0x1028` is a bare
+   complement with no other effect, which fits a momentary toggle; mono is
+   off at boot and toggles per press, as observed.
 
 **Physical port summary:**
 - **P1**: 4 bit-banged serial buses (audio codec, CS8427, mux shift reg).
-- **P3**: 3 button inputs (P3.3, P3.4, P3.5) — source cycle + 48V toggle.
+- **P3**: 3 button inputs (P3.3, P3.4, P3.5) — source cycle x2 + mono
+  toggle. P3.1 is an input too: S/PDIF / external-clock presence.
 - **Hardware I²C (0xFFC0-C3)**: EEPROM only (for mode-persist).
 
 ## Still unknown (non-blocking)

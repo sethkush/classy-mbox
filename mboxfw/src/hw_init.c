@@ -8,7 +8,7 @@
 #include "mux.h"
 
 extern __data unsigned char g_mux_state;  /* mirror of Rev 20 RAM[0x22] */
-extern __bit g_phantom_48v;               /* mirror of Rev 20 RAM[0x23].6 */
+extern __bit g_mono;               /* mirror of Rev 20 RAM[0x23].6 */
 
 static void short_delay(void)
 {
@@ -171,17 +171,39 @@ void hw_init(void)
     DMATSH1 = 0x80;   /* Rev 20 fcn.0x08CB @ 0x09DA */
     DMATSL1 = 0x03;   /* Rev 20 fcn.0x08CB @ 0x09D4 */
 
-    /* -------- Initial mux state -------- */
-    g_mux_state  = 0x00;
-    g_phantom_48v = 1;      /* Rev 20 sets 0x23.6 = 1 initially */
+    /* -------- Panel / mux boot sequence --------
+     *
+     * Two publishes with a delay between them, exactly as stock. Rev 20
+     * fcn.0x08CB @ 0x093E-0x0964, Rev 22 fcn.0x07EC @ 0x085F-0x0885:
+     *
+     *   093e  CLR A ; MOV 0x22,A   ; panel word = 0x00
+     *   0941  SETB 0x1e            ; mono = 1
+     *   0943  LCALL 0x0F0C         ; publish
+     *   0946  ...                  ; delay loop on RAM[0x2E]:RAM[0x2F]
+     *   095b  MOV 0x22,#0xFF
+     *   095e  CLR 0x10 ; CLR 0x13  ; clear .0 and .3 -> 0xF6
+     *   0962  CLR 0x1e             ; mono = 0
+     *   0964  LCALL 0x0F0C         ; publish
+     *
+     * 0xF6 decodes as source pattern 0x06 on BOTH channels, which is mic —
+     * matching the observed boot state. The 0x00-then-mono-set first publish
+     * is a deliberate all-on flash, not a bug: it is the only place either
+     * image writes 0x00 to this byte, and it is immediately followed by the
+     * settle delay and the real value.
+     *
+     * An earlier defect list claimed stock boots this byte to 0x76 and that
+     * mboxfw's 0x00 was illegal. Both parts were wrong. 0x76 comes from
+     * Rev 20 0x0397 / Rev 22 0x039B, which is inside the SET_INTERFACE
+     * alt-setting handler (fcn.0x0386 / fcn.0x038A) — a stream-teardown
+     * state, not boot. The sequence below already matched stock and is
+     * unchanged apart from the mono rename. */
+    g_mux_state = 0x00;
+    g_mono      = 1;        /* Rev 20 @ 0x0941 SETB 0x1E */
     mux_write(g_mux_state);
 
     short_delay();
 
-    /* Rev 20 default: source-select bit 0 clear on both channels, 48V off.
-     * Bits: 0x22 = 0xFF then clear .0, .3, and 0x23.6.
-     */
-    g_mux_state  = (unsigned char)(0xFF & ~0x01 & ~0x08);
-    g_phantom_48v = 0;
+    g_mux_state = (unsigned char)(0xFF & ~0x01 & ~0x08);   /* = 0xF6, mic/mic */
+    g_mono      = 0;        /* Rev 20 @ 0x0962 CLR 0x1E */
     mux_write(g_mux_state);
 }

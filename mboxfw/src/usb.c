@@ -9,9 +9,9 @@
  * TAS1020A EP0 protocol summary (from Rev 20 disassembly + TI ROM code):
  *   - SETUP packet arrives → firmware inspects SETPACK block at 0xFF28.
  *   - If host is asking for data (bmReq bit 7 = 1), we write reply
- *     into the EP0 IN buffer (base 0xFA10 in Rev 20) and set IEPBCTX0
+ *     into the EP0 IN buffer (base 0xFA10 in Rev 20) and set IEPDCNTX0
  *     to the byte count, then hardware sends it.
- *   - If host is sending data (bmReq bit 7 = 0), OEPBCTX0 holds the
+ *   - If host is sending data (bmReq bit 7 = 0), OEPDCNTX0 holds the
  *     received count and we read from EP0 OUT buffer (base 0xFA18).
  *   - Status stage is armed by writing zero to the opposite endpoint's
  *     byte-count register.
@@ -22,6 +22,7 @@
 #include "streaming.h"
 #include "eeprom.h"
 #include "telemetry.h"
+#include "power.h"
 
 /* LED progress canary — see the ladder in main.c. Stages 10-17 live on
  * the USB side; g_stage is defined there. */
@@ -160,7 +161,7 @@ static void reply_zero_length(void)
      * etc.). TI UsbEng.c engEp0SetupDone takes the same path for the
      * wLength == 0 case; Rev 20's EP0 IN loader fcn.0x0B8C writes the
      * byte count to this same register. */
-    IEPBCTX0 = 0;
+    IEPDCNTX0 = 0;
 }
 
 /* Stage a small (up to EP0_MAX_PACKET bytes) reply from RAM directly
@@ -180,11 +181,11 @@ static void stage_immediate(const unsigned char *bytes, unsigned char len)
         dst[i] = bytes[i];
     }
     g_ep0_reply_remaining = 0;   /* single packet, no continuation */
-    IEPBCTX0 = n;
+    IEPDCNTX0 = n;
 }
 
 /* Push up to EP0_MAX_PACKET bytes from g_ep0_reply_src into the EP0 IN
- * buffer at 0xFA10, arm IEPBCTX0 with the byte count, and advance the
+ * buffer at 0xFA10, arm IEPDCNTX0 with the byte count, and advance the
  * cursor. Called first by stage_reply() and then by usb_service() on
  * each IEP0-done interrupt until g_ep0_reply_remaining hits zero. */
 static void push_reply_chunk(void)
@@ -208,7 +209,7 @@ static void push_reply_chunk(void)
     g_ep0_reply_remaining -= n;
     TLM_INC16(tlm_chunks);
     if (g_ep0_reply_remaining == 0) { STAGE(19); TLM_INC16(tlm_drains); }
-    IEPBCTX0 = n;   /* hand the packet to the hardware */
+    IEPDCNTX0 = n;   /* hand the packet to the hardware */
 }
 
 static void stage_reply(__code const unsigned char *src, unsigned int len)
@@ -624,7 +625,19 @@ static void handle_setup(void)
 
 /* --- Public entry points --- */
 
-void usb_init(void)
+unsigned char usb_is_configured(void)
+{
+    return g_configured;
+}
+
+/*
+ * EP0 buffer + count setup, split out of usb_init() so the resume path can
+ * re-run exactly this and nothing else — which is what stock does. Rev 20's
+ * suspend/resume tail calls fcn.0x0970 at 0x0554; Rev 22 calls fcn.0x0891 at
+ * 0x0553. Neither re-runs the settle loop, the USBIMSK write, or the
+ * enumeration-state resets that follow in usb_init().
+ */
+void usb_ep0_setup(void)
 {
     /* Point EP0 IN / OUT at their packet buffers in the shared window. */
     IEPBBAX0 = EP_BBAX(EP0_IN_BUF_ADDR);
@@ -637,14 +650,43 @@ void usb_init(void)
      * USBIE (enable) + bit 2 (interrupt-on-transaction). Earlier drafts
      * of this file wrote 0xFA which was a guess; 0x84 is what the
      * shipping vendor firmware uses. */
-    /* IEPBCTX0 top bit is the NAK flag. TI's engUsbInit starts EP0 IN
+    /* IEPDCNTX0 top bit is the NAK flag. TI's engUsbInit starts EP0 IN
      * in NAK state (0x80) so the first IN token doesn't ship a spurious
      * zero-length packet before we have data to send. Ours previously
      * set 0 → could confuse strict hosts. */
-    IEPBCTX0 = 0x80;
-    OEPBCTX0 = 0;
+    IEPDCNTX0 = 0x80;
+    OEPDCNTX0 = 0;
+
+    /* Clear the EP0 *Y* buffer counts as well. Both stock images do, in
+     * the same routine that sets up the X buffers:
+     *   Rev 20 fcn.0x0970 @ 0x0984 (OEPDCNTY0) / @ 0x0988 (IEPDCNTY0)
+     *   Rev 22 fcn.0x0891 @ 0x08A5 (OEPDCNTY0) / @ 0x08A9 (IEPDCNTY0)
+     * mboxfw cleared neither, which is the whole gap that the bidirectional
+     * XDATA diff surfaced.
+     *
+     * These are defensive clears, not configuration: neither firmware ever
+     * writes the Y buffer BASE registers (IEPBBAY0 0xFF6D, OEPBBAY0 0xFFAD),
+     * so double-buffering is not in use and the Y half is never legitimately
+     * armed. What they defend against is boot-ROM residue — the boot ROM runs
+     * DFU over EP0 immediately before this image starts, and a stale non-zero
+     * Y count can present to the UBM as a buffer the application has filled
+     * when it has not.
+     *
+     * Candidate, not diagnosis, for the measured ~12% geometric loss of EP0 IN
+     * packets past the second (see FINDING_ep0_y_buffer_residue.md): the loss
+     * would depend on when the UBM alternates X/Y, which is probabilistic
+     * rather than every-other-packet. Whether the boot ROM actually leaves
+     * these non-zero is unmeasured; telemetry block 7 now reports both so the
+     * next flash settles it. The clears cost four bytes either way. */
+    IEPDCNTY0 = 0;
+    OEPDCNTY0 = 0;
     IEPCNF0  = 0x84;
     OEPCNF0  = 0x84;
+}
+
+void usb_init(void)
+{
+    usb_ep0_setup();
 
     /* Streaming endpoints stay dormant until SET_INTERFACE(alt=1). */
     IEPCNF1 = 0;
@@ -762,7 +804,7 @@ void usb_service(void)
              *         engEp0TxDone();
              * This code used to ship the chunk first and clear VECINT at
              * the bottom of the case, which loses interrupts: once
-             * IEPBCTX0 is written the packet can complete before we reach
+             * IEPDCNTX0 is written the packet can complete before we reach
              * the clear, and VECINT = 0 then wipes the completion event
              * for the packet just armed. The continuation never fires
              * again and the transfer hangs.
@@ -806,11 +848,11 @@ void usb_service(void)
                  * leaving stale toggle/stall state across transfers. */
                 IEPCNF0 &= 0xD7;   /* clear bit 5 TOGGLE + bit 3 STALL */
                 OEPCNF0 &= 0xD7;
-                IEPBCTX0 = 0;
+                IEPDCNTX0 = 0;
             }
             /* Re-arm EP0 OUT on EVERY IN completion, not just at end of
              * transfer — safety_net does this unconditionally. */
-            OEPBCTX0 = 0;
+            OEPDCNTX0 = 0;
             break;
 
         case VEC_OEP0:
@@ -907,10 +949,38 @@ void usb_service(void)
             VECINT = 0;
             break;
 
+        case VEC_SUSR:
+            /* Bus suspend. Post the work code and get out — every slow thing
+             * suspend does (idling the clock generators, muting the codec,
+             * blanking the panel, and blocking in PCON idle for as long as the
+             * host stays quiet) runs from the main loop in power.c.
+             *
+             * This is stock's split, not an invention. Rev 20's entire SUSR
+             * handler is `MOV 0x0A,#0x0E; RET` at 0x0006, reached from VECINT
+             * table entry 0x16 at 0x0CBF; Rev 22 identical at 0x0006 from
+             * 0x0CA9. Doing the work here instead would block the ISR, and
+             * PCON idle inside an ISR cannot be woken by the interrupt that
+             * would resume it. */
+            TLM_INC8(tlm_vec_susr);
+            g_work_code = WORK_SUSPEND;
+            VECINT = 0;
+            break;
+
+        case VEC_RESR:
+            /* Resume. Nothing to do, and stock does nothing either: Rev 20's
+             * VECINT table entry 0x15 points at 0x1035, a bare RET, and Rev 22
+             * at 0x102D, likewise. Resume is not handled as an event — it is
+             * whatever interrupt wakes the CPU out of PCON idle, after which
+             * do_suspend() falls through to its own re-init tail. Counted here
+             * only so a host can see the pair balance. */
+            TLM_INC8(tlm_vec_resr);
+            VECINT = 0;
+            break;
+
         case VEC_NONE:
             break;
         default:
-            /* Any other unmasked source (STPOW, SUSR, RESR, spurious).
+            /* Any other unmasked source (STPOW, spurious).
              * Per datasheet §6.5.7.3, VECINT must be written to clear
              * the source; without it the ISR re-fires on return and
              * the CPU wedges. TI's usbIntrHandler (UsbEng.c:44-96)
