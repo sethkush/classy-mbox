@@ -23,6 +23,8 @@
 #include "eeprom.h"
 #include "telemetry.h"
 #include "power.h"
+#include "mux.h"
+#include "codec.h"
 
 /* LED progress canary — see the ladder in main.c. Stages 10-17 live on
  * the USB side; g_stage is defined there. */
@@ -390,6 +392,63 @@ static void handle_digi_enter_dfu(void)
 }
 
 
+/* Set the source mux from the host — see TLM_REQ_SET_MUX in telemetry.h for
+ * why this exists. Reaches the same states the front-panel buttons reach, by
+ * the same publish path, without depending on the buttons.
+ *
+ * NOVEL — reason: no stock request does this; stock only ever cycles the mux
+ * from fcn.0x0E27 / fcn.0x0E9D on a button release. The state reached is not
+ * novel — every value written here is one stock itself produces — only the
+ * trigger is. */
+static unsigned char mux_pattern_legal(unsigned char pat)
+{
+    return (pat == MUX_PAT_MIC || pat == MUX_PAT_LINE || pat == MUX_PAT_INST);
+}
+
+static void handle_set_mux(void)
+{
+    unsigned char ch1 = wValueL & 0x07;
+    unsigned char ch2 = (wValueL >> 3) & 0x07;
+
+    /* Reject anything that is not one of the three one-cold patterns, on both
+     * channels, before touching the published word. mboxfw ran for weeks with
+     * g_mux_state at 0x00 -- an illegal pattern -- and every audio measurement
+     * taken in that period had to be retracted because no source was actually
+     * selected. A request that can re-enter that state would reintroduce the
+     * same class of silent, retroactive measurement failure. */
+    if (!mux_pattern_legal(ch1) || !mux_pattern_legal(ch2)) {
+        TLM_INC8(tlm_mux_rejects);
+        reply_stall();
+        return;
+    }
+
+    /* Only the six source bits come from the host. Bit 0x22.6 is derived from
+     * the codec word by codec_source_changed() and bit 0x22.7 is a control line
+     * no stock source handler writes, so both are carried through unchanged. */
+    g_mux_state = (g_mux_state & 0xC0) | (ch2 << 3) | ch1;
+
+    /* wIndexL: 0 = mono off, 1 = mono on, anything else = leave alone. The
+     * mono flag rides the mux latch as a ninth bit (mux.c), so it has to be
+     * settled before the publish rather than after. */
+    if (wIndexL == 0) {
+        g_mono = 0;
+    } else if (wIndexL == 1) {
+        g_mono = 1;
+    }
+
+    /* Publish in stock's order, which is the order buttons_poll() uses: the
+     * source-cycle tail first, then the panel chain, then the codec chain.
+     * Rev 20 main loop @ 0x0AE3-0x0AE9 (LCALL 0x0F0C then LCALL 0x0E62),
+     * Rev 22 @ 0x0A8D-0x0A93. */
+    codec_source_changed();
+    mux_write(g_mux_state);
+    codec_write_word();
+
+    TLM_INC8(tlm_mux_sets);
+    reply_zero_length();
+}
+
+
 /* --- UAC1 class request dispatcher --- */
 
 static void handle_class_endpoint_request(void)
@@ -510,6 +569,8 @@ static void handle_setup(void)
         } else if (bReq == TLM_REQ_RESET && !(bmReq & 0x80)) {
             tlm_reset_counters();
             reply_zero_length();
+        } else if (bReq == TLM_REQ_SET_MUX && !(bmReq & 0x80)) {
+            handle_set_mux();
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             /* Same latch as the Digi class request; see
              * handle_digi_enter_dfu(). This alias exists because the class

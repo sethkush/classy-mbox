@@ -5,6 +5,8 @@
 
 #include "regs.h"
 #include "telemetry.h"
+#include "mux.h"
+#include "codec.h"
 
 volatile __data unsigned int  tlm_setup_count = 0;
 volatile __data unsigned int  tlm_iep0_count  = 0;
@@ -50,6 +52,9 @@ volatile __data unsigned char tlm_boot_handoff[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
 
 volatile __data unsigned char tlm_p1_boot = 0xFF;  /* 0xFF = not sampled */
 volatile __data unsigned char tlm_p3_boot = 0xFF;
+
+volatile __data unsigned char tlm_mux_sets    = 0;
+volatile __data unsigned char tlm_mux_rejects = 0;
 
 /* Little-endian 16-bit store, matching how the host unpacks the blocks. */
 static void put16(unsigned char *p, unsigned int v)
@@ -223,6 +228,34 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         for (; i < TLM_BLOCK_SIZE; i++)
             out[i] = 0x00;
         return 1;
+    case 9:
+        /* Panel state — which source is actually selected, right now.
+         *
+         * Until this block existed there was no way to ask. Block 4 offers live
+         * P1/P3 reads but not the published mux word, so on 2026-07-29 the
+         * selected source was established only by Seth reading the front-panel
+         * LEDs in person, after the fact — and it turned out to be mic on both
+         * channels while the loopback fed a line input, which voided the whole
+         * session. A capture measurement that cannot state its own input
+         * routing cannot be trusted, so this block is read alongside every one.
+         *
+         * Bytes 0-3 are the two published words: the 8-bit panel/mux chain
+         * (RAM[0x22]) and the 16-bit codec chain (RAM[0x23]:RAM[0x25]).
+         * Together they are the complete state of both latch chains, so a host
+         * can also confirm the spdif/USB/mono LEDs went dark as codec_init()
+         * intends. */
+        out[0] = g_mux_state;
+        out[1] = g_mono ? 1 : 0;
+        out[2] = g_codec_state_23;
+        out[3] = g_codec_state_25;
+        /* Live P3: the three button pins, so a press is visible over the wire
+         * without anyone watching the panel. */
+        out[4] = P3;
+        out[5] = tlm_mux_sets;
+        out[6] = tlm_mux_rejects;
+        out[7] = 0;
+        return 1;
+
     default:
         /* Clean sentinel rather than a stall, so a host walking blocks
          * until it runs out gets a defined answer. */

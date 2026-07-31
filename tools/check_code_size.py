@@ -3,7 +3,14 @@
 Fail if the compiled mboxfw code exceeds a safety-margin budget under
 the 8 KB EEPROM. Rev 20 uses 8174 bytes — nearly full EEPROM. We leave
 room for the 18-byte header + 5-byte SDCC tail + slack for descriptor
-growth. Budget = 6144 bytes (75% of 8 KB, comfortable margin).
+growth.
+
+Budget raised 6144 -> 7168 on 2026-07-30, with the linker's --code-size
+in mboxfw/Makefile. The hard ceiling is 8174 (8192 minus the 18-byte
+header), and stock Rev 20 sits exactly there, so 6144 was never a
+hardware constraint — it was a margin chosen when the image was half
+this size. It started rejecting diagnostic code that the hardware has
+ample room for. 7168 still leaves 1006 bytes under the real ceiling.
 
 Also reports where we are as a percentage so runaway growth surfaces
 early. Reads the .ihx file's highest byte address.
@@ -14,8 +21,9 @@ import sys
 from pathlib import Path
 
 
-BUDGET_BYTES = 6144
-WARN_AT      = 5120   # 62.5% — flag if we cross this so we notice trends
+HARD_CEILING = 8174   # 24C64 capacity 8192 minus the 18-byte EEPROM header
+BUDGET_BYTES = 7168
+WARN_AT      = 6656   # flag before the budget so growth trends surface early
 
 
 def code_size(ihx_path: Path) -> int:

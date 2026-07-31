@@ -26,6 +26,13 @@ Usage:
     mboxtlm.py watch 6 [-n N] [-i S]  re-read a block N times, S apart
     mboxtlm.py reset                clear the per-experiment counters
     mboxtlm.py raw 6                hex only, no interpretation
+    mboxtlm.py setmux line line     select the input source on both channels
+
+`setmux` exists because the bench loopbacks are wired to the LINE inputs while
+the firmware boots to MIC on both channels, and that mismatch silently voided a
+whole measurement session on 2026-07-29. Block 9 reports the selected source, so
+a capture can state its own input routing instead of it being read off the front
+panel afterwards. See BENCH_WIRING.md.
 
 Add --raw to any decode to also print the underlying bytes.
 
@@ -56,11 +63,18 @@ AUDIO_PIDS = (0x1000,) + tuple(range(0x2000, 0x2010))
 
 TLM_REQ_READ = 0x10        # bmRequestType 0xC0, wValue = block index
 TLM_REQ_RESET = 0x11       # bmRequestType 0x40
+TLM_REQ_SET_MUX = 0x13     # bmRequestType 0x40, wValue = mux, wIndex = mono
 REQ_IN = 0xC0              # vendor | device-to-host | device
 REQ_OUT = 0x40             # vendor | host-to-device | device
 
 BLOCK_SIZE = 8
-NUM_BLOCKS = 9
+NUM_BLOCKS = 10
+
+# The three one-cold source patterns, from the stock cycle handlers (Rev 20
+# fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). The firmware
+# rejects anything else, so the same names are the tool's vocabulary.
+SOURCES = {"mic": 0x06, "line": 0x05, "inst": 0x03}
+SOURCE_NAMES = {v: k for k, v in SOURCES.items()}
 
 PHASE_BITS = [(0x01, "USB_INIT"), (0x02, "HW_INIT"), (0x04, "ATTACH"),
               (0x08, "CS8427"), (0x10, "CODEC"), (0x20, "MAIN_LOOP")]
@@ -302,9 +316,46 @@ def block8(b):
     return out
 
 
+def block9(b):
+    """Panel state -- which source is actually selected, right now.
+
+    Read this alongside every audio measurement. On 2026-07-29 a full capture
+    session was voided because the mux sat at mic on both channels while the
+    loopback fed a line input, and that was only discovered afterwards, from
+    the front-panel LEDs. A measurement that cannot state its own input routing
+    cannot be trusted, and before this block there was no way to ask.
+    """
+    mux = b[0]
+    ch1, ch2 = mux & 0x07, (mux >> 3) & 0x07
+    n1 = SOURCE_NAMES.get(ch1, "ILLEGAL")
+    n2 = SOURCE_NAMES.get(ch2, "ILLEGAL")
+    out = [
+        "mux word  =0x%02X   ch1=%s(0x%X)  ch2=%s(0x%X)" % (mux, n1, ch1, n2, ch2),
+        "mono      =%d" % b[1],
+        "codec word=0x%02X%02X  (RAM[0x23]:RAM[0x25], the 16-bit chain)"
+        % (b[2], b[3]),
+        "P3 live   =0x%02X   btn ch1(P3.3)=%d ch2(P3.4)=%d mono(P3.5)=%d"
+        "  (active low: 0 = held)"
+        % (b[4], (b[4] >> 3) & 1, (b[4] >> 4) & 1, (b[4] >> 5) & 1),
+        "host mux sets accepted=%d  rejected=%d" % (b[5], b[6]),
+    ]
+    if "ILLEGAL" in (n1, n2):
+        out.append("  ILLEGAL PATTERN: not one of mic/line/inst. No source is"
+                   " selected, so any audio measurement taken now is void --"
+                   " this is the exact state that invalidated 2026-07-29.")
+    elif ch1 != SOURCES["line"] or ch2 != SOURCES["line"]:
+        out.append("  NOTE: the bench loopbacks are wired to the LINE inputs"
+                   " (BENCH_WIRING.md). A channel not on `line` is not carrying"
+                   " the test signal. Fix with: mboxtlm.py setmux line line")
+    if b[6]:
+        out.append("  %d host mux request(s) were REJECTED as illegal patterns"
+                   " and left the mux unchanged." % b[6])
+    return out
+
+
 DECODERS = {0: block0, 1: block1, 2: block2, 3: block3,
             4: block4, 5: block5, 6: block6, 7: block7,
-            8: block8}
+            8: block8, 9: block9}
 
 TITLES = {
     0: "identity and liveness",
@@ -316,6 +367,7 @@ TITLES = {
     6: "DMA and C-port live state",
     7: "EP0 buffer counts + suspend tally",
     8: "boot-ROM handoff snapshot",
+    9: "panel state (selected source)",
 }
 
 
@@ -387,6 +439,26 @@ def cmd_reset(dev, _args):
           "(stage/phases/loop_count/peripheral results are kept by design)")
 
 
+def cmd_setmux(dev, args):
+    """Select the input source on both channels without touching the panel.
+
+    Safe to point at a running device: it reaches only states the front-panel
+    buttons already reach, by the same publish path, and the firmware rejects
+    any pattern that is not one of the three legal ones. Unlike enter-DFU this
+    costs nothing to get wrong -- send it again with different arguments.
+    """
+    mono = {"on": 1, "off": 0, "keep": 0xFF}[args.mono]
+    wvalue = (SOURCES[args.ch2] << 3) | SOURCES[args.ch1]
+    dev.ctrl_transfer(REQ_OUT, TLM_REQ_SET_MUX, wvalue, mono, None, 2000)
+    print("requested ch1=%s ch2=%s mono=%s (wValue=0x%04X wIndex=0x%02X)"
+          % (args.ch1, args.ch2, args.mono, wvalue, mono))
+    # Read it back rather than report success from the absence of an exception.
+    # A stall raises, but a request that is accepted and then does not take
+    # would otherwise look identical to one that worked.
+    print()
+    show(9, read_block(dev, 9), args.raw)
+
+
 def main():
     # --raw is accepted on BOTH sides of the subcommand. It was top-level
     # only at first, so the natural `read 6 --raw` died with "unrecognized
@@ -411,12 +483,18 @@ def main():
     sp.add_argument("-n", "--count", type=int, default=10)
     sp.add_argument("-i", "--interval", type=float, default=0.5)
     sub.add_parser("reset", parents=[common], help="clear the per-experiment counters")
+    sp = sub.add_parser("setmux", parents=[common],
+                        help="select the input source on both channels")
+    sp.add_argument("ch1", choices=sorted(SOURCES), help="channel 1 source")
+    sp.add_argument("ch2", choices=sorted(SOURCES), help="channel 2 source")
+    sp.add_argument("--mono", choices=("on", "off", "keep"), default="keep")
 
     args = p.parse_args()
     dev, pid = find_device()
     print("# %04x:%04x audio mode\n" % (MBOX_VID, pid))
     {"all": cmd_all, "read": cmd_read, "raw": cmd_raw,
-     "watch": cmd_watch, "reset": cmd_reset}[args.cmd](dev, args)
+     "watch": cmd_watch, "reset": cmd_reset,
+     "setmux": cmd_setmux}[args.cmd](dev, args)
 
 
 if __name__ == "__main__":

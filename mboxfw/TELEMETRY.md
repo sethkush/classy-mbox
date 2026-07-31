@@ -202,6 +202,39 @@ never reached the sample (or the image predates the block), not "the ROM left
 zeroing a one-time boot observation on a counter reset would turn a real
 measurement into a plausible-looking zero.
 
+Block 9 — **panel state.** Which input source is actually selected, right now.
+Added 2026-07-30.
+
+| byte | field |
+|---|---|
+| 0 | `g_mux_state` — the published panel/mux word, RAM[0x22] |
+| 1 | mono flag (RAM[0x23].6) |
+| 2 | `g_codec_state_23` — high byte of the 16-bit codec chain |
+| 3 | `g_codec_state_25` — low byte |
+| 4 | **live** `P3` — the three button pins, active low |
+| 5 | host mux-set requests accepted |
+| 6 | host mux-set requests rejected as illegal patterns |
+| 7 | zero |
+
+This block exists because a measurement that cannot state its own input routing
+cannot be trusted. On 2026-07-29 a full capture session was voided when the mux
+turned out to be on mic for both channels while the loopback fed a line input,
+and that was discovered afterwards, from the front-panel LEDs, in person. Bytes
+0-3 are the complete state of both latch chains, so the same read also confirms
+whether `codec_init()` extinguished the spdif/USB/mono LEDs.
+
+Bytes 5 and 6 are two counters rather than one because a rejected `TLM_REQ_SET_MUX`
+leaves the mux word unchanged — identical to a request that never arrived. Only
+separate counters tell those apart.
+
+The companion request is `TLM_REQ_SET_MUX` (0x13), which reaches the same states
+the front-panel buttons reach, by the same publish path
+(`codec_source_changed()` → `mux_write()` → `codec_write_word()`, stock's order
+at Rev 20 `0x0AE3-0x0AE9` / Rev 22 `0x0A8D-0x0A93`). It rejects any pattern that
+is not one of the three one-cold values, because `g_mux_state = 0x00` is exactly
+the illegal state that invalidated the earlier measurements. Drive it with
+`tools/mboxtlm.py setmux line line`.
+
 ## What this buys
 
 Concretely, these questions become remote and repeatable instead of one-flash-each:
@@ -214,19 +247,21 @@ Concretely, these questions become remote and repeatable instead of one-flash-ea
 
 ## Cost
 
-Roughly 40 bytes of counters plus ~150 bytes of code. mboxfw is 3299 B against a
-6016 B ceiling, so this is affordable. Counters are `__data` and incremented in
+Roughly 40 bytes of counters plus ~150 bytes of code. mboxfw is 6312 B against a
+7168 B budget (the hard ceiling is 8174 — 8192 minus the EEPROM header — which
+is exactly what stock Rev 20 occupies), so this is affordable. Counters are `__data` and incremented in
 the ISR — keep them `unsigned char`/`unsigned int` with saturating increments so
 no counter can wrap into a misleading value mid-experiment.
 
 ## Status
 
-Implemented — 9 blocks, `mboxfw/src/telemetry.c`, read with `tools/mboxtlm.py`.
+Implemented — 10 blocks, `mboxfw/src/telemetry.c`, read with `tools/mboxtlm.py`.
 The "design only, not implemented" note that stood here was stale: blocks 0-4
 shipped and have been read off hardware, blocks 5-6 were added for the isoc
-investigation, and block 7 came in with the 2026-07-29 EP0/suspend pass.
+investigation, block 7 came in with the 2026-07-29 EP0/suspend pass, block 8
+with the boot-handoff sample, and block 9 with the host mux control.
 
-`TLM_BUILD_ID` is at **0x0010**. Bump it in `include/telemetry.h` on every
+`TLM_BUILD_ID` is at **0x0013**. Bump it in `include/telemetry.h` on every
 flash — block 0 byte 0-1 is the only thing that proves which image is running
 rather than assuming, and it has already caught one stale-build mismatch (the
 0x0002-vs-0x0003 case that led to the wildcard header dependency in the

@@ -47,7 +47,7 @@ transmitter, whose clock derives from the thing being slaved. Lock is not
 evidence of correct slaving in that configuration; use B as the S/PDIF source
 if #145 needs a real external clock.
 
-## The blocker this rig does NOT clear — read before measuring
+## Selecting the source — CLOSED 2026-07-30, build 0x0013
 
 **Both `src 1` and `src 2` are LINE inputs, and mboxfw boots selecting MIC.**
 
@@ -62,20 +62,29 @@ both channels while the loopback fed a line input, so the selected source never
 carried the test signal. The new cabling does not change that — it adds a second
 line-input path with the same problem.
 
-Two things have to be true before the next measurement is worth anything:
+Both halves of that are now handled from the host, so no one has to touch the
+panel and no measurement depends on the unverified buttons (#150):
 
-1. **The source must actually be on LINE.** Today that means one front-panel
-   press per channel — and button behaviour has never been confirmed on hardware
-   (#150). If the buttons do not work, there is no way to reach line at all.
-2. **Source selection must be readable over the wire.** It is not.
-   `g_mux_state` appears in no telemetry block; block 4 offers live P1/P3 reads
-   but not the published mux byte. Last time the selected source was established
-   by Seth reading the front-panel LEDs, in person, after the fact. A remote
-   measurement cannot currently state which input it was listening to.
+    mboxtlm.py setmux line line     # select LINE on both channels
+    mboxtlm.py read 9               # confirm what is actually selected
 
-Both belong in the same flash, since one power cycle buys one image: expose
-`g_mux_state` in telemetry (#155), and give the mux a host-settable path or a
-build-time line default so the measurement does not depend on #150 (#156).
+`TLM_REQ_SET_MUX` (0x13) reaches the same states the buttons reach, by the same
+publish path — `codec_source_changed()` → `mux_write()` → `codec_write_word()`,
+which is stock's order at Rev 20 `0x0AE3-0x0AE9` / Rev 22 `0x0A8D-0x0A93`. It
+takes only the six source bits from the host, preserving bit 0x22.6 (derived) and
+0x22.7 (a control line no stock source handler writes), and it **rejects** any
+value that is not one of the three one-cold patterns. That rejection is the point:
+`g_mux_state = 0x00` is precisely the illegal state that invalidated the earlier
+measurements, and a request able to re-enter it would be a trap.
+
+Block 9 reports the published mux word, the decoded per-channel source, both
+codec-chain bytes, live P3, and separate accepted/rejected counters — separate
+because a rejected request leaves the mux unchanged and is otherwise
+indistinguishable from one that never arrived. `mboxtlm.py` flags a channel that
+is not on `line` and names the fix.
+
+**Read block 9 alongside every capture.** The measurement should state its own
+input routing rather than have it reconstructed from the front panel afterwards.
 
 ## Cable-type caveat on level comparisons
 
