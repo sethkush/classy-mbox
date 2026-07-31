@@ -165,6 +165,77 @@ playback, and tell the codec about it with the bit pair. That is consistent with
 mode 5 being the "one IN and one OUT at different frequencies" case. It is a
 reading of dead code and nothing depends on it.
 
+## 0x25.5 — "the S/PDIF receiver has been engaged". Cleared by either stream.
+
+Exactly five bit operations in each image, one-to-one (bit address 0x2D):
+
+    CLR   Rev 20 0x0395   Rev 22 0x0399    cmd2_apply_iface1_alt
+    CLR   Rev 20 0x041C   Rev 22 0x041C    cmd3_apply_iface2_alt
+    SETB  Rev 20 0x04CA   Rev 22 0x04CE    cmd11, the P3.1-fall handler
+    JNB   Rev 20 0x0E5C   Rev 22 0x0E50    source-cycle tail, channel 1
+    JNB   Rev 20 0x0ECF   Rev 22 0x0EC1    source-cycle tail, channel 2
+
+**It is never tested for a branch.** The only two `JNB`s are the pair that
+computes `0x22.6 = !(0x25.4) && !(0x25.5)`. So inside the firmware, 0x25.5's
+entire software effect is on that one panel bit; everything else it does, it does
+as bit 5 of the codec word's low byte — a hardware line.
+
+All three writers share one idiom, the bring-up guard on 0x25.6:
+
+    JB 0x2e,<skip>     ; has bring-up run?
+    LCALL 0x080b       ; if not, run it
+    <skip>:
+    CLR/SETB 0x2d
+
+**Set** in `cmd11` (work code 0x0B — the handler the P3.1 *fall* posts), right
+before clock mode 3 (internal 48 kHz) and the CS8427 `CLOCKSOURCE = 0x41` write
+that sets RUN, i.e. starts the receiver.
+
+**Cleared** in both stream-start paths, identified by the endpoint each goes on
+to configure:
+
+    cmd2 @ 0x0386  -> IEPCNF1 (0xFF60)  = SET_INTERFACE iface 1, CAPTURE
+    cmd3 @ 0x03FD  -> OEPCNF2 (0xFF98)  = SET_INTERFACE iface 2, PLAYBACK
+
+So the bit means **"the S/PDIF receiver has been started and we are running on
+the internal clock while it settles"**, and starting either audio stream cancels
+it. That is a real behavioural fact worth stating on its own: a host that begins
+capture or playback drops the device out of S/PDIF-engaged state.
+
+`0x22.6 = !(0x25.4) && !(0x25.5)` therefore asserts the panel line whenever
+S/PDIF is in play **by either route** — the host selected it through the Selector
+Unit (0x25.4), or the firmware engaged the receiver on the P3.1 event (0x25.5).
+Two independent conditions OR-ed into one indicator.
+
+That also dissolves the oddity flagged in `FINDING_cs8427_is_spi_not_i2c.md`:
+`cmd11`'s direct `CLR 0x16` at `0x04FD` is just applying the derived rule
+eagerly, since `cmd11` has already set 0x25.5 and the derivation is only
+recomputed on a source-button press. It sits inside the EEPROM-verify branch,
+which still looks like a stock bug — the eager apply has nothing to do with
+whether the EEPROM verified — but the intent is now clear.
+
+**What 0x25.5 physically drives is still a board question**, exactly like the six
+one-cold source lines. The condition under which it asserts is fully determined;
+the wire it asserts on is not.
+
+## 0x22.7, found on the way — it tracks the capture stream
+
+Two sites in Rev 20, both inside `cmd2_apply_iface1_alt`:
+
+    CLR  0x17  @ 0x03A0   start branch (goes on to arm IEPCNF1)
+    SETB 0x17  @ 0x03E6   stop branch, immediately after
+                          DMACTL1 (0xFFEE) &= 0x7F clears capture DMAEN
+
+So **0x22.7 is asserted (low) while the capture stream runs and deasserted when
+it stops**, and nothing else in either image touches it. It tracks capture only —
+`cmd3`, the playback path, never writes it.
+
+`PANEL_LEDS.md` calls 0x22.7 a "run/stop-like line", which the condition now
+confirms precisely. Whether it drives an LED, a mute, or something else remains
+the board question; note only that stock's post-init `0x22 = 0xF6` leaves both
+0x22.6 and 0x22.7 high, which is consistent with the observed idle panel however
+they are wired.
+
 ## Status of the codec word after this pass
 
     0x23.0  RESOLVED — always 0: its only writer is in the mode-5 branch,
@@ -179,7 +250,9 @@ reading of dead code and nothing depends on it.
 
     0x25.0-3 RESOLVED — the two per-channel source state machines
     0x25.4  RESOLVED — UAC1 Selector Unit position, analog vs S/PDIF
-    0x25.5  reading  — "clock slaved" latch; set by cmd11, feeds 0x22.6
+    0x25.5  RESOLVED — "S/PDIF receiver engaged": set only by the P3.1-fall
+                       handler, cleared by either stream start, never branched
+                       on. Physical target still a board question.
     0x25.6  RESOLVED — "bring-up has run" guard (set 0x0810, cleared 0x037B)
     0x25.7  RESOLVED — CS8427 chip select, active low
 
