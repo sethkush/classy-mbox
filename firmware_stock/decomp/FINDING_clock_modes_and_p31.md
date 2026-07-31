@@ -96,7 +96,91 @@ Handler for code 0x0C (`0x0511`), reached when **P3.1 == 1**:
     0511  R7 = 1 ; LCALL 0x0728  ; clock mode 1  <-- EXTERNAL clock
     0516  SJMP 0x0564
 
+## UPDATE 2026-07-30 — the edge latch changes the argument below
+
+The section that follows argues the machine is incoherent because "slaving to an
+external clock that is not there would leave the codec with no clock at all",
+and that P3 idling high means it "would slave to nothing by default". **That
+objection is wrong**, because `RAM[0x27]` is not just an edge latch — it is a
+one-way gate, and it starts closed.
+
+Read from the listing (Rev 20 `0x0AEC`, Rev 22 `0x0A96` — identical):
+
+    0aec  JB 0x01,0x0afc      ; bit 0x01 = IRAM 0x20.1 = last sampled P3.1
+    0aef  MOV A,0x27
+    0af1  JNZ 0x0afc          ; code 0x0B needs 0x27 == 0
+    0af3  MOV 0x27,#0x1
+    0af6  MOV 0x0a,#0xb       ; post code 0x0B
+    0afc  JNB 0x01,0x0b0d
+    0aff  MOV A,0x27
+    0b01  CJNE A,#0x1,0x0b0d  ; code 0x0C needs 0x27 == 1
+    0b04  CLR A ; MOV 0x27,A
+    0b07  MOV 0x0a,#0xc       ; post code 0x0C
+
+So the guards are:
+
+    code 0x0B  fires only when  P3.1 == 0 AND 0x27 == 0   (then 0x27 <- 1)
+    code 0x0C  fires only when  P3.1 == 1 AND 0x27 == 1   (then 0x27 <- 0)
+
+`main` initialises `0x27 = 0` as its first action (Rev 20 `0x0A95` `CLR A` /
+`0x0A96` `MOV 0x27,A`). Therefore **at boot, with P3.1 idling high, neither
+block fires** — the first is skipped on P3.1, the second on the latch. The device
+does not slave to an absent clock by default. It does nothing at all.
+
+And code 0x0C can never run until code 0x0B has run at least once, because only
+code 0x0B sets the latch. The machine is strictly ordered: **P3.1 must fall
+first, then rise.**
+
+P3.1 is also a pure input — the only write to P3 in either image is
+`MOV 0xB0,#0xFF` in hw_init (Rev 20 `0x08DC`, Rev 22 `0x07FD`), and there is no
+`SETB`/`CLR`/`CPL` on bit 0xB1 anywhere.
+
+### A reading that fits the ordering: a normally-closed switched jack
+
+With the gate understood, one physical arrangement makes every transition
+correct, and it is the ordinary way a switched audio jack is wired — the contact
+is **closed when no plug is inserted** and opens when a plug goes in:
+
+    no plug   -> contact closed to ground -> P3.1 = 0
+    plug in   -> contact opens, pull-up   -> P3.1 = 1
+
+    boot, nothing plugged   P3.1 = 0, latch 0  -> code 0x0B: init the CS8427,
+                                                  start its receiver, run
+                                                  INTERNAL 48 kHz.  Correct
+                                                  power-on behaviour.
+    plug in S/PDIF          P3.1 = 1, latch 1  -> code 0x0C: clock mode 1,
+                                                  EXTERNAL.  Correct.
+    unplug                  P3.1 = 0, latch 0  -> code 0x0B: back to internal,
+                                                  re-init.  Correct.
+
+That is coherent in all three directions, and it explains why code 0x0B does the
+initialise-and-probe work while code 0x0C is a bare two-instruction mode switch:
+0x0B is the "we are on our own clock, get the receiver ready" path and 0x0C is
+"the plug is in, use it".
+
+**It also means the polarity recorded in this project is backwards.** The note
+said "P3.1 = S/PDIF clock presence, low = present". The ordering says
+**low = jack EMPTY, high = plug inserted**.
+
+**Confidence.** The state machine, the guards, the latch initialisation and the
+input-only status are *determined* — read directly from both listings. The
+physical mapping to a switched jack is a **reading**: it is the only arrangement
+found so far that makes all three transitions correct, but a CS8427 status pin
+with the matching polarity would also fit, and nothing in the firmware names the
+pin.
+
+**How to settle it, cheaply.** Unit A on the bench has S/PDIF out looped to
+S/PDIF in (`BENCH_WIRING.md`). Read telemetry block 9 byte 4 (live P3) with the
+loop cable in, then pull it, then re-seat it. If P3.1 tracks the cable, it is
+jack presence and the polarity falls straight out of the two readings. If it
+does not move at all, it is a CS8427 status line and the loop keeps it in one
+state. Either answer unblocks #145, and neither costs a power cycle.
+
 ## Why the recorded meaning of P3.1 cannot be right
+
+*(Superseded by the section above — the "incoherent machine" argument here does
+not survive the latch. Kept because the per-mode decode below is still correct
+and is what the update builds on.)*
 
 Project notes carry "P3.1 = S/PDIF clock presence", low = present. Substituting:
 

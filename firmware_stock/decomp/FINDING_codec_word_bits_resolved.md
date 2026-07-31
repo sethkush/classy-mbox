@@ -125,12 +125,51 @@ completion posts work code **0x04** (`0x0454`, clears 0x25.4) or **0x05**
 which sets it, also selects clock mode 1 — the external-clock mode — which is
 what an S/PDIF input requires and is a consistency check on the polarity.
 
+## 0x23.0 / 0x23.1 — set only by unreachable code. Always 0 in practice.
+
+The pair has exactly one writer in each image: `SETB 0x18` / `SETB 0x19` at
+Rev 20 `0x07B8`/`0x07BA` (Rev 22 `0x0796`/`0x0798`), inside the mode-5 branch of
+`audio_clock_mode_apply`. Mode 5 is reached only by `MOV R7,#0x5` at `0x04BC`,
+whose sole XREF is `0x031B`.
+
+`0x031B` is a slot in `event_jump_table` @ `0x0300`. The table is 3-byte `LJMP`
+entries indexed by work code minus one, so `0x0300 + 3*(code-1) = 0x031B` gives
+**code 0x0A**. And a byte scan for the posting idiom finds:
+
+    MOV 0x0a,#imm posted in Rev 20:  0x01 0x02 0x03 0x04 0x05 0x06 0x07 0x08
+                                     0x0B 0x0C 0x0D 0x0E
+    missing:                         0x09, 0x0A
+
+**Nothing in either image ever posts work code 0x0A.** (0x09 was already known
+dead — it passes mode 4, which the dispatch does not implement.) So the mode-5
+branch never executes, and 0x23.0/0x23.1 are never set at runtime.
+
+That completes the high byte. Two bits are always 0 because no instruction can
+set them (0x23.5, 0x23.7); two more are always 0 because the only instruction
+that sets them is unreachable (0x23.0, 0x23.1). **In stock, the codec word's high
+byte is built from bits 2, 3, 4 and 6 only** — which is a useful simplification
+for mboxfw, since it means the whole word is: mute pair, reset, mono.
+
+For the record, what mode 5 would have done, since the branch is intact:
+
+    0799  GLOBCTL &= 0xFE       ; CPTEN off
+    07a0  CPTRXCNF4 = 0x01      ; receive path divider
+    07a6  GLOBCTL |= 0x01       ; CPTEN back on
+    07af  VECINT = 0
+    07b2  ACG2DCTL = 0x10       ; program the SECOND synthesizer
+    07b8  SETB 0x23.0 / 0x23.1
+    07bf  RAM[0x08] = 5
+
+i.e. put the capture path on ACG synthesizer 2 at a divided rate, independent of
+playback, and tell the codec about it with the bit pair. That is consistent with
+mode 5 being the "one IN and one OUT at different frequencies" case. It is a
+reading of dead code and nothing depends on it.
+
 ## Status of the codec word after this pass
 
-    0x23.0  open  — set only in the mode-5 (independent in/out rate) branch,
-                    with 0x23.1, right after CPTEN is cycled, CPTRXCNF4 = 0x01
-                    and ACG2DCTL = 0x10
-    0x23.1  open  — as above
+    0x23.0  RESOLVED — always 0: its only writer is in the mode-5 branch,
+                       reachable only from work code 0x0A, which nothing posts
+    0x23.1  RESOLVED — as above
     0x23.2  mute / audio-path enable pair (reading, two independent sequences)
     0x23.3  as above
     0x23.4  RESOLVED — external-chip RESET, active low, released once
