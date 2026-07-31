@@ -265,7 +265,13 @@ step through with `pdf`).
 
 ## Physical hardware bindings still unknown
 - Which port pin drives the S/PDIF-vs-analog input mux?
-- Which pins read the front-panel source buttons + 48V switch?
+- ~~Which pins read the front-panel source buttons + 48V switch?~~
+  **RESOLVED for the buttons**, and the 48 V half of the question was
+  malformed. P3.3 = channel 1 source, P3.4 = channel 2 source, P3.5 = mono,
+  all active-low and all acted on at the RISING edge (release) — Rev 20
+  `fcn.0x0ED5` @ `0x0EE0`/`0x0EED`/`0x0EFA`, Rev 22 `fcn.0x0F31` @
+  `0x0F3A`/`0x0F47`/`0x0F54`. **No pin reads a 48 V switch**: it is mechanical,
+  drives its own LED, and no firmware bit tracks it.
 
 ## `0x0728` (`ApplyAudioMode(mode)`) — hardware config engine
 Called by every mode-change path with `R7` set to a mode index.
@@ -346,14 +352,27 @@ write at boot**:
 
 **RAM state init (after XDATA):**
 - `RAM[0x08] = 0x03` — initial mode index (S/PDIF slave probably)
-- `RAM[0x22] = 0x00` — mux state = all off initially
-- `RAM[0x23].6 = 1` — 48V initially off (bit toggle-target)
-- Pushes RAM[0x22]=0 to mux via `fcn.0x0F0C`
-- ~4000-cycle delay (RAM[0x2E]/[0x2F] loop up to 0x0F00)
-- `RAM[0x22] = 0xFF` masked: clear bits 0, 3, and `0x23.6`
-- Pushes updated RAM[0x22] to mux — this is the **power-on default**:
-  all mux switches ON except source-select bit 0 (channels 1 and 2)
-  and 48V toggle cleared
+- `0x093F MOV 0x22,A` (A=0) — `RAM[0x22] = 0x00`. The byte is **ACTIVE LOW**
+  (`MUX_IRAM22_ANNOTATION.md`), so this lights **every** source LED, matching
+  the observed all-on panel at power-up. It is not "all off".
+- `0x0941 SETB 0x1e` — `RAM[0x23].6 = 1`. This is the **MONO** flag, not 48 V.
+  48 V is a mechanical latching switch with no firmware bit at all — see the
+  P3.5 entry further down this file, and `IRAM23_IRAM25_ANNOTATION.md`.
+- Pushes RAM[0x22]=0 to mux via `fcn.0x0F0C` (`0x0943`)
+- ~4000-cycle delay (RAM[0x2E]/[0x2F] loop up to 0x0F00, `0x0946-0x0959`)
+- `0x095B MOV 0x22,#0xFF`, then `0x095E CLR 0x10`, `0x0960 CLR 0x13`,
+  `0x0962 CLR 0x1e` — mux word to 0xF6 and mono back off
+- Pushes updated RAM[0x22] to mux (`0x0964`) — this is the **power-on default**.
+  Active low, so 0xF6 = only bits 0 and 3 low = only the **two mic LEDs lit**,
+  which is the observed stock end state (`PANEL_LEDS.md`). Mono off.
+
+  > **Corrected 2026-07-30.** This block previously read "mux state = all off
+  > initially", "48V initially off", and "all mux switches ON except
+  > source-select bit 0". All three inverted or mislabelled the resolved
+  > meaning, and had survived both the active-low finding and the 48V→mono
+  > retraction because prose in this file is not read by any gate. Same failure
+  > shape as the GLOBCTL case in `FINDING_globctl_bit1_missed.md`: two documents
+  > in this repository contradicting each other, with nothing to notice.
 
 ## Timer 0 ISR `fcn.0x101E` — trivial ✅
 Only 9 bytes:
