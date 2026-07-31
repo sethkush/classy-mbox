@@ -4,6 +4,16 @@ Measured 2026-07-29 on the void box (192.168.1.76), unit `0dba:2000` running
 mboxfw as flashed at commit `1fdeec8` (the #147 build). Bench wiring: S/PDIF
 out looped to S/PDIF in, analog out 2 looped to source input 2.
 
+> **REFRAMED 2026-07-31 — read `FINDING_147_the_capture_stream_is_noise.md`.**
+> The "5 data + 3 rail frames" framing in this document is wrong on the "data"
+> half, and it misled every subsequent pass. The broadband RMS reported in the
+> table below is **-3.5 dBFS**, ~90 dB hotter than a working ADC on a quiet
+> input, identical at both rates and with and without playback. The 3/8 rails
+> alone put the RMS floor at -4.26 dBFS, so the energy budget closes with **no
+> audio in it at all**: this is 8 frames of noise, 3 of which saturate. The
+> right question is not what corrupts 3 frames in 8 but why nothing drives
+> CDATI — see #166, #167, #168.
+
 ## What was run
 
 Two-tone stereo WAV (left 1000 Hz, right 1500 Hz, -6 dBFS, S24_3LE) played to
