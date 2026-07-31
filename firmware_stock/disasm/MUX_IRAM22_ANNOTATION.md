@@ -284,8 +284,17 @@ source, and no bit is left over.
   * ~~Bit 7's meaning.~~ RESOLVED: asserted (low) exactly while streaming. See
     the active-low section. What the line physically drives — output mute relay,
     "USB active" LED, or both — needs the board; the condition does not.
-  * ~~Bit 6's meaning.~~ RESOLVED: asserted (low) when the external S/PDIF clock
-    is in use, corroborated by work codes 0x04 and 0x05.
+  * ~~Bit 6's meaning.~~ ~~RESOLVED: asserted (low) when the external S/PDIF
+    clock is in use, corroborated by work codes 0x04 and 0x05.~~
+    **REOPENED 2026-07-30 — incomplete, and the corroboration was misread.**
+    Bit 6 has (at least) two unrelated writers. One is the derived
+    `0x22.6 = !(0x25.4) && !(0x25.5)` in the source-cycle tail. The other is
+    `CLR 0x16` at Rev 20 `0x04FD`, inside `cmd11_eeprom_selftest`, which fires
+    only when a read-complement-write-readback of **EEPROM address 0x1FFF**
+    verifies. That probe was previously read as a CS8427 presence check — it is
+    not; it uses the hardware I²C peripheral at slave address 0xA0. See
+    `FINDING_cs8427_is_spi_not_i2c.md`. A single "external clock in use" reading
+    does not account for an EEPROM write-verify gating the same bit.
   * ~~Which bits drive the panel LEDs versus the analog mux.~~ PARTLY RESOLVED:
     one-cold source fields give a one-to-one map of b0-b5 onto six per-source
     lines with no bit left over. Whether each line drives an LED, a mux enable,

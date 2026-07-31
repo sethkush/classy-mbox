@@ -70,8 +70,26 @@ Handler for code 0x0B (`0x04C4`), reached when **P3.1 == 0**:
     0502  0x2C:0x2D = 12:00 ; LCALL 0x0C45       ; CS8427 reg 0x12 = 0
 
 The 0x04DE-0x04F8 run is a **write-readback presence probe**: complement a
-register, write it, read it back, compare. The external-clock panel line is
-asserted only if the CS8427 answered.
+register, write it, read it back, compare. ~~The external-clock panel line is
+asserted only if the CS8427 answered.~~
+
+> **CORRECTED 2026-07-30 — this probe targets the EEPROM, not the CS8427.**
+> `0x0CDD` and `0x0BEE` both write slave address **0xA0** to `I2C_SADDR`
+> (0xFFC3) and drive the TAS1020B's hardware I²C peripheral at 0xFFC0-0xFFC3.
+> 0xA0 is the 24Cxx EEPROM; the CS8427 is 0x20 on the bit-banged SPI bus (see
+> `FINDING_cs8427_is_spi_not_i2c.md`). The Ghidra listing names the two routines
+> `i2c_eeprom_read_byte` / `i2c_eeprom_write_byte` and names this whole caller
+> **`cmd11_eeprom_selftest`**.
+>
+> R7 = 0x1F and R5 = 0xFF are the two EEPROM address bytes, so the target is
+> address **0x1FFF** — the last byte of the 8 KB part. `CLR 0x16` at `0x04FD`
+> therefore clears IRAM 0x22.6 on a successful **EEPROM write-verify**, not on a
+> CS8427 response. The lines below annotating these calls as "read CS8427 reg
+> 0x1F" are wrong and are kept only so the correction has something to point at.
+>
+> Note also that stock performs a **destructive write to EEPROM 0x1FFF** here.
+> Anything assuming the EEPROM is read-only at runtime has to leave that byte
+> alone.
 
 Handler for code 0x0C (`0x0511`), reached when **P3.1 == 1**:
 
