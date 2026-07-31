@@ -391,7 +391,10 @@ write 27 instructions earlier, never by an immediate load -- and on that basis
 `rev20_diff_justifications.md` had recorded it as a **scanner artifact**, while
 `rev20_STARTUP_TRACE.md` step 14 had it right. Two docs in this repo contradicted
 each other for as long as both existed. Retracted; implemented as
-`GLOBCTL |= 0x02`; GLOBCTL bit 1's function remains UNKNOWN and the code says so.
+`GLOBCTL |= 0x02`. **GLOBCTL bit 1 is P3PUDIS as of 2026-07-31** (§6.5.7.4), and the
+silent-USB result it caused is explained by `check_boot_dfu_button()` depending on the
+internal P3 pull-ups it disables — see FINDING_globctl_bits_named_and_cpten_missing.md
+and #169. Bit 0 is CPTEN, which mboxfw never sets at all (#168).
 
 Fixed as a consequence: `xdata_access_map.py` now tracks DPTR arithmetic
 (straight-line only, ending at any control-flow edge), which surfaced 5 more

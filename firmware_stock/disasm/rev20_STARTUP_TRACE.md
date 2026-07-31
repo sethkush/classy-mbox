@@ -577,6 +577,8 @@ Bit 0x01 (byte 0x20 bit 1) gates a pair of edge-triggered events 0x0B and
 
 ## Open items
 
+> **RESOLVED 2026-07-31 — GLOBCTL bit 1 is P3PUDIS.** Datasheet §6.5.7.4: "Pullup resistor disable. If set to 1, disables on-chip pullup resistors on P3 GPIO pins." TI's ROM sources document only LPWR and MCUCLK, which is why it was never found there. The measured silent-USB result is explained without any USB-engine theory: `check_boot_dfu_button()` (main.c:48) depends on the internal P3 pull-ups, and with them disabled it wipes the EEPROM signature and spins forever without attaching. See FINDING_globctl_bits_named_and_cpten_missing.md and #169.
+
 - **GLOBCTL bit 1** (value 0x06 at step 14) — TI's ROM only ever documents
   bit 2 (LPWR) and bit 7 (CPU speed). Bit 1's function is **UNKNOWN**.
 - ~~**USBIMSK bits 1 and 3** in the 0x9F written at 0x09F1~~ — **RESOLVED

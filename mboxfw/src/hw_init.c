@@ -85,9 +85,16 @@ void hw_init(void)
      * leaves GLOBCTL = 0x04 (LPWR on), so |= 0x02 reaches the same 0x06
      * without blindly clearing bits the ROM may own.
      *
-     * GLOBCTL bit 1's FUNCTION IS UNKNOWN -- TI's ROM documents only bit 2
-     * (LPWR) and bit 7 (CPU speed), and rev20_STARTUP_TRACE.md's open-items
-     * list has carried "GLOBCTL bit 1 -- UNKNOWN" since it was written.
+     * GLOBCTL bit 1 IS P3PUDIS. Datasheet §6.5.7.4, read 2026-07-31, gives the
+     * full map: 7 MCUCLK, 6 XINTEN, 5 P1PUDIS, 4 VREN, 3 RESET, 2 LPWR,
+     * 1 P3PUDIS, 0 CPTEN. P3PUDIS is "Pullup resistor disable. If set to 1,
+     * disables on-chip pullup resistors on P3 GPIO pins." So stock's 0x06 is
+     * LPWR | P3PUDIS -- run normally, and turn the P3 pull-ups off.
+     *
+     * The "UNKNOWN" that rev20_STARTUP_TRACE.md's open-items list carried since
+     * it was written is retired. TI's ROM sources document only LPWR and MCUCLK,
+     * which is why nobody found it there; it is in the datasheet's own register
+     * section, which had been read for other bits but never for this one.
      *
      * ============================================================
      * DO NOT SET IT. MEASURED ON HARDWARE 2026-07-29: it makes the device
@@ -99,11 +106,31 @@ void hw_init(void)
      *     build 0x0010  (GLOBCTL |= 0x02 present)  -> silent, never attaches
      *     build 0x0011  (this line removed)        -> attaches in 7 s
      *
-     * Why stock can do it and mboxfw cannot: stock runs its hardware init
-     * BEFORE bringing USB up, whereas mboxfw deliberately calls usb_init()
-     * first (task #47), so this write lands AFTER the USB engine is configured
-     * instead of before it. Whatever bit 1 does, doing it to a live USB engine
-     * stops enumeration.
+     * WHY, corrected 2026-07-31. The explanation recorded here was "stock runs
+     * hardware init BEFORE bringing USB up, mboxfw calls usb_init() first
+     * (#47), so this write lands on a live USB engine and stops enumeration."
+     * That was a guess with no mechanism behind it, and now that bit 1 has a
+     * name there is a mechanism that fits exactly and involves no USB engine:
+     *
+     *   main.c:48  check_boot_dfu_button() spins 0x5000 times waiting for
+     *              P3 & P3_BTN_CH1_MASK to read HIGH. If it never does, it
+     *              calls eeprom_invalidate_signature() and then `for(;;){}`
+     *              -- it never attaches, by design.
+     *   main.c:255 "check_boot_dfu_button() runs after hw_init so P3 pull-ups
+     *              are set before the button is sampled"
+     *
+     * The boot-button read depends on the internal P3 pull-ups. P3PUDIS turns
+     * them off. With them off that pin never reads high, `held` stays 1, and
+     * the firmware wipes its own EEPROM signature and spins -- which presents
+     * as "silent on USB, never attaches" and matches the bisect exactly.
+     *
+     * NOTE FOR ANYONE RE-RUNNING THAT BISECT: build 0x0010 was not passively
+     * silent. On this reading it invalidated the header signature, which is
+     * the DFU trigger. See #169.
+     *
+     * So P3PUDIS is not inherently fatal -- stock sets it and reads its buttons
+     * fine. Reinstating it means sampling the button before this write, or
+     * fixing the read to not depend on internal pull-ups.
      *
      * The arithmetic was never the problem: telemetry block 8 byte 2 reads
      * GLOBCTL = 0x04 at boot-ROM handoff on this actual part, so |= 0x02 did
