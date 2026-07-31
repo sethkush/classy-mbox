@@ -360,9 +360,18 @@ This matches every measured property that the register-level candidates did not:
 | one-bit word-boundary offset | SODEL vs the TAS's DDLY = 1 |
 
 **What it does not account for is the 3-in-8 duty**, and I am not going to
-invent a reason for it. Nothing in the CS8427 register set we can read (we have
-`alsa_cs8427.h`, not the datasheet — its power-on defaults are NOT verified
-here) gives an 8-frame quantum either.
+invent a reason for it.
+
+**PARTLY SUPERSEDED, 2026-07-31.** The CS8427 datasheet is now in hand and the
+"unconfigured CS8427 is a second driver" reading does not survive it. RUN
+defaults to 0, and §15.1 says the serial audio outputs are enabled only *after*
+RUN is set and the PLL settles — so an unconfigured CS8427 is a **silent** part,
+not a contending one. SOMS also defaults to slave, so it cannot fight on the
+clock lines either, and SDOUT has no tri-state bit at all, which means two
+permanently-driven sources cannot share CDATI and the analog/S-PDIF selection
+must be an external switch. Separately, whether mboxfw's register writes land at
+all now turns on a bus-mode question that was not previously asked. See
+`FINDING_cs8427_chip_select_never_driven.md` and #165.
 
 ## The test
 
