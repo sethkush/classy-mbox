@@ -1,3 +1,17 @@
+# SUPERSEDED 2026-07-31 by tools/sim_p1_waveform.py. KEPT AS THE RECORD OF A
+# DEFECT, NOT AS A CHECK OF THE CURRENT FIRMWARE.
+#
+# This file HAND-MODELS the cs8427.c that existed before #157 -- the I2C-framed
+# version with START/STOP and an ACK slot, and with the chip select never
+# driven. That code is gone. Nothing below reads the firmware, so nothing below
+# will notice when the firmware changes again; its "stock" arm is a hand-model
+# too, not the stock image.
+#
+# sim_p1_waveform.py replaces both halves with measurement: it executes the
+# real image in ucSim, decodes the actual P1 waveform, and validates the
+# decoder by running Rev 20 and Rev 22 through it. Use that. This stays so the
+# 281-bit number quoted in cs8427.c's header can still be reproduced.
+#
 # Simulate what mboxfw's I2C-framed bit-bang actually shifts into the CS8427's
 # SPI control port, given the chip select (IRAM 0x25.7) is held ASSERTED (low)
 # for the entire life of the firmware because g_codec_state_25 == 0 and nothing

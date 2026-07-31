@@ -421,3 +421,39 @@ application" -- but **the PSOF vector is a bare `RET` in both images** (Rev 20
 0x1033, Rev 22 0x102B), so not even Rev 22's SOF watchdog runs on a PSOF frame.
 Stock enables an interrupt it discards; masking it is equivalent. Details in
 `FINDING_globctl_bit1_missed.md`.
+
+## 6. The blind spot behind all of the above — every gate was static
+
+Added 2026-07-31, in answer to "is there anything else that can be figured out
+without the mbox plugged in?" asked a third time. The first two answers were
+lists of facts. This one starts from the method again, because the previous
+answers shared a property none of them named.
+
+Sections 1, 4a, 5 and 5a each closed a blind spot in *what* was being read:
+direct SFRs instead of MOVX, reads instead of writes, reachability instead of
+presence, ordering instead of set-membership. **Every one of them was still a
+gate that reads bytes.** Twenty-eight gates, and not one of them ran the
+firmware and looked at a pin.
+
+That is not a theoretical gap. `FINDING_delay_calls_elided.md` is the case
+where the source and the image disagreed and every source-reading gate sided
+with the source. `sim_smoke.sh` runs the image but only asks "did it reach the
+main loop", and says so in its own header: *"the simulator doesn't model ... the
+CS8427 on P1.3/P1.4"*.
+
+Closed by `tools/sim_p1_waveform.py` (gate 29): break on every write to P1,
+decode both shift chains from the waveform, and compare the result against Rev
+20 and Rev 22 decoded the same way. On its first run it confirmed #157/#166/#167
+produce a byte-identical CS8427 transaction stream to stock, and found a
+divergence no static gate could have seen — mboxfw releases the external RESET
+with 0x23.2/0x23.3 low, a state neither stock image ever enters (#171).
+
+`latch_word_bit_diff.py` reports those two bits as settable and is *right*:
+mboxfw does contain code that sets them. A source-reading gate cannot
+distinguish "can set" from "has set by the time it matters".
+
+**What is still unmeasured after this.** The waveform gate proves what the
+image emits, not what the parts receive. Nothing on the far side of P1 is
+modelled: no CS8427, no codec, no acknowledgement. #165 (read a CS8427 register
+back over telemetry) remains the first evidence that any of this reaches
+silicon, and no amount of further simulation substitutes for it.

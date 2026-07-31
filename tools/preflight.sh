@@ -92,6 +92,13 @@ else
     check "verify_descriptors"        python3 tools/verify_descriptors.py
     check "verify_usb_init"           python3 tools/verify_usb_init.py
     check "verify_cs8427"             python3 tools/verify_cs8427.py
+    # verify_cs8427 checks the ten register VALUES. This runs the image and
+    # decodes the P1 waveform, so it checks the framing, the chip select, the
+    # RESET release and the latch chain that carries them -- the things #157,
+    # #166 and #167 were each wrong about, none of which a static gate can see.
+    # Validated by decoding Rev 20 and Rev 22 the same way and requiring the
+    # same answer. FINDING_bringup_waveform.md.
+    check "P1 waveform vs stock (executed)"     python3 tools/sim_p1_waveform.py
     check "verify_setup_paths"        python3 tools/verify_setup_paths.py
     check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
     check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py
