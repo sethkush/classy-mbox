@@ -82,18 +82,40 @@ void cs8427_write(unsigned char reg, unsigned char value)
     cs8427_stop();
 }
 
-/* Boot sequence — literal port of Rev 20 fcn.0x080B.
- * See NOTES.md § "CS8427 boot sequence" for register meanings. */
+/* Boot sequence — the ten register writes Rev 20 issues at 0x0855-0x08A2
+ * (Rev 22 0x09FC-0x0A3x), in order. The register numbers and values are
+ * byte-identical to stock; verify_cs8427.py pins them.
+ *
+ * The register NAMES below were wrong until 2026-07-30 — they were shifted by
+ * one against the real map, so 0x01 was labelled "chip control 2", 0x02 "data
+ * flow", 0x03 "clock source" and 0x11 "interrupt mask". Corrected against
+ * reference/cs8427/alsa_cs8427.h. Wrong names in a driver are how the next
+ * person reasons wrongly about it, which is most of what this file is for.
+ *
+ * WARNING: the FRAMING these writes go out in is still wrong — cs8427_write()
+ * below speaks I²C, stock speaks 3-wire SPI with IRAM 0x25.7 as the chip
+ * select. See FINDING_cs8427_is_spi_not_i2c.md and task #157. The values are
+ * right; they are not currently reaching the part. */
 void cs8427_boot_init(void)
 {
-    cs8427_write(0x04, 0x00);  inter_reg_delay();  /* Clock ctrl: reset */
-    cs8427_write(0x13, 0x10);  inter_reg_delay();  /* Channel status format */
-    cs8427_write(0x04, 0x00);  inter_reg_delay();  /* Clock ctrl: still reset */
-    cs8427_write(0x04, 0x40);  inter_reg_delay();  /* Clock ctrl: RUN=1 */
-    cs8427_write(0x01, 0x01);  inter_reg_delay();  /* Chip control 2 */
-    cs8427_write(0x02, 0x20);  inter_reg_delay();  /* Data flow control */
-    cs8427_write(0x03, 0x0C);  inter_reg_delay();  /* Clock source ctrl 3 */
-    cs8427_write(0x05, 0x05);  inter_reg_delay();  /* Serial audio input fmt */
-    cs8427_write(0x06, 0x05);  inter_reg_delay();  /* Serial audio output fmt */
-    cs8427_write(0x11, 0xFF);                       /* Interrupt mask: enable */
+    cs8427_write(0x04, 0x00);  inter_reg_delay();  /* CLOCKSOURCE  = 0, RUN clear */
+    cs8427_write(0x13, 0x10);  inter_reg_delay();  /* UDATABUF */
+    cs8427_write(0x04, 0x00);  inter_reg_delay();  /* CLOCKSOURCE  = 0 again */
+    cs8427_write(0x04, 0x40);  inter_reg_delay();  /* CLOCKSOURCE  = RUN set */
+    /* CONTROL1 = 0x01: SWCLK=0 so RMCK outputs the RECOVERED clock (this is
+     * what clock mode 1 slaves the codec to), TCBLDIR=1 (TCBL an output),
+     * INTMASK=0 so INT is active high — and note that reg 0x09 INT1MASK is
+     * never written by stock or by us, so no interrupt source is ever
+     * unmasked and INT can never assert. */
+    cs8427_write(0x01, 0x01);  inter_reg_delay();  /* CONTROL1 */
+    /* CONTROL2 = 0x20: HOLD = 01 = replace the sample with ZERO on a receiver
+     * error; RMCKF=0 (256*Fsi); stereo receiver and transmitter. Unlock is
+     * handled by muting in the data path, not by signalling a pin. */
+    cs8427_write(0x02, 0x20);  inter_reg_delay();  /* CONTROL2 */
+    cs8427_write(0x03, 0x0C);  inter_reg_delay();  /* DATAFLOW */
+    /* SERIALINPUT / SERIALOUTPUT = 0x05: 24-bit, left-justified, SODEL=1 and
+     * SOLRPOL=1 — the I²S convention. */
+    cs8427_write(0x05, 0x05);  inter_reg_delay();  /* SERIALINPUT */
+    cs8427_write(0x06, 0x05);  inter_reg_delay();  /* SERIALOUTPUT */
+    cs8427_write(0x11, 0xFF);                      /* RECVERRMASK: all sources */
 }

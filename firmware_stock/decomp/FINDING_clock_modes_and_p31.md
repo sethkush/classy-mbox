@@ -135,7 +135,72 @@ P3.1 is also a pure input — the only write to P3 in either image is
 `MOV 0xB0,#0xFF` in hw_init (Rev 20 `0x08DC`, Rev 22 `0x07FD`), and there is no
 `SETB`/`CLR`/`CPL` on bit 0xB1 anywhere.
 
-### A reading that fits the ordering: a normally-closed switched jack
+### RETRACTED SAME DAY: the switched-jack reading. The S/PDIF is RCA.
+
+Seth, from the hardware: **the S/PDIF connector is RCA**, which has no switch
+contact. The reading below required a normally-closed switched jack, so it is
+withdrawn. It is kept only because the transition table in it is still the
+constraint any correct answer has to satisfy.
+
+This is the second time in one day that a coherent story got built on top of a
+physical assumption nobody had checked, and both times the story was internally
+consistent. Coherence is not evidence.
+
+### What the CS8427 configuration rules OUT
+
+Decoding stock's ten boot writes against `reference/cs8427/alsa_cs8427.h`
+(register numbers from Rev 20 `0x0855`-`0x08A2`):
+
+    reg 0x04 = 0x00   CLOCKSOURCE, RUN clear
+    reg 0x13 = 0x10   UDATABUF
+    reg 0x04 = 0x00   again
+    reg 0x04 = 0x40   CLOCKSOURCE, RUN set
+    reg 0x01 = 0x01   CONTROL1
+    reg 0x02 = 0x20   CONTROL2
+    reg 0x03 = 0x0C   DATAFLOW
+    reg 0x05 = 0x05   SERIALINPUT
+    reg 0x06 = 0x05   SERIALOUTPUT
+    reg 0x11 = 0xFF   RECVERRMASK
+
+Two of these bear directly on P3.1:
+
+  * **CONTROL1 = 0x01** puts INT at active high (INTMASK = 0), but **reg 0x09
+    INT1MASK is never written by either image**. With no interrupt source
+    unmasked, INT can never assert. **P3.1 is not the CS8427's INT pin.**
+  * **CONTROL2 = 0x20** sets HOLD = 01, "replace the current audio sample with
+    zero". Stock handles a receiver error by muting **in the data path**, not by
+    signalling the MCU. That is the behaviour of a design that does *not* route
+    an error pin to a GPIO.
+
+`RECVERRMASK = 0xFF` unmasks every receiver-error source, but that governs the
+status register and the HOLD behaviour; it is not by itself evidence of a pin.
+
+One thing the decode does settle in the *other* direction: **CONTROL1 bit 7
+SWCLK = 0 means RMCK carries the RECOVERED clock**. So clock mode 1, which
+sources both codec clocks from MCLKI, is slaving to the CS8427's recovered
+S/PDIF clock. The mode-1 story holds; only the trigger is unknown.
+
+### Honest status of P3.1
+
+**Undetermined.** The firmware evidence rules out INT, and the RCA connector
+rules out jack presence. What remains determined is the state machine — pure
+input, one-way gate, code 0x0B on a fall from the initial state, code 0x0C only
+after that — and the requirement that whatever drives P3.1 must be **high when
+an external clock is usable and low when it is not**, since that is the only
+assignment under which both handlers do the right thing.
+
+Candidates not yet excluded: a discrete carrier/lock detect on the S/PDIF input
+(ordinary for a 2002 design), or a signal unrelated to S/PDIF entirely. Nothing
+in either image names it, and no further progress is available from the
+firmware alone.
+
+**The bench test is unchanged and is now the only way forward.** Unit A has
+S/PDIF out looped to S/PDIF in. Read telemetry block 9 byte 4 (live P3) with the
+loop cable seated, then pulled. If P3.1 moves, it tracks S/PDIF carrier or lock
+and the polarity falls straight out of the two readings. If it does not move,
+P3.1 has nothing to do with S/PDIF and #145 needs a different question.
+
+### The withdrawn reading, for the record: a normally-closed switched jack
 
 With the gate understood, one physical arrangement makes every transition
 correct, and it is the ordinary way a switched audio jack is wired — the contact
