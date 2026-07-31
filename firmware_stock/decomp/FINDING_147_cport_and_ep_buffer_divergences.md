@@ -229,3 +229,150 @@ rate, and no configuration bit in either group has an 8-frame quantum.
 The two register changes this pass produced (CPTCNF3, buffer size/layout) are
 cheap and both go in the same flash. Whether either moves the artifact is a
 hardware question; neither is being shipped on the strength of "stock does it".
+
+---
+
+# Part 2: what the constant's bit pattern says, and six mechanisms it kills
+
+Added the same day, after the register work above. No new measurement — this is
+the existing 18-byte constant read as bits instead of as samples, plus the
+arithmetic each candidate mechanism has to satisfy.
+
+## The constant is not audio, mis-ordered or otherwise
+
+    00 00 80  00 00 80  ff ff 7f  ff ff 7f  00 00 80  00 00 80
+       A         A         B         B         A         A
+
+Two facts, both mechanical:
+
+**B is the exact bitwise complement of A.** `~0x800000 & 0xFFFFFF == 0x7FFFFF`.
+So the six words are `A A ~A ~A A A` — not two unrelated rail values.
+
+**Every one of the six words has exactly one bit disagreeing with the other
+23.** In binary, MSB first:
+
+    100000000000000000000000     first bit 1, remaining 23 all 0
+    011111111111111111111111     first bit 0, remaining 23 all 1
+
+So each word is `[x][c × 23]` with `x = ~c`, and `c` is constant across both
+slots of a frame and inverts between frames.
+
+Read on the wire that is: **the CDATI line sits at one static logic level for
+the whole of each 24-bit word, that level flips every frame, and the word
+boundary is off by exactly one bit clock.** There is no audio in it, at any byte
+order, at any word alignment. A line carrying real samples cannot produce 23
+identical bits followed by 23 identical opposite bits, 24,000 times without
+variation.
+
+The one-bit disagreement at the boundary is a **framing offset of exactly one
+SCLK**, which is the DDLY/SODEL question: the TAS is programmed DDLY = 1
+(CPTRXCNF3 bit 7) and reads the first bit from a clock where the line is still
+at the previous level.
+
+## Six mechanisms that cannot produce 5-good-of-8, with the arithmetic
+
+**1. A codec frame-length mismatch.** Our frame is 64 SCLK (NTSL = 2 slots ×
+TSLL = 32). Eight of our frames = 512 SCLK. For the codec to have produced
+exactly 5 frames in that window its frame would have to be 512/5 = **102.4
+SCLK**. Non-integral, so no codec frame length gives this ratio — and the same
+holds at 44.1 kHz, where the ratio is measured identical.
+
+**2. A master/slave mixup on the receive clocks.** CPTRXCNF3 = 0xA8 has bits 1:0
+(CSCLKD, CSYNCD) clear, so §6.5.4.12 says SCLK2 and LRCK2 are **outputs**. The
+codec is a slave and is obliged to emit exactly one frame per LRCK2. Its frame
+rate cannot be wrong. Combined with the measured byte throughput (exactly
+44100 × 6 × 5 bytes in 5 s), the frame rate is confirmed correct on both sides.
+**The corruption is inside the data, not in the timing.**
+
+**3. Stale bytes in the endpoint circular buffer.** A region of the buffer the
+DMA never refills would reappear in the output with a period of BSIZ = 512
+bytes, and the UBM read pointer advances 288 bytes per USB frame at 48 kHz —
+288 mod 512 ≠ 0, so the artifact's phase would shift every single frame.
+Measured: **4 phase discontinuities in 220,500 frames.** Killed.
+
+**4. C-port secondary communication stealing a slot.** CPTCNF4 = 0x03 sets
+ATSL(3:0) = 0000b = **time slot 0** (§6.5.4.4), and CPTCTL = 0x50 enables both
+C-port interrupts (RXIE | TXIE, VECINT 0x18/0x19). A secondary-communication
+transaction would therefore corrupt **slot 0 only** — the left channel. The
+artifact hits both channels equally and phase-locked. Killed.
+
+**5. A walking/slipping sample window.** TSLL = 32 clocks holds BPTSL = 24 data
+bits, leaving 8 pad clocks; a window slipping 2 clocks per slot would realign
+every 16 slots = 8 frames, which is exactly the observed period and is why this
+looked promising. It fails on content: a window straddling the data/pad boundary
+yields words that are **part audio and part idle**. Every corrupt word here is
+the pure constant and every clean word is plausible audio, with no gradient at
+either edge. Killed.
+
+**6. Byte order, slot geometry, word length, DMA slot mask, bytes per sample.**
+CPTCNF1 (NTSL = 2, MODE = 5), CPTCNF2 = 0xE5, CPTRXCNF2 = 0x25 (24 data bits in
+32-clock slots), CPTCNF4 (DIVB = ÷4), CPTRXCNF4 (DIVB2 = ÷4), DMATSH1
+(BPTS = 3 bytes), DMATSL1 (slots 0+1), IEPCNF1 (BPS field 5 = 6 bytes) are all
+byte-identical to stock and all decode consistently to 6 bytes per frame at Fs.
+ACG1DCTL = ACG2DCTL = 0x10 is DIVM = ÷2, DIVI = ÷1, and the chain
+acg → ÷2 → MCLKO → ÷4 → SCLK → ÷64 → LRCK lands on Fs. Nothing in this group
+carries an 8.
+
+## What survives: a second driver on CDATI, and it is unconfigured
+
+The surviving shape is the one the bit pattern points at directly — for 3 frames
+in 8 the codec is **not the thing driving CDATI**, and the line is held static
+(undriven, or driven by something else) with a one-clock framing offset.
+
+There is a second device on that net, and stock's own CS8427 programming says
+so:
+
+  * `DATAFLOW` (reg 0x03) = 0x0C → SPD(2:1) = 10b = `CS8427_SPDAES3RECEIVER`.
+    Stock routes the **AES3 receiver** — S/PDIF in — to the CS8427's *serial
+    audio output port*.
+  * `SERIALOUTPUT` (reg 0x06) = 0x05 → SOMS = 0 = **slave**. That output port
+    takes its OSCLK/OLRCK from outside, and the only I2S clock master in the
+    system is the TAS (see mechanism 2 above).
+  * `CLOCKSOURCE` (reg 0x04): stock writes 0x00, then 0x00 again, then **0x40 =
+    `CS8427_RUN`** — an explicit clock-off → clock-on cycle.
+
+So the CS8427 shifts S/PDIF audio out under the TAS's own SCLK2/LRCK2. That is
+also the only way stock's source selector can work at all: IRAM 0x25.4 switches
+between analog and S/PDIF and stock performs **no C-port reconfiguration** on
+that event (`std_set_interface` posts work codes 2/3; neither touches
+CPTCNF/CPTRXCNF). Both sources must already land on CDATI, with something
+gating which one drives. This is an inference from the register programming plus
+the descriptors' Selector Unit topology (`baSourceID = [2 Analog, 6 S/PDIF]`),
+not from a schematic — we do not have one.
+
+**And on mboxfw the CS8427 has never been configured at all.** Per
+`FINDING_cs8427_is_spi_not_i2c.md` (#157), `cs8427.c` frames its writes as I2C
+on P1.3/P1.4 where the part is 3-wire SPI, and it never drives the chip select
+(IRAM 0x25.7, published through the 16-bit latch). Not one of the ten register
+writes reaches the part. Whatever state the CS8427 powers up in is the state it
+is in while these measurements were taken — including RUN, which stock takes the
+trouble to cycle off and on.
+
+This matches every measured property that the register-level candidates did not:
+
+| measured | accounted for by |
+|---|---|
+| byte-identical in all 24,000 occurrences | a slave output port shifting a static register under an external clock |
+| locked to the sample clock, not to USB | OSCLK/OLRCK come from the TAS |
+| both channels equally, phase-locked | one device drives both slots |
+| present with nothing playing | independent of the USB data path |
+| ratio identical at 44.1 and 48 kHz | a divider ratio, not a frequency |
+| one-bit word-boundary offset | SODEL vs the TAS's DDLY = 1 |
+
+**What it does not account for is the 3-in-8 duty**, and I am not going to
+invent a reason for it. Nothing in the CS8427 register set we can read (we have
+`alsa_cs8427.h`, not the datasheet — its power-on defaults are NOT verified
+here) gives an 8-frame quantum either.
+
+## The test
+
+#157 is already scoped and is the decisive experiment: rewrite `cs8427.c` to
+stock's SPI framing so the ten register writes actually land, and re-measure. If
+the artifact is the CS8427, it moves. If it does not move, the second driver is
+the codec itself and the CS8427 is exonerated — which is also worth knowing, and
+either outcome costs the same single flash.
+
+A second discriminator rides along free once #157 is in: with DATAFLOW pointing
+the CS8427's output at the AES3 receiver, driving the source selector (IRAM
+0x25.4 / `TLM_REQ_SET_MUX`) should **change** the artifact if two drivers share
+the net, and leave it untouched if they do not.

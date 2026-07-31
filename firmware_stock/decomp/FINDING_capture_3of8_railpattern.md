@@ -92,3 +92,20 @@ and may change the picture before any register-level theory is worth building.
 Sampling telemetry MID-STREAM rather than after `arecord` returns is what made
 the DMA state visible. Any future isoc measurement should do the same; a read
 after teardown reports the torn-down state and reads as "the DMA never ran".
+
+## Addendum, 2026-07-30: the constant read as bits
+
+`00 00 80` and `ff ff 7f` are exact bitwise complements, and each 24-bit word is
+`[x][c × 23]` with `x = ~c` — one bit disagreeing with the other 23. The six
+words are `A A ~A ~A A A`. On the wire that is a line held at a **static logic
+level for the whole of each word**, flipping every frame, read with a **one-SCLK
+framing offset**. It is not audio at any byte order or word alignment.
+
+That, plus the arithmetic in
+`FINDING_147_cport_and_ep_buffer_divergences.md` Part 2, kills the codec
+frame-length, master/slave, stale-buffer, secondary-communication and
+slipping-window explanations, and leaves "for 3 frames in 8 the codec is not
+what is driving CDATI". The leading candidate for the other driver is the
+CS8427, whose serial output port stock programs as a **slave** carrying the
+AES3 receiver — and which mboxfw has never configured at all (#157). Decisive
+test is #157.
