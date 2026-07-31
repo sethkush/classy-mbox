@@ -52,6 +52,11 @@ check "wrap_hex golden regression"          python3 tools/test_wrap_hex_golden.p
 check "SFR register names consistent"       python3 tools/check_sfr_names.py
 check "quoted bytes match the images"       python3 tools/check_byte_quotes.py
 check "citations land on target (both revs)" python3 tools/check_citation_targets.py
+# Every bit of IRAM 0x22/0x23/0x25 is a physical control line on one of the two
+# P1 shift chains. This asks, per bit, "stock drives it -- does mboxfw?" It
+# exists because that question was asked by hand exactly once, about 0x23.4,
+# and the answer was a defect (#166). Nothing was checking the other 23.
+check "latch-word bit coverage vs stock"    python3 tools/latch_word_bit_diff.py
 # The access map's direction classifier got 26 entries wrong once; these are the
 # hand-verified sites that pinned each failure mode.
 check "access-map classifier self-test"     python3 tools/xdata_access_map.py --selftest
