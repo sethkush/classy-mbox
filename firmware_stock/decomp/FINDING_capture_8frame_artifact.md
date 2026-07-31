@@ -392,3 +392,29 @@ Section 6.5.5.1: P3MSK at 0xFFCA, one mask bit per P3 pin, 1 = masked, **default
 0x00 = all unmasked**. A byte scan for `MOV DPTR,#0xFFCA` finds **no site in
 either stock image**, so neither firmware ever touches it and stock works with it
 at its default. It cannot explain mboxfw's dead buttons.
+
+## Addendum 6: Addendum 4/5's CPTRXCNF3 verdict is RETRACTED — 2026-07-30
+
+Addendum 4 named CPTRXCNF3 "the one real divergence" and Addendum 5 recommended
+"restore CPTRXCNF3 = 0xAC". Both compared mboxfw against stock's **boot init**.
+Stock does not stay there.
+
+Rev 20 `codec_port_cfg3_commit` @0x0FF4 (Rev 22 @0x0FE2) writes one value to
+**both** CPTCNF3 (0xFFDE) and CPTRXCNF3 (0xFFD5) and then raises GLOBCTL CPTEN.
+Its two call sites are inside `cmd1_apply_clock_mode`, which runs on every
+SET_CONFIGURATION. The 0xAC site (@0x034A) is gated on bit 0x0A = IRAM 0x21.2,
+which the Keil init table @0x0F9C zeroes and which **no instruction in either
+image ever sets** — verified by scanning both binaries for D2/C2/B2/92 on that
+bit and for every direct byte write to IRAM 0x21. It is unreachable. The live
+site (@0x0355) passes **0xA8**.
+
+So stock's running codec-port config is 0xA8/0xA8, BYOR clear in both
+directions, which is exactly what the datasheet's own I2S Mode 5 example
+specifies for this geometry. **mboxfw's CPTRXCNF3 = 0xA8 matches stock's
+operating state and is not the cause of the capture artifact.** The divergence
+is CPTCNF3 = 0xAC, on the playback path, which has never been measured.
+
+The byte-order exclusion that Addendum 3 retracted therefore stays retracted,
+but CPTRXCNF3 is no longer the suspect that replaced it. Full derivation, plus
+a second divergence this pass turned up (IEPBSIZ1/OEPBSIZ2 = 512 B where stock
+uses 640 B), in `FINDING_147_cport_and_ep_buffer_divergences.md`.

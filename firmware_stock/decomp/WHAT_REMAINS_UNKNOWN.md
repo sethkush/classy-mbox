@@ -225,7 +225,14 @@ has a task:
   * The EP0 Y-count read (#148).
   * The 8-frame capture artifact (#147) -- still undiagnosed, and the one
     measurement that voided the last loopback was a source-routing mistake, not
-    a firmware fault.
+    a firmware fault. What the 2026-07-30 disassembly pass changed:
+    CPTRXCNF3 is **cleared** as a suspect (stock's running value is 0xA8 on both
+    CPTCNF3 and CPTRXCNF3, not the boot 0xAC -- the 0xAC branch is gated on
+    IRAM 0x21.2, which nothing in either image ever sets), and two new
+    divergences are on the table: the endpoint buffers are 640 B in stock and
+    512 B in mboxfw (#162), and mboxfw re-bases them on every stream start
+    where stock writes them once at init (#163). Neither predicts an 8-frame
+    period. See FINDING_147_cport_and_ep_buffer_divergences.md.
   * S/PDIF clock slaving (#145) -- work codes 0x0B and 0x0C above.
 
 ## 4a. The read-direction blind spot — probed 2026-07-29, and it is empty
@@ -305,7 +312,9 @@ None of this reaches the gates -- no gate consumes the map, and all 15 still
 pass. The blast radius is documentation, plus one open investigation: #147's
 Addendum 4 diffs the 0xFFC0-0xFFFF range against this map, and its conclusion
 survives, because the only correction in that range is `I2C_RX` (a read in both
-stock and mboxfw).
+stock and mboxfw). Addendum 4's *verdict* did not survive, for an unrelated
+reason -- it diffed against stock's boot init rather than its running state.
+See Addendum 6 and FINDING_147_cport_and_ep_buffer_divergences.md.
 
 ## 5. Reachability -- CLOSED 2026-07-29, and it found a worse bug than it was for
 

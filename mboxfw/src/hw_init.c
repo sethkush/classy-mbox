@@ -127,46 +127,62 @@ void hw_init(void)
      * the data is moved to/from the USB endpoint buffer" (datasheet
      * §6.5.4.3 and §6.5.4.12 — identical layouts).
      *
-     * Stock is big-endian on the wire and sets BYOR. Chain of evidence,
-     * entirely static:
-     *   1. Linux declares stock 0dba:1000 as SNDRV_PCM_FMTBIT_S24_3BE, both
-     *      directions (reference/mbox1_quirks-table.h.snippet).
-     *   2. Stock boot init writes 0xAC (BYOR=1) to BOTH registers, in Rev 20
-     *      (@0x090B, @0x0923) and Rev 22 (@0x082C, @0x0844).
-     *   3. So BYOR=1 gives big-endian, and BYOR=0 gives little-endian.
-     * mboxfw declares S24_3LE, which is the spec-compliant choice and the
-     * whole point of the project, so it wants BYOR=0 where stock has 1.
+     * 0xAC IS NOT STOCK'S RUNNING VALUE. It is stock's BOOT value, and it
+     * survives only until the host's first SET_CONFIGURATION. What was
+     * written here before — "Rev 20 toggles CPTCNF3 at runtime by direction,
+     * 0xAC when capture is requested (@0x035C) and 0xA8 when playback is
+     * (@0x0367)" — is wrong in the addresses, wrong in the condition, wrong
+     * that it is a per-direction toggle, and wrong that 0xAC is reachable at
+     * runtime at all. See FINDING_147_cport_and_ep_buffer_divergences.md §2.
      *
-     * Copying stock's 0xAC is why the first successful capture looked like
-     * full-scale noise: it was correct audio with the bytes in the other
-     * order. `00 00 80` reads as -8388608 little-endian and as 128 big-.
+     * What both images actually do. SET_CONFIGURATION posts work code 1
+     * (Rev 20 @0x0293), and cmd1_apply_clock_mode stops both DMAs, drops
+     * GLOBCTL CPTEN, and calls a helper that writes ONE value to BOTH
+     * registers and raises CPTEN again:
      *
-     * The two directions are NOT symmetric. Rev 20 toggles CPTCNF3 at
-     * runtime by direction — 0xAC (BYOR=1) when capture is requested
-     * (@0x035C) and 0xA8 (BYOR=0) when playback is (@0x0367) — while Linux
-     * reports BOTH directions as big-endian. So the reversal is relative to
-     * the direction the DMA moves bytes, and the two paths need opposite
-     * BYOR values to produce the same wire order.
+     *   Rev 20 codec_port_cfg3_commit @0x0FF4   (Rev 22 @0x0FE2)
+     *     0FF4  MOVX @DPTR,A        ; caller's DPTR = 0xFFDE  CPTCNF3
+     *     0FF5  MOV DPTR,#0xFFD5    ;                         CPTRXCNF3
+     *     0FF8  MOVX @DPTR,A        ; ...the same value
+     *     0FF9  GLOBCTL |= 0x01     ; CPTEN back on
      *
-     * CPTRXCNF3 governs the receive (capture) path in I2S mode 5, which is
-     * the path we have measured, and clearing BYOR there is well supported
-     * by the chain above. The playback value is a build-time switch because
-     * we have no playback measurement yet; MBOX_PLAYBACK_BYOR selects it so
-     * two units can carry opposite settings and be compared over a loopback
-     * cable. Delete the switch once a loopback settles it. */
-#ifndef MBOX_PLAYBACK_BYOR
-#define MBOX_PLAYBACK_BYOR 1      /* 1 = 0xAC (stock boot value), 0 = 0xA8 */
-#endif
-#if MBOX_PLAYBACK_BYOR
-    CPTCNF3   = 0xAC;   /* Rev 20 fcn.0x08CB @ 0x090B — BYOR set */
-#else
-    CPTCNF3   = 0xA8;   /* Rev 20 @ 0x0367 playback branch — BYOR clear */
-#endif
+     * Its two call sites are Rev 20 @0x034A (A = 0xAC) and @0x0355
+     * (A = 0xA8). The 0xAC site is gated on bit 0x0A = IRAM 0x21.2, which
+     * the Keil init table zeroes (@0x0F9C) and which NO instruction in
+     * either image ever sets — scanned for SETB/CLR/CPL/MOV-bit,C and for
+     * every direct byte write to 0x21. That site is unreachable.
+     *
+     * So stock runs at 0xA8/0xA8 — BYOR CLEAR in both directions — the
+     * moment any host configures the device. The datasheet's own I2S Mode 5
+     * example, whose callouts match this part exactly (NTSL=2, TSL0L=11b,
+     * TSLL=101b, BPTSL=100b, CSYNCL=1, CSYNCP=0, DDLY=1), also lists
+     * BYOR = 0.
+     *
+     * Consequence for the endianness chain that used to live here: Linux
+     * reports stock as SNDRV_PCM_FMTBIT_S24_3BE while stock is running
+     * BYOR=0, so BYOR=0 cannot be the little-endian setting. Per §6.5.4.12,
+     * BYOR=0 "preserves" the received order, which for MSB-first I2S is
+     * big-endian. mboxfw declares S24_3LE, so on this reading it wants BYOR
+     * SET, the opposite of what commit 7590af1 concluded. That is a wire-
+     * format question with no playback measurement behind it either way, so
+     * nothing is changed on it here — task #161.
+     *
+     * The value below is left at stock's boot value, unchanged, because
+     * changing it is a behaviour change that costs a flash and belongs with
+     * the rest of the #147 batch rather than in a documentation fix. */
+    CPTCNF3   = 0xAC;   /* Rev 20 fcn.0x08CB @ 0x090B — stock BOOT value.
+                         * Stock's RUNNING value is 0xA8 (Rev 20 @0x0355 via
+                         * the helper at 0x0FF4). #161. */
     CPTCNF4   = 0x03;   /* 0xFFDD — stock writes 0x03 */
     CPTSTA    = 0x50;   /* 0xFFDC — stock writes 0x50 */
     CPTRXCNF2 = 0x25;   /* 0xFFD6 — stock writes 0x25 */
-    /* Capture path: BYOR cleared so the wire order matches our declared
-     * S24_3LE. Stock writes 0xAC here (Rev 20 fcn.0x08CB @ 0x0923). */
+    /* Capture path, BYOR clear. Stock's BOOT init writes 0xAC here (Rev 20
+     * fcn.0x08CB @ 0x0923, Rev 22 @0x0844), but its RUNNING value is 0xA8 —
+     * the helper at 0x0FF4 writes the same byte to CPTCNF3 and CPTRXCNF3 on
+     * every SET_CONFIGURATION, and the only reachable call site passes 0xA8.
+     * So this line already agrees with stock's operating state, and the
+     * "CPTRXCNF3 is the leading #147 suspect" reading in
+     * FINDING_capture_8frame_artifact.md Addendum 4/5 is withdrawn. */
     CPTRXCNF3 = 0xA8;
     /* CPTRXCNF4 — DIVB2(2:0), the divider from MCLKO2 to SCLK2, which is
      * the I2S RECEIVE bit clock (datasheet §6.5.4.13; block diagram
