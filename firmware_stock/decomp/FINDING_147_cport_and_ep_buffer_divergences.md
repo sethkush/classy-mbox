@@ -371,7 +371,12 @@ clock lines either, and SDOUT has no tri-state bit at all, which means two
 permanently-driven sources cannot share CDATI and the analog/S-PDIF selection
 must be an external switch. Separately, whether mboxfw's register writes land at
 all now turns on a bus-mode question that was not previously asked. See
-`FINDING_cs8427_chip_select_never_driven.md` and #165.
+`FINDING_cs8427_chip_select_never_driven.md` and #165 — and then
+`FINDING_cs8427_held_in_reset.md`, which supersedes both: mboxfw never sets
+IRAM 0x23.4, so the external-chip RESET is held asserted for the life of the
+firmware, which per §15.1 resets the CS8427's control port and registers
+continuously and mutes its outputs. **The CS8427 is out as a #147 candidate
+entirely**, and the "second driver on CDATI" reading has no candidate left.
 
 ## The test
 

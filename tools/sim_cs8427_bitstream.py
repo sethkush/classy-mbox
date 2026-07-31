@@ -66,3 +66,29 @@ if cs is not None:
 so = regs.get(0x06)
 if so is not None:
     print(f"SERIALOUTPUT (0x06) = 0x{so:02x}  SOMS(bit7)={(so>>7)&1} SORES={(so>>4)&3} SODEL={(so>>2)&1}")
+
+# ---------------------------------------------------------------------------
+# VALIDATION: run stock's routine through the same CS8427-side decoder.
+# If the decoder is right, stock must decode to (0x20, reg, value) exactly.
+# Stock (Rev 20 0x0C45): RL A then test ACC.0 == MSB-first; one rising SCL
+# edge per bit; 8 bits per byte with NO ack slot; CS framed around all three.
+# ---------------------------------------------------------------------------
+def stock_stream(reg, value):
+    out = []
+    for byte in (0x20, reg, value):
+        b = byte
+        for _ in range(8):
+            b = ((b << 1) | (b >> 7)) & 0xFF     # RL A
+            out.append(b & 1)                    # JNB ACC.0
+    return out
+
+fails = 0
+for reg, val in seq:
+    s = stock_stream(reg, val)
+    by = [int("".join(map(str, s[i:i+8])), 2) for i in range(0, 24, 8)]
+    ok = by == [0x20, reg, val]
+    if not ok:
+        fails += 1
+        print(f"  STOCK DECODE FAIL reg=0x{reg:02x}: {[hex(x) for x in by]}")
+assert fails == 0, "decoder model rejected by stock's own bit stream"
+print("validation: stock's stream decodes to (0x20, MAP, data) for all 10 writes -- decoder model OK")

@@ -1,5 +1,18 @@
 # mboxfw never drives the CS8427's chip select — and that decides which bus the part is on
 
+> **CORRECTED 2026-07-31 — read `FINDING_cs8427_held_in_reset.md` first.**
+> Two claims below do not survive. (1) "The chip select sits asserted for the
+> entire life of the firmware" is wrong: it is asserted only from `codec_init()`
+> onward, which runs *after* every CS8427 write has already been attempted
+> (`main.c:310` vs `main.c:315`); before that the 16-bit latch has never been
+> clocked and the pin is indeterminate. (2) The SPI-vs-I²C fork is not the
+> operative question, because mboxfw never sets IRAM 0x23.4 and so holds the
+> external-chip RESET asserted forever — and per DS477F5 §15.1 that continuously
+> resets the CS8427's control port and registers and mutes its outputs, on
+> either bus. The simulation and the datasheet facts below stand; their subject
+> was moot.
+
+
 2026-07-31, following the #147 bit-level pass. Prompted by "any more digging?"
 and by noticing that my own previous writeup asserted CS8427 power-on defaults
 it had explicitly flagged as unverified. The CS8427 datasheet (DS477F5) is now
