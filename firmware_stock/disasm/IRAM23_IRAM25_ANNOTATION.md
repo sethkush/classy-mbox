@@ -302,9 +302,12 @@ high (stock writes `MOV P3,#0xFF` at Rev 20 0x08DC / Rev 22 0x07FD, enabling
 the quasi-bidirectional pull-ups) and a press pulls low, so the firing edge is
 the **release**, not the press.
 
-`mboxfw/src/buttons.c:39` computes `pressed_low = changed & ~now` -- a falling
+~~`mboxfw/src/buttons.c:39` computes `pressed_low = changed & ~now` -- a falling
 edge -- so mboxfw acts on press where stock acts on release. Divergence,
-recorded, not yet fixed.
+recorded, not yet fixed.~~ **FIXED 2026-07-29**, and this note went stale
+without being updated. `buttons.c` now computes `released = changed & now` and
+carries the stock citation for the two-guard idiom. Verified against the current
+source 2026-07-30.
 
 ## The panel shift routine and the P1 pin map
 
