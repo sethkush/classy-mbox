@@ -431,9 +431,9 @@ static void handle_set_mux(void)
      * mono flag rides the mux latch as a ninth bit (mux.c), so it has to be
      * settled before the publish rather than after. */
     if (wIndexL == 0) {
-        g_mono = 0;
+        MONO_OFF();
     } else if (wIndexL == 1) {
-        g_mono = 1;
+        MONO_ON();
     }
 
     /* Publish in stock's order, which is the order buttons_poll() uses: the

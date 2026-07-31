@@ -13,9 +13,10 @@
 
 #include "regs.h"
 #include "mux.h"
+#include "codec.h"
 
 __data unsigned char g_mux_state = 0x00;
-__bit g_mono = 0;
+
 
 void mux_write(unsigned char state)
 {
@@ -52,7 +53,7 @@ void mux_write(unsigned char state)
      * drops it. Reproduced exactly rather than tidied, because which of the
      * two states the hardware latches on is unverified and the stock sequence
      * is the only evidence available. */
-    if (g_mono) {
+    if (MONO_IS_SET()) {
         P1 |= (P1_MUX_LATCH_MASK | P1_MUX_DATA_MASK);
     } else {
         P1 &= ~P1_MUX_DATA_MASK;

@@ -65,6 +65,54 @@ void codec_source_changed(void);
  */
 void codec_init(void);
 
+/*
+ * Named bits of the 16-bit codec control word.
+ *
+ * Every one of these is a physical control line on the second P1 shift chain.
+ * They are named here because mboxfw drove exactly two of them until
+ * 2026-07-31 — `tools/latch_word_bit_diff.py` reported g_codec_state_23 with a
+ * settable mask of 0x0C and g_codec_state_25 with a mask of 0x00, i.e. the
+ * whole low byte was write-zero-only. See
+ * FINDING_codec_word_is_two_bits_of_sixteen.md.
+ *
+ * Bit assignments come from the setter sites in both stock images; the gate
+ * pins each one and fails on an unexplained gap.
+ */
+#define CODEC23_MODE5_A      0x04u  /* 0x23.2 — mute / audio-path enable pair, */
+#define CODEC23_MODE5_B      0x08u  /* 0x23.3   released together after settle */
+#define CODEC23_RESET_N      0x10u  /* 0x23.4 — external-chip RESET, ACTIVE LOW.
+                                     * Rev 20 SETB 0x1c @0x0840 (Rev 22 @0x09E5,
+                                     * @0x0BB5) releases it once at boot. */
+#define CODEC23_MONO         0x40u  /* 0x23.6 — mono. Rev 20 @0x0941, @0x102E. */
+
+#define CODEC25_SRC1_LO      0x01u  /* 0x25.0 \ channel-1 source state, 2 bits  */
+#define CODEC25_SRC2_LO      0x02u  /* 0x25.1 \ channel-2 source state          */
+#define CODEC25_SRC1_HI      0x04u  /* 0x25.2 / see cycle_source() for the map  */
+#define CODEC25_SRC2_HI      0x08u  /* 0x25.3 /                                 */
+#define CODEC25_SEL_SPDIF    0x10u  /* 0x25.4 — UAC Selector Unit position      */
+#define CODEC25_SPDIF_RX     0x20u  /* 0x25.5 — S/PDIF receiver engaged         */
+#define CODEC25_BRINGUP_DONE 0x40u  /* 0x25.6 — bring-up-has-run guard.
+                                     * Rev 20 SETB 0x2e @0x0810. */
+#define CODEC25_CS8427_CS_N  0x80u  /* 0x25.7 — CS8427 chip select, ACTIVE LOW.
+                                     * Rev 20 CLR/SETB 0x2f @0x0C4F/@0x0C8D. */
+
+/*
+ * Mono lives in the codec word, bit 0x23.6, exactly as it does on stock —
+ * `SETB 0x1e` at Rev 20 0x0941 and 0x102E, and `mux_write`'s ninth-bit tail
+ * reads that same bit (`JNB 0x1e` at Rev 20 0x0F32).
+ *
+ * mboxfw used to keep it in a separate `__bit g_mono`, which meant the panel
+ * chain got the right value and the CODEC word's bit 6 was always 0. Making
+ * the word the single source of truth removes the chance of the two drifting,
+ * which a mirror-at-each-assignment fix would have left open.
+ */
+#define MONO_ON()     (g_codec_state_23 |= CODEC23_MONO)
+#define MONO_OFF()    (g_codec_state_23 &= (unsigned char)~CODEC23_MONO)
+/* Only for a genuinely dynamic value — SDCC warns 126 (unreachable code) if
+ * this is handed a compile-time constant, so the constant sites use ON/OFF. */
+#define MONO_SET(v)   do { if (v) { MONO_ON(); } else { MONO_OFF(); } } while (0)
+#define MONO_IS_SET() ((g_codec_state_23 & CODEC23_MONO) != 0)
+
 /* Codec control-word bytes — externally visible so control handlers can poke
  * individual bits and then call codec_write_word(). */
 extern __data unsigned char g_codec_state_23;

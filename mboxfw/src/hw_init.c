@@ -6,9 +6,10 @@
 
 #include "regs.h"
 #include "mux.h"
+#include "codec.h"
 
 extern __data unsigned char g_mux_state;  /* mirror of Rev 20 RAM[0x22] */
-extern __bit g_mono;               /* mirror of Rev 20 RAM[0x23].6 */
+
 
 static void short_delay(void)
 {
@@ -306,12 +307,12 @@ void hw_init(void)
      * state, not boot. The sequence below already matched stock and is
      * unchanged apart from the mono rename. */
     g_mux_state = 0x00;
-    g_mono      = 1;        /* Rev 20 @ 0x0941 SETB 0x1E */
+    MONO_ON();              /* Rev 20 @ 0x0941 SETB 0x1E */
     mux_write(g_mux_state);
 
     short_delay();
 
     g_mux_state = (unsigned char)(0xFF & ~0x01 & ~0x08);   /* = 0xF6, mic/mic */
-    g_mono      = 0;        /* Rev 20 @ 0x0962 CLR 0x1E */
+    MONO_OFF();             /* Rev 20 @ 0x0962 CLR 0x1E */
     mux_write(g_mux_state);
 }

@@ -53,24 +53,18 @@ EXPECTED_GAPS = {
                "from work code 0x0A, which nothing posts in either image -- "
                "dead in stock too. FINDING_codec_word_bits_resolved.md",
     (0x23, 1): "same mode-5 dead branch as 0x23.0",
-    (0x23, 4): "#166 -- external-chip RESET, active low, never released by "
-               "mboxfw. Held asserted for the life of the firmware.",
-    (0x23, 6): "mono. mboxfw keeps it in a separate __bit g_mono, which "
-               "mux_write() presents as the panel chain's 9th bit. That half "
-               "works; the CODEC word's bit 6 is still always 0 where stock "
-               "mirrors the live mono state.",
-    (0x25, 0): "source pattern, channel field bit -- codec word low byte is "
-               "never driven at all (#170)",
-    (0x25, 1): "source pattern, channel field bit (#170)",
-    (0x25, 2): "source pattern, channel field bit (#170)",
-    (0x25, 3): "source pattern, channel field bit (#170)",
+    (0x25, 0): "channel-1 source state, low bit (#170). The 2-bit-per-channel "
+               "encoding is decoded in FINDING_codec_word_is_two_bits_of_sixteen.md "
+               "from Rev 20 button_a_cycle_3state @0x0E27: (lo,hi) = (0,0) MIC, "
+               "(1,1) LINE, (1,0) INST, mirroring the mux pattern.",
+    (0x25, 1): "channel-2 source state, low bit (#170) — Rev 20 button_b_cycle_3state @0x0E9D",
+    (0x25, 2): "channel-1 source state, high bit (#170)",
+    (0x25, 3): "channel-2 source state, high bit (#170)",
     (0x25, 4): "#159 -- UAC Selector Unit position (0 = analog, 1 = S/PDIF). "
                "Read by codec_source_changed(), set by nothing.",
-    (0x25, 5): "S/PDIF receiver engaged. Read by codec_source_changed(), set "
-               "by nothing (#170).",
-    (0x25, 6): "bring-up-has-run guard (#170)",
-    (0x25, 7): "#167 -- CS8427 chip select, active low. Never driven, so the "
-               "part never sees the high->low transition that selects SPI mode.",
+    (0x25, 5): "S/PDIF receiver engaged (#170). Read by codec_source_changed(), "
+               "set by nothing, so that function's condition is constant-false "
+               "and its else branch always runs.",
 }
 
 
@@ -103,6 +97,29 @@ def stock_set_bits():
 
 LITERAL = re.compile(r"0[xX][0-9a-fA-F]+|\b\d+\b")
 CAST_WORDS = re.compile(r"\b(unsigned|signed|char|int|short|long|void)\b")
+DEFINE = re.compile(r"^\s*#define\s+(CODEC2[35]_[A-Z0-9_]+)\s+(0[xX][0-9a-fA-F]+|\d+)",
+                    re.M)
+
+
+def bit_macros():
+    """The named codec-word bit macros from codec.h, as {NAME: value}.
+
+    Without this, `g_codec_state_25 |= CODEC25_BRINGUP_DONE` reads as a
+    non-literal RHS and the estimator conservatively assumes 0xFF, which
+    silently hides every remaining gap. The macros are literals by another
+    name, so resolve them.
+    """
+    text = (ROOT / "mboxfw" / "include" / "codec.h").read_text()
+    return {name: int(val, 0) & 0xFF for name, val in DEFINE.findall(text)}
+
+
+MACROS = bit_macros()
+
+
+def _expand(rhs):
+    for name, val in MACROS.items():
+        rhs = rhs.replace(name, hex(val))
+    return rhs
 
 
 def _literals(rhs):
@@ -121,7 +138,11 @@ def mboxfw_set_masks():
     masks = {b: 0 for b in MIRRORS}
     names = {v[0]: k for k, v in MIRRORS.items()}
 
-    for src in sorted((ROOT / "mboxfw" / "src").glob("*.c")):
+    sources = sorted((ROOT / "mboxfw" / "src").glob("*.c"))
+    # Headers too: MONO_ON()/MONO_OFF() are macros over g_codec_state_23 that
+    # live in codec.h, so a src-only scan would miss bit 0x23.6 entirely.
+    sources += sorted((ROOT / "mboxfw" / "include").glob("*.h"))
+    for src in sources:
         text = src.read_text()
         # Strip block and line comments so commented-out code cannot count.
         text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
@@ -130,12 +151,17 @@ def mboxfw_set_masks():
             for name, byte in names.items():
                 if name not in line:
                     continue
-                m = re.search(re.escape(name) + r"\s*(\|=|&=|\^=|=)([^;]*);", line)
+                # Terminator is a semicolon OR end of line: the mono
+                # accessors are macro bodies like
+                #   #define MONO_ON() (g_codec_state_23 |= CODEC23_MONO)
+                # which carry no semicolon at all.
+                m = re.search(re.escape(name) + r"\s*(\|=|&=|\^=|=)([^;\n]*)", line)
                 if not m:
                     continue
                 op, rhs = m.group(1), m.group(2)
                 if op == "&=":
                     continue                     # cannot set a bit
+                rhs = _expand(rhs)
                 lits = _literals(rhs)
 
                 if not _is_pure_literal(rhs):

@@ -181,7 +181,7 @@ static void canary_emit(unsigned char n)
  * rejecting things or simply never replying. */
 static void canary_blink_forever(void)
 {
-    g_mono = 0;            /* never assert the unverified 0x23.6 */
+    MONO_OFF();            /* never assert the unverified 0x23.6 */
     for (;;) {
         canary_emit(g_stage);
         canary_delay(40);
@@ -307,14 +307,27 @@ void main(void)
      * so a hang here costs audio, not the device.
      *
      * Move these back above the attach once both are hardware-proven. */
-    cs8427_boot_init();
-    tlm_phases |= TLM_PHASE_CS8427;
-    CANARY(3, CANARY_CS8427);
-    STAGE(7);
-
+    /* ORDER CORRECTED 2026-07-31 (#167). codec_init() used to run AFTER
+     * cs8427_boot_init(), which meant the 16-bit latch chain carrying the
+     * CS8427's chip select (IRAM 0x25.7) and the external RESET (0x23.4) had
+     * never been clocked when the ten register writes went out — both lines
+     * sat at whatever the shift register happened to hold, undefined on a cold
+     * boot and stale from the previous run on a warm one.
+     *
+     * Stock's order is the inverse and is deliberate: zero the word and publish
+     * (Rev 20 fcn.0x080B @0x080C-0x0818), then release RESET and pulse the
+     * select (@0x083E-0x0852), then write registers (@0x0855+). The release and
+     * the pulse now live inside cs8427_boot_init() so this cannot be
+     * reordered apart again; codec_init() only has to get the latch into a
+     * known state first. */
     codec_init();
     tlm_phases |= TLM_PHASE_CODEC;
     CANARY(4, CANARY_CODEC);
+    STAGE(7);
+
+    cs8427_boot_init();
+    tlm_phases |= TLM_PHASE_CS8427;
+    CANARY(3, CANARY_CS8427);
     STAGE(8);
 
     STAGE(9);

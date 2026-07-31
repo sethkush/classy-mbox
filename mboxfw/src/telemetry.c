@@ -245,7 +245,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
          * can also confirm the spdif/USB/mono LEDs went dark as codec_init()
          * intends. */
         out[0] = g_mux_state;
-        out[1] = g_mono ? 1 : 0;
+        out[1] = MONO_IS_SET() ? 1 : 0;
         out[2] = g_codec_state_23;
         out[3] = g_codec_state_25;
         /* Live P3: the three button pins, so a press is visible over the wire

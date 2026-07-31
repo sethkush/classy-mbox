@@ -21,6 +21,7 @@
 #include "codec.h"
 #include "telemetry.h"
 #include "mux.h"
+#include "cs8427.h"
 
 /* SOF watchdog shadow of the playback DMA buffer content — Rev 22's
  * RAM[0x1B]:RAM[0x1C]. 0xFF/0xFF is an impossible real count for a 512-byte
@@ -277,6 +278,12 @@ void streaming_playback_enable(unsigned char on)
     playback_running = on ? 1 : 0;
     panel_update_streaming();
     if (on) {
+        /* Pull the external chips out of reset if a suspend cleared the
+         * bring-up guard. Ports stock's `JB 0x2e,<skip>; LCALL 0x080b` --
+         * Rev 20 0x038F/0x0392 on the interface-1 path and 0x0416/0x0419 on
+         * interface 2. cs8427_boot_init() carries the guard internally, so
+         * this is a no-op on every start after the first. */
+        cs8427_boot_init();
         /* Reset the SOF watchdog's shadow so the first frame of a new stream
          * is always evaluated rather than compared against a stale count from
          * the previous stream. */
@@ -304,6 +311,12 @@ void streaming_capture_enable(unsigned char on)
     capture_running = on ? 1 : 0;
     panel_update_streaming();
     if (on) {
+        /* Pull the external chips out of reset if a suspend cleared the
+         * bring-up guard. Ports stock's `JB 0x2e,<skip>; LCALL 0x080b` --
+         * Rev 20 0x038F/0x0392 on the interface-1 path and 0x0416/0x0419 on
+         * interface 2. cs8427_boot_init() carries the guard internally, so
+         * this is a no-op on every start after the first. */
+        cs8427_boot_init();
         IEPBBAX1 = EP_BBAX(EP1_IN_BUF_ADDR);
         IEPBSIZ1 = EP_BSIZE(EP_AUDIO_BUF_SIZE);
         IEPDCNTX1 = 0;

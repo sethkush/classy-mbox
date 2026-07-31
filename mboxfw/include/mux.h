@@ -15,7 +15,7 @@ extern __data unsigned char g_mux_state;    /* mirrors Rev 20 RAM[0x22] */
  * toggle, matching a momentary button, where 48V is a switch. Boot clears it
  * (Rev 20 0x095E-0x0962 @ 0x0962, Rev 22 0x087F-0x0883 @ 0x0883) and the
  * panel comes up with mono off, as observed. */
-extern __bit g_mono;
+
 
 void mux_write(unsigned char state);
 

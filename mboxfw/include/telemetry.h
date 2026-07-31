@@ -63,7 +63,11 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0013   /* 0013: 0012 + host mux control (block 9) */
+#define TLM_BUILD_ID     0x0014   /* 0014: CS8427 SPI framing + chip select +
+                                   *       external RESET released + bring-up
+                                   *       order fixed (#157/#166/#167), mono
+                                   *       moved into the codec word.
+                                   * 0013: 0012 + host mux control (block 9) */
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01

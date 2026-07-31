@@ -106,7 +106,7 @@ void buttons_poll(void)
     if (released & P3_BTN_MONO_MASK) {
         /* Rev 20 fcn.0x1028 / Rev 22 fcn.0x1020: a bare toggle of bit 0x1E,
          * nothing else. */
-        g_mono = !g_mono;
+        MONO_SET(!MONO_IS_SET());
         acted = 1;
     }
 

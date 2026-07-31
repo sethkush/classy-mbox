@@ -79,7 +79,7 @@ static void do_suspend(void)
      * so nothing is selected. This is the third of the three sites that write
      * this byte with an immediate. */
     g_mux_state = 0xFF;
-    g_mono = 0;
+    MONO_OFF();
     mux_write(g_mux_state);
 
     tlm_suspends++;
