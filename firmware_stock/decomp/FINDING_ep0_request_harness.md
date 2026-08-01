@@ -120,3 +120,95 @@ All without hardware, all pure firmware paths:
 - The whole telemetry protocol, including **#165's CS8427 readback**, before it
   is flashed.
 - Suspend/resume (#149), `VEC_RSTR`, the DFU trigger path.
+
+---
+
+# The multi-packet path, executed
+
+Same day. The single-request harness above answers one SETUP at a time. The
+path that actually carries a descriptor is longer: `stage_reply()` ships the
+first chunk, and every `VEC_IEP0` afterwards ships the next until
+`g_ep0_reply_remaining` hits zero. That loop had never been run.
+
+Driving it means handing the firmware `VEC_IEP0` over and over in ONE
+simulator session — the state that makes it work (`g_ep0_reply_src`,
+`g_ep0_reply_remaining`) does not survive a fresh session.
+
+## Result 1 — the continuation logic is correct
+
+    GET_DESCRIPTOR config, wLength=180
+    23 chunks, counts [8 x 22, 4]
+    reassembled 180 of 180 bytes, byte-identical to _AppConfigDesc
+
+Every chunk in order, none repeated, none skipped, correct short final packet.
+
+**This narrows #147 and the EP0 packet-loss measurement.** The ~12% of EP0 IN
+packets lost past the second, measured on hardware, is not `push_reply_chunk()`
+and not the `VEC_IEP0` sequencing. Under ideal event delivery the firmware
+ships the descriptor perfectly.
+
+The scope of that claim is exactly as narrow as it sounds. This harness hands
+over one completion at a time, synchronously, with no race. The failure mode
+`usb.c` documents fixing is a *race* — "once IEPDCNTX0 is written the packet
+can complete before we reach the clear, and VECINT = 0 then wipes the
+completion event for the packet just armed". Nothing here can reproduce that.
+What is now established is that the sequencing is right and the loss lives in
+event delivery, which is the UBM/SIE side.
+
+## Result 2 — the enumeration bug stays fixed
+
+`usb.c` records shipping this once: macOS asks for the device descriptor with
+wLength=64, the firmware clamps to 18 and ships 8, leaving
+`g_ep0_reply_remaining = 10`. macOS only wanted `bMaxPacketSize0`, abandons the
+transfer, and sends SET_ADDRESS. If the new SETUP does not clear that counter,
+the completion after the status ZLP ships 8 stale descriptor bytes, EP0
+desynchronises, and enumeration never completes. Found by an LED canary and
+fixed 2026-07-26.
+
+That sequence is now a gate:
+
+    wLength=64 device request : counts [8], 12 01 10 01 00 00 00 08
+    SET_ADDRESS status stage  : counts [0, 0]
+
+The second zero is the load-bearing one — the corruption arrives on the
+continuation *after* the status stage, not on the status stage itself.
+
+**The fix turns out to be redundant across two sites.** Removing the
+`handle_setup()` clear alone leaves `reply_zero_length()`'s clear standing and
+the behaviour is unchanged (`[0, 0]`, gate passes). Removing both reproduces
+the bug exactly (`[0, 8]`, gate fails with the diagnosis). Defence in depth,
+and a single-site regression is survivable.
+
+## Three ways the multi-packet harness was wrong first
+
+Every one of them produced a green that meant nothing, and each was caught by
+running a mutation rather than by reading the code.
+
+**The scenario stopped before the evidence.** The loop ran `while counts[-1]
+== 8`, so it halted at the zero-length status stage — one call short of where
+the stale bytes appear. The abandoned-transfer scenario passed with **both**
+clears removed.
+
+**"Nothing new was armed" is not a stop condition.** Replacing the count test
+with "run until the firmware stages nothing" ran the config descriptor out to
+64 calls: once a transfer has drained, every further `VEC_IEP0` arms a
+*zero-length* packet, so the poison byte is always overwritten and that test
+never fires. Measured, not predicted.
+
+**A mutation that does not reproduce the bug proves nothing.** Removing one of
+the two clears looked like "the gate missed the historical bug". It was not —
+the firmware is defended twice, and the mutation had not reintroduced anything.
+Checking that before believing the gate was broken is the whole difference
+between a finding and a wrong finding.
+
+Stop conditions are now explicit per step: `drain` for a control read (stop at
+the first short packet, which is how a control read ends), fixed-count for the
+abandoned-transfer case, whose evidence is *past* the short packet.
+
+## Mutations verified failing
+
+- Continuation never advances `g_ep0_reply_src` → reassembly mismatch, first
+  difference at offset 8.
+- Both `g_ep0_reply_remaining = 0` sites removed → `[0, 8]`, named as the
+  2026-07-26 bug.
+- (Control) one site removed → passes, correctly: the firmware still defends.

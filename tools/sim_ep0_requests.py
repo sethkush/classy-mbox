@@ -216,6 +216,108 @@ def run_request(ihx, packet, entry, ret_to, settle_bp=None):
     return "no-response", staged, cnt, cnf
 
 
+def run_transfer(ihx, packet, entry, ret_to, settle_bp, max_chunks=64):
+    """Drive a MULTI-PACKET control read to completion in one session.
+
+    Deliver the SETUP, then hand back a VEC_IEP0 ("the packet you armed has
+    gone") over and over, exactly as the hardware would, collecting each
+    chunk the firmware stages. This is the path the ~12% EP0 IN packet loss
+    measured on hardware lives on, and the one #148's Y-count work was
+    about. It has never been executed.
+
+    State has to persist across chunks -- g_ep0_reply_src and
+    g_ep0_reply_remaining are the whole mechanism -- so unlike run_request()
+    this uses a SINGLE simulator session for the entire transfer.
+
+    Returns (chunks, counts) where chunks is the reassembled byte string.
+    """
+    return run_session(ihx, [(packet, max_chunks, True)], entry, ret_to,
+                       settle_bp)[0]
+
+
+def run_session(ihx, steps, entry, ret_to, settle_bp):
+    """Drive several control transfers through ONE simulator session.
+
+    State that survives a transfer is the whole point. `usb.c` records the
+    bug this catches: macOS asks for the device descriptor with wLength=64,
+    the firmware clamps to 18 and ships 8, leaving g_ep0_reply_remaining =
+    10. macOS only wanted bMaxPacketSize0, abandons, and sends SET_ADDRESS.
+    If the new SETUP does not clear that counter, the status ZLP is replaced
+    by 8 leftover descriptor bytes, EP0 desynchronises, and enumeration
+    never completes. Shipped once, found by an LED canary, fixed 2026-07-26.
+    A per-transfer harness cannot see it.
+
+    steps is [(packet, max_chunks, drain)]. `drain` stops at the first
+    short packet, which is how a control read ends; without it the step
+    takes exactly max_chunks calls, which is what the abandoned-transfer
+    case needs -- its evidence arrives on the continuation AFTER a
+    zero-length status stage.
+
+    Returns [(bytes, counts)] per step.
+    """
+    sim = Ep0Sim(ihx)
+    sim.cmd(f"break {settle_bp}")
+    sim.run_to_stop()
+    sim.cmd("delete 0")
+    sim.cmd(f"break 0x{ret_to:04X}")
+
+    results = []
+
+    def one_call():
+        # SP is back where it started after each RET, so re-push every time.
+        sp = sim.peek_sfr(0x81)
+        if sp is None:
+            raise RuntimeError("could not read SP")
+        sim.cmd(f"fill iram 0x{sp + 1:02x} 0x{sp + 1:02x} 0x{ret_to & 0xFF:02x}")
+        sim.cmd(f"fill iram 0x{sp + 2:02x} 0x{sp + 2:02x} "
+                f"0x{(ret_to >> 8) & 0xFF:02x}")
+        sim.cmd(f"fill sfr 0x81 0x81 0x{sp + 2:02x}")
+        sim.cmd(f"pc 0x{entry:04X}")
+        sim.run_to_stop()
+
+    def harvest():
+        cnt = sim.peek(IEPDCNTX0)
+        bbax = sim.peek(IEPBBAX0)
+        if not cnt or not bbax or cnt[0] == POISON:
+            return None
+        n = cnt[0] & 0x7F          # bit 7 is NAK, not part of the count
+        base = STC_BUFFER_BASE + (bbax[0] << 3)
+        data = sim.peek(base, 8) or []
+        return n, bytes(data[:n])
+
+    for packet, max_chunks, drain in steps:
+        collected = bytearray()
+        counts = []
+        sim.cmd(f"fill xram 0x{IEPDCNTX0:04x} 0x{IEPDCNTX0:04x} 0x{POISON:02x}")
+        sim.deliver(packet)
+        one_call()
+        got = harvest()
+        if got:
+            counts.append(got[0])
+            collected += got[1]
+
+        # NOT bounded by "nothing new was armed": once a transfer has
+        # drained, every further VEC_IEP0 arms a ZERO-LENGTH packet, so the
+        # poison is always overwritten and that test never fires. Measured,
+        # after it ran the config descriptor out to 64 calls.
+        while len(counts) < max_chunks:
+            if drain and counts and counts[-1] < 8:
+                break
+            sim.cmd(f"fill xram 0x{IEPDCNTX0:04x} 0x{IEPDCNTX0:04x} "
+                    f"0x{POISON:02x}")
+            sim.poke(VECINT, 0x08)      # VEC_IEP0 -- "your packet went out"
+            one_call()
+            got = harvest()
+            if got is None:
+                break
+            counts.append(got[0])
+            collected += got[1]
+        results.append((bytes(collected), counts))
+
+    sim.close()
+    return results
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--verbose", action="store_true")
@@ -277,6 +379,73 @@ def main():
                 f"{' '.join(f'{b:02X}' for b in got)} but {sym} in ROM holds "
                 f"{' '.join(f'{b:02X}' for b in want)}. The table and what "
                 f"goes out on the wire disagree.")
+    print()
+
+    # ---- the multi-packet path ----
+    cfg_addr = syms.get("_AppConfigDesc")
+    total = (rom[cfg_addr + 2] | (rom[cfg_addr + 3] << 8)) if cfg_addr else 0
+    print(f"  multi-packet: GET_DESCRIPTOR config, wLength={total} "
+          f"(wTotalLength from ROM)")
+    data, counts = run_transfer(
+        ihx, setup(0x80, 0x06, 0x0200, 0, total), service,
+        ret_to=loop, settle_bp=f"0x{loop:04X}")
+    want = bytes(rom[cfg_addr:cfg_addr + total]) if cfg_addr else b""
+    print(f"    {len(counts)} chunks, counts {counts}")
+    print(f"    reassembled {len(data)} of {total} bytes")
+    if args.verbose:
+        print("    " + " ".join(f"{b:02X}" for b in data))
+    expect_chunks = (total + 7) // 8
+    if len(counts) != expect_chunks:
+        fails.append(
+            f"the transfer took {len(counts)} chunks; {total} bytes at 8 per "
+            f"packet is {expect_chunks}. A short count means the continuation "
+            f"stopped early; a long one means a chunk was repeated.")
+    if data != want:
+        first = next((i for i in range(min(len(data), len(want)))
+                      if data[i] != want[i]), min(len(data), len(want)))
+        fails.append(
+            f"the reassembled transfer does not match _AppConfigDesc: "
+            f"{len(data)} bytes vs {len(want)}, first difference at offset "
+            f"{first}. The bytes the firmware ships across packet boundaries "
+            f"are not the descriptor it holds.")
+    print()
+
+    # ---- the abandoned-transfer regression ----
+    # Exactly the sequence usb.c documents having shipped broken: a
+    # wLength=64 device-descriptor request (clamped to 18, one chunk of 8
+    # shipped, 10 left over), abandoned, then SET_ADDRESS. The status stage
+    # must be a zero-length packet, not the 8 stale descriptor bytes.
+    steps = run_session(
+        ihx,
+        [(setup(0x80, 0x06, 0x0100, 0, 64), 1, False),   # ask, take one chunk
+         (setup(0x00, 0x05, 3, 0, 0), 2, False)],        # abandon; SET_ADDRESS 3
+        service, ret_to=loop, settle_bp=f"0x{loop:04X}")
+    (first_data, first_counts), (addr_data, addr_counts) = steps
+    print("  abandoned transfer then SET_ADDRESS "
+          "(the enumeration bug usb.c records shipping)")
+    print(f"    wLength=64 device request: counts {first_counts}, "
+          + " ".join(f"{b:02X}" for b in first_data))
+    print(f"    SET_ADDRESS status stage : counts {addr_counts}")
+    if first_counts != [8]:
+        fails.append(f"a wLength=64 device-descriptor request shipped "
+                     f"{first_counts}; the first chunk is 8 bytes.")
+    if len(addr_counts) < 2:
+        fails.append(f"SET_ADDRESS produced {addr_counts}; the scenario needs "
+                     f"the status stage AND the continuation after it.")
+    elif addr_counts[0] != 0:
+        fails.append(
+            f"the SET_ADDRESS status stage shipped {addr_counts[0]} bytes, "
+            f"not a zero-length packet.")
+    elif addr_counts[1] != 0:
+        # The status stage itself is fine either way; the leftover goes out
+        # on the NEXT completion, which is where this has to look.
+        fails.append(
+            f"after the SET_ADDRESS status stage the firmware shipped "
+            f"{addr_counts[1]} more bytes. That is the leftover "
+            f"g_ep0_reply_remaining from the abandoned transfer going out "
+            f"behind the status stage -- EP0 desynchronises and enumeration "
+            f"never completes. usb.c documents shipping exactly this once, "
+            f"found by an LED canary and fixed 2026-07-26.")
     print()
 
     # ---- control 1: no stimulus, no reply ----
