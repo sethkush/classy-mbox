@@ -212,3 +212,76 @@ abandoned-transfer case, whose evidence is *past* the short packet.
 - Both `g_ep0_reply_remaining = 0` sites removed → `[0, 8]`, named as the
   2026-07-26 bug.
 - (Control) one site removed → passes, correctly: the firmware still defends.
+
+---
+
+# Three more paths, executed: #40, #41, #149
+
+Same harness, extended with a scenario runner — a sequence of USB events
+through one session, because alt settings, a pending data stage and the
+suspend flag are all *state between requests*.
+
+## #40 — SET_INTERFACE alt gating
+
+    SET_INTERFACE iface 1 alt 1  -> count 0 (status ZLP)
+    GET_INTERFACE iface 1        -> count 1, reads 1
+    SET_INTERFACE iface 1 alt 0  -> count 0
+    GET_INTERFACE iface 1        -> count 1, reads 0
+
+The alt setting sticks, reads back, and goes down again. Mutation: making
+`SET_INTERFACE` ignore the requested alt is caught with *"GET_INTERFACE after
+alt 1 returned value=0 ... the alt setting did not stick."*
+
+## #41 — the 3-byte SET_CUR rate, round trip
+
+This is a control-OUT with a **data stage**: the SETUP carries no rate, the
+bytes arrive later on `VEC_OEP0`. Both halves are checked in one session.
+
+    SET_CUR + OUT [44 AC 00]  then GET_CUR -> 44 AC 00   (44100)
+    SET_CUR + OUT [E0 93 04]  then GET_CUR -> 44 AC 00   (300000 refused)
+
+The second line is the one that matters. Rev 20 reads only `src[0]`, which
+works for 44100/48000 because their low bytes are unique but silently accepts
+nonsense; mboxfw parses all 24 bits and refuses anything its descriptors do
+not advertise. Now demonstrated rather than asserted.
+
+## #149 — suspend re-arms the bring-up
+
+`do_suspend()` zeroes the codec word, and bit 6 of its low byte IS the
+"bring-up already ran" guard. Zeroing it is what re-arms `cs8427_boot_init()`
+for the resume; if suspend stopped clearing it, a resume would never release
+the external RESET again and the CS8427 would stay dead silently.
+
+    g_codec_state_25 @ IRAM 0x0B: 0xC0 -> 0xC0 -> 0x00
+                       [SET_CONFIG, VEC_SUSR, work_dispatch]
+
+## Three ways this one was wrong before it was right
+
+**It reported a firmware defect that was the scenario's fault.** `VEC_SUSR`
+does not suspend — it posts a work code and returns. That is stock's own split
+(Rev 20's entire SUSR handler is `MOV 0x0A,#0x0E; RET` at 0x0006), because
+PCON idle inside an ISR cannot be woken by the interrupt that would resume it.
+Delivering `VEC_SUSR` alone and reading the mirror shows nothing changed, and
+the first version of this check called that a defect. The deferred work had
+simply never been run.
+
+**`do_suspend()` never returns.** It ends in PCON idle waiting for the host, so
+bounding the call on a return address timed out and desynced the session. It
+now breaks on the write to the mirror instead.
+
+**A missing write looked like a failed read.** With the mutation applied the
+breakpoint never fires, and the gate reported *"could not read the codec word
+mirror"* — true, but it buries the finding. `run_scenario` now distinguishes
+"the run never stopped on the expected write" from "the read failed", so the
+mutation is named: *"do_suspend() never wrote the codec word mirror."*
+
+**And one in the tooling.** `symbols()` only matched rows with a `C:` area tag,
+so DSEG symbols — which are listed without one — silently returned nothing and
+the suspend check crashed on a `None` address. `data_symbols()` parses those
+rows, kept separate from code symbols because 0x0B is a legal address in both
+spaces.
+
+## Mutations verified failing
+
+- `SET_INTERFACE` ignores the requested alt → named.
+- `do_suspend()` leaves the codec word alone → named, with the consequence.

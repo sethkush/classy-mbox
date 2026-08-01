@@ -96,11 +96,35 @@ REQUESTS = [
 
 
 def symbols(mapfile):
+    """CODE-space symbols. Rows carry a `C:` area tag."""
     out = {}
     for line in Path(mapfile).read_text().splitlines():
         parts = line.split()
         if len(parts) >= 3 and parts[0] == "C:" and parts[2].startswith("_"):
             out[parts[2]] = int(parts[1], 16)
+    return out
+
+
+def data_symbols(mapfile):
+    """DSEG symbols, which are listed WITHOUT an area tag:
+
+        C:   000017CD  _AppDevDesc      descriptors     <- code
+             0000000B  _g_codec_state_25  codec         <- data
+
+    Reusing symbols() for these silently returns nothing, which is how the
+    suspend check first came out as a crash rather than a result. Code and
+    data addresses are kept apart because they are different spaces and 0x0B
+    is a legal address in both.
+    """
+    out = {}
+    for line in Path(mapfile).read_text().splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[0].startswith("0") and \
+                parts[1].startswith("_"):
+            try:
+                out[parts[1]] = int(parts[0], 16)
+            except ValueError:
+                pass
     return out
 
 
@@ -322,6 +346,91 @@ def run_session(ihx, steps, entry, ret_to, settle_bp):
     return results
 
 
+EP0_OUT_BUF = 0xFA10
+VEC_OEP0    = 0x00
+VEC_RESR    = 0x15
+VEC_SUSR    = 0x16
+
+
+def run_scenario(ihx, actions, entry, ret_to, settle_bp, watch_iram=None):
+    """Drive an arbitrary sequence of USB events through one session.
+
+    An action is a dict:
+        {"setup": [8 bytes]}   deliver a SETUP packet
+        {"vec": code}          hand over any other VECINT (IEP0/OEP0/SUSR/RESR)
+        {"call": addr}         enter another function instead of usb_service
+        {"break_iram_w": addr} stop on a write to that IRAM byte, for code
+                               that never returns (do_suspend() blocks in
+                               PCON idle until the host resumes it)
+        {"out": [bytes]}       stage bytes in the EP0 OUT buffer first
+        {"label": str}         for the report
+
+    Returns one observation per action: (count, staged[8], iram, write_seen).
+    `write_seen` is False when a break_iram_w was asked for and the run never
+    stopped on it -- i.e. the expected write never happened. Without that
+    distinction a missing write looks like a failed read, which is how the
+    suspend mutation first reported "could not read the mirror" instead of
+    "do_suspend never touched it".
+    `count` is None when nothing was armed -- for an OUT data stage or a
+    suspend that is the correct answer, not a failure.
+
+    State persists across actions because that is the entire point: alt
+    settings, a pending SET_CUR data stage and the suspend/resume flag all
+    live between requests.
+    """
+    sim = Ep0Sim(ihx)
+    sim.cmd(f"break {settle_bp}")
+    sim.run_to_stop()
+    sim.cmd("delete 0")
+    sim.cmd(f"break 0x{ret_to:04X}")
+
+    obs = []
+    for act in actions:
+        sim.cmd(f"fill xram 0x{IEPDCNTX0:04x} 0x{IEPDCNTX0:04x} 0x{POISON:02x}")
+        for i, b in enumerate(act.get("out", [])):
+            sim.poke(EP0_OUT_BUF + i, b)
+        if "setup" in act:
+            sim.deliver(act["setup"])
+        if "vec" in act:
+            sim.poke(VECINT, act["vec"])
+
+        sp = sim.peek_sfr(0x81)
+        sim.cmd(f"fill iram 0x{sp + 1:02x} 0x{sp + 1:02x} 0x{ret_to & 0xFF:02x}")
+        sim.cmd(f"fill iram 0x{sp + 2:02x} 0x{sp + 2:02x} "
+                f"0x{(ret_to >> 8) & 0xFF:02x}")
+        sim.cmd(f"fill sfr 0x81 0x81 0x{sp + 2:02x}")
+        biw = act.get("break_iram_w")
+        if biw is not None:
+            sim.cmd(f"break iram w 0x{biw:02x}")
+        sim.cmd(f"pc 0x{act.get('call', entry):04X}")
+        stopped = sim.run_to_stop()
+        write_seen = True
+        if biw is not None:
+            write_seen = stopped is not None and stopped != ret_to
+            sim.cmd("delete")
+            sim.cmd(f"break 0x{ret_to:04X}")
+
+        cnt = sim.peek(IEPDCNTX0)
+        cnt = cnt[0] if cnt else None
+        staged = None
+        if cnt is not None and cnt != POISON:
+            bbax = sim.peek(IEPBBAX0)
+            if bbax:
+                staged = sim.peek(STC_BUFFER_BASE + (bbax[0] << 3), 8)
+        else:
+            cnt = None
+        iram = None
+        if watch_iram is not None:
+            sim._send(f"dump iram 0x{watch_iram:02x} 0x{watch_iram:02x}")
+            line = sim._read_until(re.compile(rf"^0x{watch_iram:02x}\s"))
+            if line:
+                m = re.search(rf"^0x{watch_iram:02x}\s+([0-9a-f]{{2}})", line)
+                iram = int(m.group(1), 16) if m else None
+        obs.append((cnt, staged, iram, write_seen))
+    sim.close()
+    return obs
+
+
 def trace_request_p1(ihx, packet, entry, ret_to, settle_bp):
     """Deliver a request and capture the P1 waveform it produces.
 
@@ -515,6 +624,116 @@ def main():
             f"behind the status stage -- EP0 desynchronises and enumeration "
             f"never completes. usb.c documents shipping exactly this once, "
             f"found by an LED canary and fixed 2026-07-26.")
+    print()
+
+    # ---- #40: SET_INTERFACE alt gating, across a session ----
+    # Alt settings are STATE. One request cannot show that setting 1 sticks,
+    # that reading it back agrees, or that returning to 0 takes. All four
+    # steps run in one session for that reason.
+    obs = run_scenario(ihx, [
+        {"setup": setup(0x01, 0x0B, 1, 1, 0)},    # SET_INTERFACE iface 1 alt 1
+        {"setup": setup(0x81, 0x0A, 0, 1, 1)},    # GET_INTERFACE iface 1
+        {"setup": setup(0x01, 0x0B, 0, 1, 0)},    # back to alt 0
+        {"setup": setup(0x81, 0x0A, 0, 1, 1)},    # GET_INTERFACE again
+    ], service, ret_to=loop, settle_bp=f"0x{loop:04X}")
+    got = [(c, (s[0] if s else None)) for c, s, _, _ in obs]
+    print(f"  #40 SET_INTERFACE alt gating: {got}")
+    if got[0][0] != 0:
+        fails.append(f"SET_INTERFACE iface 1 alt 1 did not answer with a "
+                     f"zero-length status stage (count={got[0][0]}).")
+    if got[1][0] != 1 or got[1][1] != 1:
+        fails.append(f"GET_INTERFACE after alt 1 returned count={got[1][0]} "
+                     f"value={got[1][1]}; expected 1 byte reading 1. The alt "
+                     f"setting did not stick.")
+    if got[3][0] != 1 or got[3][1] != 0:
+        fails.append(f"GET_INTERFACE after returning to alt 0 read "
+                     f"{got[3][1]}; the interface never went back down, so "
+                     f"the streaming endpoints would stay armed.")
+    print()
+
+    # ---- #41: the 3-byte SET_CUR sample rate, round trip ----
+    # A control-OUT with a DATA STAGE: the SETUP alone carries no rate. The
+    # bytes arrive later on VEC_OEP0, which is why this needs the scenario
+    # runner and not a single request. Rev 20 reads only src[0] and so
+    # accepts nonsense; mboxfw parses all 24 bits and stalls what its
+    # descriptors do not advertise, so both halves are checked.
+    RATE = [0x44, 0xAC, 0x00]                       # 44100 = 0x00AC44
+    obs = run_scenario(ihx, [
+        {"setup": setup(0x22, 0x01, 0x0100, 0x81, 3)},   # SET_CUR, ep 0x81
+        {"vec": VEC_OEP0, "out": RATE},                  # the data stage
+        {"setup": setup(0xA2, 0x81, 0x0100, 0x81, 3)},   # GET_CUR
+        {"setup": setup(0x22, 0x01, 0x0100, 0x81, 3)},   # SET_CUR again
+        {"vec": VEC_OEP0, "out": [0xE0, 0x93, 0x04]},    # 300000 -- not ours
+        {"setup": setup(0xA2, 0x81, 0x0100, 0x81, 3)},   # GET_CUR again
+    ], service, ret_to=loop, settle_bp=f"0x{loop:04X}")
+    back = obs[2][1][:3] if obs[2][1] else None
+    after = obs[5][1][:3] if obs[5][1] else None
+    print(f"  #41 SET_CUR 44100 -> GET_CUR {back}, "
+          f"after a 300000 attempt -> {after}")
+    if back != RATE:
+        fails.append(f"GET_CUR returned {back} after SET_CUR 44100 "
+                     f"({RATE}). The 24-bit little-endian parse or the data "
+                     f"stage is wrong.")
+    if after != RATE:
+        fails.append(f"after a 300000 Hz SET_CUR the rate reads {after}. A "
+                     f"rate outside the descriptor list must be refused, not "
+                     f"accepted -- Rev 20 reads only the low byte and would "
+                     f"take it.")
+    print()
+
+    # ---- #149: suspend clears the bring-up guard ----
+    # VEC_SUSR does NOT suspend. It posts a work code and returns -- stock's
+    # own split (Rev 20's whole SUSR handler is `MOV 0x0A,#0x0E; RET` at
+    # 0x0006), because everything suspend does is slow and PCON idle inside
+    # an ISR cannot be woken by the interrupt that would resume it. The work
+    # runs later from work_dispatch() in the main loop.
+    #
+    # Delivering VEC_SUSR alone and reading the mirror therefore shows
+    # nothing changed -- which this check first reported as a firmware
+    # defect. It was the scenario: the deferred work had never been run.
+    # do_suspend() zeroes the codec word, and bit 6 of the low byte IS the
+    # "bring-up already ran" flag, so zeroing it is what re-arms
+    # cs8427_boot_init() for the resume. If suspend stopped clearing it, the
+    # external RESET would stay asserted after a resume and the part would
+    # be dead with nothing in the log to say so.
+    mirror25 = data_symbols(mapf).get("_g_codec_state_25")
+    if mirror25 is None:
+        fails.append("_g_codec_state_25 not found in the map, so the suspend "
+                     "check could not run. A check that cannot run is not a "
+                     "check.")
+        obs = []
+    else:
+        dispatch = syms.get("_work_dispatch")
+        obs = run_scenario(ihx, [
+            {"setup": setup(0x00, 0x09, 1, 0, 0)},   # SET_CONFIGURATION 1
+            {"vec": VEC_SUSR},                       # posts WORK_SUSPEND
+            # do_suspend() ends in PCON idle and never returns, so this
+            # stops on the write to the mirror instead of on a return.
+            {"call": dispatch, "break_iram_w": mirror25},
+        ], service, ret_to=loop, settle_bp=f"0x{loop:04X}",
+            watch_iram=mirror25)
+    states = [o[2] for o in obs]
+    if obs:
+        print(f"  #149 g_codec_state_25 @ IRAM 0x{mirror25:02X} "
+              f"after [SET_CONFIG, SUSR, work_dispatch]: "
+              + " ".join("--" if s is None else f"0x{s:02X}" for s in states))
+    if not obs:
+        pass
+    elif not obs[2][3]:
+        fails.append(
+            "do_suspend() never wrote the codec word mirror. The bring-up "
+            "guard (0x25.6) is what re-arms cs8427_boot_init(), so if suspend "
+            "stops clearing it a resume never releases the external RESET "
+            "again and the CS8427 stays dead with nothing in the log to say "
+            "so.")
+    elif states[2] is None:
+        fails.append("could not read the codec word mirror after suspend.")
+    elif states[2] & 0x40:
+        fails.append(
+            f"after suspend the bring-up guard (0x25.6) is still SET "
+            f"(0x{states[2]:02X}). do_suspend() is supposed to zero the codec "
+            f"word, which re-arms cs8427_boot_init(); leaving it set means a "
+            f"resume never releases the external RESET again.")
     print()
 
     # ---- control 1: no stimulus, no reply ----
