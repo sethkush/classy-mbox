@@ -136,3 +136,90 @@ chosen constant: it runs the image from reset first, lets stock's own init
 drive P1 until it stalls, and seeds P1 with the value that code left (0xC1 in
 both images). mboxfw needs none of this — it runs from the reset vector, so its
 own `main()` ordering is what gets measured.
+
+---
+
+# Extension, same day: timing and the third chain
+
+The first version of this gate checked bit VALUES and threw away everything
+else the trace contained. Two things were already in the captured waveform and
+simply unused.
+
+## Timing
+
+ucSim reports a cycle count at every stop, so the gaps between CS8427
+transactions are measurable for free. Measured:
+
+    mboxfw  19044  19164  19164  19164  19164  19368  19164 ...
+    rev20   11772   5856   5880   5880   5880   5880   5880 ...
+    rev22   11376   5364   5376   5388   5376   5376   5376 ...
+
+mboxfw's settle delays are about 3.2x LONGER than either stock image's, which
+is a difference between SDCC's loop and Keil's `DJNZ 0x2e,$` rather than a
+defect.
+
+This matters because `verify_reachability.py` catches a delay whose call site
+has been deleted outright, and cannot catch one that is present but wrong. The
+mutation that drops `volatile` from `settle_delay()` -- the exact
+`FINDING_delay_calls_elided.md` failure -- collapses mboxfw from 19044 cycles
+to **3672**, and the source still reads correctly at every line.
+
+The bar is stock's own shortest gap, measured in the same run. The first
+version used half of it, on the reasoning that a bar should be generous about
+compiler differences, and 3672 sailed straight under 2682. A generous bar
+calibrated against nothing is not a bar. "At least as long as the vendor
+firmware waits" can be defended, and mboxfw clears it by 3.5x.
+
+## The panel chain, and a correction
+
+The project's shorthand for the mux chain has been "IRAM 0x22 plus mono as a
+ninth bit". Read literally that is wrong. Rev 20's
+`shiftreg8_commit_p1_7_6_5` (0x0F0C) clocks eight bits and then, at 0x0F32,
+drives DATA to the mono value and raises LATCH *without another clock*:
+
+    0f32  JNB 0x1e,0x0f39    ; 0x1e = IRAM 0x23.6
+    0f35  ORL P1,#0xC0       ; DATA high AND LATCH high in one write, RET
+    0f39  ANL P1,#0x7F / ORL P1,#0x40 / ANL P1,#0xBF
+
+Mono is a ninth OUTPUT presented at the latch edge, not a ninth shifted bit.
+mboxfw already ports this correctly, including the asymmetry where the mono-set
+branch returns with LATCH still high. Measured: eight clocked bits per latch in
+mboxfw and in both stock images.
+
+So the new check is the mono line itself -- the end of the path that moved out
+of `__bit g_mono` and into the codec word earlier today. At each latch edge the
+published line is compared against the mirror the firmware actually read.
+
+## Three ways this gate was wrong before it was right
+
+Every one of these produced a green or a red that meant nothing, and each was
+caught only by mutating the firmware and watching what the gate did.
+
+**The delay bar was calibrated against nothing** -- see above. Green on a real
+collapse.
+
+**The mono check was vacuous.** It compared the published mono line against the
+last codec word seen on the wire. Both of mboxfw's boot-time mux latches happen
+*before* the first codec-word publish, so every comparison was skipped and the
+check reported "0 disagree" on an image whose mono condition had been inverted
+outright. A check that cannot fire is not a check.
+
+**It then read the wrong byte.** Reading the mirror directly out of the
+simulator fixed the vacuity, but `g_codec_state_23` is at IRAM **0x0A**, not
+0x23 -- the name encodes *stock's* address, and SDCC puts mboxfw's copy where
+it likes. Sampling 0x23 reported a phantom mismatch on a correct image. It now
+resolves the address from the linker map, which is the same lesson
+`sim_smoke.sh` learned when it anchored to a compiler-generated label.
+
+The tell that the third one was an instrument fault rather than a firmware
+fault: baseline, the delay mutation, and the inverted-mono mutation all
+reported the *identical* single mismatch. A real mono defect would have changed
+between them.
+
+## And one on the harness
+
+`make` was not rebuilding between mutation and measurement -- edits landing
+within the same second as the previous build left the old image in place, so
+two mutation runs measured an unchanged binary and "passed". Mutation testing
+now does `make clean` and prints the image hash at every step, because a
+mutation that does not change the image tests nothing.

@@ -55,6 +55,9 @@ P1_CODEC_LATCH = 0x02
 P1_CODEC_CLK   = 0x04
 P1_CS8427_CCLK = 0x08
 P1_CS8427_CDIN = 0x10
+P1_MUX_CLK     = 0x20
+P1_MUX_LATCH   = 0x40
+P1_MUX_DATA    = 0x80
 
 CS8427_CS_BIT = 0x80        # bit 7 of the codec word's LOW byte, active low
 
@@ -90,7 +93,8 @@ class Sim:
     sequence to exactly that before the fd-level rewrite.
     """
 
-    def __init__(self, ihx):
+    def __init__(self, ihx, mirror=0x23):
+        self.mirror = mirror
         self.p = subprocess.Popen(
             ["s51", "-q", str(ihx)],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -140,6 +144,34 @@ class Sim:
         m = re.search(r"(0x[0-9a-f]{2})\s+'", line)
         return int(m.group(1), 16) if m else None
 
+    def sample(self):
+        """(P1 value, cycles since reset, IRAM 0x23), or (None, None, None).
+
+        Both commands go out before either reply is read: the cost of a
+        sample is a pipe round trip, not the simulation, so pipelining the
+        pair keeps the cycle counts nearly free. Timing matters here because
+        the delays BETWEEN these writes are load-bearing -- see
+        FINDING_delay_calls_elided.md, where they silently became zero.
+        """
+        self._send("dump sfr 0x90 0x90")
+        self._send(f"dump iram 0x{self.mirror:02x} 0x{self.mirror:02x}")
+        self._send("state")
+        line = self._read_until(re.compile(r"0x90\s+P1:"))
+        if line is None:
+            return None, None, None
+        m = re.search(r"(0x[0-9a-f]{2})\s+'", line)
+        p1 = int(m.group(1), 16) if m else None
+        line = self._read_until(re.compile(rf"^0x{self.mirror:02x}\s"))
+        iram23 = None
+        if line is not None:
+            m = re.search(rf"^0x{self.mirror:02x}\s+([0-9a-f]{{2}})", line)
+            iram23 = int(m.group(1), 16) if m else None
+        line = self._read_until(re.compile(r"clks\)"))
+        if line is None:
+            return p1, None, iram23
+        m = re.search(r"\(([0-9]+) clks\)", line)
+        return p1, (int(m.group(1)) if m else None), iram23
+
     def run_to_stop(self):
         """Continue; return the PC we stopped at, or None if we never stopped."""
         self._send("run")
@@ -156,41 +188,70 @@ class Sim:
             self.p.kill()
 
 
-def trace_p1(ihx, entry=None, preset_p1=None, max_writes=200000, want_transactions=12):
+def mirror_address(default=0x23):
+    """Where SDCC actually put g_codec_state_23.
+
+    The NAME encodes stock's address, IRAM 0x23. SDCC puts mboxfw's copy
+    wherever it likes -- 0x0A at the time of writing. Sampling 0x23 because
+    the variable is called `_23` reads an unrelated byte and reports a
+    phantom mono mismatch on a correct image, which is exactly what it did.
+    Resolve it from the linker map, the same lesson sim_smoke.sh learned
+    when it anchored to a compiler-generated label.
+    """
+    m = ROOT / "mboxfw" / "build" / "mboxfw.map"
+    if not m.exists():
+        return default
+    for line in m.read_text().splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[-2] == "_g_codec_state_23":
+            return int(parts[-3], 16)
+        if "_g_codec_state_23" in line:
+            for i, tok in enumerate(parts):
+                if tok == "_g_codec_state_23" and i:
+                    return int(parts[i - 1], 16)
+    return default
+
+
+def trace_p1(ihx, entry=None, preset_p1=None, mirror=0x23,
+             max_writes=200000, want_transactions=12):
     """Return the sequence of P1 values, sampled at every write to P1.
 
     Stops once `want_transactions` complete CS-framed transactions have been
     seen, which bounds the run without needing a symbol for the routine's end
     -- stock RETs into a garbage stack when entered directly.
     """
-    sim = Sim(ihx)
+    sim = Sim(ihx, mirror=mirror)
     sim.cmd("break sfr w 0x90")
     if preset_p1 is not None:
         sim.cmd(f"fill sfr 0x90 0x90 0x{preset_p1:02X}")
     if entry is not None:
         sim.cmd(f"pc 0x{entry:04X}")
 
-    initial = sim.read_p1()
+    initial, t0, m0 = sim.sample()
     if initial is None:
         sim.close()
         raise RuntimeError("could not read P1 before starting")
 
     samples = [initial]
+    clocks = [t0 or 0]
+    iram23 = [m0 or 0]
     watcher = _CsWatcher(initial)
     n = 0
     while n < max_writes:
         if sim.run_to_stop() is None:
             break
-        v = sim.read_p1()
+        v, t, m = sim.sample()
         if v is None:
             break
         samples.append(v)
+        clocks.append(t if t is not None else clocks[-1])
+        iram23.append(m if m is not None else iram23[-1])
         watcher.feed(v)
         n += 1
         if watcher.transactions >= want_transactions:
             break
     sim.close()
-    return samples
+    return samples, clocks, iram23
 
 
 class _CsWatcher:
@@ -242,6 +303,48 @@ class CodecChain:
         return word
 
 
+class MuxChain:
+    """Recover the panel / source-mux word from P1.7 (data) / P1.5 (clock) / P1.6 (latch).
+
+    The third chain on the same port, and the one this harness threw away
+    until it was extended.
+
+    EIGHT clocked bits, not nine. The project's shorthand has been "IRAM 0x22
+    plus mono as a ninth bit", and read literally that is wrong -- stock's
+    `shiftreg8_commit_p1_7_6_5` (Rev 20 0x0F0C) clocks 0x22 eight times and
+    then, at 0x0F32, drives DATA to the mono value and raises LATCH without
+    another clock:
+
+        0f32  JNB 0x1e,0x0f39    ; 0x1e = IRAM 0x23.6, mono
+        0f35  ORL P1,#0xC0       ; DATA high AND LATCH high in one write, RET
+        0f39  ANL P1,#0x7F / ORL P1,#0x40 / ANL P1,#0xBF
+
+    So mono is a ninth OUTPUT presented at the latch edge, not a ninth shifted
+    bit. That distinction is why this records the data line AT the latch: it is
+    the only place the mono line is observable, and it is the end of the path
+    that moved out of `__bit g_mono` and into the codec word on 2026-07-31.
+    """
+
+    def __init__(self, p1):
+        self.prev = p1
+        self.shift = 0
+        self.nbits = 0
+        self.words = []         # (nbits, value, mono_at_latch) per latch pulse
+
+    def feed(self, p1):
+        prev, self.prev = self.prev, p1
+        latched = None
+        if not (prev & P1_MUX_CLK) and (p1 & P1_MUX_CLK):
+            self.shift = (self.shift << 1) | (1 if p1 & P1_MUX_DATA else 0)
+            self.nbits += 1
+        if not (prev & P1_MUX_LATCH) and (p1 & P1_MUX_LATCH):
+            latched = (self.nbits, self.shift, bool(p1 & P1_MUX_DATA))
+            self.words.append(latched)
+            self.shift = 0
+            self.nbits = 0
+        return latched
+
+
 class Cs8427Port:
     """Decode CS8427 SPI transactions from P1.3 (CCLK) / P1.4 (CDIN) + the select.
 
@@ -273,15 +376,20 @@ class Cs8427Port:
             self.bits = []
 
 
-def decode(samples):
-    """Full decode of a P1 waveform: codec words published, CS8427 transactions."""
+def decode(samples, clocks=None, iram23=None):
+    """Full decode of a P1 waveform: all three chains, with cycle stamps."""
     codec = CodecChain(samples[0])
     port = Cs8427Port(samples[0], False)
+    mux = MuxChain(samples[0])
     words = []
     at_tx = []          # the codec word in effect as each transaction closed
+    tx_clk = []         # cycle stamp at which each transaction closed
+    tx_start = []       # cycle stamp at which each transaction's select fell
+    open_clk = None
+    mono_pairs = []
     cs = False
     current = None
-    for v in samples[1:]:
+    for i, v in enumerate(samples[1:], start=1):
         word = codec.feed(v)
         if word is not None:
             words.append(word)
@@ -289,9 +397,37 @@ def decode(samples):
             cs = not (word & CS8427_CS_BIT)
         before = len(port.transactions)
         port.feed(v, cs)
+        latched = mux.feed(v)
+        if latched is not None:
+            # The mono line the panel chain published, against IRAM 0x23 read
+            # straight out of the simulator at that instant.
+            #
+            # The first version compared against the last PUBLISHED codec
+            # word instead, and that was unsound: both of mboxfw's boot-time
+            # mux latches happen before the first codec-word publish, so the
+            # comparison ran against a default and reported a phantom
+            # mismatch on a correct image. The mirror is only observable by
+            # reading it -- the waveform cannot carry a value that has not
+            # been shifted out yet.
+            mono_pairs.append((latched[2], iram23[i] if iram23 else None))
         if len(port.transactions) != before:
             at_tx.append(current)
-    return words, port.transactions, at_tx
+            tx_clk.append(clocks[i] if clocks else 0)
+            tx_start.append(open_clk)
+            open_clk = None
+        if cs and open_clk is None:
+            open_clk = clocks[i] if clocks else 0
+        if not cs:
+            open_clk = None
+    return {
+        "words": words,
+        "transactions": port.transactions,
+        "at_tx": at_tx,
+        "mux": mux.words,
+        "tx_end_clk": tx_clk,
+        "tx_start_clk": tx_start,
+        "mono_pairs": mono_pairs,
+    }
 
 
 def register_writes(transactions):
@@ -355,13 +491,19 @@ def bin_to_ihx(blob, path):
     return path
 
 
-def describe(name, words, transactions, at_tx, verbose):
+def describe(name, r, verbose):
+    words, transactions = r["words"], r["transactions"]
     print(f"{name}:")
     print(f"    codec words published : {len(words)}")
     if verbose:
         for w in words:
             print(f"        0x{w >> 8:02X}{w & 0xFF:02X}   "
                   f"0x23=0x{w >> 8:02X}  0x25=0x{w & 0xFF:02X}")
+    print(f"    mux words published   : {len(r['mux'])}"
+          + (f"  ({r['mux'][0][0]} clocked bits each)" if r["mux"] else ""))
+    if verbose:
+        for n, w, mono in r["mux"]:
+            print(f"        {n} bits  0x{w:02X}  mono-at-latch={int(mono)}")
     print(f"    CS8427 transactions   : {len(transactions)}")
     for by, nbits in transactions:
         if not by:
@@ -384,10 +526,13 @@ def main():
     print("Executing the image and decoding P1. Both shift chains, from the pins.\n")
 
     results = {}
-    samples = trace_p1(ihx)
-    results["mboxfw"] = decode(samples)
+    stock_mux = {}
+    mirror = mirror_address()
+    print(f"g_codec_state_23 resolved to IRAM 0x{mirror:02X} from the map\n")
+    samples, clocks, iram23 = trace_p1(ihx, mirror=mirror)
+    results["mboxfw"] = decode(samples, clocks, iram23)
     describe(f"mboxfw   ({len(samples)} P1 writes traced)",
-             *results["mboxfw"], verbose=args.verbose)
+             results["mboxfw"], verbose=args.verbose)
     print()
 
     for name, entry in STOCK_ENTRY.items():
@@ -406,21 +551,28 @@ def main():
         # The fix is a measurement, not a chosen constant: run the image
         # from reset, let its own init drive P1 until it stalls, and use
         # the value ITS OWN CODE left there. Both images leave 0xC1.
-        seed = trace_p1(path)[-1]
-        samples = trace_p1(path, entry=entry, preset_p1=seed)
-        results[name] = decode(samples)
+        reset_samples, reset_clocks, reset_iram = trace_p1(path)
+        seed = reset_samples[-1]
+        # The reset run is also the ONLY place stock's panel chain is
+        # observable: by the time it reaches the bring-up routine it has
+        # already published its mux word, so the entry-point trace shows
+        # none. Keep the reset run's decode as the mux reference rather than
+        # reasoning about a chain nothing measured.
+        stock_mux[name] = decode(reset_samples, reset_clocks, reset_iram)["mux"]
+        samples, clocks, iram23 = trace_p1(path, entry=entry, preset_p1=seed)
+        results[name] = decode(samples, clocks, iram23)
         describe(f"{name}    ({len(samples)} P1 writes traced, entry 0x{entry:04X}, "
                  f"P1 seeded 0x{seed:02X} by its own init)",
-                 *results[name], verbose=args.verbose)
+                 results[name], verbose=args.verbose)
         print()
 
     fails = []
 
-    mine = register_writes(results["mboxfw"][1])
+    mine = register_writes(results["mboxfw"]["transactions"])
     if mine != EXPECTED:
         fails.append(f"mboxfw register writes {mine} != expected {EXPECTED}")
 
-    for by, nbits in results["mboxfw"][1]:
+    for by, nbits in results["mboxfw"]["transactions"]:
         if by and by[0] != 0x20:
             fails.append(f"transaction does not open with the chip address 0x20: "
                          f"{[hex(x) for x in by]}")
@@ -439,10 +591,10 @@ def main():
     # raises it again. A pulse that exists only because the word was zero is
     # not the transition DS477F5 s9 asks for. Counting them catches that;
     # asking whether any exist does not.
-    my_shape = [n for _, n in results["mboxfw"][1]]
+    my_shape = [n for _, n in results["mboxfw"]["transactions"]]
     print(f"CS-low periods, in clocks: mboxfw {my_shape}")
     for name in STOCK_ENTRY:
-        shape = [n for _, n in results[name][1]]
+        shape = [n for _, n in results[name]["transactions"]]
         print(f"                           {name}  {shape}")
         if shape != my_shape:
             fails.append(f"CS-low period shape differs from {name}: mboxfw "
@@ -452,14 +604,14 @@ def main():
     print()
 
     # The rest of the latch, at the moment the CS8427 is first selected.
-    my_word = word_while_selected(results["mboxfw"][2],
-                                  [by for by, _ in results["mboxfw"][1]])
+    my_word = word_while_selected(results["mboxfw"]["at_tx"],
+                                  [by for by, _ in results["mboxfw"]["transactions"]])
     print("Codec word in effect while the CS8427 is selected:")
     print(f"    mboxfw  0x{my_word:04X}" if my_word is not None else
           "    mboxfw  never selected the part")
     for name in STOCK_ENTRY:
-        w = word_while_selected(results[name][2],
-                                [by for by, _ in results[name][1]])
+        w = word_while_selected(results[name]["at_tx"],
+                                [by for by, _ in results[name]["transactions"]])
         print(f"    {name}   0x{w:04X}" if w is not None else
               f"    {name}   never selected the part")
         if my_word is None or w is None:
@@ -478,8 +630,94 @@ def main():
                       f"{EXPECTED_WORD_DIVERGENCE[key]}")
     print()
 
+    # ---- the third chain -------------------------------------------------
+    # Nine bits per latch, not eight: IRAM 0x22 plus mono appended by
+    # mux_write's tail. A chain that shifted the wrong count would put every
+    # panel line one position out -- the same class of defect as the CS8427's
+    # framing, and equally unchecked until this decoder existed.
+    my_mux = sorted({n for n, _, _ in results["mboxfw"]["mux"]})
+    print(f"Mux/panel chain, clocked bits per latch: mboxfw {my_mux}")
     for name in STOCK_ENTRY:
-        stock = register_writes(results[name][1])
+        theirs = sorted({n for n, _, _ in stock_mux[name]})
+        print(f"                                        {name}  {theirs}")
+        if not theirs:
+            fails.append(f"{name}: decoded no mux words even from the reset run "
+                         f"-- the mux DECODER is suspect, not mboxfw")
+        elif my_mux != theirs:
+            fails.append(f"mux chain clocks {my_mux} bits per latch, {name} "
+                         f"clocks {theirs}. Every panel line lands in the wrong "
+                         f"position on a count mismatch.")
+
+    # The mono line is published by the PANEL chain but stored in the CODEC
+    # word (IRAM 0x23.6). Until 2026-07-31 mboxfw kept it in a separate
+    # `__bit g_mono`, so the panel chain got the right value and the codec
+    # word's bit 6 was always 0. Checking one against the other at the latch
+    # edge is what makes that class of drift impossible to reintroduce
+    # quietly -- latch_word_bit_diff.py proves the codec bit gets SET, not
+    # that the value reaching the panel latch agrees with it.
+    pairs = results["mboxfw"]["mono_pairs"]
+    bad = [(m, w) for m, w in pairs if w is None or m != bool(w & 0x40)]
+    if not pairs:
+        fails.append("no mux latch edges seen, so the mono cross-check never "
+                     "ran. A check that cannot fire is not a check.")
+    print(f"    mono at latch vs codec word 0x23.6: "
+          f"{len(pairs)} latches, {len(bad)} disagree")
+    if bad:
+        fails.append(f"the mono line published on the panel chain disagrees with "
+                     f"the codec word's bit 0x23.6 at {len(bad)} latch edges, e.g. "
+                     f"panel={int(bad[0][0])} IRAM 0x23={bad[0][1]}. The two "
+                     f"chains have drifted apart again.")
+    print()
+
+    # ---- the delays ------------------------------------------------------
+    # FINDING_delay_calls_elided.md is the case where SDCC deleted every CALL
+    # SITE of settle_delay() and left the body in the image, so the listing
+    # gave no hint. verify_reachability.py catches the total-deletion case.
+    # It cannot catch a delay that is PRESENT but wrong -- a counter that
+    # shrank, a `volatile` that got dropped from one of two copies. Cycles
+    # between transactions can.
+    #
+    # The bar is deliberately not equality: SDCC's loop and Keil's `DJNZ
+    # 0x2e` do not cost the same, so requiring stock's exact count would
+    # encode the compiler rather than the requirement. What is being defended
+    # is that the gaps did not collapse.
+    my_gaps = [b - a for a, b in zip(results["mboxfw"]["tx_end_clk"],
+                                     results["mboxfw"]["tx_start_clk"][1:])]
+    print(f"Cycles between CS8427 transactions: mboxfw {my_gaps}")
+    stock_gaps = {}
+    for name in STOCK_ENTRY:
+        gaps = [b - a for a, b in zip(results[name]["tx_end_clk"],
+                                      results[name]["tx_start_clk"][1:])]
+        stock_gaps[name] = gaps
+        print(f"                                    {name}  {gaps}")
+    stock_floor = min((min(g) for g in stock_gaps.values() if g), default=None)
+    if my_gaps and stock_floor:
+        # Stock's own shortest gap, and not a fraction of it. The first
+        # version of this used stock_floor // 2 on the reasoning that the bar
+        # should be generous about compiler differences -- and the mutation
+        # that drops `volatile` from settle_delay() (the exact
+        # FINDING_delay_calls_elided.md failure) collapsed mboxfw from 19044
+        # cycles to 3672 and sailed straight under a bar of 2682. A generous
+        # bar calibrated against nothing is not a bar.
+        #
+        # "At least as long as the vendor firmware waits" is a requirement
+        # that can be defended; mboxfw clears it by 3.5x, so the headroom is
+        # real and a drop below it is a regression worth stopping for.
+        bar = stock_floor
+        floor = min(my_gaps)
+        worst = my_gaps.index(floor)
+        print(f"    shortest mboxfw gap {floor}, stock {stock_floor}, bar {bar}")
+        if floor < bar:
+            fails.append(
+                f"a settle delay collapsed to {floor} cycles (after transaction "
+                f"{worst}); the bar is stock's own shortest gap, {bar}. "
+                f"This is the "
+                f"FINDING_delay_calls_elided.md failure mode: the call site is "
+                f"gone or the counter shrank, and the source still reads right.")
+    print()
+
+    for name in STOCK_ENTRY:
+        stock = register_writes(results[name]["transactions"])
         if not stock:
             fails.append(f"{name}: decoded no register writes -- the DECODER is "
                          f"suspect, not mboxfw; do not trust the mboxfw result above")
