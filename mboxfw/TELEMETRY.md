@@ -266,3 +266,29 @@ flash — block 0 byte 0-1 is the only thing that proves which image is running
 rather than assuming, and it has already caught one stale-build mismatch (the
 0x0002-vs-0x0003 case that led to the wildcard header dependency in the
 Makefile).
+
+## Block 10 — CS8427 readback probe (#165)
+
+Runs a CS8427 register read over the SPI control port and reports **which pin
+answered**, rather than assuming one.
+
+    out[i] = P3 sampled after read clock i, MSB of the reply first
+
+CDOUT is a third control-port pin (the TAS drives CCLK on P1.3 and CDIN on
+P1.4). Nothing establishes that it is wired on this board: stock never reads
+the CS8427 at all — its only readback probe, Rev 20 0x04DE-0x04F8, is an EEPROM
+write-verify on the hardware I²C peripheral at 0xFFC0 — so Digidesign had no
+reason to connect it. Guessing a pin would give a number either way, and a
+wrong guess would be indistinguishable from a part that did not answer.
+
+`mboxtlm.py` transposes: bit p across the eight samples is the byte pin P3.p
+produced. The register read is CLOCKSOURCE (0x04), written as 0x40 by
+`cs8427_boot_init()`, so a pin spelling **0x40** is CDOUT and the part is on
+SPI and holding our configuration. 0x40 was chosen over RECVERRMASK (0x11 =
+0xFF) precisely because 0xFF is indistinguishable from a pin stuck high.
+
+Eight identical samples = no pin answered: CDOUT unwired, or the part silent.
+That is a real answer, not a failed guess.
+
+The probe runs **on demand**, never at boot — it clocks a transaction stock
+never performs, so it stays off the path to enumeration.

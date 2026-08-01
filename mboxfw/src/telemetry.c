@@ -7,6 +7,7 @@
 #include "telemetry.h"
 #include "mux.h"
 #include "codec.h"
+#include "cs8427.h"
 
 volatile __data unsigned int  tlm_setup_count = 0;
 volatile __data unsigned int  tlm_iep0_count  = 0;
@@ -254,6 +255,30 @@ unsigned char tlm_read_block(unsigned char index, unsigned char *out)
         out[5] = tlm_mux_sets;
         out[6] = tlm_mux_rejects;
         out[7] = 0;
+        return 1;
+
+    case 10:
+        /* #165 — ask the CS8427 a question and report WHICH PIN answered.
+         *
+         * Reads CLOCKSOURCE (0x04) over the SPI control port. That register is
+         * the best single byte to ask for: bit 6 RUN answers "is the part
+         * running" and the value answers "did our writes land", and the value
+         * we wrote is 0x40 — a pattern distinguishable from a pin stuck high
+         * (0xFF) or low (0x00), which 0x11 = 0xFF would not have been.
+         *
+         * out[i] is P3 sampled after read clock i, MSB of the reply first,
+         * because CDOUT is a third control-port pin and nothing establishes
+         * that it is wired here. The host transposes: if bit p across the
+         * eight samples spells 0x40, pin P3.p is CDOUT and the part is on SPI
+         * and configured. Eight identical samples means no pin answered.
+         *
+         * Deliberately on demand rather than at boot: this drives a CS-framed
+         * transaction the stock firmware never performs, so it happens when a
+         * host asks and not on the path to enumeration. */
+        cs8427_read_probe(0x04);
+        for (i = 0; i < TLM_BLOCK_SIZE; i++) {
+            out[i] = g_cs8427_probe[i];
+        }
         return 1;
 
     default:

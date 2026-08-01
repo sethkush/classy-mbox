@@ -37,6 +37,7 @@
 #include "codec.h"
 
 #define CS8427_ADDR_WRITE   0x20    /* 0010000b chip address + R/W=0 (DS477F5 §9.1) */
+#define CS8427_ADDR_READ    0x21    /* same address, R/W=1 — a read (DS477F5 §9.1) */
 
 /*
  * Rev 20 spins RAM[0x2E] down from 0xFF (`MOV 0x2e,#0xff` / `DJNZ 0x2e,$`) at
@@ -100,6 +101,62 @@ void cs8427_write(unsigned char reg, unsigned char value)
     cs8427_shift_byte(CS8427_ADDR_WRITE);
     cs8427_shift_byte(reg);
     cs8427_shift_byte(value);
+    cs8427_deselect();
+}
+
+/*
+ * #165 — read a register back, WITHOUT assuming which pin carries the answer.
+ *
+ * DS477F5 §9.1: a read is chip address with R/W = 1 (0x21), then the MAP, then
+ * eight more clocks during which the part drives CDOUT. Data is clocked IN on
+ * the rising edge of CCLK and OUT on the FALLING edge, so the reply bit for
+ * clock N is stable after CCLK falls.
+ *
+ * CDOUT is a THIRD control-port pin, and nothing establishes that it is wired
+ * on this board. The TAS drives CCLK on P1.3 and CDIN on P1.4; stock never
+ * reads the part at all (its only readback probe, Rev 20 0x04DE-0x04F8, is an
+ * EEPROM write-verify on the hardware I²C peripheral at 0xFFC0 — see
+ * FINDING_cs8427_is_spi_not_i2c.md), so Digidesign had no reason to connect
+ * CDOUT and may well have left it floating.
+ *
+ * Guessing a pin and reporting one byte would produce a number either way, and
+ * a wrong guess would be indistinguishable from a part that did not answer. So
+ * this reports the WHOLE of P3, sampled once per read clock: out[i] is P3 after
+ * clock i, MSB of the reply first. The host transposes -- bit p of every sample,
+ * in order, is the byte pin p produced, and whichever pin yields the value we
+ * wrote IS CDOUT. The pin identifies itself instead of being assumed.
+ *
+ * The result lands in a module-global __xdata buffer rather than through a
+ * caller-supplied pointer, and the transpose happens on the host. Both are
+ * forced: internal RAM is FULL — the stack starts at 0x47 and DSEG has no
+ * contiguous hole left — so a generic (3-byte) pointer parameter alone was
+ * enough to fail the link with `?ASlink-Error-Could not get 60 consecutive
+ * bytes in internal RAM for area DSEG`. XDATA is nearly empty; use that.
+ *
+ * All samples identical across the eight clocks is the "not wired, or not
+ * answering" answer, and it is a real answer rather than a guess that failed.
+ *
+ * NOVEL — reason: stock never reads the CS8427, so there is no address to
+ * cite. Framing follows DS477F5 §9.1; the sampling is diagnostic scaffolding.
+ */
+__xdata unsigned char g_cs8427_probe[8];
+
+void cs8427_read_probe(unsigned char reg)
+{
+    unsigned char i;
+
+    cs8427_select();
+    cs8427_shift_byte(CS8427_ADDR_READ);
+    cs8427_shift_byte(reg);
+
+    /* Release CDIN high so we are not fighting a part that drives the line. */
+    P1 |= P1_CS8427_SDA_MASK;
+    for (i = 0; i < 8; i++) {
+        P1 |= P1_CS8427_SCL_MASK;
+        P1 &= (unsigned char)~P1_CS8427_SCL_MASK;
+        /* Sample AFTER the falling edge — §9.1 clocks read data out on it. */
+        g_cs8427_probe[i] = P3;
+    }
     cs8427_deselect();
 }
 

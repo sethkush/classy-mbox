@@ -17,7 +17,7 @@
 #define MBOXFW_TELEMETRY_H
 
 #define TLM_BLOCK_SIZE   8
-#define TLM_NUM_BLOCKS   10
+#define TLM_NUM_BLOCKS   11
 
 /* Vendor requests. DEVICE recipient, NOT interface: snd-usb-audio claims
  * the audio interfaces, and an interface-recipient request then fails with
@@ -63,7 +63,8 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0014   /* 0014: CS8427 SPI framing + chip select +
+#define TLM_BUILD_ID     0x0015   /* 0015: block 10 = CS8427 readback probe (#165)
+                                   * 0014: CS8427 SPI framing + chip select +
                                    *       external RESET released + bring-up
                                    *       order fixed (#157/#166/#167), mono
                                    *       moved into the codec word.

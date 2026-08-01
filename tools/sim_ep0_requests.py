@@ -60,7 +60,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from sim_p1_waveform import Sim, ROOT                   # noqa: E402
+from sim_p1_waveform import Sim, ROOT, decode           # noqa: E402
 
 SETPACK      = 0xFF28       # bmRequestType, bRequest, wValueL/H, wIndexL/H, wLengthL/H
 VECINT       = 0xFFB2
@@ -88,6 +88,10 @@ REQUESTS = [
     # bRequest 0x0C is not a defined standard request. STALL is the
     # spec-correct answer and usb.c says so at the default case.
     ("undefined bRequest 0x0C", setup(0x80, 0x0C, 0,     0,  2), STALL),
+    # #165. Block 10 runs a CS8427 READ over the SPI control port -- novel
+    # code with no stock address to cite, so it gets executed before it is
+    # ever flashed rather than after.
+    ("telemetry read block 10", setup(0xC0, 0x10, 10,     0,  8), ARMED),
 ]
 
 
@@ -318,6 +322,44 @@ def run_session(ihx, steps, entry, ret_to, settle_bp):
     return results
 
 
+def trace_request_p1(ihx, packet, entry, ret_to, settle_bp):
+    """Deliver a request and capture the P1 waveform it produces.
+
+    #165's read is the first code in this firmware that clocks the CS8427
+    control port in a direction stock never used, so "it returned 8 bytes" is
+    not enough -- the framing has to be right too. Breaking on writes to P1
+    for the duration of one request, and decoding the result with the same
+    decoder sim_p1_waveform.py validates against both stock images, checks
+    the transaction the part would actually see.
+    """
+    sim = Ep0Sim(ihx)
+    sim.cmd(f"break {settle_bp}")
+    sim.run_to_stop()
+    sim.cmd("delete 0")
+
+    sim.deliver(packet)
+    sp = sim.peek_sfr(0x81)
+    sim.cmd(f"fill iram 0x{sp + 1:02x} 0x{sp + 1:02x} 0x{ret_to & 0xFF:02x}")
+    sim.cmd(f"fill iram 0x{sp + 2:02x} 0x{sp + 2:02x} 0x{(ret_to >> 8) & 0xFF:02x}")
+    sim.cmd(f"fill sfr 0x81 0x81 0x{sp + 2:02x}")
+
+    sim.cmd("break sfr w 0x90")
+    sim.cmd(f"break 0x{ret_to:04X}")
+    sim.cmd(f"pc 0x{entry:04X}")
+
+    samples = [sim.read_p1()]
+    for _ in range(20000):
+        pc = sim.run_to_stop()
+        if pc is None or pc == ret_to:
+            break
+        v = sim.read_p1()
+        if v is None:
+            break
+        samples.append(v)
+    sim.close()
+    return samples
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--verbose", action="store_true")
@@ -408,6 +450,33 @@ def main():
             f"{len(data)} bytes vs {len(want)}, first difference at offset "
             f"{first}. The bytes the firmware ships across packet boundaries "
             f"are not the descriptor it holds.")
+    print()
+
+    # ---- #165: the framing of the CS8427 read, before it is flashed ----
+    samples = trace_request_p1(ihx, setup(0xC0, 0x10, 10, 0, 8), service,
+                               ret_to=loop, settle_bp=f"0x{loop:04X}")
+    r = decode(samples)
+    data_tx = [(by, n) for by, n in r["transactions"] if n]
+    print(f"  #165 CS8427 read framing: {len(samples)} P1 writes, "
+          f"{len(r['transactions'])} CS-low periods")
+    for by, n in r["transactions"]:
+        print("      " + (f"select pulse, {n} clocks" if not by else
+              f"{n:3d} clocks  " + " ".join(f"{b:02X}" for b in by)))
+    if not data_tx:
+        fails.append("#165: the block-10 read clocked no CS-framed transaction "
+                     "at all -- the probe never reached the control port.")
+    else:
+        by, n = data_tx[0]
+        if n != 24:
+            fails.append(f"#165: the read is {n} clocks, not 24. DS477F5 s9.1 "
+                         f"is address + MAP + eight read clocks.")
+        if by[0] != 0x21:
+            fails.append(f"#165: the read opens with 0x{by[0]:02X}, not 0x21. "
+                         f"Bit 0 is the R/W bit and it must be SET for a read; "
+                         f"0x20 would be a write and would clobber the register.")
+        if len(by) > 1 and by[1] != 0x04:
+            fails.append(f"#165: the MAP byte is 0x{by[1]:02X}, not 0x04 "
+                         f"(CLOCKSOURCE) -- the wrong register is being read.")
     print()
 
     # ---- the abandoned-transfer regression ----

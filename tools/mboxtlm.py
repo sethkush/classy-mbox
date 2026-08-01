@@ -68,7 +68,7 @@ REQ_IN = 0xC0              # vendor | device-to-host | device
 REQ_OUT = 0x40             # vendor | host-to-device | device
 
 BLOCK_SIZE = 8
-NUM_BLOCKS = 10
+NUM_BLOCKS = 11
 
 # The three one-cold source patterns, from the stock cycle handlers (Rev 20
 # fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). The firmware
@@ -353,9 +353,49 @@ def block9(b):
     return out
 
 
+def block10(b):
+    """#165 — the CS8427 readback probe, transposed here rather than on the 8051.
+
+    b[i] is P3 sampled after read clock i, MSB of the reply first. The firmware
+    does not know which pin CDOUT is on -- nothing establishes that it is wired
+    at all -- so it reports the whole port and lets the pin identify itself.
+
+    Bit p across the eight samples is the byte pin P3.p produced. We wrote
+    CLOCKSOURCE = 0x40 (RUN set), so a pin reading 0x40 IS CDOUT, and the part
+    is on SPI and holding our configuration.
+    """
+    out = ["raw P3 samples: " + " ".join("%02x" % x for x in b)]
+    if len(set(b)) == 1:
+        out.append("every sample identical (0x%02x) -- NO PIN ANSWERED." % b[0])
+        out.append("  CDOUT is not wired to P3, or the part is not driving it.")
+        out.append("  This is a real answer, not a failed guess: see")
+        out.append("  FINDING_ep0_request_harness.md and cs8427.c.")
+        return out
+    hits = []
+    for pin in range(8):
+        val = 0
+        for s in b:
+            val = ((val << 1) | ((s >> pin) & 1)) & 0xFF
+        note = ""
+        if val == 0x40:
+            note = "  <== CLOCKSOURCE = 0x40, RUN set: THIS IS CDOUT"
+            hits.append(pin)
+        elif val in (0x00, 0xFF):
+            note = "  (stuck %s)" % ("low" if val == 0 else "high")
+        out.append("  P3.%d -> 0x%02x%s" % (pin, val, note))
+    if hits:
+        out.append("CS8427 answered on P3.%s. It is on SPI and configured."
+                   % ",".join(str(h) for h in hits))
+    else:
+        out.append("no pin spelled 0x40. The part did not return CLOCKSOURCE;")
+        out.append("  compare against what cs8427_boot_init() wrote before")
+        out.append("  concluding the mode is wrong.")
+    return out
+
+
 DECODERS = {0: block0, 1: block1, 2: block2, 3: block3,
             4: block4, 5: block5, 6: block6, 7: block7,
-            8: block8, 9: block9}
+            8: block8, 9: block9, 10: block10}
 
 TITLES = {
     0: "identity and liveness",
@@ -368,6 +408,7 @@ TITLES = {
     7: "EP0 buffer counts + suspend tally",
     8: "boot-ROM handoff snapshot",
     9: "panel state (selected source)",
+    10: "CS8427 readback probe (#165) -- which pin answered",
 }
 
 
