@@ -457,3 +457,38 @@ image emits, not what the parts receive. Nothing on the far side of P1 is
 modelled: no CS8427, no codec, no acknowledgement. #165 (read a CS8427 register
 back over telemetry) remains the first evidence that any of this reaches
 silicon, and no amount of further simulation substitutes for it.
+
+## 7. The blind spot inside §6 — executed, but never asked a question
+
+Added 2026-07-31, hours after §6, in answer to the same question asked a fourth
+time. §6 closed "every gate is static" and then concluded the queue was
+hardware-bound, *because the USB engine is not modelled*. That conclusion was
+wrong, and wrong in the way this document exists to catch.
+
+**The peripheral not being modelled is not the same claim as the firmware path
+not being executable.** The SIE and the UBM are absent from ucSim. But the
+request handling is ordinary 8051 code reading a SETUP packet out of XDATA at
+0xFF28, and ucSim models XDATA as plain RAM. What was missing was never the
+model. It was the **stimulus**.
+
+Both executed checks at that point — `sim_smoke.sh` and `sim_p1_waveform.py` —
+drive the boot path with **no input at all**. One asks whether the main loop is
+reached; the other asks what the pins do while starting up. Nothing had ever
+handed the firmware a request, so nothing had ever confirmed it answers one.
+
+Closed by `tools/sim_ep0_requests.py` (gate 30). On its first run mboxfw staged
+its device and config descriptors byte-for-byte against the ROM table, returned
+`00 00` to GET_STATUS, returned `TLM_BUILD_ID` 0x0014 to a telemetry read, and
+STALLed an undefined bRequest. See `FINDING_ep0_request_harness.md`.
+
+**The pattern across §1, §4a, §5, §5a, §6 and now §7.** Every one of these was a
+gap in what the instrument could *see*, and each was closed by widening the
+instrument. §7 is the first that was a gap in what the instrument was *asked* —
+the capability existed, unused, behind a plausible-sounding reason not to try.
+"X is not modelled" deserves the same treatment this project already gives
+"stock does it": a reason to investigate, never on its own a conclusion.
+
+**Still unmeasured after this.** Everything past the firmware's own reply. No
+SIE, no UBM, no wire, no timing, nothing on the far side of P1. #165 remains the
+first evidence that any of it reaches silicon — but the protocol carrying that
+answer can now be debugged before it is flashed rather than after.

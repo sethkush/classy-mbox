@@ -99,6 +99,11 @@ else
     # Validated by decoding Rev 20 and Rev 22 the same way and requiring the
     # same answer. FINDING_bringup_waveform.md.
     check "P1 waveform vs stock (executed)"     python3 tools/sim_p1_waveform.py
+    # Everything above drives the firmware with NO INPUT. This delivers a
+    # SETUP packet to XDATA 0xFF28, sets VECINT, and reads back what gets
+    # staged -- descriptors, GET_STATUS, the telemetry protocol, and the
+    # STALL on an unsupported request. FINDING_ep0_request_harness.md.
+    check "EP0 answers requests (executed)"     python3 tools/sim_ep0_requests.py
     check "verify_setup_paths"        python3 tools/verify_setup_paths.py
     check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
     check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py
