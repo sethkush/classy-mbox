@@ -121,8 +121,13 @@ Do not proceed with a flash without explicitly stating each of:
 1. **Changed since last flash:** a bullet list of every source
    modification since the last successful flash of the same target.
 2. **Unknowns:** what we haven't tested, verified, or understood.
-3. **Rollback plan:** what to do if the flash bricks. Includes
-   which backup image restores what.
+3. **Rollback plan:** what to do if the flash bricks. Names a restore
+   image that the flasher **validates**, not one that merely exists.
+   The stock payloads `firmware_stock/rev20_flasher_payload.bin` and
+   `rev22_flasher_payload.bin` are the restore path; both have been
+   written to this unit successfully. Per-flash device dumps were
+   dropped deliberately — the stock payloads restore the device, so a
+   backup adds nothing. `preflight.sh` §3 validates each candidate.
 4. **Recovery paths active in the flashed firmware:** class-request
    DFU, button-hold DFU, safety net (yes/no).
 

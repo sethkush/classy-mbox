@@ -172,9 +172,38 @@ read -r -p "  → List each (or 'none'): " unknowns
 
 echo
 echo "  3. ROLLBACK PLAN"
-echo "     Available restore images in backups/:"
-ls -la backups/*.bin 2>/dev/null | awk '{print "       " $NF, "(" $5 " bytes)"}' | head -5
-echo "     Recovery: mboxflash --enter-dfu → mboxflash --flash <backup>"
+# This used to `ls backups/` and print whatever was there. On 2026-08-02 that
+# was three files: two byte-identical copies of firmware_stock/
+# rev20_flasher_payload.bin (not device dumps at all), and one 8 KB dump taken
+# after the header checksum was broken to reach DFU, which the flasher
+# REJECTS. So the checklist was asking you to confirm a restore path backed by
+# images that could not restore anything.
+#
+# The restore path is the stock payloads, which have both been written to this
+# unit successfully. Every candidate below is validated here rather than
+# listed, so an unflashable image can never appear as a rollback option again.
+echo "     Restore images (validated now, not just present):"
+found=0
+for cand in firmware_stock/rev20_flasher_payload.bin \
+            firmware_stock/rev22_flasher_payload.bin \
+            backups/*.bin; do
+    [[ -f "$cand" ]] || continue
+    if ./mboxflash/mboxflash --validate "$cand" >/dev/null 2>&1; then
+        printf "       %sok%s   %s (%s bytes)\n" \
+            "$GREEN" "$NORMAL" "$cand" "$(wc -c < "$cand" | tr -d ' ')"
+        found=$((found+1))
+    else
+        printf "       %sNO%s   %s — the flasher rejects this; NOT a rollback option\n" \
+            "$RED" "$NORMAL" "$cand"
+    fi
+done
+if (( found == 0 )); then
+    printf "     %sNo image in this tree validates. There is no rollback path.%s\n" \
+        "$RED" "$NORMAL"
+    echo "     Do not flash."
+    exit 3
+fi
+echo "     Recovery: mboxflash --enter-dfu → mboxflash --flash <image above>"
 echo "     If --enter-dfu fails: hold source-1 during replug (button DFU)."
 echo "     If both fail: physical SDA short (see recovery notes)."
 read -r -p "  → Rollback plan is understood? [yes/no] " ans
