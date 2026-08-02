@@ -104,6 +104,12 @@ else
     # staged -- descriptors, GET_STATUS, the telemetry protocol, and the
     # STALL on an unsupported request. FINDING_ep0_request_harness.md.
     check "EP0 answers requests (executed)"     python3 tools/sim_ep0_requests.py
+    # The gate above checks mboxfw against expectations we wrote. This checks
+    # it against safety_net -- the one image in this tree whose USB behaviour
+    # is confirmed on the real device (it enumerated, bcdDevice 0xDEAD on the
+    # bus). Same SETUP packets, both images, diffed.
+    # FINDING_differential_vs_safety_net.md.
+    check "EP0 vs the image that enumerated"    python3 tools/sim_ep0_diff.py
     check "verify_setup_paths"        python3 tools/verify_setup_paths.py
     check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
     check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py
