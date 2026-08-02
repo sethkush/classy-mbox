@@ -110,6 +110,13 @@ else
     # bus). Same SETUP packets, both images, diffed.
     # FINDING_differential_vs_safety_net.md.
     check "EP0 vs the image that enumerated"    python3 tools/sim_ep0_diff.py
+    # Every gate above executes the FIRMWARE. This is the only one that
+    # executes the HOST side: it reads all 11 telemetry blocks out of the
+    # running image and decodes them with mboxtlm.py, the tool that will read
+    # them on the bench. Until it existed, ~570 lines of decoder had never
+    # seen a byte, and a retired second reader was 6 blocks behind the
+    # firmware. FINDING_telemetry_roundtrip.md.
+    check "telemetry round-trip (fw -> host tool)" python3 tools/sim_telemetry_roundtrip.py
     check "verify_setup_paths"        python3 tools/verify_setup_paths.py
     check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
     check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py

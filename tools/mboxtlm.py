@@ -439,7 +439,16 @@ def show(index, b, raw=False):
     print("block %d -- %s" % (index, TITLES.get(index, "?")))
     if raw or index not in DECODERS:
         print("  raw: %s" % " ".join("%02x" % x for x in b))
-    if all(x == 0xFF for x in b):
+    # The firmware answers an out-of-range block with eight 0xFF bytes. That
+    # sentinel is only meaningful for an index it does not serve: for a block
+    # it DOES serve, all-0xFF is data. Block 10 is the live case -- eight
+    # samples of an undriven P3 read 0xFF, and whether CDOUT is wired to P3 at
+    # all is not yet tested -- which is exactly the outcome that decoder is
+    # written to explain.
+    # Treating it as "unknown block index" reported the measurement as a tool
+    # error and made that decoder unreachable. Caught by
+    # sim_telemetry_roundtrip.py.
+    if all(x == 0xFF for x in b) and index >= NUM_BLOCKS:
         print("  (all 0xFF -- unknown block index sentinel)")
         return
     if index in DECODERS:
@@ -478,6 +487,37 @@ def cmd_reset(dev, _args):
     dev.ctrl_transfer(REQ_OUT, TLM_REQ_RESET, 0, 0, None, 2000)
     print("per-experiment counters cleared "
           "(stage/phases/loop_count/peripheral results are kept by design)")
+
+
+def cmd_ep0test(dev, args):
+    """Cross-check the device's own chunk counter against host-visible success.
+
+    For an N-packet reply the device pushes N chunks per successful transfer;
+    a shortfall means it stopped being asked, which is a lost interrupt rather
+    than a host-side timeout. Host-visible success alone cannot separate those
+    two, which is the whole reason block 1 exists.
+
+    Ported from the retired tools/mbox_telemetry.py, which read only the first
+    5 of the 11 blocks and so silently reported nothing from block 5 on.
+    """
+    print("%-28s %-6s %-9s %s"
+          % ("transfer", "pkts", "host ok", "device chunks"))
+    for label, wv, wlen, pk in [("DEVICE  wLen=8", 0x0100, 8, 1),
+                                ("DEVICE  wLen=18", 0x0100, 18, 3),
+                                ("CONFIG  wLen=64", 0x0200, 64, 8)]:
+        dev.ctrl_transfer(REQ_OUT, TLM_REQ_RESET, 0, 0, None, 2000)
+        ok = 0
+        for _ in range(args.trials):
+            try:
+                dev.ctrl_transfer(0x80, 0x06, wv, 0, wlen, 400)
+                ok += 1
+            except Exception:
+                pass
+        chunks = u16(read_block(dev, 1), 4)
+        expect = ok * pk
+        flag = "" if chunks >= expect else "   <-- SHORTFALL, packets lost"
+        print("%-28s %-6d %2d/%-6d %d (expect >= %d)%s"
+              % (label, pk, ok, args.trials, chunks, expect, flag))
 
 
 def cmd_setmux(dev, args):
@@ -524,6 +564,9 @@ def main():
     sp.add_argument("-n", "--count", type=int, default=10)
     sp.add_argument("-i", "--interval", type=float, default=0.5)
     sub.add_parser("reset", parents=[common], help="clear the per-experiment counters")
+    sp = sub.add_parser("ep0test", parents=[common],
+                        help="measure EP0 continuation loss against block 1")
+    sp.add_argument("-n", "--trials", type=int, default=40)
     sp = sub.add_parser("setmux", parents=[common],
                         help="select the input source on both channels")
     sp.add_argument("ch1", choices=sorted(SOURCES), help="channel 1 source")
@@ -535,6 +578,7 @@ def main():
     print("# %04x:%04x audio mode\n" % (MBOX_VID, pid))
     {"all": cmd_all, "read": cmd_read, "raw": cmd_raw,
      "watch": cmd_watch, "reset": cmd_reset,
+     "ep0test": cmd_ep0test,
      "setmux": cmd_setmux}[args.cmd](dev, args)
 
 

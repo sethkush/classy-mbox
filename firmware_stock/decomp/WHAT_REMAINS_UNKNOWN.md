@@ -492,3 +492,45 @@ the capability existed, unused, behind a plausible-sounding reason not to try.
 SIE, no UBM, no wire, no timing, nothing on the far side of P1. #165 remains the
 first evidence that any of it reaches silicon — but the protocol carrying that
 answer can now be debugged before it is flashed rather than after.
+
+## 8. The blind spot inside §7 — the firmware was executed; the reader never was
+
+Added 2026-08-02, in answer to the same question asked a sixth time. §7 closed
+"the instrument was never asked a question" and then, twice over, scoped the
+remaining work to *ask more images the same question* — first stock's vacuous
+arm, then `safety_net`, then `sigkill`/`ramflash`/`ramloader`. Same error each
+time, at a smaller radius: the answer stayed inside the category the previous
+answer had established.
+
+Every executed gate in this tree runs the **firmware**. Nothing runs the
+**host**. `mboxtlm.py` — ~570 lines whose whole job is turning eight bytes into
+the sentence a human acts on — had never seen a byte of input, on hardware or
+off. The firmware writes fields at offsets in `telemetry.c`; the host reads
+fields at offsets in `mboxtlm.py`; the seam between them had no gate on either
+side.
+
+Closed by `tools/sim_telemetry_roundtrip.py` (gate 32). It reads all 11 blocks
+out of the running image over EP0 — building the request from mboxtlm's own
+constants — and decodes each through `tlm.show()`, the function that runs on the
+bench. Two defects fell out immediately, both of which would have cost a power
+cycle:
+
+- `tools/mbox_telemetry.py`, an unreferenced but current-looking second reader
+  (touched 2026-07-28), read `range(5)` blocks of 11. Retired; its `--ep0-test`
+  is now `mboxtlm.py ep0test`.
+- `show()` treated all-`0xFF` as the unknown-block sentinel for *every* index,
+  so block 10's decoder was unreachable for an all-`0xFF` reading — CDOUT not
+  wired to P3, which is not yet tested, leaves every sample `0xFF`. The measurement would have
+  printed as a tool error. The sentinel now applies only past `NUM_BLOCKS`.
+
+See `FINDING_telemetry_roundtrip.md`.
+
+**The pattern, restated.** §1, §4a, §5, §5a and §6 were gaps in what the
+instrument could *see*. §7 was a gap in what it was *asked*. §8 is a gap in
+**which side of the wire was ever instrumented at all** — an entire category
+that five rounds of "what else can be done unplugged" walked past, because each
+answer searched the category the previous answer had defined.
+
+**Still unexecuted after this.** `mboxflash_linux.py`'s DFU block protocol and
+the macOS `mboxflash` binary — this gate reads their constants and nothing more.
+The boot-ROM DFU path end to end. `sigkill`, `ramflash`, `ramloader`.
