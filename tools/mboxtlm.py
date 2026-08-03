@@ -70,6 +70,21 @@ REQ_OUT = 0x40             # vendor | host-to-device | device
 BLOCK_SIZE = 8
 NUM_BLOCKS = 11
 
+# The build in which each block FIRST EXISTED, read off the TLM_NUM_BLOCKS
+# bumps in telemetry.h's history. A device running an older build answers a
+# later block with the out-of-range sentinel, which for block 10 is
+# byte-identical to a real reading -- so this table, checked against the build
+# id in block 0, is the only thing that tells a measurement from a sentinel.
+# Verified against the header history by sim_telemetry_roundtrip.py.
+BLOCK_FIRST_BUILD = {
+    0: 0x0000, 1: 0x0000, 2: 0x0000, 3: 0x0000, 4: 0x0000, 5: 0x0000,
+    6: 0x0006,   # NUM_BLOCKS 6 -> 7
+    7: 0x000C,   # NUM_BLOCKS 7 -> 8
+    8: 0x0010,   # NUM_BLOCKS 8 -> 9
+    9: 0x0013,   # NUM_BLOCKS 9 -> 10
+    10: 0x0015,  # NUM_BLOCKS 10 -> 11
+}
+
 # The three one-cold source patterns, from the stock cycle handlers (Rev 20
 # fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). The firmware
 # rejects anything else, so the same names are the tool's vocabulary.
@@ -435,22 +450,54 @@ def read_block(dev, index, timeout=2000):
     return bytes(data)
 
 
-def show(index, b, raw=False):
+def show(index, b, raw=False, device_build=None):
+    """Print one block, decoded -- but only if the DEVICE serves it.
+
+    The firmware answers an out-of-range block index with eight 0xFF bytes,
+    and block 10's legitimate "no pin answered" reading is also eight 0xFF
+    bytes. Those are indistinguishable on the wire, so the disambiguation has
+    to come from somewhere else: which build is running.
+
+    Two wrong versions of this preceded the current one, and both produced a
+    confident false reading rather than an error:
+
+      1. Originally, ANY all-0xFF reply printed the sentinel. That made block
+         10's decoder unreachable for its no-pin-answered result.
+      2. The fix for (1) keyed on `index >= NUM_BLOCKS` -- the HOST's block
+         count. Run against build 0x0011 on 2026-08-03 that decoded the
+         sentinel for blocks 9 and 10 as data, and reported "NO PIN
+         ANSWERED. CDOUT is not wired to P3" from a build with no CS8427
+         probe compiled into it. The host's block count says nothing about
+         the device's.
+
+    The device's build id (block 0) against BLOCK_FIRST_BUILD is the only
+    thing that actually answers the question, so that is what this uses.
+    Callers pass device_build; without it, an all-0xFF reply is reported as
+    ambiguous rather than guessed at.
+    """
     print("block %d -- %s" % (index, TITLES.get(index, "?")))
     if raw or index not in DECODERS:
         print("  raw: %s" % " ".join("%02x" % x for x in b))
-    # The firmware answers an out-of-range block with eight 0xFF bytes. That
-    # sentinel is only meaningful for an index it does not serve: for a block
-    # it DOES serve, all-0xFF is data. Block 10 is the live case -- eight
-    # samples of an undriven P3 read 0xFF, and whether CDOUT is wired to P3 at
-    # all is not yet tested -- which is exactly the outcome that decoder is
-    # written to explain.
-    # Treating it as "unknown block index" reported the measurement as a tool
-    # error and made that decoder unreachable. Caught by
-    # sim_telemetry_roundtrip.py.
-    if all(x == 0xFF for x in b) and index >= NUM_BLOCKS:
-        print("  (all 0xFF -- unknown block index sentinel)")
+
+    need = BLOCK_FIRST_BUILD.get(index)
+    if device_build is not None and need is not None and device_build < need:
+        print("  NOT SERVED BY THIS BUILD -- block %d arrived in build 0x%04X "
+              "and the device is running 0x%04X." % (index, need, device_build))
+        print("  The eight bytes above are the out-of-range sentinel, not a "
+              "measurement. Flash a newer build to read this block.")
         return
+
+    if all(x == 0xFF for x in b):
+        if device_build is None:
+            print("  all 0xFF -- AMBIGUOUS. This is either the out-of-range "
+                  "sentinel or a genuine all-ones reading; block 0's build id "
+                  "is what separates them, and it was not read.")
+            return
+        if need is None:
+            print("  (all 0xFF -- unknown block index sentinel)")
+            return
+        # Served by this build, so all-0xFF is data. Fall through and decode.
+
     if index in DECODERS:
         for line in DECODERS[index](b):
             print("  " + line)
@@ -458,14 +505,32 @@ def show(index, b, raw=False):
 
 # ----------------------------------------------------------------- subcommands
 
+def device_build(dev):
+    """The build id the DEVICE reports, from block 0. One 8-byte EP0 read.
+
+    Every path that decodes a block needs this: without it an all-0xFF reply
+    cannot be told from the out-of-range sentinel. Block 0 has existed in
+    every build, so this read is always meaningful.
+    """
+    return u16(read_block(dev, 0), 0)
+
+
 def cmd_all(dev, args):
+    build = device_build(dev)
+    served = max(i for i, v in BLOCK_FIRST_BUILD.items() if v <= build)
+    if served < NUM_BLOCKS - 1:
+        print("# device build 0x%04X serves blocks 0..%d; this tool knows "
+              "0..%d. The rest are sentinels, not measurements."
+              % (build, served, NUM_BLOCKS - 1))
+        print()
     for i in range(NUM_BLOCKS):
-        show(i, read_block(dev, i), args.raw)
+        show(i, read_block(dev, i), args.raw, device_build=build)
         print()
 
 
 def cmd_read(dev, args):
-    show(args.block, read_block(dev, args.block), args.raw)
+    show(args.block, read_block(dev, args.block), args.raw,
+         device_build=device_build(dev))
 
 
 def cmd_raw(dev, args):
@@ -474,6 +539,12 @@ def cmd_raw(dev, args):
 
 
 def cmd_watch(dev, args):
+    build = device_build(dev)
+    need = BLOCK_FIRST_BUILD.get(args.block)
+    if need is not None and build < need:
+        sys.exit("block %d arrived in build 0x%04X and the device runs 0x%04X. "
+                 "Watching it would poll the out-of-range sentinel."
+                 % (args.block, need, build))
     for i in range(args.count):
         b = read_block(dev, args.block)
         print("[%2d] %s" % (i, " ".join("%02x" % x for x in b)))
@@ -537,7 +608,7 @@ def cmd_setmux(dev, args):
     # A stall raises, but a request that is accepted and then does not take
     # would otherwise look identical to one that worked.
     print()
-    show(9, read_block(dev, 9), args.raw)
+    show(9, read_block(dev, 9), args.raw, device_build=device_build(dev))
 
 
 def main():

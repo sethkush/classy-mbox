@@ -152,6 +152,38 @@ def main():
     print(f"  decoders          {len(have)} for {nblocks} served blocks   "
           f"{'ok' if have == want else 'MISMATCH'}")
 
+    # BLOCK_FIRST_BUILD is what separates "this block reads all-0xFF" from
+    # "this build does not serve this block" -- byte-identical on the wire.
+    # A device running 0x0011 reported "NO PIN ANSWERED. CDOUT is not wired"
+    # for block 10 on 2026-08-03 because the host guessed from its own block
+    # count instead. The newest block must be gated on the CURRENT build id,
+    # or the next block added inherits a stale gate and reads as served on
+    # every older device.
+    first = getattr(tlm, "BLOCK_FIRST_BUILD", {})
+    if set(first) != want:
+        fails.append(
+            f"BLOCK_FIRST_BUILD covers {sorted(first)} but the firmware "
+            f"serves {sorted(want)}. A block with no entry cannot be told "
+            f"from the out-of-range sentinel on any older build.")
+    else:
+        newest = first[nblocks - 1]
+        cur = hdr.get("TLM_BUILD_ID")
+        if cur is not None and newest != cur:
+            fails.append(
+                f"block {nblocks - 1} is the newest block and "
+                f"BLOCK_FIRST_BUILD says it arrived in 0x{newest:04X}, but "
+                f"TLM_BUILD_ID is 0x{cur:04X}. Bumping TLM_NUM_BLOCKS without "
+                f"recording the build that did it makes the new block read as "
+                f"served on devices that do not have it.")
+        if sorted(first.values()) != list(first.values()):
+            fails.append(
+                "BLOCK_FIRST_BUILD is not monotonic in block index; blocks "
+                "are only ever appended, so a later block cannot predate an "
+                "earlier one.")
+    print(f"  block-origin map  newest block 0x{first.get(nblocks - 1, 0):04X} "
+          f"vs TLM_BUILD_ID 0x{hdr.get('TLM_BUILD_ID', 0):04X}   "
+          f"{'ok' if first.get(nblocks - 1) == hdr.get('TLM_BUILD_ID') else 'MISMATCH'}")
+
     # mboxtlm.py's comment claims this is kept in step with the flasher.
     # It also legitimately includes 0x1000 (the quirked default PID, where
     # EP0 telemetry works but snd-usb-audio never binds), so the invariant
