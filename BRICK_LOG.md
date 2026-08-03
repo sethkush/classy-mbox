@@ -11,6 +11,59 @@ known-good image.
 
 ## Entries (newest first)
 
+### 2026-08-03 — Flash #3 — 6448-byte image into 6016 bytes of program RAM
+
+**Symptom:** Mbox A flashed cleanly from `ffff:fffe` — 202/202 blocks, DFU
+manifest reached — then came up silent on USB after a real power cycle. LEDs
+lit, hub reports `power` with no `connect` bit: powered, never asserts the D+
+pullup. Button-hold DFU produced nothing either. No software route back in.
+
+**Root cause: the image is larger than the part's program RAM.** The TAS1020B
+has **6016 bytes (0x1780)** of program RAM — datasheet features list and §1
+overview, stated twice, recorded in `ramloader/DESIGN.md` "Verified
+constraints". The boot ROM copies the EEPROM payload into that RAM and runs it
+there. The flashed image was **6448 bytes — 432 over**. It was written to
+EEPROM correctly and the header is valid; what runs is truncated, so execution
+never reaches `usb_attach()` (main.c:297) and CONN is never set.
+
+**How the guard came off.** On 2026-07-30 both `mboxfw/Makefile`
+(`--code-size 0x1780 -> 0x1C00`) and `tools/check_code_size.py`
+(`6144 -> 7168`) were raised, justified by: *"Rev 20 uses 8174 bytes — nearly
+full EEPROM… so 6144 was never a hardware constraint."*
+
+That premise is false. 8174 is the FF-padded EEPROM region, not code. Stock
+Rev 20's last non-0xFF byte is at **0x103E — 4159 bytes** of real content;
+Rev 22 is 4150. Both sit ~1850 bytes UNDER 6016. Padding was read as code, the
+hardware limit was declared imaginary, and the guard was removed.
+
+`ramloader/DESIGN.md` had predicted this exact failure while the build was
+3399 B, under the heading "Latent bug this exposes":
+
+> both link with `--code-size 0x1F00` against 6016 bytes of real RAM …
+> **the linker will happily produce an image that cannot exist.**
+
+`safety_net/Makefile` was never raised and still links at 0x1780, which is why
+safety_net remains flashable and is the recovery image.
+
+**What the gates did.** All 32 passed, including `check_code_size.py`, because
+its budget had been raised past the hardware. The POLICY §6 checklist was
+recited in full and named the risk as "six untested hardware changes" — the
+actual risk was that the image could not run at all. Every executed gate runs
+the image in a simulator with no program-RAM bound, so none could see it.
+
+**Fixes (2026-08-03):**
+- `mboxfw/Makefile` `--code-size` back to `0x1780`. The build now hard-errors:
+  `?ASlink-Error-Insufficient ROM/EPROM/FLASH memory`.
+- `tools/check_code_size.py` budget back to 6016, named `PROGRAM_RAM`, with
+  `EEPROM_MAX` kept separate so the two limits cannot be confused again.
+  Verified: it rejects the exact image that bricked A, `6448 > 6016`.
+
+**Recovery:** SDA short -> `DFU_TARGET_RAM` -> download `ramflash`, remove the
+short before the launching bus reset, let it write EEPROM with its own
+bit-banged I2C. Or flash safety_net (1716 B) / rev20 stock (4159 B) once any
+DFU is reachable. Both fit program RAM with room to spare.
+
+
 ### 2026-07-25 — Rev 20 finally flashes cleanly. Multi-fault session, three real bugs found.
 
 **Presenting symptom (start of session):** flashing safety_net or
@@ -310,6 +363,12 @@ fails before flash.
 ---
 
 ## Search index
+
+- "silent USB after a clean flash, LEDs on, hub shows power but no connect"
+  -> flash #3 (image larger than the 6016-byte program RAM)
+- "all gates passed and it still bricked" -> flash #3 (check_code_size budget
+  had been raised past the hardware limit)
+- "8174 bytes" -> that is FF padding; stock Rev 20 is 4159 bytes of real code
 
 Symptom keywords → likely entries (grep-friendly):
 

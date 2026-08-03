@@ -17,14 +17,30 @@ EXTRA_CFLAGS += -DCANARY_LED
 endif
 
 CFLAGS  = $(if $(MBOX_PID),-DMBOX_PID=$(MBOX_PID)) -mmcs51 --model-small --std-c99 --opt-code-size $(INC)
-# --code-size raised 0x1780 -> 0x1C00 (6016 -> 7168) on 2026-07-30. 0x1780 was
-# a margin, never a hardware limit: the 24C64 holds 8192 bytes and an 18-byte
-# header, so the real payload ceiling is 8174 -- which is exactly what stock
-# Rev 20 occupies. The build hit the old ceiling with 61 bytes to spare while
-# adding the host mux control, and a self-imposed limit that blocks diagnostic
-# code is costing more than it protects. 7168 keeps 1006 bytes under the hard
-# ceiling. tools/check_code_size.py carries the matching budget.
-LDFLAGS = -mmcs51 --model-small --code-size 0x1C00 --xram-size 0x1000
+# --code-size REVERTED 0x1C00 -> 0x1780 (7168 -> 6016) on 2026-08-03, after an
+# image built against the raised value bricked Mbox A.
+#
+# 0x1780 IS A HARDWARE LIMIT. The TAS1020B has 6016 bytes (0x1780) of program
+# RAM -- TAS1020B datasheet, features list and §1 overview, stated twice; see
+# ramloader/DESIGN.md "Verified constraints". The boot ROM copies the EEPROM
+# payload into that RAM and runs it there. An image larger than 6016 bytes
+# cannot exist on this part, however much EEPROM is behind it.
+#
+# The 2026-07-30 raise argued the limit was imaginary because "stock Rev 20
+# occupies 8174 bytes -- nearly the full EEPROM". That is padding, not code.
+# Stock Rev 20's last non-0xFF byte is at 0x103E: 4159 bytes of real content,
+# and Rev 22 is 4150. Both sit ~1850 bytes UNDER 6016. The 8174 figure is the
+# FF-filled EEPROM region, and reading it as code is what removed the guard.
+#
+# ramloader/DESIGN.md predicted this exact failure while the build was 3399 B:
+# "the linker will happily produce an image that cannot exist." On 2026-08-03
+# mboxfw reached 6448 bytes, passed every gate, flashed cleanly, reached DFU
+# manifest -- and came up silent on USB, because 432 bytes of it had nowhere
+# to live. See BRICK_LOG.md.
+#
+# safety_net/Makefile was never raised and still links at 0x1780. That is why
+# it remains flashable and is the recovery image.
+LDFLAGS = -mmcs51 --model-small --code-size 0x1780 --xram-size 0x1000
 
 SRCS = src/main.c src/hw_init.c src/mux.c src/cs8427.c src/codec.c src/buttons.c src/usb.c src/descriptors.c src/streaming.c src/isr.c src/eeprom.c src/telemetry.c src/power.c
 RELS = $(SRCS:src/%.c=$(BUILD)/%.rel)

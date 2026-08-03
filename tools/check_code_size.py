@@ -1,19 +1,30 @@
 #!/usr/bin/env python3
 """
-Fail if the compiled mboxfw code exceeds a safety-margin budget under
-the 8 KB EEPROM. Rev 20 uses 8174 bytes — nearly full EEPROM. We leave
-room for the 18-byte header + 5-byte SDCC tail + slack for descriptor
-growth.
+Fail if the compiled mboxfw code exceeds the TAS1020B's PROGRAM RAM.
 
-Budget raised 6144 -> 7168 on 2026-07-30, with the linker's --code-size
-in mboxfw/Makefile. The hard ceiling is 8174 (8192 minus the 18-byte
-header), and stock Rev 20 sits exactly there, so 6144 was never a
-hardware constraint — it was a margin chosen when the image was half
-this size. It started rejecting diagnostic code that the hardware has
-ample room for. 7168 still leaves 1006 bytes under the real ceiling.
+6016 bytes (0x1780) is a HARDWARE limit, not a margin. The part has 6016
+bytes of program RAM -- TAS1020B datasheet, features list and section 1
+overview, stated twice; see ramloader/DESIGN.md "Verified constraints". The
+boot ROM copies the EEPROM payload into that RAM and runs it there, so an
+image larger than 6016 bytes cannot exist on this part, no matter how much
+EEPROM sits behind it.
 
-Also reports where we are as a percentage so runaway growth surfaces
-early. Reads the .ihx file's highest byte address.
+REVERTED 6144 -> 7168 -> 6016 on 2026-08-03. The 2026-07-30 raise argued
+that "Rev 20 uses 8174 bytes -- nearly full EEPROM", so 6144 "was never a
+hardware constraint". That premise was wrong: 8174 is the FF-padded EEPROM
+region. Stock Rev 20's last non-0xFF byte is at 0x103E -- 4159 bytes of real
+code; Rev 22 is 4150. Both sit about 1850 bytes UNDER 6016. Padding was read
+as code, the limit was declared imaginary, and the guard came off.
+
+Cost: on 2026-08-03 a 6448-byte mboxfw passed this gate, passed the other
+31, flashed cleanly, reached DFU manifest, and came up silent on USB --
+432 bytes had nowhere to live. See BRICK_LOG.md. Keep this number matched
+to mboxfw/Makefile's --code-size.
+
+The 8 KB EEPROM ceiling is a SEPARATE and larger constraint. It is reported
+alongside so a future reader does not confuse the two the way that raise did.
+
+Reads the .ihx file's highest byte address.
 """
 
 import re
@@ -21,9 +32,11 @@ import sys
 from pathlib import Path
 
 
-HARD_CEILING = 8174   # 24C64 capacity 8192 minus the 18-byte EEPROM header
-BUDGET_BYTES = 7168
-WARN_AT      = 6656   # flag before the budget so growth trends surface early
+PROGRAM_RAM  = 6016   # 0x1780 -- TAS1020B datasheet, stated twice. HARDWARE.
+EEPROM_MAX   = 8174   # 24C64 capacity 8192 minus the 18-byte header. Not the
+                      # binding limit -- the image must fit program RAM first.
+BUDGET_BYTES = PROGRAM_RAM
+WARN_AT      = 5600   # flag before the ceiling so growth trends surface early
 
 
 def code_size(ihx_path: Path) -> int:
