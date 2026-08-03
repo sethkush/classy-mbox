@@ -58,10 +58,33 @@ the image in a simulator with no program-RAM bound, so none could see it.
   `EEPROM_MAX` kept separate so the two limits cannot be confused again.
   Verified: it rejects the exact image that bricked A, `6448 > 6016`.
 
-**Recovery:** SDA short -> `DFU_TARGET_RAM` -> download `ramflash`, remove the
-short before the launching bus reset, let it write EEPROM with its own
-bit-banged I2C. Or flash safety_net (1716 B) / rev20 stock (4159 B) once any
-DFU is reachable. Both fit program RAM with room to spare.
+**Recovery — what actually worked.** The canonical two-stage bootstrap, from
+the top of this file. Unchanged, still correct, no new tooling needed:
+
+1. SDA short, plug in -> `ffff:fffe`, dfuIDLE
+2. flash `safety_net_bootstrap.bin` (**dataType 0x03**) -> 54/54, manifest
+3. replug -> **`0dba:1001` app-DFU**, dfuIDLE
+4. flash `rev20_flasher_payload.bin` (dataType 0x01) -> 255/255, manifest
+5. replug -> `0dba:1000`, bcdDevice 0.20, "Mbox USB Audio Device copyright
+   Digidesign 2001". Stock Rev 20 running.
+
+**ramflash was tried first and did not work.** Its first-ever hardware run:
+download 146/146 + manifest, bus reset delivered, device dropped off the bus
+(`USBCTL = 0` on entry, as designed) -- and a replug came back at `ffff:fffe`,
+so the checksum byte never landed. It writes that byte last precisely so a
+failed run lands in DFU rather than on a valid header over garbage, and that
+is exactly what it did. No harm, but it cost a cycle and ~5 minutes.
+
+Reaching for it at all was the mistake: the two-stage sequence above is four
+lines from the top of this file, is hardware-proven, needs no new image, and
+was passed over because POLICY §7's `DFU_TARGET_RAM` note was reasoned forward
+from instead of checking what had actually worked. **Try the canonical
+sequence FIRST.** ramflash is the fallback for the errPROG case it was written
+for, not the default.
+
+Note on reading DFU state: a device that has been handed a RAM image tells you
+nothing by being absent from the bus -- ramflash halts in `for(;;)` and never
+re-attaches, so success and failure look identical until you replug.
 
 
 ### 2026-07-25 — Rev 20 finally flashes cleanly. Multi-fault session, three real bugs found.
