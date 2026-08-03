@@ -58,13 +58,13 @@ volatile __data unsigned char tlm_mux_sets    = 0;
 volatile __data unsigned char tlm_mux_rejects = 0;
 
 /* Little-endian 16-bit store, matching how the host unpacks the blocks. */
-static void put16(unsigned char *p, unsigned int v)
+static void put16(unsigned char __data *p, unsigned int v)
 {
     p[0] = (unsigned char)(v & 0xFF);
     p[1] = (unsigned char)(v >> 8);
 }
 
-unsigned char tlm_read_block(unsigned char index, unsigned char *out)
+unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
 {
     unsigned char i;
 

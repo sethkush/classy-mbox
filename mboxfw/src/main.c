@@ -24,26 +24,36 @@ extern void usb_init(void);
 extern void usb_attach(void);
 extern void usb_service(void);
 
-/*
- * Boot-time DFU escape hatch — hold source-1 while plugging in.
+/* The last software route back into DFU.
  *
- * Runs before EA=1 and before usb_attach. If P3.3 is held low across the
- * whole sample window, zero the EEPROM signature so the boot ROM finds no
- * valid image on the NEXT power-on and comes up in DFU.
+ * WHY IT MOVED. On 2026-08-03 an oversized image hung somewhere before
+ * usb_attach(), so USB never came up and the enter-DFU class request could not
+ * be delivered. This escape hatch was the fallback, and it did not fire: it
+ * was called only after hw_init(), so any hang inside hw_init() disables it.
+ * Recovery cost an SDA short with the unit's I/O unhooked. BRICK_LOG.md #3.
  *
- * It then halts rather than resetting. RESET_TO_BOOT_ROM() cannot work —
- * clearing MEMCFG.SDW from program RAM unmaps the running code (see the
- * warning in regs.h), and no software path back to the boot ROM exists on
- * this part: FRSTE leaves SDW and CONT set (datasheet), and stock Rev 20
- * has no such path either. Reaching DFU is always "invalidate the
- * signature, then power cycle".
+ * The early call has no dependency on hw_init():
+ *   - I2C is left configured by the boot ROM, which just used it to read the
+ *     EEPROM; hw_init() contains no I2C writes at all.
+ *   - P3 pull-ups are already enabled at handoff. The boot ROM leaves
+ *     GLOBCTL = 0x04 (measured, telemetry block 8; also hw_init.c's own
+ *     premise), so bit 1 P3PUDIS is CLEAR. Confirmed on hardware: tlm_p3_boot
+ *     is sampled before hw_init() and reads 0xFB, P3.3 high.
  *
- * Halting is the honest behaviour: the device never attaches, the host
- * sees nothing, and the user replugs — which is precisely the power cycle
- * the sequence requires.
+ * It is called ONCE, here. A second call after hw_init() was written and then
+ * dropped: it fires only after the hang it is meant to survive, so it adds no
+ * coverage, costs 8 bytes, and doubles the windows in which a floating P3.3
+ * could spuriously invalidate the header. Verified by execution: with P3.3
+ * held low the EEPROM path is reached with canary 0xFA01 = 0xA2 (usb_init
+ * done) and 0xFA02 still 0x00 (hw_init NOT run).
  *
- * A glancing touch during plug-in does NOT trigger: the button must stay
- * low across the full window.
+ * NOTE the halt condition. This used to halt whenever the button was held,
+ * even if the EEPROM write had failed or been skipped — leaving the device
+ * with neither DFU nor USB, which is strictly the worst outcome and is a
+ * recorded compounding failure (BRICK_LOG "button-hold DFU did nothing" ->
+ * I2C driver silent failure). It now halts only on a CONFIRMED invalidate;
+ * otherwise it returns and lets the boot continue, because a device that
+ * enumerates can still be recovered over the wire.
  */
 static void check_boot_dfu_button(void)
 {
@@ -52,13 +62,16 @@ static void check_boot_dfu_button(void)
     for (i = 0; i < 0x5000; i++) {
         if (P3 & P3_BTN_CH1_MASK) { held = 0; break; }
     }
-    if (held) {
-        if (eeprom_smoke_test()) {
-            (void)eeprom_invalidate_signature();
-        }
-        /* Never attach; wait for the user to replug. */
+    if (!held)
+        return;
+
+    /* Break the header checksum so the NEXT power cycle lands in DFU. */
+    if (eeprom_smoke_test() && eeprom_invalidate_signature()) {
+        /* Confirmed. Never attach; wait for the user to replug. */
         for (;;) { }
     }
+    /* The write did not take. Fall through and boot: USB coming up is itself
+     * a recovery path, and halting here would leave none. */
 }
 
 /*
@@ -266,12 +279,19 @@ void main(void)
     CANARY(1, CANARY_USB);
     STAGE(2);
 
+    /* DFU ESCAPE, FIRST CHANCE — before hw_init(), which is where every
+     * untested hardware change lands. A hang in there used to disable the only
+     * recovery path that does not need the unit opened up. Placed AFTER
+     * usb_init() on purpose: usb_init() does not attach, and keeping it ahead
+     * of any halting path preserves the invariant verify_conn_reachable.py
+     * enforces. */
+    check_boot_dfu_button();
+
     hw_init();
     tlm_phases |= TLM_PHASE_HW_INIT;
     CANARY(2, CANARY_HW);
     STAGE(3);
 
-    check_boot_dfu_button();
     STAGE(4);
 
     /* Start Timer 0, then interrupts on, then attach — the Rev 20 order:

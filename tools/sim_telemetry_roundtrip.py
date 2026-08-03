@@ -199,6 +199,7 @@ def main():
           f"{'ok' if tlm_aliases == flash.AUDIO_PID_ALIASES else 'DISAGREE'}")
 
     # ---- 2..6. execute the firmware and decode what it produces ------------
+    want_id = hdr.get("TLM_BUILD_ID")
     syms = ep0.symbols(mapf)
     loop, service = syms.get("_buttons_poll"), syms.get("_usb_service")
     if loop is None or service is None:
@@ -229,7 +230,12 @@ def main():
         try:
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                tlm.show(i, staged)
+                # Pass the build id the firmware itself reported, the same way
+                # mboxtlm's own commands do. Without it every all-0xFF block
+                # reads back AMBIGUOUS and the served/not-served logic never
+                # runs -- the gate would be checking a path the bench never
+                # takes.
+                tlm.show(i, staged, device_build=want_id)
             printed = buf.getvalue()
             lines = [ln.strip() for ln in printed.splitlines()[1:] if ln.strip()]
         except Exception as e:                       # noqa: BLE001
@@ -259,7 +265,6 @@ def main():
             print(f"           {lines[0]}")
 
     # ---- 5. the endianness seam, on a value with two distinct bytes -------
-    want_id = hdr.get("TLM_BUILD_ID")
     if want_id is None:
         fails.append("TLM_BUILD_ID is not in telemetry.h")
     elif (want_id & 0xFF) == (want_id >> 8):

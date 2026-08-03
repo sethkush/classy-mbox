@@ -183,7 +183,15 @@ extern volatile __data unsigned char tlm_alt_seen;
 
 /* Fill an 8-byte block. Returns 0 and fills 0xFF for an unknown index so
  * a host reading past the end gets a clean sentinel instead of a stall. */
-unsigned char tlm_read_block(unsigned char index, unsigned char *out);
+/* `out` is __data-qualified deliberately. Unqualified, SDCC builds a 3-byte
+ * generic pointer and routes every one of this function's ~88 byte stores
+ * through the __gptrput library helper: 56 such calls in the emitted object,
+ * and telemetry.c weighing 1690 bytes -- 30% of the whole firmware. The only
+ * caller passes a local array (usb.c stage_immediate path), which under
+ * --model-small lives in internal RAM, so a 1-byte __data pointer is both
+ * correct and what the hardware wants. Do not drop the qualifier: it is worth
+ * hundreds of bytes against a 6016-byte program RAM. See BRICK_LOG.md #3. */
+unsigned char tlm_read_block(unsigned char index, unsigned char __data *out);
 void tlm_reset_counters(void);
 
 #endif /* MBOXFW_TELEMETRY_H */
