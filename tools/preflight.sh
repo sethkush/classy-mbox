@@ -204,7 +204,12 @@ if (( found == 0 )); then
     exit 3
 fi
 echo "     Recovery: mboxflash --enter-dfu → mboxflash --flash <image above>"
-echo "     If --enter-dfu fails: hold source-1 during replug (button DFU)."
+echo "     If --enter-dfu fails: hold source-1 during replug (button DFU) --"
+echo "       UNPROVEN ON HARDWARE. This path has never once fired: the read"
+echo "       tested for a LOW pin while the buttons are active HIGH, and the"
+echo "       internal pull-ups pinned the pin at 1 regardless. Both halves are"
+echo "       fixed as of build 0x0016 and neither has been confirmed on the"
+echo "       bench. Plan the SDA short as the real fallback until it has."
 echo "     If both fail: physical SDA short (see recovery notes)."
 read -r -p "  → Rollback plan is understood? [yes/no] " ans
 [[ "$ans" == "yes" ]] || { echo "aborted."; exit 3; }
@@ -214,9 +219,24 @@ echo "  4. RECOVERY PATHS ACTIVE IN THE FLASHED FIRMWARE"
 grep -q "handle_digi_enter_dfu" mboxfw/src/usb.c 2>/dev/null && \
     echo "     ✓ class-request DFU trigger (mboxflash --enter-dfu)" || \
     echo "     ✗ class-request DFU trigger MISSING"
-grep -q "check_boot_dfu_button" mboxfw/src/main.c 2>/dev/null && \
-    echo "     ✓ boot-time button-hold DFU trigger" || \
+# Presence is not function. This printed a green tick for a path that could
+# not fire in any build up to 0x0015 -- the test was inverted AND read through
+# the internal pull-ups. Check the three things that have to hold together, so
+# the tick means something: the call exists, it tests for a HIGH pin, and
+# hw_init sets P3PUDIS (without which P3 reads a stuck 1 whatever is pressed).
+# See firmware_stock/decomp/FINDING_buttons_are_active_high.md.
+if grep -q "check_boot_dfu_button" mboxfw/src/main.c 2>/dev/null; then
+    _btn_ok=1
+    grep -q 'if (!(p3 & P3_BTN_CH1_MASK)) { held = 0; break; }' mboxfw/src/main.c \
+        || { echo "     ✗ boot-button read is not the active-HIGH form"; _btn_ok=0; }
+    grep -q 'GLOBCTL |= 0x02' mboxfw/src/hw_init.c 2>/dev/null \
+        || { echo "     ✗ P3PUDIS not set — P3 reads stuck high, button dead"; _btn_ok=0; }
+    [[ "$_btn_ok" == 1 ]] && \
+        echo "     ~ boot-time button-hold DFU trigger present and correctly" && \
+        echo "       shaped — NOT yet confirmed on hardware"
+else
     echo "     ✗ boot-time button DFU trigger MISSING"
+fi
 [[ "$IMG" == *safety_net* ]] && \
     echo "     ✓ this IS the safety-net firmware" || \
     echo "     Consider flashing safety_net first if not recently done"

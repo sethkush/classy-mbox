@@ -63,7 +63,11 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0015   /* 0015: block 10 = CS8427 readback probe (#165)
+#define TLM_BUILD_ID     0x0016   /* 0016: buttons are ACTIVE HIGH -- GLOBCTL
+                                   *       P3PUDIS restored, boot-DFU button
+                                   *       read un-inverted and moved after
+                                   *       hw_init (#150/#169).
+                                   * 0015: block 10 = CS8427 readback probe (#165)
                                    * 0014: CS8427 SPI framing + chip select +
                                    *       external RESET released + bring-up
                                    *       order fixed (#157/#166/#167), mono

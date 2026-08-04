@@ -168,13 +168,27 @@ def main():
     else:
         newest = first[nblocks - 1]
         cur = hdr.get("TLM_BUILD_ID")
-        if cur is not None and newest != cur:
+        # `<=`, not `==`. This demanded equality when it was written on
+        # 2026-08-03, which holds only on the single build that appends a
+        # block: build 0x0016 changed no blocks and the gate failed with
+        # "block 10 ... arrived in 0x0015, but TLM_BUILD_ID is 0x0016" --
+        # a false alarm on a correct map, which is the failure mode that
+        # trains people to ignore a gate.
+        #
+        # The real invariant is that no block claims to predate a build that
+        # could not have served it. A block appended without its entry being
+        # updated is still caught, by the coverage check above: the new index
+        # has no entry at all. What equality would additionally have caught is
+        # appending a block AND copying the previous block's build id onto it,
+        # which needs a record of the previous block count to detect and is
+        # not knowable from one image.
+        if cur is not None and newest > cur:
             fails.append(
                 f"block {nblocks - 1} is the newest block and "
-                f"BLOCK_FIRST_BUILD says it arrived in 0x{newest:04X}, but "
-                f"TLM_BUILD_ID is 0x{cur:04X}. Bumping TLM_NUM_BLOCKS without "
-                f"recording the build that did it makes the new block read as "
-                f"served on devices that do not have it.")
+                f"BLOCK_FIRST_BUILD says it arrived in 0x{newest:04X}, which "
+                f"is AFTER TLM_BUILD_ID 0x{cur:04X}. The running build cannot "
+                f"serve a block that arrived in a later one, so every read of "
+                f"it would be suppressed as 'not served by this build'.")
         if sorted(first.values()) != list(first.values()):
             fails.append(
                 "BLOCK_FIRST_BUILD is not monotonic in block index; blocks "

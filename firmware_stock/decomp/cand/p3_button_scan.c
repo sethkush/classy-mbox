@@ -30,10 +30,31 @@
  *
  * EDGE POLARITY. Each button acts when the previous sample read 0 and the
  * current sample reads 1 -- `JB prev,skip` then `JNB ACC.n,skip` -- i.e. on
- * the LOW-to-HIGH transition. hw_master_init writes P3 = 0xFF (0x08CB region),
- * so the pins idle high and a press pulls them low; the action therefore lands
- * on button *release*, not on press. That is what the encoding says; I have not
- * checked it on hardware.
+ * the LOW-to-HIGH transition. The pins idle LOW and a press drives them HIGH,
+ * so the action lands on the PRESS.
+ *
+ * CORRECTED 2026-08-03. This said "hw_master_init writes P3 = 0xFF, so the
+ * pins idle high and a press pulls them low; the action therefore lands on
+ * button *release*", with the honest caveat that it had not been checked on
+ * hardware. The encoding was read correctly and the inference from P3 = 0xFF
+ * was wrong: that write sets the port LATCH, which is what makes the pin an
+ * input -- it does not decide what the external network does with it. And
+ * hw_master_init also sets GLOBCTL bit 1 (P3PUDIS) at 0x08FE, releasing the
+ * internal pull-ups entirely, so the board drives these pins, not the chip.
+ *
+ * The image settles it without a meter. The shadow at IRAM 0x20 is zeroed by
+ * Keil's ?C_INITSEG table (cand/c51_initseg_table.c, record `01 20 00`), so on
+ * the first scan after boot `prev` is 0 for all three buttons. Were the pins
+ * idle-high, all three handlers would fire on that first scan of every boot:
+ * both channels would step MIC->LINE and bit 0x1E would toggle, before the
+ * user touched anything. hw_master_init seeds the panel word to 0xF6 = MIC on
+ * both channels and the hardware is observed to boot to MIC and stay there.
+ * Therefore the pins read 0 at rest. The buttons are ACTIVE HIGH.
+ *
+ * This mattered downstream: mboxfw copied the active-low reading into
+ * regs.h, buttons.c and its boot-time DFU escape, left P3PUDIS clear on the
+ * strength of a misread bisect, and its buttons were dead on hardware. See
+ * FINDING_buttons_are_active_high.md.
  *
  * Button map:
  *      P3.3 -> button_a_cycle_3state (0x0E27)  channel A source ring

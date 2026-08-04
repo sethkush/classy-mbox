@@ -59,6 +59,32 @@ it and reads its buttons fine, so the board has its own pull-up arrangement.
 Reinstating it means sampling the button before the write, or fixing the read —
 not leaving the bit permanently unexplained.
 
+## 1b. CORRECTION 2026-08-03 — the bit is required, not merely tolerable
+
+Everything in §1 about what P3PUDIS *is* holds. The reading of *why build 0x0010
+went silent* was half right and it mattered.
+
+§1 says the boot-button read "explicitly depends on the internal P3 pull-ups",
+which assumes the buttons are active-low. They are **active HIGH**. The board
+holds P3.3/P3.4/P3.5 low at rest and a press drives them high; the pull-ups do
+not enable that read, they **defeat** it by pinning the port at 1.
+
+Proof, from the stock image rather than from the datasheet: `p3_button_scan`
+fires on `prev == 0 && cur == 1`, and Keil's `?C_INITSEG` table zeroes the
+previous-sample shadow at IRAM 0x20 (record `01 20 00`). If those pins idled
+high, all three handlers would fire on the first scan of every boot — both
+channels stepping MIC→LINE, mono toggling — before anyone touched the box. The
+hardware boots to MIC and holds. Confirmed by the complementary measurement:
+mboxfw with P3PUDIS clear reads P3 = 0xFA with bit 3 stuck at 1 under a held
+button, while stock on the same unit cycles mic → line → inst.
+
+So the corrected conclusion is stronger than "not inherently fatal": **P3PUDIS
+is required for the front-panel buttons to work at all.** Build 0x0010 was
+silenced by an active-low test meeting an active-high button — `held` was true
+with nothing pressed — not by the pull-ups being needed. Both are fixed
+together in build 0x0016; either alone is useless or dangerous. #169 answered.
+Full write-up: `FINDING_buttons_are_active_high.md`.
+
 ## 2. mboxfw never enables the codec port
 
 §6.5.7.4, bit 0:

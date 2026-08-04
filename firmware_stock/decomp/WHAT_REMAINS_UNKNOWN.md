@@ -391,10 +391,39 @@ write 27 instructions earlier, never by an immediate load -- and on that basis
 `rev20_diff_justifications.md` had recorded it as a **scanner artifact**, while
 `rev20_STARTUP_TRACE.md` step 14 had it right. Two docs in this repo contradicted
 each other for as long as both existed. Retracted; implemented as
-`GLOBCTL |= 0x02`. **GLOBCTL bit 1 is P3PUDIS as of 2026-07-31** (§6.5.7.4), and the
-silent-USB result it caused is explained by `check_boot_dfu_button()` depending on the
-internal P3 pull-ups it disables — see FINDING_globctl_bits_named_and_cpten_missing.md
-and #169. Bit 0 is CPTEN, which mboxfw never sets at all (#168).
+`GLOBCTL |= 0x02`. **GLOBCTL bit 1 is P3PUDIS as of 2026-07-31** (§6.5.7.4).
+Bit 0 is CPTEN, which mboxfw never sets at all (#168).
+
+**#169 CLOSED 2026-08-03, and the answer inverts the one recorded here.** The
+silent-USB result was explained as `check_boot_dfu_button()` *depending on* the
+internal pull-ups that P3PUDIS disables. It does not depend on them — they
+defeat it. The front-panel buttons are **active HIGH**: the board holds
+P3.3/P3.4/P3.5 low and a press drives them high. The escape tested for a LOW
+pin, so with P3PUDIS set the idle pin read as "held", the firmware invalidated
+its own header and spun without attaching; with P3PUDIS clear the pull-ups pin
+the port at 1 and the escape can never fire at all, which is why holding the
+button at boot has never worked in any position that call has occupied.
+
+The polarity is proved from the image, not from a meter: `p3_button_scan` fires
+on `prev == 0 && cur == 1` and Keil's `?C_INITSEG` zeroes the shadow at IRAM
+0x20 (record `01 20 00`), so idle-high pins would fire all three handlers on
+the first scan of every boot; the hardware boots to MIC and stays. Confirmed by
+the complementary measurement: mboxfw reads P3 = 0xFA with bit 3 stuck at 1
+under a held button, while stock on the same unit cycles mic → line → inst.
+
+So P3PUDIS is **required** for the buttons, and the fix is the bit plus an
+un-inverted read, in one change — either alone is useless or dangerous. Build
+0x0016. See `FINDING_buttons_are_active_high.md`.
+
+**The method blind spot this exposes**, in the terms this document is organised
+by: three separate places recorded "active-low with pull-ups" — `regs.h`,
+`buttons.c`, `cand/p3_button_scan.c` — and all three traced to one inference
+from a single instruction, `mov 0xb0,#0xff`. A port latch write says the pin is
+an input; it says nothing about what the board does with it. The claim was then
+cited from file to file until it read as three independent confirmations. The
+counter-evidence had been sitting in `c51_initseg_table.c`, byte-matched, since
+the decompilation was written: a zeroed edge-detect shadow is a statement about
+the resting level of the pins it shadows, and nobody read it as one.
 
 Fixed as a consequence: `xdata_access_map.py` now tracks DPTR arithmetic
 (straight-line only, ending at any control-flow edge), which surfaced 5 more

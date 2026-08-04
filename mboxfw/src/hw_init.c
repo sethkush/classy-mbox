@@ -44,7 +44,14 @@ void hw_init(void)
     IE   = 0x03;   /* EX0 (INT0/USB) + ET0 (Timer 0) */
     IP   = 0x00;
     P1   = 0x00;   /* all P1 pins low */
-    P3   = 0xFF;   /* all P3 pins high (button inputs pull-up) */
+    /* P3 latch all-high. This is what makes the pins INPUTS -- it does not
+     * decide what they read. With P3PUDIS set below, a latched-high pin is
+     * released entirely and the board's own network drives it; the buttons
+     * then rest LOW and a press pulls them HIGH. Reading this write as "button
+     * inputs, pulled high" is what produced the active-low mistake. See
+     * FINDING_buttons_are_active_high.md. */
+    P3   = 0xFF;   /* Rev 20 fcn.0x08CB @ 0x08E9 `mov 0xb0,#0xff`,
+                    * Rev 22 fcn.0x07EC @ 0x080A */
 
     /* -------- TAS1020A UIFR init (order matters) --------
      *
@@ -58,90 +65,69 @@ void hw_init(void)
                          * RMW because boot ROM's UtilResetCPU already
                          * did MEMCFG |= SDW_BIT; we're just being
                          * idempotent. Reference: TI Utils.c UtilResetCPU. */
-    /* Both stock images set GLOBCTL bit 1 HERE -- before the codec-port block
-     * and long before CPTEN -- and mboxfw did not, so mboxfw ran the whole
-     * audio path with bit 1 clear where stock has it set.
+    /* GLOBCTL bit 1 = P3PUDIS, "Pullup resistor disable. If set to 1, disables
+     * on-chip pullup resistors on P3 GPIO pins" (TAS1020B §6.5.7.4; full map:
+     * 7 MCUCLK, 6 XINTEN, 5 P1PUDIS, 4 VREN, 3 RESET, 2 LPWR, 1 P3PUDIS,
+     * 0 CPTEN).
      *
-     * This write was missed by every scanner and then explicitly dismissed.
-     * `rev20_diff_justifications.md` carried it as
-     * "FALSE_POSITIVE -- no `mov a,#0x06; movx @dptr,a` to 0xffb1 exists ...
-     * scanner artifact from a nearby `mov 0x06, a`". That search was correct
-     * and its conclusion was not: DPTR is never loaded with 0xFFB1 here. It
-     * arrives by INC DPTR from the MEMCFG write at 0xFFB0:
+     * Both stock images set it here -- before the codec-port block and long
+     * before CPTEN. The write is easy to miss: DPTR is never loaded with
+     * 0xFFB1, it arrives by INC DPTR from the MEMCFG write at 0xFFB0, 27
+     * instructions earlier.
      *
-     *   Rev 20 0x08D4  MOV DPTR,#0xffb0   ; MEMCFG
-     *          0x08FB  INC DPTR           ; -> 0xFFB1 GLOBCTL
-     *          0x08FC  MOV A,#0x06
-     *          0x08FE  MOVX @DPTR,A
-     *   Rev 22 0x081C  same, MOV A,#0x06 at 0x081D, store at 0x081F
+     *   Rev 20  0x08D4 MOV DPTR,#0xFFB0 -> 0x08FB INC DPTR, 0x08FC MOV A,#0x06,
+     *                  0x08FE MOVX @DPTR,A
+     *   Rev 22  0x07F5 MOV DPTR,#0xFFB0 -> 0x081C INC DPTR, 0x081D MOV A,#0x06,
+     *                  0x081F MOVX @DPTR,A
      *
-     * Byte-scanned both images: `a3 74 06 f0` occurs exactly once each, and
-     * `90 ff b1 74 06 f0` occurs nowhere -- which is why looking for the
-     * direct form found nothing. 27 instructions separate the DPTR load from
-     * the INC, so a windowed scanner cannot connect them either. The
-     * dismissal also cited rev20_flat.asm, which is the known-bad
-     * disassembly. rev20_STARTUP_TRACE.md step 14 had it right all along.
+     * Byte-scanned both images: `a3 74 06 f0` occurs exactly once each and
+     * `90 ff b1 74 06 f0` occurs nowhere, which is why searching for the direct
+     * form found nothing and the write was filed as a scanner artifact. See
+     * FINDING_globctl_bit1_missed.md.
+     *
+     * ---------------------------------------------------------------------
+     * THIS BIT IS REQUIRED FOR THE FRONT-PANEL BUTTONS. It was removed on
+     * 2026-07-29 on a bisect that was real and whose interpretation was
+     * inverted; restored 2026-08-03. See
+     * FINDING_buttons_are_active_high.md.
+     *
+     * The buttons are ACTIVE HIGH: the board pulls P3.3/P3.4/P3.5 low at rest
+     * and a press drives them high. Proof from the image, not from a guess:
+     * p3_button_scan fires on prev==0 && cur==1, and Keil's ?C_INITSEG table
+     * zeroes the previous-sample shadow at IRAM 0x20 (record `01 20 00`), so if
+     * those pins idled HIGH all three handlers would fire on the first scan of
+     * every boot -- both channels would step MIC->LINE and mono would toggle
+     * before the user touched anything. The hardware boots to MIC and stays
+     * there. So they idle low.
+     *
+     * With P3PUDIS clear the internal pull-ups beat the board's pull-downs and
+     * the pins sit at 1 permanently. Measured on Mbox A running build 0x0011:
+     * P3 rests at 0xFA and bit 3 stays 1 across three live reads with the
+     * button held down. Stock, on the same unit minutes later, cycles
+     * mic -> line -> inst. That is the whole of why mboxfw's buttons are dead.
+     *
+     * WHY THE BISECT SAID OTHERWISE. Build 0x0010 (this line present) never
+     * attached; 0x0011 (removed) attached in 7 s. check_boot_dfu_button() reads
+     * `held = (pin LOW)`, the active-low premise. With P3PUDIS set the idle pin
+     * reads LOW, so `held` was true with nothing pressed: the firmware
+     * invalidated its own EEPROM header and spun forever without attaching.
+     * "Silent on USB" was that, not a USB-engine effect -- and the build was
+     * actively rewriting the header on the way down, not passively silent.
+     * With P3PUDIS clear the same read can never fire, which is why holding the
+     * button at boot has never worked in any position that call has occupied.
+     * #169.
+     *
+     * ORDERING CONSTRAINT: check_boot_dfu_button() samples P3 and must run
+     * AFTER this write, or it reads through the pull-ups and is meaningless.
+     * main.c calls it immediately after hw_init() for that reason. Moving
+     * either one without the other reintroduces the 0x0010 failure.
+     * ---------------------------------------------------------------------
      *
      * RMW rather than stock's outright `= 0x06`, per task #48: the boot ROM
-     * leaves GLOBCTL = 0x04 (LPWR on), so |= 0x02 reaches the same 0x06
-     * without blindly clearing bits the ROM may own.
-     *
-     * GLOBCTL bit 1 IS P3PUDIS. Datasheet §6.5.7.4, read 2026-07-31, gives the
-     * full map: 7 MCUCLK, 6 XINTEN, 5 P1PUDIS, 4 VREN, 3 RESET, 2 LPWR,
-     * 1 P3PUDIS, 0 CPTEN. P3PUDIS is "Pullup resistor disable. If set to 1,
-     * disables on-chip pullup resistors on P3 GPIO pins." So stock's 0x06 is
-     * LPWR | P3PUDIS -- run normally, and turn the P3 pull-ups off.
-     *
-     * The "UNKNOWN" that rev20_STARTUP_TRACE.md's open-items list carried since
-     * it was written is retired. TI's ROM sources document only LPWR and MCUCLK,
-     * which is why nobody found it there; it is in the datasheet's own register
-     * section, which had been read for other bits but never for this one.
-     *
-     * ============================================================
-     * DO NOT SET IT. MEASURED ON HARDWARE 2026-07-29: it makes the device
-     * SILENT ON USB. The app never attaches, no VID/PID appears at all.
-     *
-     * Isolated by bisect between two images differing ONLY in this line, same
-     * flasher, same procedure, same host, back to back:
-     *
-     *     build 0x0010  (GLOBCTL |= 0x02 present)  -> silent, never attaches
-     *     build 0x0011  (this line removed)        -> attaches in 7 s
-     *
-     * WHY, corrected 2026-07-31. The explanation recorded here was "stock runs
-     * hardware init BEFORE bringing USB up, mboxfw calls usb_init() first
-     * (#47), so this write lands on a live USB engine and stops enumeration."
-     * That was a guess with no mechanism behind it, and now that bit 1 has a
-     * name there is a mechanism that fits exactly and involves no USB engine:
-     *
-     *   main.c:48  check_boot_dfu_button() spins 0x5000 times waiting for
-     *              P3 & P3_BTN_CH1_MASK to read HIGH. If it never does, it
-     *              calls eeprom_invalidate_signature() and then `for(;;){}`
-     *              -- it never attaches, by design.
-     *   main.c:255 "check_boot_dfu_button() runs after hw_init so P3 pull-ups
-     *              are set before the button is sampled"
-     *
-     * The boot-button read depends on the internal P3 pull-ups. P3PUDIS turns
-     * them off. With them off that pin never reads high, `held` stays 1, and
-     * the firmware wipes its own EEPROM signature and spins -- which presents
-     * as "silent on USB, never attaches" and matches the bisect exactly.
-     *
-     * NOTE FOR ANYONE RE-RUNNING THAT BISECT: build 0x0010 was not passively
-     * silent. On this reading it invalidated the header signature, which is
-     * the DFU trigger. See #169.
-     *
-     * So P3PUDIS is not inherently fatal -- stock sets it and reads its buttons
-     * fine. Reinstating it means sampling the button before this write, or
-     * fixing the read to not depend on internal pull-ups.
-     *
-     * The arithmetic was never the problem: telemetry block 8 byte 2 reads
-     * GLOBCTL = 0x04 at boot-ROM handoff on this actual part, so |= 0x02 did
-     * reach stock's 0x06 exactly as intended. The value was right; the timing
-     * was fatal. This is why "both stock images do it" is a reason to
-     * investigate and never on its own a reason to ship.
-     *
-     * Reinstating it requires moving the write before usb_init() AND a hardware
-     * test -- not another re-read of the stock listings.
-     * ============================================================ */
+     * leaves GLOBCTL = 0x04 (LPWR on -- measured, telemetry block 8 byte 2), so
+     * |= 0x02 reaches the same 0x06 without clearing bits the ROM may own. */
+    GLOBCTL |= 0x02;    /* Rev 20 fcn.0x08CB @ 0x08FE, Rev 22 fcn.0x07EC @ 0x081F */
+
 
     /* Codec-port config. Addresses and values verified byte-for-byte
      * against both stock images by static scan (see the SFR tables in

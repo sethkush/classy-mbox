@@ -2,7 +2,10 @@
  * Front-panel button poller.
  * Ports Rev 20 fcn.0x0ED5 / Rev 22 fcn.0x0F31.
  *
- * Three momentary buttons on P3 (active-low, internal pull-up):
+ * Three momentary buttons on P3 (ACTIVE HIGH -- the board pulls them low at
+ * rest and a press drives them high; the internal P3 pull-ups must be off,
+ * GLOBCTL P3PUDIS, or the pins read a stuck 1 and nothing here ever fires.
+ * See firmware_stock/decomp/FINDING_buttons_are_active_high.md):
  *   P3.3 = channel 1 source cycle   -> Rev 20 fcn.0x0E27 / Rev 22 fcn.0x0E1B
  *   P3.4 = channel 2 source cycle   -> Rev 20 fcn.0x0E9D / Rev 22 fcn.0x0E8F
  *   P3.5 = mono fold-down toggle    -> Rev 20 fcn.0x1028 / Rev 22 fcn.0x1020
@@ -18,7 +21,14 @@
 #include "codec.h"
 
 /* Rev 20 stores the previous button-state snapshot in RAM[0x20]. */
-static __data unsigned char prev_p3 = 0xFF;
+static __data unsigned char prev_p3 = 0x00;
+
+/* Seeded to 0x00, matching stock: Keil's ?C_INITSEG table zeroes the shadow at
+ * IRAM 0x20 (cand/c51_initseg_table.c, record `01 20 00`). That zero is also
+ * the proof of the polarity -- the edge test is prev==0 && cur==1, so if these
+ * pins idled HIGH all three stock handlers would fire on the first scan of
+ * every boot and the box would come up on LINE with mono flipped. It comes up
+ * on MIC. This was 0xFF while the code believed the buttons were active-low. */
 
 /*
  * Cycle a 3-bit source-select field: mic -> line -> inst -> mic.
@@ -75,8 +85,8 @@ void buttons_poll(void)
     unsigned char now = P3;
     unsigned char changed = now ^ prev_p3;
     /*
-     * Stock acts on the RISING edge — i.e. on button RELEASE, since the
-     * buttons are active-low. Rev 20 fcn.0x0ED5 @ 0x0EE0 for mono:
+     * Stock acts on the RISING edge — i.e. on button PRESS, since the buttons
+     * are active HIGH. Rev 20 fcn.0x0ED5 @ 0x0EE0 for mono:
      *
      *   0ee0  JB 0x05,0x0eed     ; bit 0x05 = RAM[0x20].5 = PREVIOUS P3.5
      *   0ee3  MOV A,R5           ; R5 = P3, sampled at 0x0ED7
@@ -87,23 +97,24 @@ void buttons_poll(void)
      * cur = 1. Same shape at 0x0EED (P3.3) and 0x0EFA (P3.4); Rev 22 at
      * 0x0F3A / 0x0F47 / 0x0F54.
      *
-     * This was `changed & ~now` — the FALLING edge, i.e. press. The
-     * difference is user-visible: a press-triggered control changes source
-     * the instant the button goes down and, with no debounce, can fire
-     * again on contact bounce during the same press.
+     * This was `changed & ~now` — the wrong edge. The expression below has
+     * been correct since that fix; only the name and the reasoning attached to
+     * it were wrong. It was called a release because the buttons were believed
+     * to be active-low. They are active high, so low->high is the press, and
+     * stock therefore acts on the DOWN stroke with no debounce.
      */
-    unsigned char released = changed & now;
+    unsigned char pressed = changed & now;
     unsigned char acted = 0;
 
-    if (released & P3_BTN_CH1_MASK) {
+    if (pressed & P3_BTN_CH1_MASK) {
         g_mux_state = cycle_source(g_mux_state, 0);
         acted = 1;
     }
-    if (released & P3_BTN_CH2_MASK) {
+    if (pressed & P3_BTN_CH2_MASK) {
         g_mux_state = cycle_source(g_mux_state, 3);
         acted = 1;
     }
-    if (released & P3_BTN_MONO_MASK) {
+    if (pressed & P3_BTN_MONO_MASK) {
         /* Rev 20 fcn.0x1028 / Rev 22 fcn.0x1020: a bare toggle of bit 0x1E,
          * nothing else. */
         MONO_SET(!MONO_IS_SET());

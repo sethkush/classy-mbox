@@ -279,7 +279,18 @@
 #define P1_MUX_LATCH_MASK    0x40   /* P1.6 */
 #define P1_MUX_DATA_MASK     0x80   /* P1.7 */
 
-/* Front-panel buttons on P3 — active-low with pull-ups. */
+/* Front-panel buttons on P3 — ACTIVE HIGH.
+ *
+ * The board holds these three pins LOW at rest and a press drives them HIGH,
+ * so the internal P3 pull-ups must be DISABLED (GLOBCTL bit 1, P3PUDIS) or
+ * they override the board and every pin reads a stuck 1. Stock sets P3PUDIS
+ * in hw_master_init for exactly this reason.
+ *
+ * This comment read "active-low with pull-ups" from the first port until
+ * 2026-08-03. It was wrong, it is why P3PUDIS looked optional, and it is why
+ * the boot-time DFU escape was written with an inverted test. Proof of the
+ * polarity, from the stock image rather than from this line: see
+ * firmware_stock/decomp/FINDING_buttons_are_active_high.md. */
 #define P3_BTN_CH1_MASK   0x08   /* P3.3 = channel-1 source cycle button */
 #define P3_BTN_CH2_MASK   0x10   /* P3.4 = channel-2 source cycle button */
 /* P3.5 toggles MONO, not 48V phantom power. Rev 20 fcn.0x0ED5 @ 0x0EE7 calls

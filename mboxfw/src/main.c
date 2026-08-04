@@ -32,13 +32,22 @@ extern void usb_service(void);
  * was called only after hw_init(), so any hang inside hw_init() disables it.
  * Recovery cost an SDA short with the unit's I/O unhooked. BRICK_LOG.md #3.
  *
- * The early call has no dependency on hw_init():
- *   - I2C is left configured by the boot ROM, which just used it to read the
- *     EEPROM; hw_init() contains no I2C writes at all.
- *   - P3 pull-ups are already enabled at handoff. The boot ROM leaves
- *     GLOBCTL = 0x04 (measured, telemetry block 8; also hw_init.c's own
- *     premise), so bit 1 P3PUDIS is CLEAR. Confirmed on hardware: tlm_p3_boot
- *     is sampled before hw_init() and reads 0xFB, P3.3 high.
+ * AND WHY IT MOVED BACK, 2026-08-03. The early call was justified with "P3
+ * pull-ups are already enabled at handoff ... tlm_p3_boot is sampled before
+ * hw_init() and reads 0xFB, P3.3 high." Two errors:
+ *
+ *   - 0xFB was byte 5 of the telemetry block, the LIVE P3 read. The boot
+ *     sample is byte 7 and read 0xFF. The placement argument rested on the
+ *     wrong byte of a hex dump.
+ *   - Pull-ups being enabled is precisely the state in which this read does
+ *     not work. The buttons are active HIGH against the board's pull-downs;
+ *     the internal pull-ups override them and pin P3.3 at 1 regardless. The
+ *     read needs P3PUDIS SET, which only hw_init() does.
+ *
+ * So it now runs immediately after hw_init(). A hang inside hw_init() disables
+ * it, which is the exact failure this comment was written to fix; that failure
+ * is covered instead by the restored --code-size limit and check_code_size.py,
+ * which reject the oversized image before it can be flashed.
  *
  * It is called ONCE, here. A second call after hw_init() was written and then
  * dropped: it fires only after the hang it is meant to survive, so it adds no
@@ -58,9 +67,39 @@ extern void usb_service(void);
 static void check_boot_dfu_button(void)
 {
     unsigned int i;
+    unsigned char p3;
     unsigned char held = 1;
+
+    /* POLARITY. The buttons are ACTIVE HIGH -- held means the pin reads 1.
+     * This loop tested for LOW until 2026-08-03, which is the active-low
+     * premise, and it was wrong in both directions at once:
+     *
+     *   P3PUDIS clear  pin stuck at 1  -> `held` never true, escape unreachable
+     *   P3PUDIS set    idle pin is 0   -> `held` always true with nothing
+     *                                     pressed: invalidate the header and
+     *                                     spin. That is build 0x0010's
+     *                                     "silent on USB". #169.
+     *
+     * See FINDING_buttons_are_active_high.md for the proof that the pins idle
+     * low (Keil zeroes the previous-sample shadow at IRAM 0x20, so an idle-high
+     * pin would fire all three stock handlers on the first scan of every boot,
+     * and the hardware boots to MIC instead).
+     *
+     * SANITY GUARD, NOVEL -- reason: no stock behaviour to copy, because stock
+     * has no boot-time DFU escape at all. If all three button pins read high
+     * together, that is not three simultaneous presses, it is P3PUDIS not
+     * having taken -- the internal pull-ups holding the whole port up. That is
+     * the exact state that bricked the unit on 2026-08-03, and the cost of
+     * getting it wrong is an SDA short with the unit opened up. One button is a
+     * press; three is a misconfigured port, so refuse. */
     for (i = 0; i < 0x5000; i++) {
-        if (P3 & P3_BTN_CH1_MASK) { held = 0; break; }
+        p3 = P3;
+        if (!(p3 & P3_BTN_CH1_MASK)) { held = 0; break; }
+        if ((p3 & (P3_BTN_CH1_MASK | P3_BTN_CH2_MASK | P3_BTN_MONO_MASK))
+              == (P3_BTN_CH1_MASK | P3_BTN_CH2_MASK | P3_BTN_MONO_MASK)) {
+            held = 0;               /* whole port high -> pull-ups still on */
+            break;
+        }
     }
     if (!held)
         return;
@@ -265,9 +304,9 @@ void main(void)
     tlm_p1_boot = P1;
     tlm_p3_boot = P3;
 
-    /* check_boot_dfu_button() runs after hw_init so P3 pull-ups are set
-     * before the button is sampled, and before cs8427/codec init so the
-     * escape hatch still works if either of those hangs. */
+    /* check_boot_dfu_button() runs after hw_init so P3PUDIS is set before the
+     * button is sampled, and before cs8427/codec init so the escape hatch
+     * still works if either of those hangs. */
 
     CANARY(0, CANARY_MAIN);
     STAGE(1);
@@ -279,15 +318,27 @@ void main(void)
     CANARY(1, CANARY_USB);
     STAGE(2);
 
-    /* DFU ESCAPE, FIRST CHANCE — before hw_init(), which is where every
-     * untested hardware change lands. A hang in there used to disable the only
-     * recovery path that does not need the unit opened up. Placed AFTER
-     * usb_init() on purpose: usb_init() does not attach, and keeping it ahead
-     * of any halting path preserves the invariant verify_conn_reachable.py
-     * enforces. */
-    check_boot_dfu_button();
-
     hw_init();
+
+    /* DFU ESCAPE. It has to be HERE, immediately after hw_init(), and not
+     * before it: hw_init() is what sets GLOBCTL P3PUDIS, and without that
+     * write the internal pull-ups hold P3 high and this read returns a stuck 1
+     * no matter what the user is pressing. See FINDING_buttons_are_active_high.md.
+     *
+     * It was moved AHEAD of hw_init() on 2026-08-03, on the reasoning that
+     * "P3 pull-ups are already enabled at handoff ... tlm_p3_boot reads 0xFB,
+     * P3.3 high". Both halves were mistakes. The pull-ups being enabled is the
+     * condition under which this read does not work, not the condition it
+     * needs; and 0xFB was byte 5 of that telemetry block, which is the live P3
+     * read, not byte 7 which is the boot sample and read 0xFF.
+     *
+     * The cost of this position is real and is accepted: a hang inside
+     * hw_init() disables the escape, which is what happened with the oversized
+     * image in BRICK_LOG.md #3. That is now covered instead by the code-size
+     * gate and the linker's own hard error, which catch the oversized image
+     * before it is ever written. An escape that reads a pin through the wrong
+     * pull-up configuration is not a fallback, it is a second brick. */
+    check_boot_dfu_button();
     tlm_phases |= TLM_PHASE_HW_INIT;
     CANARY(2, CANARY_HW);
     STAGE(3);

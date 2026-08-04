@@ -64,6 +64,19 @@ blindly clearing bits the ROM may own.
 
 > **RESOLVED 2026-07-31 — GLOBCTL bit 1 is P3PUDIS.** Datasheet §6.5.7.4: "Pullup resistor disable. If set to 1, disables on-chip pullup resistors on P3 GPIO pins." TI's ROM sources document only LPWR and MCUCLK, which is why it was never found there. The measured silent-USB result is explained without any USB-engine theory: `check_boot_dfu_button()` (main.c:48) depends on the internal P3 pull-ups, and with them disabled it wipes the EEPROM signature and spins forever without attaching. See FINDING_globctl_bits_named_and_cpten_missing.md and #169.
 
+> **CORRECTED 2026-08-03 — the pull-up reading above is right, the button
+> polarity behind it was not.** The paragraph saying `check_boot_dfu_button()`
+> "depends on the internal P3 pull-ups" assumes the buttons are active-low.
+> They are **active HIGH**: the board holds P3.3/P3.4/P3.5 low and a press
+> drives them high. Proof from the image — `p3_button_scan` fires on
+> `prev==0 && cur==1`, and Keil's `?C_INITSEG` zeroes the shadow at IRAM 0x20
+> (record `01 20 00`), so idle-high pins would fire all three handlers on the
+> first scan of every boot; the hardware boots to MIC instead. So P3PUDIS is
+> **required** for the buttons to work at all, not merely tolerable, and build
+> 0x0010 went silent because an active-low test met an active-high button, not
+> because the pull-ups were needed. #169 answered. See
+> `FINDING_buttons_are_active_high.md`.
+
 **GLOBCTL bit 1's function is still UNKNOWN.** TI's ROM documents only bit 2
 (LPWR) and bit 7 (CPU speed), and `rev20_STARTUP_TRACE.md`'s open-items list has
 carried "GLOBCTL bit 1 — UNKNOWN" from the start. The argument for setting it is
