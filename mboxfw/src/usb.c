@@ -498,7 +498,8 @@ static unsigned char handle_selector_request(unsigned char unit)
     else if (unit == UNIT_SEL_CH2) shift = 3;
     else                           return 0;
 
-    if (wValueH != UAC_SELECTOR_CTRL) {
+    /* UAC1 sends 0 here; accept the UAC2 value too. See usb.h. */
+    if (wValueH != UAC_SELECTOR_CTRL && wValueH != UAC_SELECTOR_CTRL_V2) {
         reply_stall();
         return 1;
     }

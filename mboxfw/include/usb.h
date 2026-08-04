@@ -124,8 +124,26 @@
 #define UNIT_SEL_CH2           0x0C   /* Selector Unit, channel 2 source      */
 #define UNIT_MIXER             0x0D   /* fixed 2x2, no programmable controls  */
 
-/* UAC1 §5.2.2.4.1: the only control a Selector Unit has. */
-#define UAC_SELECTOR_CTRL      0x01
+/* Selector Unit control selector.
+ *
+ * UAC1 §5.2.2.4 specifies wValue = ZERO for Selector Unit requests: the unit
+ * has exactly one control, so there is nothing to select between and UAC1
+ * never assigned it a CS number. The value 1 is the UAC2 convention
+ * (UAC2_CX_CLOCK_SELECTOR), and Linux follows the split exactly --
+ * parse_audio_selector_unit sets cval->control = 0 for UAC_VERSION_1 and 1
+ * for v2/v3.
+ *
+ * This shipped accepting ONLY 1, so snd-usb-audio's correct UAC1 request was
+ * stalled: build 0x0018 enumerated, both enum controls appeared in alsamixer
+ * with the right names, and every read returned EINVAL. A hand-issued CS=1
+ * request answered fine, which is what made it look like the firmware was
+ * right and the host was odd. The firmware was wrong.
+ *
+ * Both are accepted. 0 is the spec-correct UAC1 value and is what Linux
+ * sends; 1 costs a few bytes and covers a host that uses the UAC2 convention
+ * against our v1 descriptors -- macOS behaviour here is still unmeasured. */
+#define UAC_SELECTOR_CTRL      0x00   /* UAC1 §5.2.2.4 — wValue is zero */
+#define UAC_SELECTOR_CTRL_V2   0x01   /* UAC2 CX_CLOCK_SELECTOR, also taken */
 
 /* Audio format */
 #define AUDIO_NUM_CHANNELS     2

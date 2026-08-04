@@ -63,7 +63,10 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0018   /* 0018: per-channel Selector Units --
+#define TLM_BUILD_ID     0x0019   /* 0019: Selector Unit control selector
+                                   *       is 0 in UAC1, not 1 -- 0x0018
+                                   *       stalled every host read.
+                                   * 0018: per-channel Selector Units --
                                    *       class-compliant source select
                                    *       from the host (#159).
                                    * 0017: DFU escape hoisted ahead of
