@@ -223,3 +223,102 @@ within the same second as the previous build left the old image in place, so
 two mutation runs measured an unchanged binary and "passed". Mutation testing
 now does `make clean` and prints the image hash at every step, because a
 mutation that does not change the image tests nothing.
+
+---
+
+# #171 — where the mute pair actually rests, and why it has never shown
+
+2026-08-04, static. No hardware: neither host had an Mbox on the bus when this
+was written (`lsusb` on 192.168.1.76 and .86 shows no `0dba` device), so the
+measurement below is designed but **not taken**.
+
+## The complete write set for 0x23.2 / 0x23.3 in mboxfw
+
+Three sites, and only three:
+
+| site | effect |
+|---|---|
+| `codec.c:151` (`codec_boot_init`) | `g_codec_state_23 = 0` — pair LOW |
+| `streaming.c:180` (`streaming_set_rate`) | `|= 0x0C` — pair HIGH |
+| `power.c:73` (`do_suspend`) | `g_codec_state_23 = 0` — pair LOW |
+
+`streaming_set_rate()` has exactly one caller: `usb.c:945`, the data stage of
+**SET_CUR(SamplingFrequency)**. `SET_INTERFACE` does *not* reach it — the alt
+handlers call `streaming_capture_enable()` / `streaming_playback_enable()`,
+which never touch the codec word.
+
+So mboxfw rests with the pair LOW in three windows:
+
+1. from boot until the first `SET_CUR` — **including the moment
+   `cs8427_boot_init` releases the external RESET** (`cs8427.c:186`), which is
+   the divergence `sim_p1_waveform.py` reports as `0x10C0` vs stock's `0x1CC0`;
+2. after every USB suspend, until the next `SET_CUR`;
+3. never during a stream.
+
+## Why this has never produced a symptom
+
+**Both** audio endpoints declare the UAC1 sampling-frequency control —
+`descriptors.c:180` (playback) and the interface-2 class-specific EP descriptor
+(capture) both carry `bmAttributes = 0x01`. `snd-usb-audio` therefore issues
+`SET_CUR(SamplingFrequency)` on every `hw_params`, before any isochronous data
+flows. The pair is raised by the very request that precedes streaming.
+
+That is the whole explanation for "audio works despite booting with the pair
+low": in normal use, nothing ever streams while the pair is low. The mute
+reading and the observed behaviour are consistent — the mute is simply always
+lifted before there is anything to mute.
+
+## What stock does differently, restated precisely
+
+Stock never *rests* with the pair low while running. Its two low windows are
+both brackets that close in straight-line code:
+
+    bring-up   0x080E clear (with the whole word)  ->  0x0831/0x0833 set,
+               THEN 0x0840 release RESET, 0x0842 publish
+    clock mode 0x072F/0x0731 clear  ->  0x07EE/0x07F0 set (unconditional,
+               every mode), 0x07F2 publish
+
+The ordering difference that matters is in bring-up: **stock raises the pair
+before releasing the external RESET; mboxfw releases RESET with it low.** If
+the external chip samples those two lines at reset release, mboxfw's chip comes
+up having seen a different pin state — and no later `SET_CUR` would undo a
+latched-at-reset decision.
+
+## The measurement, and why the obvious ones are closed
+
+- **CS8427 register readback** — closed. Telemetry block 10 (#165) was retired
+  on 2026-08-03: no P3 pin varied across the eight read clocks, so CDOUT is not
+  readable from here. There is no software route to ask the chip what it
+  latched.
+- **`SET_CUR` A/B on the running device** — cannot isolate. Any ALSA stream
+  sends `SET_CUR` first, so the pair is high in both arms.
+- **Suspend to clear the pair** — would work (`do_suspend` zeroes the word) but
+  requires forcing a USB suspend, and #149 ("verify suspend/resume on
+  hardware") is still open. Wedging on a failed resume costs a physical trip.
+  Not to be attempted casually.
+
+**What does isolate it, with no flash and no power cycle:** drive the stream
+from raw pyusb instead of ALSA, so `SET_CUR` becomes an independent variable.
+
+    claim interface, SET_INTERFACE(iface 1, alt 1), push isochronous
+    tone packets, measure the loopback capture on src2
+
+    arm A: no SET_CUR first   -> pair LOW  (confirm via block 9 byte 2)
+    arm B: SET_CUR(48000)     -> pair HIGH (confirm via block 9 byte 2)
+
+Silence in A and tone in B names the pair a mute directly, on the running
+image, with one variable. Tone in both says the pair is not an output mute and
+the bring-up ordering matters only to whatever the external chip latches — at
+which point the remaining question is narrow enough to be worth a build.
+
+Block 9 byte 2 reports `g_codec_state_23` live (`telemetry.c:242`), so each arm
+states its own pair state rather than having it assumed.
+
+## Not yet assessed
+
+The rest of stock's `audio_path_reconfig_ext_chips` (0x080B) that mboxfw does
+only inside `streaming_set_rate()`: the `CLR A / MOV 0x25,A / MOV 0x23,A`
+zeroing at 0x080B-0x080E, `LCALL acg_set_freq_48k_family` at 0x081B,
+`LCALL acg_dptr_inc_then_set_both_dctl_10` at 0x081E, and `ACGCTL |= 0xC0` at
+0x0827. Same shape as the pair: stock establishes a running clock during
+bring-up, mboxfw waits for the host to ask.

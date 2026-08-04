@@ -132,10 +132,35 @@ that brackets CPTEN at runtime:
     07b8  SETB 0x18 / SETB 0x19    ; IRAM 0x23.0, 0x23.1
     07bc  LCALL 0x0e62             ; publish the codec word
 
-It is reached only from `cmd10_set_cpt_mode5` @ `0x04BC`, which is entry 10 of
-the host vendor-command jump table at `0x0300` (`031b: LJMP 0x04bc`). **0x0A is
-a host command index, not an internal work code.** Nothing in the firmware posts
-it because the Digidesign driver does.
+It is reached only from `cmd10_set_cpt_mode5` @ `0x04BC`, whose sole XREF is
+`0x031B` — entry 10 of `event_jump_table` @ `0x0300`, indexed by *work code
+minus one* (`0x0300 + 3*9 = 0x031B`).
+
+> **CORRECTION, same day.** This section first claimed "0x0A is a host command
+> index, not an internal work code ... nothing in the firmware posts it because
+> the Digidesign driver does". **That was wrong**, and it withdrew a correct
+> claim in `FINDING_codec_word_bits_resolved.md`. The table is dispatched from
+> an internal work code held in **IRAM 0x0A**, and work codes are posted by
+> request handlers (`0x005B` posts 0x0D, `0x0006` posts 0x0E) — so the host
+> reaches the table *indirectly*, but only through a handler that posts a
+> specific code. No handler posts 0x0A.
+>
+> The reachability is now settled by a scan over **every addressing mode** that
+> can write IRAM 0x0A in both images, not just `MOV direct,#imm`:
+>
+>   - 13 immediates: `0x01`–`0x08` and `0x0B`–`0x0E`. **0x09 and 0x0A absent.**
+>   - `MOV 0x0a,A` @ `0x0565` — `evt_dispatch_epilogue`, preceded by `CLR A`.
+>     Writes 0.
+>   - `MOV 0x0a,A` @ `0x0A06` — A cleared at `0x09F5`, not reloaded. Writes 0.
+>
+> **No site can post 0x0A. The branch is dead in stock**, as originally
+> recorded. (0x09 absent likewise makes clock mode 4 dead, which independently
+> matches the dispatcher not implementing it.)
+>
+> A first pass at this scan also reported `INC 0x0a` at `0x0EE1`. That was an
+> artifact: the bytes are `20 05 0a` = `JB 0x05,0x0eed`, and the scanner matched
+> `05 0a` *inside* a three-byte instruction. Decode from instruction
+> boundaries — the same lesson four earlier tools learned on DPTR arithmetic.
 
 What it does is change `CPTRXCNF4` from `0x03` to `0x01` — the divider from
 MCLKO2 to SCLK2 — i.e. it re-clocks the capture path to a rate independent of
@@ -144,11 +169,13 @@ advertises, and it is the one place where the two "mode 5"s genuinely touch.
 No class-compliant host sends it, so mboxfw stays at the boot divider with both
 directions on one rate, which is what UAC1 wants.
 
-Corollary: **IRAM 0x23.0 and 0x23.1 are not dead in stock.** Each is set exactly
-once, in this branch, in both images (Rev 20 `0x07B8/0x07BA`, Rev 22
-`0x0796/0x0798`), and never cleared. `latch_word_bit_diff.py`'s `EXPECTED_GAPS`
-called them "dead in stock too"; the gap is still safe, but for the different
-reason above. Corrected.
+Corollary: **IRAM 0x23.0 and 0x23.1 are dead in stock after all.** Each has
+exactly one setter, in this unreachable branch, in both images (Rev 20
+`0x07B8/0x07BA`, Rev 22 `0x0796/0x0798`). `latch_word_bit_diff.py`'s
+`EXPECTED_GAPS` said "dead in stock too" and was right; it was briefly reworded
+on the strength of the erroneous host-command reading above and is now restored,
+with the complete-addressing-mode scan as its backing rather than the
+immediate-only one.
 
 These are a *different* pair from the `0x23.2`/`0x23.3` of #171, which are set
 unconditionally in straight-line code at `0x07EE/0x07F0` and which mboxfw does

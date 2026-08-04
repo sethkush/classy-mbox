@@ -49,22 +49,27 @@ SET_OPCODES = {0xD2: "SETB", 0x92: "MOV bit,C", 0xB2: "CPL"}
 # Bits stock drives that mboxfw does not, WITH the reason each is accepted.
 # A bit listed here is a known, recorded gap. Anything not listed fails.
 EXPECTED_GAPS = {
-    # CORRECTED 2026-08-04. These were justified as "dead in stock too,
-    # reachable only from work code 0x0A which nothing posts". The reachability
-    # is right; calling it dead is not, and "work code" was the wrong noun.
-    # 0x0A is an index into the HOST vendor-command jump table at 0x0300, not
-    # an internal work code -- entry 10 is `LJMP 0x04bc`, which loads R7=5 and
-    # calls audio_clock_mode_apply. Nothing in the firmware posts it because
-    # the Digidesign host driver does. So the branch is host-reachable, not
-    # dead; what makes the gap safe is that no class-compliant host sends it.
+    # These entries were briefly reworded on 2026-08-04 to claim 0x0A is a HOST
+    # command index and the branch therefore live. That was wrong and is
+    # withdrawn; the original wording was correct. 0x0A really is an internal
+    # work code in IRAM 0x0A, dispatched through event_jump_table @ 0x0300
+    # (index = code - 1, so 0x0300 + 3*9 = 0x031B). The reachability claim is
+    # now backed by a complete scan over EVERY addressing mode that can write
+    # IRAM 0x0A in both images, not just the MOV direct,#imm idiom:
+    #   13 immediates: 0x01-0x08 and 0x0B-0x0E -- 0x09 and 0x0A absent
+    #   MOV 0x0a,A @ 0x0565: preceded by CLR A (dispatch epilogue) -> writes 0
+    #   MOV 0x0a,A @ 0x0A06: A cleared at 0x09F5, not reloaded  -> writes 0
+    # No site can post 0x0A, so the branch is genuinely unreachable.
+    # (An apparent `INC 0x0a` at 0x0EE1 is a scanning artifact: the bytes are
+    # `20 05 0a` = JB 0x05,0x0eed. Decode from instruction boundaries.)
     # See FINDING_capture_works_anyway.md.
     (0x23, 0): "stock's only setter is Rev 20 0x07B8 / Rev 22 0x0796, inside "
-               "the clock-mode-5 branch reachable solely from host vendor "
-               "command 10 (0x0A). That command re-clocks capture to a rate "
-               "independent of playback; no class-compliant host sends it, so "
-               "mboxfw never enters the branch. FINDING_capture_works_anyway.md",
-    (0x23, 1): "same host-command-10 branch as 0x23.0 (Rev 20 0x07BA, "
-               "Rev 22 0x0798)",
+               "the clock-mode-5 branch of audio_clock_mode_apply, reachable "
+               "only from work code 0x0A -- which no site in either image can "
+               "post (all addressing modes scanned). Dead in stock too. "
+               "FINDING_codec_word_bits_resolved.md",
+    (0x23, 1): "same unreachable work-code-0x0A branch as 0x23.0 "
+               "(Rev 20 0x07BA, Rev 22 0x0798)",
     # 0x25.0-.3 were gaps until #170 (2026-08-03). codec_source_changed() now
     # derives all four from g_mux_state on every publish.
     (0x25, 4): "#159 -- UAC Selector Unit position (0 = analog, 1 = S/PDIF). "
