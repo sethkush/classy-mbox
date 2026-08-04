@@ -93,6 +93,27 @@ is not on `line` and names the fix.
 **Read block 9 alongside every capture.** The measurement should state its own
 input routing rather than have it reconstructed from the front panel afterwards.
 
+## The back-panel jack order is not intuitive — verify, do not assume
+
+**2026-08-03: the out2 self-loop was in `src1`, not `src2`, and this document
+said otherwise.** It was found by measurement, not by looking: the first tone
+test after the #170 fix put a clean 1 kHz tone on capture **ch1** — the channel
+whose cable runs to the disconnected Mbox B — while the supposedly-looped ch2
+sat at the noise floor. Moving the cable to src2 moved the tone to ch2, every
+other condition held constant.
+
+That is the second measurement in this project derailed by the input routing
+not being what it was believed to be (the first was the 2026-07-29 mic/line
+mix-up above). The jack order on the back panel does not read the way the
+channel numbering suggests, so **confirm which physical jack a cable is in
+before trusting any loopback result**, and prefer a test that moves the cable
+and watches the signal move — that is what settled this one.
+
+The accident was useful in the end: a signal that moves when the cable moves,
+and vanishes when its own channel's selector goes to MIC, is demonstrably
+travelling through the selected line input rather than leaking across inside
+the chip.
+
 ## Cable-type caveat on level comparisons
 
 Source 1 is fed over **TS** (unbalanced) and source 2 over **TRS**. A level
