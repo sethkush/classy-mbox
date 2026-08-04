@@ -12,9 +12,35 @@ Usage:
     sudo ./mboxflash_linux.py flash    <image.bin> [--yes]
 
 Device modes:
-    0xFFFF:0xFFFE  bulletproof DFU (boot ROM, SDA short or blank EEPROM)
+    0xFFFF:0xFFFE  boot-ROM DFU   (see below — target is NOT implied by the PID)
     0x0DBA:0x1001  app-DFU        (valid header, dataType != APPCODE)
     0x0DBA:0x1000  audio mode     (running app — not flashable)
+
+0xFFFF:0xFFFE DOES NOT MEAN "RAM LOADER", and this tool used to say it did.
+The substantive correction was made 2026-07-28 (RomBoot.c:60-66); only these
+labels were left stale, and they are misleading enough to reverse a decision.
+
+The boot ROM presents this one descriptor set for BOTH DFU targets. Which is
+active comes from `dataType`, i.e. from HOW the EEPROM failed — never the PID:
+
+    dataType EEPROM_UNEXIST (0xFE) / EEPROM_DEVICE_TYPE (0x02)
+        -> DFU_TARGET_RAM.    Only a genuinely unreadable EEPROM (a real SDA
+           short holding I2C down, a blank part). Downloads go to volatile RAM
+           and a power cycle discards them.
+
+    anything else — including a readable header whose CHECKSUM was zeroed,
+    which is what eeprom_invalidate_signature() does
+        -> DFU_TARGET_EEPROM. Downloads are PROGRAMMED and survive a power
+           cycle, including a freshly written valid header.
+
+Re-confirmed end to end 2026-08-03: trigger zeroed the checksum, device came up
+0xFFFF:0xFFFE, flashed 166/166 to dfuMANIFEST, started via a bus reset, and a
+real power cycle then brought build 0x001B back FROM EEPROM with counters reset
+(bus resets 7 -> 3, setup_count -> 24). See
+firmware_stock/decomp/FINDING_170_audio_works.md.
+
+So the mode strings below name the PID, not the target. Do not conclude from
+them that a flash will or will not persist.
 """
 
 import argparse
@@ -41,7 +67,9 @@ def require_usb():
 
 # ---------------------------------------------------------------- constants
 
-DFU_DEVICES = [(0xFFFF, 0xFFFE, "bulletproof-DFU"),
+# These strings name the PID, NOT the DFU target. 0xFFFF:0xFFFE is presented
+# for both DFU_TARGET_RAM and DFU_TARGET_EEPROM -- see the module docstring.
+DFU_DEVICES = [(0xFFFF, 0xFFFE, "boot-ROM DFU (target unknown from PID)"),
                (0x0DBA, 0x1001, "app-DFU")]
 AUDIO_DEVICE = (0x0DBA, 0x1000)
 # mboxfw can be built with MBOX_PID overridden (`make MBOX_PID=0x2000`) so that

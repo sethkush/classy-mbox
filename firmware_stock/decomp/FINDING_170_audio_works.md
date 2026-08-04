@@ -79,23 +79,46 @@ selector moves to MIC, is travelling through the selected line input — not
 internal DAC-to-ADC crosstalk, which at -29 dBFS would have been implausible
 anyway (on-chip crosstalk lives near -80 to -100 dB).
 
-## 5. Status of the running image, and what is NOT proven
+## 5. It persisted to EEPROM, and the flasher's label was misleading
 
-**The EEPROM header checksum is zeroed and this image is RAM-resident.** The
-enter-DFU trigger zeroed it; the device then enumerated `ffff:fffe`, which
-`mboxflash_linux.py` labels bulletproof-DFU purely from the PID. Per CLAUDE.md
-both DFU modes advertise the same `ffff:fffe`-style descriptors, so that label
-does not establish which target was active, and whether the download reached
-EEPROM is **unsettled**. The download reached the manifest phase at 166/166
-blocks and the app started after a bus reset (`uhubctl -a cycle`, which on this
-hardware does not switch VBUS — see the void-box notes — so the 8051 kept
-running).
+**SETTLED.** After the measurements above, a real power cycle (physical unplug,
+~15 s) brought the device back at `0dba:2000` running **build 0x001B from
+EEPROM**, and the §3 measurement reproduced exactly (`291203` vs `291237`).
 
-Settle it with a deliberate power cycle: if it comes back at 0x001B the write
-persisted; if it comes back in DFU it did not, and the cost is one more
-trigger-and-reflash.
+Cold boot proven the way this project requires — counters DOWN, not merely
+re-enumeration:
 
-Also still unproven:
+    bus resets    7  -> 3
+    setup_count      -> 24
+    iep0_count       -> 58
+    mux word         -> 0xF6 (MIC/MIC), host mux sets accepted = 0
+    codec word       -> 0x1CC0 (the boot value)
+
+The write had reached EEPROM all along, even though the device enumerated
+`ffff:fffe` and `mboxflash_linux.py` printed "bulletproof-DFU".
+
+That label was the stale part, not the behaviour. The substantive correction
+was already made 2026-07-28 from RomBoot.c:60-66 and is recorded in the project
+memory: `ffff:fffe` is the boot ROM's DEFAULT DFU descriptor set, shown for both
+targets, and the target comes from `dataType` —
+
+    EEPROM_UNEXIST (0xFE) / EEPROM_DEVICE_TYPE (0x02)  -> DFU_TARGET_RAM
+    anything else                                      -> DFU_TARGET_EEPROM
+
+A zeroed header checksum leaves `dataType` at 0x00, not UNEXIST, so it selects
+TARGET_EEPROM. Only a genuinely unreadable EEPROM gives TARGET_RAM.
+
+`tools/mboxflash_linux.py` has been corrected: its mode strings now say they
+name the PID and not the target. The old wording nearly cost a redundant
+trigger-and-reflash cycle here, on the reasoning "the flasher says bulletproof,
+so this cannot have persisted".
+
+**The practical result: flashing is a repeatable, persistent procedure.**
+Trigger -> replug -> flash -> bus reset (`uhubctl -a cycle`, which on this
+hardware does not switch VBUS, so the 8051 keeps running) -> app runs, and it
+survives power cycles.
+
+## 5a. What is still NOT proven
 
   * **Playback BYOR (#161) in the playback direction.** Capture was settled by
     measurement in the #147 finding. Playback now demonstrably carries a
@@ -109,6 +132,8 @@ Also still unproven:
   * Absolute level, distortion, noise floor and channel balance were not
     characterised. `-29.2 dBFS` is consistent with the cabling and is not a
     calibrated figure.
+  * Only the LINE inputs were exercised. MIC and INST select correctly in the
+    codec word (0x1CCA / 0x1CC5 observed) but nothing was fed into them.
 
 ## 6. Gate bug this exposed
 
