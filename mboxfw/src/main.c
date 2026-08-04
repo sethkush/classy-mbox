@@ -304,12 +304,64 @@ void main(void)
     tlm_p1_boot = P1;
     tlm_p3_boot = P3;
 
-    /* check_boot_dfu_button() runs after hw_init so P3PUDIS is set before the
-     * button is sampled, and before cs8427/codec init so the escape hatch
-     * still works if either of those hangs. */
-
     CANARY(0, CANARY_MAIN);
     STAGE(1);
+
+    /* -------- Minimum pin setup for the DFU escape (#172) --------
+     *
+     * These two writes are the ENTIRETY of what check_boot_dfu_button() needs
+     * from hardware init. Hoisting them here lets the escape run before
+     * usb_init(), so it survives a hang anywhere in the boot path rather than
+     * only after hw_init().
+     *
+     * Both are repeated verbatim inside hw_init(), in stock's position and
+     * order, and both are idempotent: P3 = 0xFF is an assignment to the same
+     * value and GLOBCTL |= 0x02 is a read-modify-write of a bit already set.
+     * hw_init() remains the authority on the boot sequence; this is a subset
+     * pulled forward, not a relocation. Do not delete the copies there.
+     *
+     * WHY BOTH ARE NEEDED. P3 = 0xFF sets the port latch, which is what makes
+     * the pins inputs. GLOBCTL bit 1 (P3PUDIS) releases the internal pull-ups,
+     * without which they hold P3 high and the read returns a stuck 1 whatever
+     * is pressed -- the state in which this escape could never fire, in any
+     * build up to 0x0015. See FINDING_buttons_are_active_high.md.
+     *
+     * P3's latch is believed high at handoff (tlm_p3_boot measured 0xFF on
+     * this part), but that is one measurement of one boot ROM on one unit, and
+     * a stuck-low latch would silently disable the escape. Writing it costs
+     * two bytes and removes the assumption.
+     *
+     * SAFETY OF RUNNING A HALTING PATH BEFORE usb_init(). check_boot_dfu_button
+     * only halts after a CONFIRMED header invalidate, which is precisely the
+     * condition that makes the next power cycle land in DFU. If the EEPROM
+     * write fails it returns and usb_init() runs as normal. Both outcomes are
+     * recoverable over the wire, so the "usb_init is always reached" invariant
+     * is narrowed, not broken -- verify_conn_reachable.py encodes the narrowed
+     * form.
+     *
+     * This is NOT a live-USB-engine hazard (the #47 concern): USBCTL was
+     * zeroed above, usb_init() has not run, and P3PUDIS has nothing to do with
+     * the USB engine -- that theory was retracted, see hw_init.c. */
+    P3       = 0xFF;   /* Rev 20 fcn.0x08CB @ 0x08E9, Rev 22 fcn.0x07EC @ 0x080A */
+    GLOBCTL |= 0x02;   /* Rev 20 fcn.0x08CB @ 0x08FE, Rev 22 fcn.0x07EC @ 0x081F */
+
+    /* DFU ESCAPE, before anything that can hang.
+     *
+     * Position history, because it has moved twice on bad reasoning. It ran
+     * after hw_init() until 2026-08-03, so a hang in hw_init() disabled it --
+     * which is exactly what the oversized image in BRICK_LOG.md #3 did, and
+     * recovery cost an SDA short. It was then moved ahead of hw_init() on the
+     * claim that "P3 pull-ups are already enabled at handoff", which had the
+     * dependency backwards (the pull-ups defeat this read, they do not enable
+     * it) and misread byte 5 of a telemetry block for byte 7. It went back
+     * after hw_init() when that was found, and now moves here with the two
+     * writes it actually depends on hoisted alongside it -- which is what the
+     * first move was reaching for and got wrong.
+     *
+     * Proven on hardware 2026-08-03 in its post-hw_init position: source-1
+     * held through a power cycle produced no enumeration at all, and the
+     * following power cycle came up ffff:fffe and flashed clean. */
+    check_boot_dfu_button();
 
     /* usb_init() configures endpoints and buffers but does NOT attach.
      * Ordering below mirrors both stock firmwares exactly. */
@@ -319,26 +371,6 @@ void main(void)
     STAGE(2);
 
     hw_init();
-
-    /* DFU ESCAPE. It has to be HERE, immediately after hw_init(), and not
-     * before it: hw_init() is what sets GLOBCTL P3PUDIS, and without that
-     * write the internal pull-ups hold P3 high and this read returns a stuck 1
-     * no matter what the user is pressing. See FINDING_buttons_are_active_high.md.
-     *
-     * It was moved AHEAD of hw_init() on 2026-08-03, on the reasoning that
-     * "P3 pull-ups are already enabled at handoff ... tlm_p3_boot reads 0xFB,
-     * P3.3 high". Both halves were mistakes. The pull-ups being enabled is the
-     * condition under which this read does not work, not the condition it
-     * needs; and 0xFB was byte 5 of that telemetry block, which is the live P3
-     * read, not byte 7 which is the boot sample and read 0xFF.
-     *
-     * The cost of this position is real and is accepted: a hang inside
-     * hw_init() disables the escape, which is what happened with the oversized
-     * image in BRICK_LOG.md #3. That is now covered instead by the code-size
-     * gate and the linker's own hard error, which catch the oversized image
-     * before it is ever written. An escape that reads a pin through the wrong
-     * pull-up configuration is not a fallback, it is a second brick. */
-    check_boot_dfu_button();
     tlm_phases |= TLM_PHASE_HW_INIT;
     CANARY(2, CANARY_HW);
     STAGE(3);

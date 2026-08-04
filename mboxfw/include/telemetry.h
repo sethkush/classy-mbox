@@ -63,7 +63,10 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0016   /* 0016: buttons are ACTIVE HIGH -- GLOBCTL
+#define TLM_BUILD_ID     0x0017   /* 0017: DFU escape hoisted ahead of
+                                   *       usb_init, with the two writes
+                                   *       it depends on (#172).
+                                   * 0016: buttons are ACTIVE HIGH -- GLOBCTL
                                    *       P3PUDIS restored, boot-DFU button
                                    *       read un-inverted and moved after
                                    *       hw_init (#150/#169).

@@ -47,6 +47,7 @@
 0xffaf  runtime   -       # usb
 0xffb0  or        0x01    # hw_init
 0xffb1  or        0x01    # hw_init
+0xffb1  or        0x02    # main
 0xffb1  runtime   -       # hw_init
 0xffb2  assign    0x00    # usb
 0xffb2  runtime   -       # usb
