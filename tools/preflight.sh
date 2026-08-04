@@ -209,8 +209,13 @@ echo "       PROVEN 2026-08-03, build 0x0016, once. The device goes silent by"
 echo "       design (breaks its own checksum, spins); the NEXT power cycle"
 echo "       brings it up as ffff:fffe. Silence is also what a brick looks"
 echo "       like -- the following power cycle is what tells them apart."
-echo "       It runs after usb_init() and hw_init(), so it does NOT cover a"
-echo "       hang inside either, nor an image that never executes."
+echo "       As of #172 (build 0x0017) it runs BEFORE usb_init/hw_init,"
+echo "       with the two writes it needs hoisted with it, so it covers a"
+echo "       hang anywhere in the boot path. It still cannot recover an"
+echo "       image that never executes at all -- the oversize case, which"
+echo "       the linker and check_code_size.py now reject up front."
+echo "       That position is unproven on hardware; 0x0016 fired from the"
+echo "       old post-hw_init position."
 echo "     If both fail: physical SDA short (see recovery notes)."
 read -r -p "  → Rollback plan is understood? [yes/no] " ans
 [[ "$ans" == "yes" ]] || { echo "aborted."; exit 3; }
@@ -234,7 +239,7 @@ if grep -q "check_boot_dfu_button" mboxfw/src/main.c 2>/dev/null; then
         || { echo "     ✗ P3PUDIS not set — P3 reads stuck high, button dead"; _btn_ok=0; }
     [[ "$_btn_ok" == 1 ]] && \
         echo "     ✓ boot-time button-hold DFU trigger (fired on hardware" && \
-        echo "       2026-08-03; covers hangs AFTER hw_init, not before)"
+        echo "       2026-08-03; #172 moved it ahead of usb_init/hw_init)"
 else
     echo "     ✗ boot-time button DFU trigger MISSING"
 fi
