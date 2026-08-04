@@ -177,13 +177,40 @@ void hw_init(void)
      * BYOR=0, so BYOR=0 cannot be the little-endian setting. Per §6.5.4.12,
      * BYOR=0 "preserves" the received order, which for MSB-first I2S is
      * big-endian. mboxfw declares S24_3LE, so on this reading it wants BYOR
-     * SET, the opposite of what commit 7590af1 concluded. That is a wire-
-     * format question with no playback measurement behind it either way, so
-     * nothing is changed on it here — task #161.
+     * SET.
      *
-     * The value below is left at stock's boot value, unchanged, because
-     * changing it is a behaviour change that costs a flash and belongs with
-     * the rest of the #147 batch rather than in a documentation fix. */
+     * #161 SETTLED BY MEASUREMENT 2026-08-03, build 0x001B. The value below
+     * (0xAC, BYOR SET) is CORRECT for playback. 1 kHz through the out2->src2
+     * analog loop, swept over 36 dB of input range:
+     *
+     *     in  -9 dBFS -> out -29.20    A/rms 1.41421   h2 -101.7 dB
+     *     in -21 dBFS -> out -41.20    A/rms 1.41411   h2  -99.5 dB
+     *     in -33 dBFS -> out -53.20    A/rms 1.41252   h2  -89.8 dB
+     *     in -45 dBFS -> out -65.20    A/rms 1.38827   h2  -74.0 dB
+     *
+     * A constant 20.20 dB loss at every level, amplitude/rms = sqrt(2) to
+     * five digits, harmonics ~100 dB down. That is a spectrally pure sine.
+     * A byte swap maps LSBs into MSBs, so a quiet input would return near
+     * full scale and noisy instead of tracking down linearly; these track.
+     * The self-loop suffices to constrain PLAYBACK because capture is
+     * independently settled (LE, FINDING_147_capture_works_analog_path_does_not.md)
+     * and a playback swap corrupts the waveform in the ANALOG domain, where
+     * no capture-side swap can cancel it.
+     *
+     * WHAT THIS DOES NOT SETTLE, and it is odd: mboxfw runs BYOR ASYMMETRIC
+     * — 0xAC (set) here for playback, 0xA8 (clear) at CPTRXCNF3 for capture
+     * — and BOTH directions measure correct for S24_3LE. The reading above
+     * predicts the same polarity in both directions, so it does not explain
+     * the asymmetry. Measurement outranks the reading, so the values stand,
+     * but the datasheet story is incomplete. Note also that mboxfw never
+     * runs stock's codec_port_cfg3_commit helper, which rewrites BOTH
+     * registers with ONE value on every SET_CONFIGURATION; stock is
+     * therefore always symmetric at 0xA8/0xA8 and mboxfw never is.
+     *
+     * These measurements prove the shipped setting is CORRECT; they do not
+     * prove it is UNIQUELY correct, since 0xA8 playback was never flashed
+     * and tried. That falsification costs one flash cycle if the asymmetry
+     * ever needs explaining rather than just working. */
     CPTCNF3   = 0xAC;   /* Rev 20 fcn.0x08CB @ 0x090B — stock BOOT value.
                          * Stock's RUNNING value is 0xA8 (Rev 20 @0x0355 via
                          * the helper at 0x0FF4). #161. */
