@@ -149,6 +149,30 @@ P3PUDIS, changes nothing observable. Only both together do anything.
      `0xFF`.
   6. `regs.h`'s "active-low with pull-ups" comment is corrected.
 
+## 6b. Confirmed on hardware, 2026-08-03, build 0x0016
+
+Flashed to Mbox A. Block 4 carries the before and after in one line:
+
+    P3 live=0xC2   boot=0xFF
+
+`boot` is sampled before `hw_init` with the internal pull-ups still on — all
+high, the stuck state. `live` is after `GLOBCTL |= 0x02` releases them: bits
+3/4/5 rest LOW, exactly as §2 predicted from the zeroed shadow. Build 0x0011
+read 0xFA with those bits stuck at 1 whatever was pressed.
+
+Behaviour, in two steps so the count is pinned as well as the path:
+
+  * source-1 pressed, LEDs cycled, block 9 went 0xF6 -> 0xF5 (ch1 = line).
+    The whole chain works: pin, edge detect, source state machine, mux
+    publish, panel LEDs.
+  * from `line`, **exactly one** press -> `inst`. Presses are counted 1:1;
+    the poll rate filters contact bounce, so the press-triggered edge does
+    not double-fire. (Stock has no debounce either, so had it double-fired,
+    stock would too.)
+
+The boot-DFU escape also did not false-fire: the device attached normally,
+which is precisely what build 0x0010 could not do.
+
 ## 7. What is still not proved
 
 That the board uses pull-downs on these three pins is an inference from the
@@ -156,6 +180,11 @@ pin behaviour, not from a schematic or a meter. What is proved is the
 behaviour: stock (P3PUDIS set) sees the buttons; mboxfw (P3PUDIS clear) reads a
 stuck 1. The fix rests on the behaviour, not on the mechanism.
 
-Untested on hardware at the time of writing: that mboxfw with P3PUDIS set reads
-P3 bits 3/4/5 as 0 at rest and 1 under a press. Telemetry block 4 answers that
-directly, with no reflash needed after the one flash that carries the change.
+RESOLVED by §6b: mboxfw with P3PUDIS set reads P3 bits 3/4/5 as 0 at rest, and
+presses register 1:1.
+
+Still open: whether the boot-time DFU escape FIRES when the button is held
+through a power cycle. It has never fired in any build, and build 0x0016 came
+up on a bus reset rather than a cold boot, so it was not exercised. Until that
+is demonstrated, the SDA short remains the real fallback and `preflight.sh` §4
+says so. #153.
