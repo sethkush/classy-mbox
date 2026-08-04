@@ -26,8 +26,64 @@
 __data unsigned char g_codec_state_23 = 0;
 __data unsigned char g_codec_state_25 = 0;
 
+/*
+ * Mirror the per-channel source selection into the CODEC word's low nibble.
+ * #170.
+ *
+ * Stock keeps a 2-bit state per channel in RAM[0x25] and derives the 3-bit
+ * panel pattern from it; mboxfw keeps the pattern (g_mux_state) and derives
+ * the state here. The two forms are equivalent because the pattern is only
+ * ever one of the three legal one-cold values — cycle_source() emits nothing
+ * else, handle_set_mux() rejects anything else, and hw_init() seeds 0x06.
+ *
+ * The state machines, identical instruction-for-instruction in both images:
+ *
+ *   Rev 20 button_a_cycle_3state @0x0E27   Rev 22 panel_state_cycle_A @0x0E1B
+ *     @0x0E2A SETB 0x28 / SETB 0x2A        @0x0E1E SETB 0x28 / SETB 0x2A
+ *     @0x0E3C SETB 0x28 / CLR  0x2A        @0x0E30 SETB 0x28 / CLR  0x2A
+ *     @0x0E48 CLR  0x28 / CLR  0x2A        @0x0E3C CLR  0x28 / CLR  0x2A
+ *   Rev 20 button_b_cycle_3state @0x0E9D   Rev 22 panel_state_cycle_B @0x0E8F
+ *     @0x0EA0 SETB 0x29 / SETB 0x2B        @0x0E92 SETB 0x29 / SETB 0x2B
+ *     @0x0EAF SETB 0x29 / CLR  0x2B        @0x0EA1 SETB 0x29 / CLR  0x2B
+ *     @0x0EBB CLR  0x29 / CLR  0x2B        @0x0EAD CLR  0x29 / CLR  0x2B
+ *
+ * Bit addresses 0x28..0x2B are RAM[0x25].0..3: ch1 = (.0 lo, .2 hi), ch2 =
+ * (.1 lo, .3 hi). Pairing each branch with the panel pattern it emits in the
+ * same basic block gives the map:
+ *
+ *   pattern 0x06 MIC  (boot) -> (lo,hi) = (0,0)
+ *   pattern 0x05 LINE        -> (1,1)
+ *   pattern 0x03 INST        -> (1,0)
+ *
+ * Until this existed the low nibble was write-zero-only, so the codec chain
+ * said MIC on both channels no matter what the panel/relay chain said. Boot is
+ * unaffected — MIC maps to (0,0), which is the value codec_init() publishes.
+ */
+static unsigned char src_state(unsigned char pat)
+{
+    if (pat == 0x05) { return 0x03; }   /* LINE -> lo=1 hi=1 */
+    if (pat == 0x03) { return 0x01; }   /* INST -> lo=1 hi=0 */
+    return 0x00;                        /* MIC  -> lo=0 hi=0 */
+}
+
 void codec_source_changed(void)
 {
+    unsigned char s1 = src_state(g_mux_state & 0x07);
+    unsigned char s2 = src_state((unsigned char)(g_mux_state >> 3) & 0x07);
+
+    /* Clear the four state bits, then set them individually with literal
+     * masks. Written this way rather than as one compound RMW expression for
+     * two reasons: it is the shape stock uses (SETB/CLR per bit, never a byte
+     * store), and `tools/latch_word_bit_diff.py` can read literal `|=` masks
+     * exactly. A compound `x = (x & ~0x0F) | <expr>` forces that gate onto its
+     * conservative not-a-pure-literal branch, which masks the byte to 0xFF and
+     * would report 0x25.4/0x25.5 as driven when nothing drives them. */
+    g_codec_state_25 &= (unsigned char)~0x0Fu;
+    if (s1 & 0x01u) { g_codec_state_25 |= CODEC25_SRC1_LO; }  /* 0x25.0 */
+    if (s1 & 0x02u) { g_codec_state_25 |= CODEC25_SRC1_HI; }  /* 0x25.2 */
+    if (s2 & 0x01u) { g_codec_state_25 |= CODEC25_SRC2_LO; }  /* 0x25.1 */
+    if (s2 & 0x02u) { g_codec_state_25 |= CODEC25_SRC2_HI; }  /* 0x25.3 */
+
     /* 0x22.6 = !(0x25.4) && !(0x25.5) — see codec.h for the byte sequence.
      *
      * What this file previously called codec_state_adjust() also did

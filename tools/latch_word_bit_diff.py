@@ -53,15 +53,14 @@ EXPECTED_GAPS = {
                "from work code 0x0A, which nothing posts in either image -- "
                "dead in stock too. FINDING_codec_word_bits_resolved.md",
     (0x23, 1): "same mode-5 dead branch as 0x23.0",
-    (0x25, 0): "channel-1 source state, low bit (#170). The 2-bit-per-channel "
-               "encoding is decoded in FINDING_codec_word_is_two_bits_of_sixteen.md "
-               "from Rev 20 button_a_cycle_3state @0x0E27: (lo,hi) = (0,0) MIC, "
-               "(1,1) LINE, (1,0) INST, mirroring the mux pattern.",
-    (0x25, 1): "channel-2 source state, low bit (#170) — Rev 20 button_b_cycle_3state @0x0E9D",
-    (0x25, 2): "channel-1 source state, high bit (#170)",
-    (0x25, 3): "channel-2 source state, high bit (#170)",
+    # 0x25.0-.3 were gaps until #170 (2026-08-03). codec_source_changed() now
+    # derives all four from g_mux_state on every publish.
     (0x25, 4): "#159 -- UAC Selector Unit position (0 = analog, 1 = S/PDIF). "
-               "Read by codec_source_changed(), set by nothing.",
+               "Read by codec_source_changed(), set by nothing. mboxfw has no "
+               "Selector Unit (removed in build 0x001A, see "
+               "FINDING_macos_one_input_selector.md) and 0 is the analog "
+               "position, so leaving it clear is the correct analog default "
+               "rather than an omission.",
     (0x25, 5): "S/PDIF receiver engaged (#170). Read by codec_source_changed(), "
                "set by nothing, so that function's condition is constant-false "
                "and its else branch always runs.",
@@ -147,41 +146,78 @@ def mboxfw_set_masks():
         # Strip block and line comments so commented-out code cannot count.
         text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
         text = re.sub(r"//[^\n]*", " ", text)
+        # Two passes, because the two kinds of assignment terminate
+        # differently and a single line-based scan gets one of them wrong.
+        #
+        # 2026-08-03: this WAS a single line-based scan with the terminator
+        # `[^;\n]*`, i.e. "semicolon or end of line". That silently truncates
+        # any statement wrapped across lines: #170's assignment to
+        # g_codec_state_25 begins `= (unsigned char)` and continues on the
+        # next line, so the captured RHS was the bare cast — no literals, and
+        # no letters left after CAST_WORDS stripping, so it passed
+        # _is_pure_literal and contributed 0. The function's contract is
+        # "over-estimates, never under"; that path under-estimated, which is
+        # the one direction that turns a real gap into a silent pass.
+        # The two passes must run on DISJOINT text. A macro body carries no
+        # semicolon of its own, so a ';'-terminated scan over the whole file
+        # runs past the end of the #define and swallows everything up to the
+        # next semicolon — for codec.h that is several lines of MONO_SET's
+        # do/while, whose identifiers then trip the not-pure-literal branch
+        # and mask the byte to 0xFF. Over-estimating to 0xFF is "safe" for the
+        # gap check but destroys it as a signal: every bit reads as driven.
+        macro_lines, code_lines = [], []
         for line in text.splitlines():
-            for name, byte in names.items():
+            if line.lstrip().startswith("#"):
+                macro_lines.append(line)
+                code_lines.append("")       # keep the split lossless
+            else:
+                macro_lines.append("")
+                code_lines.append(line)
+        code_text = "\n".join(code_lines)
+
+        stmts = []
+        for name, byte in names.items():
+            if name not in text:
+                continue
+            # Statements: terminated by ';' only, so newlines are spanned and
+            # a wrapped assignment is captured whole.
+            for m in re.finditer(
+                    re.escape(name) + r"\s*(\|=|&=|\^=|=)([^;]*);", code_text):
+                stmts.append((byte, m.group(1), m.group(2)))
+            # Macro bodies stay line-terminated:
+            #   #define MONO_ON() (g_codec_state_23 |= CODEC23_MONO)
+            for line in macro_lines:
                 if name not in line:
                     continue
-                # Terminator is a semicolon OR end of line: the mono
-                # accessors are macro bodies like
-                #   #define MONO_ON() (g_codec_state_23 |= CODEC23_MONO)
-                # which carry no semicolon at all.
-                m = re.search(re.escape(name) + r"\s*(\|=|&=|\^=|=)([^;\n]*)", line)
-                if not m:
-                    continue
-                op, rhs = m.group(1), m.group(2)
-                if op == "&=":
-                    continue                     # cannot set a bit
-                rhs = _expand(rhs)
-                lits = _literals(rhs)
+                m = re.search(re.escape(name) + r"\s*(\|=|&=|\^=|=)([^;\n]*)",
+                              line)
+                if m:
+                    stmts.append((byte, m.group(1), m.group(2)))
 
-                if not _is_pure_literal(rhs):
-                    # A helper call or another variable: assume it can set
-                    # anything. Generous on purpose — a reported gap stays real.
-                    masks[byte] |= 0xFF
-                    continue
+        for byte, op, rhs in stmts:
+            if op == "&=":
+                continue                     # cannot set a bit
+            rhs = _expand(rhs)
+            lits = _literals(rhs)
 
-                if op in ("|=", "^="):
-                    for v in lits:
-                        masks[byte] |= v
-                elif "~" in rhs and lits:
-                    # e.g. (0xFF & ~0x01 & ~0x08): first literal, clear the rest.
-                    val = lits[0]
-                    for v in lits[1:]:
-                        val &= ~v & 0xFF
-                    masks[byte] |= val
-                else:
-                    for v in lits:
-                        masks[byte] |= v
+            if not _is_pure_literal(rhs):
+                # A helper call or another variable: assume it can set
+                # anything. Generous on purpose — a reported gap stays real.
+                masks[byte] |= 0xFF
+                continue
+
+            if op in ("|=", "^="):
+                for v in lits:
+                    masks[byte] |= v
+            elif "~" in rhs and lits:
+                # e.g. (0xFF & ~0x01 & ~0x08): first literal, clear the rest.
+                val = lits[0]
+                for v in lits[1:]:
+                    val &= ~v & 0xFF
+                masks[byte] |= val
+            else:
+                for v in lits:
+                    masks[byte] |= v
     return masks
 
 

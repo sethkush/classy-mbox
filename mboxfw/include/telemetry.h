@@ -69,7 +69,13 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x001A   /* 001A: software source control removed
+#define TLM_BUILD_ID     0x001B   /* 001B: #170 -- the codec control word's
+                                   *       source nibble (0x25.0-.3) is now
+                                   *       driven. It was write-zero-only, so
+                                   *       the codec chain said MIC on both
+                                   *       channels whatever the relay chain
+                                   *       said. Block 9 byte 3 shows it.
+                                   * 001A: software source control removed
                                    *       (UAC Selector Units out, setmux
                                    *       kept); blocks 8 and 10 retired;
                                    *       5994 -> 5281 bytes.

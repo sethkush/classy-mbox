@@ -69,9 +69,78 @@ set a bit (`SETB` D2, `MOV bit,C` 92, `CPL` B2) at each bit address, and parses
 mboxfw's assignments to the three mirrors to over-estimate what it can set — so
 a reported gap is a real gap. Each known gap carries a reason in `EXPECTED_GAPS`;
 an unlisted gap fails, and so does a stale entry for a bit mboxfw has since
-started driving. It currently reports 12 known gaps and no unexplained ones.
+started driving. As of this writing it reported 12 known gaps and no
+unexplained ones; see the 2026-08-03 section below, after which it reports 4.
 
 Note the `MOV bit,C` opcode in that scan. A `SETB`-only search reported IRAM
 0x21's low bits as never set and made stock's whole stream-start path look like
 dead code; the bits are set by `MOV bit,C` from `std_set_interface`. Any future
 "is this bit ever set" question has to cover D2, 92 and B2, and this gate does.
+
+---
+
+## RESOLVED 2026-08-03 (build 0x001B) — the source nibble is now driven
+
+`codec_source_changed()` derives IRAM 0x25.0-.3 from `g_mux_state` on every
+publish, so the codec chain now agrees with the panel/relay chain. The map,
+read off the state machines in both images (identical instruction for
+instruction — Rev 20 `button_a_cycle_3state` @0x0E27 / `button_b_cycle_3state`
+@0x0E9D, Rev 22 `panel_state_cycle_A` @0x0E1B / `panel_state_cycle_B` @0x0E8F):
+
+    pattern 0x06 MIC  (boot) -> (lo,hi) = (0,0)
+    pattern 0x05 LINE        -> (1,1)
+    pattern 0x03 INST        -> (1,0)
+
+ch1 = (0x25.0 lo, 0x25.2 hi), ch2 = (0x25.1 lo, 0x25.3 hi).
+
+Stock stores the 2-bit state and derives the 3-bit panel pattern; mboxfw stores
+the pattern and derives the state. Equivalent, because the pattern is only ever
+one of the three legal one-cold values.
+
+**Why this is the #147/#170 candidate.** Until this build the low nibble was
+write-zero-only, so the codec's own input select read MIC on both channels no
+matter what the relays did. `FINDING_147_capture_works_analog_path_does_not.md`
+measured a working ADC (a clean first-order settling transient, ~-100 dBFS
+floor), both DMA paths live mid-stream, and no tone through a line loopback.
+An ADC converting the mic input while the relay routes line in produces exactly
+that. Not yet confirmed on hardware — see the measurement note below.
+
+Boot is unaffected: MIC maps to (0,0), which is what `codec_init()` already
+published, so this changes nothing until a source actually changes.
+
+### Remaining gaps in the word, and why they are not omissions
+
+  * **0x23.0 / 0x23.1** — dead in stock too (mode-5 branch, work code 0x0A,
+    which nothing posts in either image).
+  * **0x25.4** — Selector Unit position. mboxfw has no Selector Unit (removed
+    in 0x001A), and 0 *is* the analog position, so clear is correct.
+  * **0x25.5** — "S/PDIF receiver engaged". Only stock's P3.1-fall handler sets
+    it. Clear is correct for the analog path.
+
+Both remaining bits being 0 also means `codec_source_changed()`'s derivation of
+0x22.6 is still constant-false-with-the-else-taken — degenerate, but it lands on
+the correct value for the analog case, which is the case that matters here.
+
+### Gate bug this exposed
+
+`tools/latch_word_bit_diff.py` scanned line-by-line with the RHS terminator
+`[^;\n]*` — "semicolon **or end of line**". Any statement wrapped across lines
+was truncated to its first line; the first version of this fix captured only
+`= (unsigned char)`, which has no literals and no letters after cast-stripping,
+so it passed `_is_pure_literal` and contributed **zero** to the settable mask.
+The function's contract is "over-estimates, never under", and that path
+under-estimated — the one direction that turns a real gap into a silent pass.
+
+Fixed by splitting the scan into two passes over disjoint text: statements
+(';'-terminated, newlines spanned) and `#define` bodies (line-terminated,
+because a macro body carries no semicolon of its own and a ';'-terminated scan
+would run past the end of the define into the next statement). Verified by
+mutation: deleting one of the four bit writes takes the gate from exit 0 to
+exit 1 with `IRAM 0x25.3 ... UNEXPLAINED`.
+
+The C is written as an explicit clear-then-set with literal masks rather than
+one compound `x = (x & ~0x0F) | <expr>`, for the same reason: the compound form
+drives the gate onto its conservative branch, masking the byte to 0xFF and
+reporting 0x25.4/0x25.5 as driven when nothing drives them. Over-estimating is
+"safe" for the gap check but destroys the gate as a signal. It also happens to
+be the shape stock uses — per-bit SETB/CLR, never a byte store.
