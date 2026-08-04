@@ -211,4 +211,16 @@ Scope of the escape, stated so it is not over-trusted:
     with no dependency on the rest of `hw_init`, so setting it immediately
     after the boot-ROM handoff would let the escape run before `usb_init()`
     and cover the whole boot path.
-  * It has fired exactly once, on one unit, with a deliberate hold.
+  * As of #172 / build 0x0017 the escape and the two writes it depends on
+    (`P3 = 0xFF`, `GLOBCTL |= 0x02`) run BEFORE `usb_init()` and `hw_init()`,
+    so the first limitation above is retired: it now covers a hang anywhere
+    in the boot path. It still cannot recover an image that never executes.
+
+**Confirmed from the new position, 2026-08-03, build 0x0017.** Same procedure,
+same result: source-1 held through a power cycle produced no enumeration at
+all, and the following power cycle came up `ffff:fffe`, dfuIDLE, and flashed
+clean. A normal boot of 0x0017 also enumerates and reaches all six phases with
+`P3 live = 0xC2`, which proves the hoisted writes do their job outside
+`hw_init()`.
+
+So the escape has now fired twice, from two different positions, on one unit.
