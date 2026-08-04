@@ -416,8 +416,20 @@ void streaming_sof(void)
     /* Derived from the declared format rather than hardcoded, so a channel
      * count or subframe change cannot silently leave the divisor wrong. Equals
      * Rev 22's literal `MOV R5,#0x6` for the format we declare. */
-    if (content % (AUDIO_NUM_CHANNELS * AUDIO_SUBFRAME_BYTES) == 0) {
-        return;                      /* aligned — Rev 22 @ 0x0D7E */
+    /* Subtract rather than use `%`. The divisor is 6, not a power of two, so
+     * `content % 6` made SDCC link the generic 16-bit modulo routine
+     * (_moduint, 77 bytes) for this one test. content is a DMA byte count
+     * bounded by the endpoint buffer, so repeated subtraction terminates
+     * quickly and costs a fraction of that. Same result, same citation. */
+    {
+        unsigned int rem = content;
+        while (rem >= (AUDIO_NUM_CHANNELS * AUDIO_SUBFRAME_BYTES) * 8u)
+            rem -= (AUDIO_NUM_CHANNELS * AUDIO_SUBFRAME_BYTES) * 8u;
+        while (rem >= (AUDIO_NUM_CHANNELS * AUDIO_SUBFRAME_BYTES))
+            rem -= (AUDIO_NUM_CHANNELS * AUDIO_SUBFRAME_BYTES);
+        if (rem == 0) {
+            return;                  /* aligned — Rev 22 @ 0x0D7E */
+        }
     }
 
     tlm_playback_resyncs++;

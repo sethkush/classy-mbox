@@ -75,8 +75,6 @@ volatile __data unsigned char g_dfu_request_pending = 0;
  * logged "cannot set freq 48000 to ep 0x2" once it started binding. */
 #define EP0_OUT_NONE            0
 #define EP0_OUT_SET_SAMPLE_FREQ 1
-#define EP0_OUT_SET_SEL_CH1     2   /* Selector Unit SET_CUR, channel 1 (#159) */
-#define EP0_OUT_SET_SEL_CH2     3   /* Selector Unit SET_CUR, channel 2        */
 static __data unsigned char g_ep0_out_pending = EP0_OUT_NONE;
 
 /* Current USB device state — updated by SET_CONFIGURATION / SET_INTERFACE. */
@@ -451,110 +449,6 @@ static void handle_set_mux(void)
 }
 
 
-/* --- Selector Units: per-channel source select (#159) ---
- *
- * The class-compliant route to the front-panel source switches. A host driver
- * issues these itself, which is the point: snd-usb-audio renders a Selector
- * Unit as an enumerated mixer control, so alsamixer and any application mixer
- * can change the source with no custom tool. The vendor TLM_REQ_SET_MUX
- * request stays for the bench, but it needs mboxtlm.py to drive it.
- *
- * These are INTERFACE-recipient class requests, which is safe here even
- * though interface-recipient VENDOR requests are unreachable once
- * snd-usb-audio binds (the EBUSY trap that hid the enter-DFU request on
- * 2026-07-27). The difference is who sends them: the bound driver issues
- * these as part of owning the interface, so there is no second claimant.
- *
- * UAC1 §5.2.2.4.1 — the Selector Unit has exactly one control, and its
- * CUR value is a 1-BASED index into baSourceID, not a channel number and not
- * a terminal ID. wValue high = control selector, wValue low = 0. */
-
-/* Pin index (1-based, as it appears on the wire) -> stock source pattern.
- * The pin order is fixed by the baSourceID arrays in descriptors.c; this is
- * the other half of that table. */
-static unsigned char sel_pin_to_pattern(unsigned char pin)
-{
-    if (pin == 1) return MUX_PAT_MIC;
-    if (pin == 2) return MUX_PAT_LINE;
-    if (pin == 3) return MUX_PAT_INST;
-    return 0;                       /* illegal — caller stalls */
-}
-
-static unsigned char sel_pattern_to_pin(unsigned char pat)
-{
-    if (pat == MUX_PAT_MIC)  return 1;
-    if (pat == MUX_PAT_LINE) return 2;
-    if (pat == MUX_PAT_INST) return 3;
-    return 0;
-}
-
-/* Returns 1 if the request was for a Selector Unit and has been answered. */
-static unsigned char handle_selector_request(unsigned char unit)
-{
-    unsigned char shift;
-    unsigned char pin;
-
-    if (unit == UNIT_SEL_CH1)      shift = 0;
-    else if (unit == UNIT_SEL_CH2) shift = 3;
-    else                           return 0;
-
-    /* UAC1 sends 0 here; accept the UAC2 value too. See usb.h. */
-    if (wValueH != UAC_SELECTOR_CTRL && wValueH != UAC_SELECTOR_CTRL_V2) {
-        reply_stall();
-        return 1;
-    }
-
-    if (bReq == UAC_GET_CUR) {
-        pin = sel_pattern_to_pin((g_mux_state >> shift) & 0x07);
-        if (pin == 0) {
-            /* The field holds something that is not one of the three legal
-             * patterns. Reporting a plausible 1 would launder a fault into a
-             * valid-looking answer; stalling makes the host say so. */
-            reply_stall();
-            return 1;
-        }
-        stage_immediate(&pin, 1);
-        return 1;
-    }
-
-    if (bReq == UAC_SET_CUR) {
-        /* The 1-byte selection is still in flight in the OUT data stage.
-         * Record which unit it is for and answer nothing yet -- same shape as
-         * the SET_CUR SamplingFrequency path above, which is the reference
-         * for how a short OUT data stage is handled here. */
-        g_ep0_out_pending = (shift == 0) ? EP0_OUT_SET_SEL_CH1
-                                         : EP0_OUT_SET_SEL_CH2;
-        return 1;
-    }
-
-    /* GET_MIN/GET_MAX/GET_RES are meaningless for a selector (UAC1 §5.2.2.4.1
-     * defines only CUR) and hosts do not issue them for one. Stall rather than
-     * inventing a range. */
-    reply_stall();
-    return 1;
-}
-
-/* Apply a Selector Unit SET_CUR once its data byte has landed. Shares the
- * publish tail with the buttons and the vendor mux request, so all three
- * routes leave the hardware in the same state by the same path. */
-void usb_apply_selector(unsigned char shift, unsigned char pin)
-{
-    unsigned char pat = sel_pin_to_pattern(pin);
-    if (pat == 0) {
-        /* Out-of-range pin. Leave the mux alone: g_mux_state = 0x00 is an
-         * illegal pattern that voided a whole measurement session on
-         * 2026-07-29, and a request that can reach that state is a trap. */
-        TLM_INC8(tlm_mux_rejects);
-        return;
-    }
-    g_mux_state = (g_mux_state & ~(0x07 << shift)) | (pat << shift);
-    codec_source_changed();
-    mux_write(g_mux_state);
-    codec_write_word();
-    TLM_INC8(tlm_mux_sets);
-}
-
-
 /* --- UAC1 class request dispatcher --- */
 
 static void handle_class_endpoint_request(void)
@@ -777,12 +671,6 @@ static void handle_setup(void)
              * use 0x21/wIndex 0, which still matches. */
             if (bReq == 0x00 && wValueL == 0x0A && wValueH == 0x00) {
                 handle_digi_enter_dfu();
-            } else if (recip == 0x01 && handle_selector_request(wIndexH)) {
-                /* Answered by a Selector Unit (#159). wIndex high byte is the
-                 * unit ID, low byte the AC interface number -- checked only
-                 * for interface recipient, since the enter-DFU match above
-                 * deliberately also accepts device recipient and wIndexH
-                 * carries nothing there. */
             } else {
                 /* TODO: feature-unit volume/mute if we add them */
                 reply_stall();
@@ -1057,27 +945,6 @@ void usb_service(void)
                     streaming_set_rate(rate);
                     reply_zero_length();   /* status stage */
                 } else {
-                    reply_stall();
-                }
-            } else if (g_ep0_out_pending == EP0_OUT_SET_SEL_CH1
-                    || g_ep0_out_pending == EP0_OUT_SET_SEL_CH2) {
-                /* Selector Unit SET_CUR data stage: one byte, the 1-based pin
-                 * index (#159). Read before anything re-arms the endpoint,
-                 * for the same reason as the rate above. */
-                __xdata unsigned char *src =
-                    (__xdata unsigned char *)EP0_OUT_BUF_ADDR;
-                unsigned char pin = src[0];
-                unsigned char shift =
-                    (g_ep0_out_pending == EP0_OUT_SET_SEL_CH1) ? 0 : 3;
-                g_ep0_out_pending = EP0_OUT_NONE;
-                if (pin >= 1 && pin <= 3) {
-                    usb_apply_selector(shift, pin);
-                    reply_zero_length();   /* status stage */
-                } else {
-                    /* Out of range for a 3-pin selector. Stall rather than
-                     * clamp: a host that asked for pin 4 has a wrong idea of
-                     * the topology, and silently giving it pin 3 hides that. */
-                    TLM_INC8(tlm_mux_rejects);
                     reply_stall();
                 }
             }

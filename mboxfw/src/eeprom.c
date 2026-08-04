@@ -95,7 +95,7 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
  * with nLen=1 (the `nLen == 1` fast path at I2c.c:99). */
 unsigned char eeprom_read_byte(unsigned char addr_hi,
                                unsigned char addr_lo,
-                               unsigned char *ok)
+                               unsigned char __data *ok)
 {
     /* --- write phase: position the internal address pointer --- */
     I2C_STA   &= I2C_CLEAR_ALL;

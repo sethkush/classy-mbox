@@ -37,13 +37,6 @@
 #define UAC_TT_USB_STREAMING   0x0101   /* USB endpoint as terminal */
 #define UAC_TT_MIC             0x0201   /* generic microphone */
 #define UAC_TT_LINE_IN         0x0603   /* line connector */
-/* Instrument (high-Z DI) has no dedicated UAC1 terminal type. 0x0601
- * "Analog connector" is the least-wrong of the 0x06xx external types, and
- * picking a DISTINCT type per source matters beyond tidiness: snd-usb-audio
- * names Selector Unit enum entries from the source terminal types, so three
- * different types give three readable names in alsamixer instead of three
- * copies of one. */
-#define UAC_TT_ANALOG_CONN     0x0601   /* analog connector — used for inst */
 #define UAC_TT_SPDIF           0x0605   /* S/PDIF interface */
 #define UAC_TT_LINE_OUT        0x0603
 #define UAC_TT_SPEAKER         0x0301
@@ -84,66 +77,11 @@
 #define EP_AUDIO_IN            0x81    /* EP1 IN  = capture  (device → host) */
 #define EP_AUDIO_OUT           0x02    /* EP2 OUT = playback (host → device) */
 
-/* Terminal / Unit IDs — arbitrary within one AC interface, must be unique
- * and non-zero.
- *
- * CAPTURE TOPOLOGY (#159). The single TERM_ANALOG_IN that used to sit here
- * was replaced on 2026-08-03 by the real thing: each of the two channels has
- * its own mic/line/inst switch on the front panel, so each gets three mono
- * Input Terminals feeding its own Selector Unit, and a fixed 2x2 Mixer Unit
- * recombines the two mono selectors into the stereo capture stream.
- *
- *   IT ch1 mic  ─┐
- *   IT ch1 line ─┼─> SU ch1 ─┐
- *   IT ch1 inst ─┘           ├─> MU (fixed) ─> OT USB-IN
- *   IT ch2 mic  ─┐           │
- *   IT ch2 line ─┼─> SU ch2 ─┘
- *   IT ch2 inst ─┘
- *
- * The obvious cheaper shape -- three STEREO input terminals into one stereo
- * Selector Unit -- was rejected: it is ~60 bytes smaller but yields a single
- * control that forces both channels to the same source, which the hardware
- * does not do and the front panel does not do. A class control that cannot
- * express what the buttons express is worse than no class control.
- *
- * The Mixer Unit exists only because UAC1 has no other way to merge two mono
- * paths into one stereo terminal (an Output Terminal has exactly one
- * bSourceID). Its bmControls is all zero -- no programmable crosspoints, so
- * it is fixed unity routing and hosts create no controls for it. */
+/* Terminal IDs — arbitrary within one AC interface, must be unique */
 #define TERM_USB_OUT_STREAM    0x01   /* host → device audio (playback data)  */
+#define TERM_ANALOG_IN         0x02   /* mic/line/inst analog capture         */
 #define TERM_LINE_OUT          0x03   /* analog line output                   */
 #define TERM_USB_IN_STREAM     0x04   /* device → host audio (capture data)   */
-
-#define TERM_CH1_MIC           0x05
-#define TERM_CH1_LINE          0x06
-#define TERM_CH1_INST          0x07
-#define TERM_CH2_MIC           0x08
-#define TERM_CH2_LINE          0x09
-#define TERM_CH2_INST          0x0A
-#define UNIT_SEL_CH1           0x0B   /* Selector Unit, channel 1 source      */
-#define UNIT_SEL_CH2           0x0C   /* Selector Unit, channel 2 source      */
-#define UNIT_MIXER             0x0D   /* fixed 2x2, no programmable controls  */
-
-/* Selector Unit control selector.
- *
- * UAC1 §5.2.2.4 specifies wValue = ZERO for Selector Unit requests: the unit
- * has exactly one control, so there is nothing to select between and UAC1
- * never assigned it a CS number. The value 1 is the UAC2 convention
- * (UAC2_CX_CLOCK_SELECTOR), and Linux follows the split exactly --
- * parse_audio_selector_unit sets cval->control = 0 for UAC_VERSION_1 and 1
- * for v2/v3.
- *
- * This shipped accepting ONLY 1, so snd-usb-audio's correct UAC1 request was
- * stalled: build 0x0018 enumerated, both enum controls appeared in alsamixer
- * with the right names, and every read returned EINVAL. A hand-issued CS=1
- * request answered fine, which is what made it look like the firmware was
- * right and the host was odd. The firmware was wrong.
- *
- * Both are accepted. 0 is the spec-correct UAC1 value and is what Linux
- * sends; 1 costs a few bytes and covers a host that uses the UAC2 convention
- * against our v1 descriptors -- macOS behaviour here is still unmeasured. */
-#define UAC_SELECTOR_CTRL      0x00   /* UAC1 §5.2.2.4 — wValue is zero */
-#define UAC_SELECTOR_CTRL_V2   0x01   /* UAC2 CX_CLOCK_SELECTOR, also taken */
 
 /* Audio format */
 #define AUDIO_NUM_CHANNELS     2
@@ -172,18 +110,7 @@
 
 /* Total configuration-bundle length. Sum of every descriptor in
  * descriptors.c, in host-parse order. Edit both together. */
-/* AC block: header 10 + IT(USB-out) 12 + six mono ITs 6*12 + two SUs 2*9
- * + MU 12 + OT(line-out) 9 + OT(USB-in) 9.
- * SU  bLength = 6 + bNrInPins            = 6 + 3 = 9
- * MU  bLength = 10 + bNrInPins + bmSize  = 10 + 2 + 1 = 13 (2x2 = 4 bits)
- *
- * The MU line read `9 + p + N` on the first pass, which is a spec misreading
- * rather than a typo: the Mixer Unit carries wChannelConfig (2 bytes) where
- * the Selector Unit carries nothing, so its fixed overhead is 10, not 9. The
- * emitted bytes were right at 13 and only this arithmetic was short, so it
- * surfaced as "excess elements in array initializer" -- SDCC caught what a
- * host would have seen as a truncated AC block. */
-#define AC_BLOCK_LEN        (10 + 12 + (6 * 12) + (2 * 9) + 13 + 9 + 9)
+#define AC_BLOCK_LEN        (10 + 12 + 12 + 9 + 9)
 
 #define APP_CFG_TOTAL_LEN   (9 + 9 + AC_BLOCK_LEN \
                               + 9 + 9 + 7 + 14 + 9 + 7 \

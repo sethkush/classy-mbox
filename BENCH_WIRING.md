@@ -66,6 +66,13 @@ Both halves of that are now handled from the host, so no one has to touch the
 panel and no measurement depends on the unverified buttons (#150):
 
     mboxtlm.py setmux line line     # select LINE on both channels
+
+# This is the ONLY way to set the mux without physical access. The UAC
+# Selector Units that briefly provided `amixer` control were removed in build
+# 0x001A (see FINDING_macos_one_input_selector.md); the front-panel buttons
+# and this request are what remain. The mux resets to MIC on every power
+# cycle, so re-run this after every flash or replug before trusting any
+# capture measurement.
     mboxtlm.py read 9               # confirm what is actually selected
 
 `TLM_REQ_SET_MUX` (0x13) reaches the same states the buttons reach, by the same

@@ -139,26 +139,13 @@ void cs8427_write(unsigned char reg, unsigned char value)
  * NOVEL — reason: stock never reads the CS8427, so there is no address to
  * cite. Framing follows DS477F5 §9.1; the sampling is diagnostic scaffolding.
  */
-__xdata unsigned char g_cs8427_probe[8];
+/* cs8427_read_probe() and g_cs8427_probe[] lived here until build 0x001A.
+ * They served telemetry block 10 (#165), whose question is answered: no P3
+ * pin varied across the eight read clocks, so CDOUT is not readable here.
+ * With block 10 retired the function had no caller, and verify_reachability.py
+ * correctly flagged it as an emitted-but-uncalled body. Removed rather than
+ * silenced -- the git history and FINDING notes hold the implementation. */
 
-void cs8427_read_probe(unsigned char reg)
-{
-    unsigned char i;
-
-    cs8427_select();
-    cs8427_shift_byte(CS8427_ADDR_READ);
-    cs8427_shift_byte(reg);
-
-    /* Release CDIN high so we are not fighting a part that drives the line. */
-    P1 |= P1_CS8427_SDA_MASK;
-    for (i = 0; i < 8; i++) {
-        P1 |= P1_CS8427_SCL_MASK;
-        P1 &= (unsigned char)~P1_CS8427_SCL_MASK;
-        /* Sample AFTER the falling edge — §9.1 clocks read data out on it. */
-        g_cs8427_probe[i] = P3;
-    }
-    cs8427_deselect();
-}
 
 /*
  * Bring the external chips out of reset and put the CS8427 on SPI, then run

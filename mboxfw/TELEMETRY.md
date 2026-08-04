@@ -269,6 +269,9 @@ Makefile).
 
 ## Block 10 — CS8427 readback probe (#165)
 
+> **RETIRED in build 0x001A.** Answered #165: no P3 pin varied across the
+> eight read clocks, so CDOUT is not readable here. Index not reused.
+
 Runs a CS8427 register read over the SPI control port and reports **which pin
 answered**, rather than assuming one.
 

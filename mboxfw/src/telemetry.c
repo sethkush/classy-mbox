@@ -16,6 +16,8 @@ volatile __data unsigned int  tlm_drains      = 0;
 volatile __data unsigned int  tlm_rstr_count  = 0;
 volatile __data unsigned int  tlm_loop_count  = 0;
 volatile __data unsigned char tlm_stalls      = 0;
+volatile __data unsigned char tlm_mux_sets    = 0;
+volatile __data unsigned char tlm_mux_rejects = 0;
 volatile __data unsigned char tlm_stage       = 0;
 volatile __data unsigned char tlm_phases      = 0;
 
@@ -49,13 +51,10 @@ volatile __data unsigned char tlm_alt_seen   = 0;
 
 /* 0xFF = not sampled, so a block-8 read of all-0xFF means main() never ran
  * that far rather than "the boot ROM left everything at 0xFF". */
-volatile __data unsigned char tlm_boot_handoff[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
 
 volatile __data unsigned char tlm_p1_boot = 0xFF;  /* 0xFF = not sampled */
 volatile __data unsigned char tlm_p3_boot = 0xFF;
 
-volatile __data unsigned char tlm_mux_sets    = 0;
-volatile __data unsigned char tlm_mux_rejects = 0;
 
 /* Little-endian 16-bit store, matching how the host unpacks the blocks. */
 static void put16(unsigned char __data *p, unsigned int v)
@@ -214,21 +213,14 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         return 1;
 
 
-    case 8:
-        /* Boot-ROM handoff snapshot, sampled as the first action in main().
-         * Closes WHAT_REMAINS_UNKNOWN.md §3a: usb_ep0_setup() clears both EP0 Y
-         * counts, so a live read can never recover what the ROM handed us.
-         *
-         * Byte 7 doubles as a check on hw_init()'s GLOBCTL |= 0x02: that RMW is
-         * only equivalent to stock's outright = 0x06 if the ROM really leaves
-         * 0x04 here, which until now came from a TI source comment rather than
-         * from this part. */
-        for (i = 0; i < 4; i++)
-            out[i] = tlm_boot_handoff[i];
-        /* 0x00, not 0xFF: 0xFF is this block's "never sampled" sentinel. */
-        for (; i < TLM_BLOCK_SIZE; i++)
-            out[i] = 0x00;
-        return 1;
+    /* case 8 (boot-ROM handoff snapshot) RETIRED 2026-08-03. It answered
+     * WHAT_REMAINS_UNKNOWN.md §3a -- the ROM DOES leave an EP0 Y count
+     * non-zero -- and confirmed GLOBCTL = 0x04 at handoff, on this part. Both
+     * results are recorded; the block was carrying the code to re-measure a
+     * settled question. The INDEX is left in place and falls through to the
+     * 0xFF sentinel rather than being reused, so a host tool from before this
+     * build reads "not served" instead of decoding block 9's panel state as a
+     * handoff snapshot. */
     case 9:
         /* Panel state — which source is actually selected, right now.
          *
@@ -257,30 +249,10 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[7] = 0;
         return 1;
 
-    case 10:
-        /* #165 — ask the CS8427 a question and report WHICH PIN answered.
-         *
-         * Reads CLOCKSOURCE (0x04) over the SPI control port. That register is
-         * the best single byte to ask for: bit 6 RUN answers "is the part
-         * running" and the value answers "did our writes land", and the value
-         * we wrote is 0x40 — a pattern distinguishable from a pin stuck high
-         * (0xFF) or low (0x00), which 0x11 = 0xFF would not have been.
-         *
-         * out[i] is P3 sampled after read clock i, MSB of the reply first,
-         * because CDOUT is a third control-port pin and nothing establishes
-         * that it is wired here. The host transposes: if bit p across the
-         * eight samples spells 0x40, pin P3.p is CDOUT and the part is on SPI
-         * and configured. Eight identical samples means no pin answered.
-         *
-         * Deliberately on demand rather than at boot: this drives a CS-framed
-         * transaction the stock firmware never performs, so it happens when a
-         * host asks and not on the path to enumeration. */
-        cs8427_read_probe(0x04);
-        for (i = 0; i < TLM_BLOCK_SIZE; i++) {
-            out[i] = g_cs8427_probe[i];
-        }
-        return 1;
-
+    /* case 10 (CS8427 read-back probe, #165) RETIRED 2026-08-03. It answered
+     * its question -- no P3 pin ever varied across the eight read clocks, so
+     * CDOUT is not readable here -- and the answer does not change by asking
+     * again. Index left unused, same reasoning as case 8. */
     default:
         /* Clean sentinel rather than a stall, so a host walking blocks
          * until it runs out gets a defined answer. */

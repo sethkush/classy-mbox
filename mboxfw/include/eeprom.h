@@ -26,7 +26,7 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
 /* Return the read byte if ok. *ok = 1 on success, 0 on failure. */
 unsigned char eeprom_read_byte(unsigned char addr_hi,
                                unsigned char addr_lo,
-                               unsigned char *ok);
+                               unsigned char __data *ok);
 
 /*
  * Smoke-test the I²C driver by writing 0xA5 then 0x5A to the last byte

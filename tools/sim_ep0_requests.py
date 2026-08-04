@@ -88,7 +88,7 @@ REQUESTS = [
     # bRequest 0x0C is not a defined standard request. STALL is the
     # spec-correct answer and usb.c says so at the default case.
     ("undefined bRequest 0x0C", setup(0x80, 0x0C, 0,     0,  2), STALL),
-    # #165. Block 10 runs a CS8427 READ over the SPI control port -- novel
+    # (block 10 stimulus removed with the block, build 0x001A)
     # code with no stock address to cite, so it gets executed before it is
     # ever flashed rather than after.
     ("telemetry read block 10", setup(0xC0, 0x10, 10,     0,  8), ARMED),
@@ -561,33 +561,15 @@ def main():
             f"are not the descriptor it holds.")
     print()
 
-    # ---- #165: the framing of the CS8427 read, before it is flashed ----
-    samples = trace_request_p1(ihx, setup(0xC0, 0x10, 10, 0, 8), service,
-                               ret_to=loop, settle_bp=f"0x{loop:04X}")
-    r = decode(samples)
-    data_tx = [(by, n) for by, n in r["transactions"] if n]
-    print(f"  #165 CS8427 read framing: {len(samples)} P1 writes, "
-          f"{len(r['transactions'])} CS-low periods")
-    for by, n in r["transactions"]:
-        print("      " + (f"select pulse, {n} clocks" if not by else
-              f"{n:3d} clocks  " + " ".join(f"{b:02X}" for b in by)))
-    if not data_tx:
-        fails.append("#165: the block-10 read clocked no CS-framed transaction "
-                     "at all -- the probe never reached the control port.")
-    else:
-        by, n = data_tx[0]
-        if n != 24:
-            fails.append(f"#165: the read is {n} clocks, not 24. DS477F5 s9.1 "
-                         f"is address + MAP + eight read clocks.")
-        if by[0] != 0x21:
-            fails.append(f"#165: the read opens with 0x{by[0]:02X}, not 0x21. "
-                         f"Bit 0 is the R/W bit and it must be SET for a read; "
-                         f"0x20 would be a write and would clobber the register.")
-        if len(by) > 1 and by[1] != 0x04:
-            fails.append(f"#165: the MAP byte is 0x{by[1]:02X}, not 0x04 "
-                         f"(CLOCKSOURCE) -- the wrong register is being read.")
-    print()
-
+    # ---- #165: RETIRED with telemetry block 10 (build 0x001A) ----
+    #
+    # This verified the CS-framed read that block 10 performed, before it was
+    # ever flashed, and it did its job: the read framed correctly and the
+    # hardware answer was that no P3 pin varies across the eight read clocks,
+    # so CDOUT is not readable on this board. With the question answered the
+    # block and its probe were removed, so there is no transaction left to
+    # frame-check. Kept as a comment rather than deleted: this is the reference
+    # for how to sim-verify a novel SPI transaction before spending a flash.
     # ---- the abandoned-transfer regression ----
     # Exactly the sequence usb.c documents having shipped broken: a
     # wLength=64 device-descriptor request (clamped to 18, one chunk of 8

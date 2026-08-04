@@ -278,10 +278,6 @@ void main(void)
      *
      * NOVEL — reason: no reference firmware records its own handoff state;
      * stock has no equivalent because it never needed to ask. */
-    tlm_boot_handoff[0] = IEPDCNTY0;
-    tlm_boot_handoff[1] = OEPDCNTY0;
-    tlm_boot_handoff[2] = GLOBCTL;
-    tlm_boot_handoff[3] = USBCTL;
 
     /* DISCONNECT FIRST — defensive against boot-ROM-leftover USBCTL state.
      * Boot ROM's UsbDfu.c:699 zeroes USBCTL after DFU manifest, and cold

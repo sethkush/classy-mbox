@@ -85,6 +85,19 @@ BLOCK_FIRST_BUILD = {
     10: 0x0015,  # NUM_BLOCKS 10 -> 11
 }
 
+# Blocks whose question is ANSWERED and whose fill code was removed from the
+# firmware (build 0x001A). Their indices are deliberately NOT reused: an index
+# that changes meaning between builds is exactly the ambiguity
+# BLOCK_FIRST_BUILD exists to prevent, and it cannot express "index 8 used to
+# mean something else". A retired block reads as the all-0xFF sentinel.
+BLOCK_RETIRED = {
+    8:  (0x001A, "boot-ROM handoff snapshot -- answered "
+                 "WHAT_REMAINS_UNKNOWN.md 3a (the ROM does leave an EP0 Y "
+                 "count non-zero) and confirmed GLOBCTL=0x04 at handoff"),
+    10: (0x001A, "CS8427 read-back probe -- answered #165: no P3 pin varied "
+                 "across the eight read clocks, so CDOUT is not readable here"),
+}
+
 # The three one-cold source patterns, from the stock cycle handlers (Rev 20
 # fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). The firmware
 # rejects anything else, so the same names are the tool's vocabulary.
@@ -495,6 +508,12 @@ def show(index, b, raw=False, device_build=None):
     print("block %d -- %s" % (index, TITLES.get(index, "?")))
     if raw or index not in DECODERS:
         print("  raw: %s" % " ".join("%02x" % x for x in b))
+
+    retired = BLOCK_RETIRED.get(index)
+    if retired is not None and device_build is not None and device_build >= retired[0]:
+        print("  RETIRED in build 0x%04X -- %s." % retired)
+        print("  The all-0xFF here is the sentinel, not a failed read.")
+        return
 
     need = BLOCK_FIRST_BUILD.get(index)
     if device_build is not None and need is not None and device_build < need:

@@ -98,7 +98,6 @@
 0xfffc  assign    0x00    # main
 0xfffc  or        0x80    # power,usb
 0xfffc  or        0xc0    # usb
-0xfffc  rmw       -       # main
 0xfffd  or        0xf5    # usb
 0xfffd  runtime   -       # power
 0xffff  assign    0x00    # usb

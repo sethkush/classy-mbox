@@ -40,19 +40,25 @@
  *   wIndex low  0 = mono off, 1 = mono on, anything else = leave unchanged
  *
  * NOVEL — reason: stock reaches these states only through the front-panel
- * buttons, so there is no request to port. The bench needs it because both
- * wired loopback inputs are LINE while hw_init seeds MIC on both channels
- * (0xF6), and on 2026-07-29 that mismatch voided a full measurement session --
- * the selected source never carried the test signal. Driving the mux from the
- * host removes the dependency on the buttons, which are themselves unverified
- * on hardware (#150), and makes the selected source a thing the measurement
- * sets rather than a thing someone reads off the front panel afterwards.
+ * buttons, so there is no request to port.
+ *
+ * KEPT when the UAC Selector Units were removed on 2026-08-03, and it is the
+ * only remaining way to set the mux without physical access. The mux resets to
+ * MIC on every power cycle while both bench loopbacks are wired to the LINE
+ * inputs, so without this every flash would need someone at the unit pressing
+ * buttons before any capture measurement means anything -- and the hosts are
+ * ~1 km away. That mismatch already voided a full session on 2026-07-29.
+ *
+ * Device recipient on purpose: snd-usb-audio claims the audio interfaces, and
+ * an interface-recipient request is rejected with EBUSY by the host stack
+ * before it reaches us. This one keeps working when the class binding is
+ * broken, which is exactly when bench control is most needed.
  *
  * Only the six source bits are taken from the host. Bit 0x22.6 is derived by
  * codec_source_changed() and bit 0x22.7 is a control line no stock source
  * handler ever writes, so both are preserved. Illegal patterns are rejected
- * rather than published: g_mux_state = 0x00 is exactly what voided an earlier
- * measurement, and a request that can reproduce that state is a trap. */
+ * rather than published: g_mux_state = 0x00 is exactly what voided that
+ * earlier measurement, and a request that can reproduce it is a trap. */
 #define TLM_REQ_SET_MUX  0x13
 
 /* The three legal source patterns, one-cold, from the stock cycle handlers
@@ -63,7 +69,11 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0019   /* 0019: Selector Unit control selector
+#define TLM_BUILD_ID     0x001A   /* 001A: software source control removed
+                                   *       (UAC Selector Units out, setmux
+                                   *       kept); blocks 8 and 10 retired;
+                                   *       5994 -> 5281 bytes.
+                                   * 0019: Selector Unit control selector
                                    *       is 0 in UAC1, not 1 -- 0x0018
                                    *       stalled every host read.
                                    * 0018: per-channel Selector Units --
@@ -132,20 +142,11 @@ extern volatile __data unsigned char tlm_playback_resyncs;
  * idle (a read is only possible once it is answering EP0 again). */
 extern volatile __data unsigned char tlm_suspends;
 
-/* Boot-ROM handoff snapshot (block 8), sampled as the first action in main()
- * before anything is written. Answers WHAT_REMAINS_UNKNOWN.md §3a -- whether the
- * boot ROM leaves the EP0 Y buffer counts non-zero -- which usb_ep0_setup()
- * otherwise destroys before a host can read it.
- *
- * NOT cleared by tlm_reset_counters(): it is a one-time boot observation, and
- * zeroing it on a counter reset would silently turn a real measurement into a
- * plausible-looking zero. */
-extern volatile __data unsigned char tlm_boot_handoff[4];
 
 /* Host mux-set request outcomes (block 9). Two counters rather than one, so a
  * read distinguishes "the request never arrived" from "it arrived and was
- * rejected as an illegal pattern" -- indistinguishable from the mux word alone,
- * since a rejected request leaves it unchanged. */
+ * rejected as an illegal pattern" -- indistinguishable from the mux word
+ * alone, since a rejected request leaves it unchanged. */
 extern volatile __data unsigned char tlm_mux_sets;
 extern volatile __data unsigned char tlm_mux_rejects;
 
