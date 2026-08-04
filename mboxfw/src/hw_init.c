@@ -211,29 +211,23 @@ void hw_init(void)
      * prove it is UNIQUELY correct, since 0xA8 playback was never flashed
      * and tried. That falsification costs one flash cycle if the asymmetry
      * ever needs explaining rather than just working. */
-    /* #161 EXPERIMENT, build 0x001C: 0xAC -> 0xA8, i.e. BYOR CLEARED on the
-     * playback path, making mboxfw symmetric with its own capture path
-     * (CPTRXCNF3 = 0xA8 below) and with stock's running state.
+    /* #161 RESOLVED FOR PLAYBACK, build 0x001C, by falsification.
      *
-     * Why this is an experiment and not a cleanup. mboxfw was running
-     * 0xAC/0xA8 — asymmetric — and stock NEVER is: its helper writes one
-     * accumulator to BOTH registers (Rev 20 codec_port_cfg3_commit @0x0FF4,
-     * Rev 22 cport_cnf3_write_enable @0x0FE2 — 0xFFDE then 0xFFD5), so boot
-     * is 0xAC/0xAC and running is 0xA8/0xA8. Our asymmetry was the residue of
-     * updating the capture line to stock's running value during #147 while
-     * leaving this one at stock's boot value pending a measurement.
+     * 0xAC (BYOR SET) is UNIQUELY correct here. Build 0x001C cleared the bit
+     * to 0xA8 and playback was destroyed -- 1 kHz through the analog loop
+     * gave amplitude/rms = 0.045 instead of sqrt(2) = 1.414, harmonics AT OR
+     * ABOVE the fundamental, and an output pinned near -31 dBFS regardless of
+     * a 36 dB sweep of input level. That last one is the byte-swap signature:
+     * promoting the fast-varying LSB into the MSB yields near-constant-power
+     * noise that barely tracks the input.
      *
-     * The 2026-08-03 sweep proved 0xAC here is CORRECT, not that it is
-     * UNIQUELY correct — only one value was ever tried. Two outcomes:
-     *   audio still clean -> BYOR on the transmit path is inert in this
-     *       configuration; keep 0xA8 and the divergence from stock is gone.
-     *   audio breaks      -> BYOR-TX is real, the asymmetry is a physical
-     *       fact, and 0xAC goes back with a measurement behind it.
-     *
-     * Reverting is one byte and one flash cycle. */
-    CPTCNF3   = 0xA8;   /* Rev 20 fcn.0x08CB @ 0x090B (boot writes 0xAC here);
-                         * 0xA8 is stock's RUNNING value — Rev 20 @0x0358 via
-                         * fcn.0x0FF4, Rev 22 @0x035E via fcn.0x0FE2. #161. */
+     * Restored to 0xAC, which now rests on a falsification rather than on
+     * being left over from stock's boot value. */
+    CPTCNF3   = 0xAC;   /* Rev 20 fcn.0x08CB @ 0x090B, Rev 22 fcn.0x07EC
+                         * @ 0x0831 -- stock's BOOT value. Stock's RUNNING
+                         * value is 0xA8 (Rev 20 @0x0358 via fcn.0x0FF4,
+                         * Rev 22 @0x035E via fcn.0x0FE2); mboxfw diverges
+                         * deliberately and by measurement. #161. */
     CPTCNF4   = 0x03;   /* 0xFFDD — stock writes 0x03 */
     CPTSTA    = 0x50;   /* 0xFFDC — stock writes 0x50 */
     CPTRXCNF2 = 0x25;   /* 0xFFD6 — stock writes 0x25 */
@@ -244,7 +238,35 @@ void hw_init(void)
      * So this line already agrees with stock's operating state, and the
      * "CPTRXCNF3 is the leading #147 suspect" reading in
      * FINDING_capture_8frame_artifact.md Addendum 4/5 is withdrawn. */
-    CPTRXCNF3 = 0xA8;
+    /* #161 EXPERIMENT, build 0x001D: 0xA8 -> 0xAC, BYOR SET on the receive
+     * path, making both directions symmetric again -- this time at the value
+     * playback is PROVEN to need, rather than at stock's.
+     *
+     * The question this settles. mboxfw ran 0xAC playback / 0xA8 capture and
+     * both directions measured correct, which the datasheet does not explain:
+     * §6.5.4.3 (CPTCNF3, FFDEh) and §6.5.4.12 (CPTRXCNF3, FFD5h) define BYOR
+     * with word-for-word identical text, and the slot geometry is identical
+     * on both paths -- CPTCNF2 = 0xE5 is 24 data bits in 32-cycle slots, and
+     * CPTRXCNF2 = 0x25 is the same 24-in-32 with TSL0L = 00b ("same as other
+     * time slots") instead of an explicit 11b. No lane shift to hide behind.
+     *
+     * §6.5.4.12 says CPTRXCNF3 "is only used in I2S Mode 5", which looked
+     * like the escape -- an inert register would mean no asymmetry at all.
+     * It is not inert: CPTCNF1 = 0x0D has MODE(2:0) = 101b, which IS I2S
+     * mode 5, so the register is live by the datasheet's own condition.
+     *
+     * Two outcomes:
+     *   audio clean     -> CPTRXCNF3's BYOR does not reach our capture path
+     *                      despite mode 5. There is no asymmetry to explain,
+     *                      and stock's symmetric 0xA8/0xA8 is consistent.
+     *   capture garbage -> the receive path genuinely wants BYOR CLEAR while
+     *                      transmit wants it SET. The asymmetry is a hardware
+     *                      fact and 0xA8 comes back with a measurement here
+     *                      too, not just an absence of evidence against it.
+     *
+     * Single-variable: playback is at its proven-good 0xAC, so anything that
+     * changes is attributable to this line. Revert is one byte. */
+    CPTRXCNF3 = 0xAC;
     /* CPTRXCNF4 — DIVB2(2:0), the divider from MCLKO2 to SCLK2, which is
      * the I2S RECEIVE bit clock (datasheet §6.5.4.13; block diagram
      * Figure 2-1). Encoding: 001b = ÷2, 010b = ÷3, 011b = ÷4.

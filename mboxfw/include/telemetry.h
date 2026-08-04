@@ -69,7 +69,12 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x001C   /* 001C: #161 experiment -- CPTCNF3 0xAC ->
+#define TLM_BUILD_ID     0x001D   /* 001D: CPTCNF3 restored to 0xAC (0x001C
+                                   *       destroyed playback -- BYOR SET is
+                                   *       uniquely correct there). CPTRXCNF3
+                                   *       0xA8 -> 0xAC: does the RX BYOR bit
+                                   *       reach our capture path at all?
+                                   * 001C: #161 experiment -- CPTCNF3 0xAC ->
                                    *       0xA8, clearing BYOR on the playback
                                    *       path so both directions match (and
                                    *       match stock's running state). Tests
