@@ -124,8 +124,22 @@ def check_digi_dfu_recognition(image: bytes) -> bool:
         if j < 0:
             return False
         window = image[j + 3:j + 3 + 12]
-        for op in (bytes([0xB4, 0x0A]), bytes([0xBF, 0x0A])):
-            if op in window:
+        # Accept CJNE against #0x0A in ANY of its addressing forms:
+        #   B4 = CJNE A,#data      B6/B7 = CJNE @R0/@R1,#data
+        #   B8..BF = CJNE R0..R7,#data
+        #
+        # This listed only B4 (A) and BF (R7) until 2026-08-03, when adding the
+        # Selector Units changed register pressure in handle_setup and SDCC
+        # emitted `cjne r6,#0x0a` (B6... no: BE). The recognition path was fully
+        # intact and this gate reported MISS on it -- on the CHECK THAT GUARDS
+        # THE RECOVERY PATH, whose failure text tells the reader that recovery
+        # now needs a physical SDA short. A false alarm there is worse than a
+        # silent one: it is the check people learn to wave through.
+        #
+        # Which register SDCC picks is not a contract and never was. Match the
+        # instruction, not the allocator's mood.
+        for opcode in [0xB4, 0xB6, 0xB7] + list(range(0xB8, 0xC0)):
+            if bytes([opcode, 0x0A]) in window:
                 return True
         i = j + 1
 

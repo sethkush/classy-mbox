@@ -77,6 +77,8 @@ DT_CS_ENDPOINT = 0x25
 AC_HEADER = 0x01
 AC_INPUT_TERMINAL = 0x02
 AC_OUTPUT_TERMINAL = 0x03
+AC_MIXER_UNIT = 0x04
+AC_SELECTOR_UNIT = 0x05
 AC_FEATURE_UNIT = 0x06
 
 AS_GENERAL = 0x01
@@ -271,6 +273,52 @@ def check_config_bundle(desc, r):
                     src = blob[4]
                     source_refs.append((tid, src))
                     r.note(f"  FU id={tid} src={src}")
+                    ac_block_actual += bLen
+                elif subtype == AC_SELECTOR_UNIT:
+                    # UAC1 §4.3.2.4: bLength = 6 + bNrInPins.
+                    tid = blob[3]
+                    npins = blob[4]
+                    if bLen != 6 + npins:
+                        r.err(f"SU {tid} bLength {bLen} != 6+bNrInPins "
+                              f"({6 + npins})")
+                    if tid in terminal_ids:
+                        r.err(f"duplicate unit ID {tid}")
+                    terminal_ids.add(tid)
+                    if npins == 0:
+                        r.err(f"SU {tid} has bNrInPins=0 — selects nothing")
+                    pins = list(blob[5:5 + npins])
+                    for src in pins:
+                        source_refs.append((tid, src))
+                    if len(set(pins)) != len(pins):
+                        r.err(f"SU {tid} lists a source twice: {pins}")
+                    r.note(f"  SU id={tid} pins={pins}")
+                    ac_block_actual += bLen
+                elif subtype == AC_MIXER_UNIT:
+                    # UAC1 §4.3.2.3: bLength = 10 + bNrInPins + bmControls size.
+                    # The fixed part is 10, not 9 — the Mixer Unit carries
+                    # wChannelConfig where the Selector Unit carries nothing.
+                    # Getting that wrong is what produced a 143-vs-142 AC block
+                    # on 2026-08-03.
+                    tid = blob[3]
+                    npins = blob[4]
+                    if tid in terminal_ids:
+                        r.err(f"duplicate unit ID {tid}")
+                    terminal_ids.add(tid)
+                    pins = list(blob[5:5 + npins])
+                    for src in pins:
+                        source_refs.append((tid, src))
+                    nch = blob[5 + npins]
+                    bm_size = bLen - (10 + npins)
+                    if bm_size < 1:
+                        r.err(f"MU {tid} bLength {bLen} leaves no room for "
+                              f"bmControls (needs >= {11 + npins})")
+                    else:
+                        # One bit per crosspoint: inputs x output channels.
+                        need = (npins * nch + 7) // 8
+                        if bm_size != need:
+                            r.err(f"MU {tid} bmControls is {bm_size} byte(s), "
+                                  f"but {npins} in x {nch} out needs {need}")
+                    r.note(f"  MU id={tid} pins={pins} outCh={nch}")
                     ac_block_actual += bLen
                 else:
                     r.err(f"unknown AC subtype 0x{subtype:02X}")

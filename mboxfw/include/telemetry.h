@@ -63,7 +63,10 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x0017   /* 0017: DFU escape hoisted ahead of
+#define TLM_BUILD_ID     0x0018   /* 0018: per-channel Selector Units --
+                                   *       class-compliant source select
+                                   *       from the host (#159).
+                                   * 0017: DFU escape hoisted ahead of
                                    *       usb_init, with the two writes
                                    *       it depends on (#172).
                                    * 0016: buttons are ACTIVE HIGH -- GLOBCTL

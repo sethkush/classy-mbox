@@ -4,7 +4,10 @@
  * Layout:
  *   Interface 0     — AudioControl
  *      IT USB-OUT (host→device)  → OT Line-Out           (playback path)
- *      IT Analog-In               → OT USB-IN (device→host) (capture path)
+ *      capture path (#159), per-channel source select:
+ *        IT ch1 {mic,line,inst} → SU ch1 ┐
+ *                                        ├→ MU (fixed 2x2) → OT USB-IN
+ *        IT ch2 {mic,line,inst} → SU ch2 ┘
  *   Interface 1     — AudioStreaming (playback), 2 alt settings
  *      alt 0 = zero-bandwidth (no endpoint)
  *      alt 1 = active: EP2 OUT adaptive iso
@@ -73,9 +76,15 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     /* ---- Class-specific AC interface header (10 bytes with 2 AS IF refs) ---- */
     10, USB_DT_CS_INTERFACE, UAC_AC_HEADER,
     0x00, 0x01,             /* bcdADC = 1.0 */
-    (10 + 12 + 12 + 9 + 9) & 0xFF,   /* wTotalLength of class-spec AC block
-                                       * (header 10 + IT + IT + OT + OT) */
-    ((10 + 12 + 12 + 9 + 9) >> 8) & 0xFF,
+    AC_BLOCK_LEN & 0xFF,    /* wTotalLength of the class-specific AC block.
+                             * Computed in usb.h from the per-descriptor
+                             * lengths rather than spelled out again here --
+                             * this field and the array contents are the same
+                             * fact twice, and a host that reads a short
+                             * wTotalLength silently ignores every unit past
+                             * it, which presents as "the selector does not
+                             * exist" rather than as a descriptor error. */
+    (AC_BLOCK_LEN >> 8) & 0xFF,
     2,                      /* bInCollection = 2 streaming interfaces */
     1,                      /* baInterfaceNr(0) = AS-playback */
     2,                      /* baInterfaceNr(1) = AS-capture */
@@ -89,14 +98,104 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0x03, 0x00,             /* wChannelConfig = FL + FR */
     0, 0,                   /* iChannel, iTerminal */
 
-    /* ---- Input Terminal: analog line-in (12 bytes) ---- */
+    /* ---- Capture front end: six mono Input Terminals (6 x 12 bytes) ----
+     *
+     * One per (channel, source) pair, mirroring the hardware: each channel's
+     * front-panel button cycles its own 3-bit field in the mux word, so the
+     * two channels are independent and are modelled independently here.
+     *
+     * bNrChannels = 1 with an explicit spatial position (FL for channel 1,
+     * FR for channel 2) so the Mixer Unit below has an unambiguous mapping
+     * from each mono path to its half of the stereo stream. */
+
+    /* ch1 mic */
     12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
-    TERM_ANALOG_IN,
+    TERM_CH1_MIC,
+    UAC_TT_MIC & 0xFF, (UAC_TT_MIC >> 8) & 0xFF,
+    0,                      /* bAssocTerminal */
+    1,                      /* bNrChannels */
+    0x01, 0x00,             /* wChannelConfig = FL */
+    0, 0,                   /* iChannel, iTerminal */
+
+    /* ch1 line */
+    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
+    TERM_CH1_LINE,
     UAC_TT_LINE_IN & 0xFF, (UAC_TT_LINE_IN >> 8) & 0xFF,
-    0,
-    2,
-    0x03, 0x00,
+    0, 1, 0x01, 0x00, 0, 0,
+
+    /* ch1 inst */
+    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
+    TERM_CH1_INST,
+    UAC_TT_ANALOG_CONN & 0xFF, (UAC_TT_ANALOG_CONN >> 8) & 0xFF,
+    0, 1, 0x01, 0x00, 0, 0,
+
+    /* ch2 mic */
+    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
+    TERM_CH2_MIC,
+    UAC_TT_MIC & 0xFF, (UAC_TT_MIC >> 8) & 0xFF,
+    0, 1, 0x02, 0x00,       /* wChannelConfig = FR */
     0, 0,
+
+    /* ch2 line */
+    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
+    TERM_CH2_LINE,
+    UAC_TT_LINE_IN & 0xFF, (UAC_TT_LINE_IN >> 8) & 0xFF,
+    0, 1, 0x02, 0x00, 0, 0,
+
+    /* ch2 inst */
+    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
+    TERM_CH2_INST,
+    UAC_TT_ANALOG_CONN & 0xFF, (UAC_TT_ANALOG_CONN >> 8) & 0xFF,
+    0, 1, 0x02, 0x00, 0, 0,
+
+    /* ---- Selector Unit: channel 1 source (9 bytes) ----
+     *
+     * UAC1 §4.3.2.4. bLength = 6 + bNrInPins.
+     *
+     * PIN ORDER IS THE WIRE PROTOCOL. SET_CUR carries a 1-based index into
+     * baSourceID, so pin 1 = mic, 2 = line, 3 = inst. usb.c maps those to the
+     * stock source patterns 0x06/0x05/0x03 and mux.c publishes them. Keep this
+     * order in step with sel_pin_to_pattern() -- they are one table split
+     * across two files, and nothing checks that mechanically.
+     *
+     * Order also chosen to match the button walk (mic -> line -> inst), so a
+     * host enum and the front panel enumerate the sources the same way. */
+    9, USB_DT_CS_INTERFACE, UAC_AC_SELECTOR_UNIT,
+    UNIT_SEL_CH1,
+    3,                      /* bNrInPins */
+    TERM_CH1_MIC, TERM_CH1_LINE, TERM_CH1_INST,
+    0,                      /* iSelector */
+
+    /* ---- Selector Unit: channel 2 source (9 bytes) ---- */
+    9, USB_DT_CS_INTERFACE, UAC_AC_SELECTOR_UNIT,
+    UNIT_SEL_CH2,
+    3,
+    TERM_CH2_MIC, TERM_CH2_LINE, TERM_CH2_INST,
+    0,
+
+    /* ---- Mixer Unit: fixed 2x2 (12 bytes) ----
+     *
+     * UAC1 §4.3.2.3. bLength = 9 + bNrInPins + bmControls size.
+     *
+     * Present ONLY because an Output Terminal has exactly one bSourceID, so
+     * two mono selector paths cannot otherwise reach one stereo terminal.
+     * bmControls = 0: no crosspoint is programmable, so this is fixed unity
+     * routing (ch1 -> FL, ch2 -> FR) and a host creates no controls for it.
+     *
+     * Deliberately NOT used to expose the mono fold-down. That switch is a
+     * single hardware bit in the codec word, not a gain matrix, so
+     * advertising programmable crosspoints would promise the host arithmetic
+     * this device cannot perform. Seth: the mono switch affects the headphone
+     * output only, so it is out of the capture path entirely. */
+    13, USB_DT_CS_INTERFACE, UAC_AC_MIXER_UNIT,
+    UNIT_MIXER,
+    2,                      /* bNrInPins */
+    UNIT_SEL_CH1, UNIT_SEL_CH2,
+    2,                      /* bNrChannels out */
+    0x03, 0x00,             /* wChannelConfig = FL + FR */
+    0,                      /* iChannelNames */
+    0x00,                   /* bmControls — no programmable crosspoints */
+    0,                      /* iMixer */
 
     /* ---- Output Terminal: analog line-out (9 bytes) ---- */
     9, USB_DT_CS_INTERFACE, UAC_AC_OUTPUT_TERMINAL,
@@ -111,7 +210,7 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     TERM_USB_IN_STREAM,
     UAC_TT_USB_STREAMING & 0xFF, (UAC_TT_USB_STREAMING >> 8) & 0xFF,
     0,
-    TERM_ANALOG_IN,        /* bSourceID = analog input */
+    UNIT_MIXER,            /* bSourceID = the 2x2 mixer, i.e. both selectors */
     0,
 
     /* ==================================================================
