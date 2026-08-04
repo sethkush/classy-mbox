@@ -69,7 +69,12 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
-#define TLM_BUILD_ID     0x001B   /* 001B: #170 -- the codec control word's
+#define TLM_BUILD_ID     0x001C   /* 001C: #161 experiment -- CPTCNF3 0xAC ->
+                                   *       0xA8, clearing BYOR on the playback
+                                   *       path so both directions match (and
+                                   *       match stock's running state). Tests
+                                   *       whether BYOR-TX does anything here.
+                                   * 001B: #170 -- the codec control word's
                                    *       source nibble (0x25.0-.3) is now
                                    *       driven. It was write-zero-only, so
                                    *       the codec chain said MIC on both

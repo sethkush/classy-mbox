@@ -211,9 +211,29 @@ void hw_init(void)
      * prove it is UNIQUELY correct, since 0xA8 playback was never flashed
      * and tried. That falsification costs one flash cycle if the asymmetry
      * ever needs explaining rather than just working. */
-    CPTCNF3   = 0xAC;   /* Rev 20 fcn.0x08CB @ 0x090B — stock BOOT value.
-                         * Stock's RUNNING value is 0xA8 (Rev 20 @0x0355 via
-                         * the helper at 0x0FF4). #161. */
+    /* #161 EXPERIMENT, build 0x001C: 0xAC -> 0xA8, i.e. BYOR CLEARED on the
+     * playback path, making mboxfw symmetric with its own capture path
+     * (CPTRXCNF3 = 0xA8 below) and with stock's running state.
+     *
+     * Why this is an experiment and not a cleanup. mboxfw was running
+     * 0xAC/0xA8 — asymmetric — and stock NEVER is: its helper writes one
+     * accumulator to BOTH registers (Rev 20 codec_port_cfg3_commit @0x0FF4,
+     * Rev 22 cport_cnf3_write_enable @0x0FE2 — 0xFFDE then 0xFFD5), so boot
+     * is 0xAC/0xAC and running is 0xA8/0xA8. Our asymmetry was the residue of
+     * updating the capture line to stock's running value during #147 while
+     * leaving this one at stock's boot value pending a measurement.
+     *
+     * The 2026-08-03 sweep proved 0xAC here is CORRECT, not that it is
+     * UNIQUELY correct — only one value was ever tried. Two outcomes:
+     *   audio still clean -> BYOR on the transmit path is inert in this
+     *       configuration; keep 0xA8 and the divergence from stock is gone.
+     *   audio breaks      -> BYOR-TX is real, the asymmetry is a physical
+     *       fact, and 0xAC goes back with a measurement behind it.
+     *
+     * Reverting is one byte and one flash cycle. */
+    CPTCNF3   = 0xA8;   /* Rev 20 fcn.0x08CB @ 0x090B (boot writes 0xAC here);
+                         * 0xA8 is stock's RUNNING value — Rev 20 @0x0358 via
+                         * fcn.0x0FF4, Rev 22 @0x035E via fcn.0x0FE2. #161. */
     CPTCNF4   = 0x03;   /* 0xFFDD — stock writes 0x03 */
     CPTSTA    = 0x50;   /* 0xFFDC — stock writes 0x50 */
     CPTRXCNF2 = 0x25;   /* 0xFFD6 — stock writes 0x25 */
