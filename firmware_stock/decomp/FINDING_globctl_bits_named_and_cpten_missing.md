@@ -85,7 +85,34 @@ with nothing pressed — not by the pull-ups being needed. Both are fixed
 together in build 0x0016; either alone is useless or dangerous. #169 answered.
 Full write-up: `FINDING_buttons_are_active_high.md`.
 
-## 2. mboxfw never enables the codec port
+## 2. mboxfw never enables the codec port — **RETRACTED 2026-08-04, the section is false**
+
+**mboxfw sets CPTEN, and always has.** `hw_init.c:302`:
+
+    GLOBCTL  |= 0x01;   /* enable codec port (CPTEN) */
+
+`git log -S` puts it in the initial skeleton commit `ffa7da4`; it was never
+added and never removed. It reaches the shipped image — `build/hw_init.rst`
+line 400 emits `90 FF B1 / E0 / 44 01 / F0`, and that string is in
+`build/mboxfw_flasher.bin` at offset **0x43F**. It is correctly placed, after
+all six CPTCNF/CPTRXCNF writes, exactly as §6.5.7.4 requires and as stock does
+at Rev 20 `0x0934` / Rev 22 `0x0805`.
+
+The error was a grep, and the reason is worth keeping: the line has **two
+spaces** before `|=`. A search for `GLOBCTL |= ` with one space matches
+`hw_init.c:129` and `main.c:342` but not this line — and the section below was
+written on the strength of a grep described as "exhaustive". This is the second
+time in this project a claim of absence from a text search turned out to be a
+whitespace or addressing-mode artifact (the first was `INC DPTR` reaching
+0xFFB1, recorded in the same file). CLAUDE.md's rule already covers it: never
+argue from absence in a tool's output.
+
+Everything below is retained as the historical record of the wrong claim. The
+"honest complication" it ends on — `CPTSTA` reading 0x70 with real audio
+flowing — was the correct signal and was overruled by the grep. With CPTEN set
+there is no complication: hardware setting TXE on an enabled port is ordinary.
+
+### The original (false) section follows
 
 §6.5.7.4, bit 0:
 
@@ -110,10 +137,14 @@ turns the port on.
 
 ### The justification table asserts a write that does not exist
 
-`tools/rev20_diff_justifications.md` rows for 0xffb1 say, twice, "mboxfw's single
-`|= 0x01` is sufficient" and "mboxfw only sets (`|= 0x01`)". There is no such
-line in mboxfw. A gate reads this table, and CLAUDE.md's own rule is that a wrong
-row there is worse than no row. Corrected.
+*(2026-08-04: this subsection is the inverted one. The original rows were right.)*
+
+`tools/rev20_diff_justifications.md` rows for 0xffb1 said, twice, "mboxfw's
+single `|= 0x01` is sufficient" and "mboxfw only sets (`|= 0x01`)". **Both were
+accurate**, and were overwritten on 2026-07-31 with the false claim that no such
+line exists. A gate reads this table, and CLAUDE.md's rule is that a wrong row
+there is worse than no row — so this edit did the exact damage the rule warns
+about, for four days. Both rows are restored and annotated.
 
 ### The honest complication
 

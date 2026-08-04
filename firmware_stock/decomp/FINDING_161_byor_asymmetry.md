@@ -128,18 +128,29 @@ propping up the transmit value (the Linux-quirk endianness chain) was already
 known to be broken. Now each rests on a measurement that could have come out
 the other way.
 
-## A separate thread this turned up
+## A separate thread this turned up — **RETRACTED 2026-08-04, it was an error**
 
-The part is in **I2S mode 5 — "1 OUT and 1 IN at different frequencies"** — so
-the receive path runs on SCLK2/LRCK2 derived from ACG synthesizer **2**, a
-distinct clock domain from transmit. The mode-5 software branch that programs
-synthesizer 2 (`ACG2DCTL`, the CPTRXCNF4 divider, and IRAM 0x23.0/0x23.1) is
-reachable only from work code 0x0A, which **nothing in either image ever
-posts** — it is dead in stock too. `hw_init` does write `CPTRXCNF4 = 0x03` at
-boot, so the receive divider is set, but the second synthesizer is never
-programmed at runtime by anyone.
+The paragraph that stood here claimed:
 
-A capture path clocked from an unprogrammed synthesizer is worth understanding
-on its own terms, and it may bear on #171 and on the capture-side behaviour
-generally. Recorded here rather than folded into the BYOR question, because it
-is a different question that happens to share a register block.
+> The part is in I2S mode 5 ... so the receive path runs on SCLK2/LRCK2 derived
+> from ACG synthesizer 2 ... The mode-5 software branch that programs
+> synthesizer 2 is reachable only from work code 0x0A, which nothing in either
+> image ever posts — it is dead in stock too ... the second synthesizer is never
+> programmed at runtime by anyone.
+
+**It is wrong, and it spliced two unrelated numbering schemes.** `CPTCNF1`'s
+MODE field (codec-port mode 5) and `audio_clock_mode_apply`'s R7 argument
+(Digidesign clock-mode index 5) are different things that share a digit. The
+part being in codec-port mode 5 implies nothing about whether the dispatcher's
+mode-5 branch runs.
+
+Synthesizer 2 **is** programmed, on the ordinary rate path, by both firmwares:
+`acg_set_freq_48k_family` @ Rev 20 `0x0DEC` writes `ACG2FRQ0/1/2` at
+`0x0DFE/0x0E04/0x0E0A` alongside synthesizer 1, and `0x0E18` writes `ACG2DCTL`.
+mboxfw's `streaming_set_rate()` mirrors all of it. And `0x0A` is an index into
+the **host** vendor-command table at `0x0300`, not an internal work code — the
+branch is host-reachable, not dead.
+
+Full analysis, including the CPTEN half of the same mistake:
+`FINDING_capture_works_anyway.md`. Nothing in the BYOR conclusion above depends
+on this paragraph.

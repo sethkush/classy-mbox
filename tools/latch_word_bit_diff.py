@@ -49,10 +49,22 @@ SET_OPCODES = {0xD2: "SETB", 0x92: "MOV bit,C", 0xB2: "CPL"}
 # Bits stock drives that mboxfw does not, WITH the reason each is accepted.
 # A bit listed here is a known, recorded gap. Anything not listed fails.
 EXPECTED_GAPS = {
-    (0x23, 0): "stock's only setter is in the mode-5 branch reachable solely "
-               "from work code 0x0A, which nothing posts in either image -- "
-               "dead in stock too. FINDING_codec_word_bits_resolved.md",
-    (0x23, 1): "same mode-5 dead branch as 0x23.0",
+    # CORRECTED 2026-08-04. These were justified as "dead in stock too,
+    # reachable only from work code 0x0A which nothing posts". The reachability
+    # is right; calling it dead is not, and "work code" was the wrong noun.
+    # 0x0A is an index into the HOST vendor-command jump table at 0x0300, not
+    # an internal work code -- entry 10 is `LJMP 0x04bc`, which loads R7=5 and
+    # calls audio_clock_mode_apply. Nothing in the firmware posts it because
+    # the Digidesign host driver does. So the branch is host-reachable, not
+    # dead; what makes the gap safe is that no class-compliant host sends it.
+    # See FINDING_capture_works_anyway.md.
+    (0x23, 0): "stock's only setter is Rev 20 0x07B8 / Rev 22 0x0796, inside "
+               "the clock-mode-5 branch reachable solely from host vendor "
+               "command 10 (0x0A). That command re-clocks capture to a rate "
+               "independent of playback; no class-compliant host sends it, so "
+               "mboxfw never enters the branch. FINDING_capture_works_anyway.md",
+    (0x23, 1): "same host-command-10 branch as 0x23.0 (Rev 20 0x07BA, "
+               "Rev 22 0x0798)",
     # 0x25.0-.3 were gaps until #170 (2026-08-03). codec_source_changed() now
     # derives all four from g_mux_state on every publish.
     (0x25, 4): "#159 -- UAC Selector Unit position (0 = analog, 1 = S/PDIF). "
