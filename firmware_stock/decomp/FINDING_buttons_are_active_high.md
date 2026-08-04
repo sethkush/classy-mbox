@@ -183,8 +183,32 @@ stuck 1. The fix rests on the behaviour, not on the mechanism.
 RESOLVED by §6b: mboxfw with P3PUDIS set reads P3 bits 3/4/5 as 0 at rest, and
 presses register 1:1.
 
-Still open: whether the boot-time DFU escape FIRES when the button is held
-through a power cycle. It has never fired in any build, and build 0x0016 came
-up on a bus reset rather than a cold boot, so it was not exercised. Until that
-is demonstrated, the SDA short remains the real fallback and `preflight.sh` §4
-says so. #153.
+**The boot-time DFU escape fired, 2026-08-03 — the first time in this
+project's history.** Source-1 held through a power cycle: the device came up
+and never enumerated (kernel logged the disconnect and then nothing), which is
+the designed signature — it breaks its own header checksum and spins
+deliberately. The next power cycle brought it up as `ffff:fffe`, dfuIDLE, and
+it flashed cleanly. Software recovery, no shorting wire.
+
+The silence is worth reading carefully, because it is also what a brick looks
+like. The logic discriminates: had `held` come out 0 the function returns and
+the device attaches, and had the EEPROM write failed it falls through and
+boots. The same image had attached twice minutes earlier. Total silence is
+reachable only through the invalidate path, and the following power cycle
+confirmed the write took.
+
+Scope of the escape, stated so it is not over-trusted:
+
+  * It runs after `usb_init()` and `hw_init()`, so it recovers a hang in
+    `cs8427_init`, `codec_init`, the main loop, or a firmware that enumerates
+    wrong.
+  * It does NOT recover a hang inside `usb_init()` or `hw_init()` themselves,
+    and it cannot recover an image that never executes at all — the 6448-byte
+    over-size brick ran no instructions, so no escape could have fired. That
+    class is now caught before the device by the linker and
+    `check_code_size.py`.
+  * Closing the remaining gap is cheap: `GLOBCTL |= 0x02` is one SFR write
+    with no dependency on the rest of `hw_init`, so setting it immediately
+    after the boot-ROM handoff would let the escape run before `usb_init()`
+    and cover the whole boot path.
+  * It has fired exactly once, on one unit, with a deliberate hold.

@@ -204,12 +204,13 @@ if (( found == 0 )); then
     exit 3
 fi
 echo "     Recovery: mboxflash --enter-dfu → mboxflash --flash <image above>"
-echo "     If --enter-dfu fails: hold source-1 during replug (button DFU) --"
-echo "       UNPROVEN ON HARDWARE. This path has never once fired: the read"
-echo "       tested for a LOW pin while the buttons are active HIGH, and the"
-echo "       internal pull-ups pinned the pin at 1 regardless. Both halves are"
-echo "       fixed as of build 0x0016 and neither has been confirmed on the"
-echo "       bench. Plan the SDA short as the real fallback until it has."
+echo "     If --enter-dfu fails: hold source-1 during replug (button DFU)."
+echo "       PROVEN 2026-08-03, build 0x0016, once. The device goes silent by"
+echo "       design (breaks its own checksum, spins); the NEXT power cycle"
+echo "       brings it up as ffff:fffe. Silence is also what a brick looks"
+echo "       like -- the following power cycle is what tells them apart."
+echo "       It runs after usb_init() and hw_init(), so it does NOT cover a"
+echo "       hang inside either, nor an image that never executes."
 echo "     If both fail: physical SDA short (see recovery notes)."
 read -r -p "  → Rollback plan is understood? [yes/no] " ans
 [[ "$ans" == "yes" ]] || { echo "aborted."; exit 3; }
@@ -232,8 +233,8 @@ if grep -q "check_boot_dfu_button" mboxfw/src/main.c 2>/dev/null; then
     grep -q 'GLOBCTL |= 0x02' mboxfw/src/hw_init.c 2>/dev/null \
         || { echo "     ✗ P3PUDIS not set — P3 reads stuck high, button dead"; _btn_ok=0; }
     [[ "$_btn_ok" == 1 ]] && \
-        echo "     ~ boot-time button-hold DFU trigger present and correctly" && \
-        echo "       shaped — NOT yet confirmed on hardware"
+        echo "     ✓ boot-time button-hold DFU trigger (fired on hardware" && \
+        echo "       2026-08-03; covers hangs AFTER hw_init, not before)"
 else
     echo "     ✗ boot-time button DFU trigger MISSING"
 fi
