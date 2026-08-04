@@ -79,26 +79,54 @@ and calling it big-endian is internally consistent and says nothing about what
 little-endian requires. There is no contradiction between the two firmwares —
 only an unexplained asymmetry *within* mboxfw.
 
-## The open question, stated precisely
+## RESOLVED — there was no asymmetry. CPTRXCNF3's BYOR is inert.
 
-Under the simplest model — BYOR reverses byte order identically in both
-directions — mboxfw's measured 0xAC/0xA8 means transmit and receive have
-OPPOSITE native byte order relative to the endpoint buffer. Nothing in the
-datasheet, the slot geometry, the mode selection or either image explains why.
+Build 0x001D set `CPTRXCNF3 = 0xAC` (BYOR SET on receive) with `CPTCNF3` held
+at its proven-good 0xAC — a single-variable test of the receive side. The
+result was **identical to 0x001B to five significant digits**:
 
-Two candidates remain, and they differ in a testable prediction:
+    in  -9 dBFS -> out -29.20    A/rms 1.41421   h2 -101.8 dB
+    in -21 dBFS -> out -41.20    A/rms 1.41421   h2  -80.5 dB
+    in -33 dBFS -> out -53.20    A/rms 1.41414   h2  -74.8 dB
+    in -45 dBFS -> out -65.20    A/rms 1.41308   h2  -57.8 dB
 
-  * **(a) The RX BYOR bit does not reach our capture path** despite mode 5 —
-    e.g. the receive DMA takes its byte order from CPTCNF3 regardless. Then
-    there is no asymmetry at all, 0xA8 on FFD5h was simply never doing
-    anything, and stock's symmetry is trivially consistent.
-  * **(b) The paths genuinely differ in silicon.** Then 0xA8 on receive is
-    load-bearing and the asymmetry is a hardware fact to be documented.
+Same output levels, same sqrt(2) purity, same constant 20.20 dB loss. Flipping
+the receive BYOR bit changed **nothing**, so candidate (a) is selected:
 
-**Build 0x001D tests exactly this** by setting `CPTRXCNF3 = 0xAC` with
-`CPTCNF3` at its proven-good 0xAC — a single-variable experiment on the
-receive side. Clean audio selects (a); garbage capture with intact playback
-selects (b).
+**The capture path does not take its byte order from CPTRXCNF3**, even though
+the part is in I2S mode 5 and §6.5.4.12's stated condition is therefore met.
+`CPTCNF3`'s BYOR governs BOTH directions — which is exactly what its own text
+says, "the byte order for the data moved by the DMA between the USB endpoint
+buffer and the codec port interface", with no direction qualifier anywhere in
+it. The identical bit description in §6.5.4.12 is best read as documentation
+copy-paste rather than a second, independent control.
+
+The `0xA8` mboxfw carried at FFD5h was therefore **inert** — residue from the
+#147 work that was never doing anything. It is left at 0xAC so both codec-port
+configuration registers match stock's boot init and nobody has to re-derive
+why they differed.
+
+### Everything now follows from one bit
+
+    stock   CPTCNF3 = 0xA8 -> BYOR 0 -> big-endian    both ways; declares S24_3BE
+    mboxfw  CPTCNF3 = 0xAC -> BYOR 1 -> little-endian both ways; declares S24_3LE
+    0x001C  CPTCNF3 = 0xA8 -> BYOR 0 -> big-endian    both ways, while declaring
+                              S24_3LE -> both directions wrong. Playback showed
+                              it; capture had no signal left to show it with.
+
+No special pleading, no silicon asymmetry, no contradiction between the two
+firmwares. The whole puzzle was one register being assumed to do something it
+does not do.
+
+### What this cost, and what it bought
+
+Two flash cycles. 0x001C proved by falsification that BYOR SET is *uniquely*
+correct on transmit — not merely correct, which is all the original sweep had
+shown. 0x001D proved the receive register is inert. Before this, BOTH values
+rested on "it works and we never varied it", and one of the two arguments
+propping up the transmit value (the Linux-quirk endianness chain) was already
+known to be broken. Now each rests on a measurement that could have come out
+the other way.
 
 ## A separate thread this turned up
 
