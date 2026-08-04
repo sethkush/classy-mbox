@@ -349,8 +349,13 @@ def block9(b):
         "mono      =%d" % b[1],
         "codec word=0x%02X%02X  (RAM[0x23]:RAM[0x25], the 16-bit chain)"
         % (b[2], b[3]),
+        # ACTIVE HIGH: 1 = pressed. This said "active low: 0 = held" until
+        # 2026-08-03, so it reported all three buttons as held on every read
+        # of a device sitting untouched. Confirmed on hardware that day: with
+        # P3PUDIS set, P3 rests at 0xC2 (bits 3/4/5 low) and a press drives
+        # the bit high. See FINDING_buttons_are_active_high.md.
         "P3 live   =0x%02X   btn ch1(P3.3)=%d ch2(P3.4)=%d mono(P3.5)=%d"
-        "  (active low: 0 = held)"
+        "  (active HIGH: 1 = pressed)"
         % (b[4], (b[4] >> 3) & 1, (b[4] >> 4) & 1, (b[4] >> 5) & 1),
         "host mux sets accepted=%d  rejected=%d" % (b[5], b[6]),
     ]
@@ -381,10 +386,22 @@ def block10(b):
     """
     out = ["raw P3 samples: " + " ".join("%02x" % x for x in b)]
     if len(set(b)) == 1:
-        out.append("every sample identical (0x%02x) -- NO PIN ANSWERED." % b[0])
-        out.append("  CDOUT is not wired to P3, or the part is not driving it.")
-        out.append("  This is a real answer, not a failed guess: see")
-        out.append("  FINDING_ep0_request_harness.md and cs8427.c.")
+        out.append("every sample identical (0x%02x) -- no pin changed across "
+                   "the eight clocks." % b[0])
+        # Do not translate that into "CDOUT is not wired" without knowing what
+        # an unread port looks like. This asserted exactly that on 2026-08-03
+        # against a build with no probe in it at all, and again against a
+        # sample of 0x00 taken while P3 rested at 0xC2 -- a whole port pulled
+        # to a level it does not rest at is a statement about the probe, not
+        # about CDOUT. Block 9 carries the resting value; compare against it.
+        out.append("  AMBIGUOUS on its own. Read block 9 for the resting P3:")
+        out.append("    same as resting  -> nothing drove the port; CDOUT is")
+        out.append("                        not wired to P3, or is idle.")
+        out.append("    differs          -> something drove the WHOLE port to")
+        out.append("                        0x%02x during the probe. That is a" % b[0])
+        out.append("                        probe/bus fault, not an answer")
+        out.append("                        about CDOUT.")
+        out.append("  See FINDING_ep0_request_harness.md and cs8427.c.")
         return out
     hits = []
     for pin in range(8):
