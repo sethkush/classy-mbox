@@ -108,6 +108,48 @@
 #define APP_STRING_MFR_LEN      22   /* 2 + 2*10 "Digidesign"   */
 #define APP_STRING_PRODUCT_LEN  26   /* 2 + 2*12 "Mbox (classc" */
 
+/* iSerialNumber — string #3, optional, per-unit.
+ *
+ * WHY THIS EXISTS. Two Mboxes share the bench, and until now they were told
+ * apart by giving each a different MBOX_PID. That works but is the wrong
+ * mechanism twice over: the PID says which PRODUCT this is, not which UNIT,
+ * so a per-unit PID makes two identical devices claim to be different models
+ * — and it changes driver binding, which is exactly the variable an A/B
+ * measurement must hold still. It also nearly caused a collision: the #171
+ * experiment image was built for A's PID and would have given B the same PID
+ * as A had it been flashed unchanged.
+ *
+ * A serial number is what USB provides for "which unit". With it, both units
+ * build at MBOX_PID=0x2000 — same product identity, same quirk handling, same
+ * binding — and the host still addresses either one unambiguously
+ * (`usb.core.find(serial_number=...)`, or the `serial` attribute under
+ * /sys/bus/usb/devices/).
+ *
+ * `make MBOX_UNIT=A` / `MBOX_UNIT=B` selects one. Undefined builds serve no
+ * serial and set iSerialNumber = 0, which is the previous behaviour exactly,
+ * so the default image is unchanged.
+ *
+ * The values are the ones printed on the units, recorded in BENCH_WIRING.md.
+ * Spelled as UTF-16LE characters rather than a C string because a USB string
+ * descriptor is 16-bit, and doing the conversion at run time would add code to
+ * a descriptor path that is currently a straight table copy. */
+#if defined(MBOX_SERIAL_A)
+#  define MBOX_SERIAL_CHARS  'R',0,'K',0,'1',0,'0',0,'8',0,'7',0,'4',0,'6',0, \
+                             '0',0,'0',0,'Q',0            /* RK10874600Q */
+#  define MBOX_SERIAL_NCHAR  11
+#elif defined(MBOX_SERIAL_B)
+#  define MBOX_SERIAL_CHARS  'R',0,'K',0,'1',0,'6',0,'7',0,'2',0,'5',0,'0',0, \
+                             '0',0,'M',0                  /* RK1672500M */
+#  define MBOX_SERIAL_NCHAR  10
+#endif
+
+#ifdef MBOX_SERIAL_NCHAR
+#  define APP_STRING_SERIAL_LEN  (2 + 2 * MBOX_SERIAL_NCHAR)
+#  define APP_ISERIAL            0x03
+#else
+#  define APP_ISERIAL            0x00
+#endif
+
 /* Total configuration-bundle length. Sum of every descriptor in
  * descriptors.c, in host-parse order. Edit both together. */
 #define AC_BLOCK_LEN        (10 + 12 + 12 + 9 + 9)

@@ -30,6 +30,17 @@ ifeq ($(MBOX_NO_MUTE_PAIR),1)
 EXTRA_CFLAGS += -DMBOX_NO_MUTE_PAIR -DTLM_BUILD_ID=0x001E
 endif
 
+# Per-unit serial number. `make MBOX_UNIT=A` / `=B` serves iSerialNumber with
+# the serial printed on that unit, so BOTH units can build at the same
+# MBOX_PID and still be addressed individually by the host. Undefined = no
+# serial descriptor and iSerialNumber 0, exactly as before. See usb.h.
+ifeq ($(MBOX_UNIT),A)
+EXTRA_CFLAGS += -DMBOX_SERIAL_A
+endif
+ifeq ($(MBOX_UNIT),B)
+EXTRA_CFLAGS += -DMBOX_SERIAL_B
+endif
+
 CFLAGS  = $(if $(MBOX_PID),-DMBOX_PID=$(MBOX_PID)) -mmcs51 --model-small --std-c99 --opt-code-size $(INC)
 # --code-size REVERTED 0x1C00 -> 0x1780 (7168 -> 6016) on 2026-08-03, after an
 # image built against the raised value bricked Mbox A.

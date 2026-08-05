@@ -31,7 +31,7 @@ const unsigned char __code AppDevDesc[APP_DEV_DESC_LEN] = {
     MBOX_BCD_DEVICE & 0xFF, (MBOX_BCD_DEVICE >> 8) & 0xFF,
     0x01,                   /* iManufacturer  = string #1 */
     0x02,                   /* iProduct       = string #2 */
-    0x00,                   /* iSerialNumber  = none */
+    APP_ISERIAL,            /* iSerialNumber — 3 if MBOX_UNIT=A/B, else 0 (usb.h) */
     0x01                    /* bNumConfigurations */
 };
 
@@ -230,6 +230,14 @@ const unsigned char __code AppStringLang[APP_STRING_LANG_LEN] = {
     4, USB_DT_STRING,
     0x09, 0x04              /* English (US) */
 };
+
+#ifdef MBOX_SERIAL_NCHAR
+/* Per-unit serial, string #3. Values printed on the units; see BENCH_WIRING.md.
+ * Absent unless the build selects a unit, so the default image is unchanged. */
+const unsigned char __code AppStringSerial[APP_STRING_SERIAL_LEN] = {
+    APP_STRING_SERIAL_LEN, USB_DT_STRING, MBOX_SERIAL_CHARS
+};
+#endif
 
 const unsigned char __code AppStringMfr[APP_STRING_MFR_LEN] = {
     22, USB_DT_STRING,

@@ -26,6 +26,7 @@
 #include "regs.h"
 #include "mux.h"
 #include "codec.h"
+#include "cs8427.h"   /* cs8427_boot_init() — #175 re-arm */
 #include "power.h"
 #include "telemetry.h"
 #include "usb.h"
@@ -131,6 +132,12 @@ void work_dispatch(void)
     unsigned char code = g_work_code;
 
     switch (code) {
+        case WORK_BRINGUP:
+            /* #175. Guarded internally on IRAM 0x25.6, so this costs one test
+             * and a return unless a suspend cleared the codec word. Stock's
+             * equivalent is the `LCALL 0x080b` at the head of cmd2/cmd3. */
+            cs8427_boot_init();
+            break;
         case WORK_SUSPEND:
             do_suspend();
             break;

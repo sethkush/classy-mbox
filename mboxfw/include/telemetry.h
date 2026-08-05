@@ -76,7 +76,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x001D   /* 001D: CPTCNF3 restored to 0xAC (0x001C
+#define TLM_BUILD_ID     0x001F   /* 001F: #175 -- SET_INTERFACE(alt!=0) now
+                                   *       posts WORK_BRINGUP, so a suspend no
+                                   *       longer strands the CS8427 in reset.
+                                   *       Plus optional per-unit iSerialNumber
+                                   *       (make MBOX_UNIT=A|B).
+                                   * 001E: #171 experiment, mute pair not raised
+                                   *       (make MBOX_NO_MUTE_PAIR=1). Proved
+                                   *       0x23.2/0x23.3 gate BOTH directions.
+                                   * 001D: CPTCNF3 restored to 0xAC (0x001C
                                    *       destroyed playback -- BYOR SET is
                                    *       uniquely correct there). CPTRXCNF3
                                    *       0xA8 -> 0xAC: does the RX BYOR bit

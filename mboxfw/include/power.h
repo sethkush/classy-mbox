@@ -13,6 +13,26 @@
  * RET` and table entry 13 lands at 0x0526. Rev 22 identical, 0x0006 -> 0x0525.
  */
 #define WORK_NONE       0x00
+/*
+ * 0x02 is stock's cmd2, the interface-1-alt handler (event_jump_table entry 2,
+ * Rev 20 0x0303 -> 0x0386, Rev 22 0x0303 -> 0x038D). Its FIRST action is the
+ * guarded external-chip bring-up:
+ *
+ *     038f  JB 0x2e,0x0395      ; IRAM 0x25.6 — has bring-up run?
+ *     0392  LCALL 0x080b        ; if not, run it
+ *
+ * mboxfw posts this code on SET_INTERFACE(alt != 0) and dispatches it to
+ * cs8427_boot_init(), which carries the same guard internally. Only the
+ * bring-up half of stock's cmd2 is deferred here; the endpoint enables stay
+ * inline in the SETUP handler, which is an existing divergence and is fine —
+ * they are register writes with no delays.
+ *
+ * It has to be deferred rather than called from the SETUP handler because
+ * cs8427_boot_init() bit-bangs SPI and spins several settle_delay()s. Stock
+ * runs cmd2 from the main-loop dispatcher for the same reason; doing it in the
+ * EP0 ISR would hold off every other interrupt for milliseconds.
+ */
+#define WORK_BRINGUP    0x02
 #define WORK_SUSPEND    0x0E
 
 extern volatile __data unsigned char g_work_code;

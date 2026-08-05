@@ -54,6 +54,9 @@ extern const __code unsigned char AppConfigDesc[];
 extern const __code unsigned char AppStringLang[];
 extern const __code unsigned char AppStringMfr[];
 extern const __code unsigned char AppStringProduct[];
+#ifdef MBOX_SERIAL_NCHAR
+extern const __code unsigned char AppStringSerial[];
+#endif
 
 /* Enter-DFU request latch. Written from ISR context (the SETUP handler),
  * read and cleared by main(); volatile so SDCC cannot cache the main-loop
@@ -275,6 +278,13 @@ static void handle_get_descriptor(void)
                 case 0:  stage_reply(AppStringLang,    APP_STRING_LANG_LEN);  break;
                 case 1:  stage_reply(AppStringMfr,     APP_STRING_MFR_LEN); break;
                 case 2:  stage_reply(AppStringProduct, APP_STRING_PRODUCT_LEN); break;
+#ifdef MBOX_SERIAL_NCHAR
+                /* iSerialNumber. Only offered when the device descriptor
+                 * actually points at it (APP_ISERIAL), so a host that asks for
+                 * string 3 on a serial-less build still gets the stall it
+                 * would have got before. */
+                case 3:  stage_reply(AppStringSerial,  APP_STRING_SERIAL_LEN); break;
+#endif
                 default: reply_stall(); break;
             }
             break;
@@ -311,6 +321,32 @@ static void handle_set_interface(void)
         g_alt_capture = alt;
         streaming_capture_enable(alt != 0);
         if (alt) tlm_alt_seen |= TLM_ALT_CAPTURE_ON;
+    }
+
+    /* #175. Re-arm the external-chip bring-up if it has been lost.
+     *
+     * cs8427_boot_init() is guarded on IRAM 0x25.6 and returns immediately
+     * once bring-up has run, so this is a no-op on every normal stream start.
+     * It matters after a SUSPEND: do_suspend() zeroes the codec word, which
+     * clears 0x25.6 along with RESET_N (0x23.4) and the mute pair
+     * (0x23.2/0x23.3). Nothing on the resume path republishes that word --
+     * hw_init() re-seeds the MUX word but not the CODEC word -- so before this,
+     * a single suspend left the CS8427 held in reset for the rest of the
+     * attach, recoverable only by a power cycle. Measured on hardware
+     * 2026-08-04: codec word 0x1CC0 -> 0x0000 across one suspend/resume.
+     *
+     * This is how stock recovers, not an invention: its interface-alt handlers
+     * open with `JB 0x2e,<skip>; LCALL 0x080b` (Rev 20 0x038F/0x0392 for
+     * iface 1, 0x0416/0x0419 for iface 2; Rev 22 0x0393 and 0x0416), and
+     * 0x080B sets 0x25.6 at 0x0810 then releases RESET at 0x0840. Zeroing the
+     * word at suspend IS the re-arm.
+     *
+     * Posted as work rather than called here: this runs in the EP0 SETUP ISR,
+     * and cs8427_boot_init() bit-bangs SPI with settle delays. See power.h.
+     * Only on alt != 0 -- a teardown to alt 0 needs no bring-up, and posting
+     * there would re-run it on every arecord exit. */
+    if (alt != 0) {
+        g_work_code = WORK_BRINGUP;
     }
     reply_zero_length();
 }
