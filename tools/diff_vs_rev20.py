@@ -28,6 +28,28 @@ from pathlib import Path
 
 
 REPO = Path(__file__).parent.parent
+# WHAT THIS FILE ACTUALLY IS, measured 2026-08-05.
+#
+# rev20_flat.asm is a linear-sweep disassembly of rev20_EEPROM.bin -- the full
+# 8192-byte EEPROM image INCLUDING its 18-byte header -- not of
+# rev20_firmware_code.bin. Every instruction in it matches rev20_eeprom.bin at
+# the address it claims (4096/4096), and 4086/4086 of the instructions at
+# address >= 18 match the CODE image at (address - 0x12).
+#
+# So: **every address in rev20_flat.asm is the true code address + 0x12.**
+#
+# The instruction DECODING of the real code is nevertheless correct, by luck:
+# the 18 header bytes happen to decode as exactly 18 bytes of junk
+# instructions (60 12 | 12 34 0d | ba 10 01 | 01 01 | 04 | fa | 02 20 01 | 00 |
+# 1f | ee), so the sweep lands byte-aligned on the reset vector and never
+# desynchronises. That is why the write-address set extracted below is sound:
+# checked against XDATA_ACCESS_MAP.md (built from the binary plus the Ghidra
+# recursive listing) it misses ZERO of the 52 addresses stock writes.
+#
+# This gate only ever consumes (SFR address, pattern, immediate) and never an
+# instruction address, so the +0x12 offset does not affect its output. It DOES
+# affect anything that quotes an address from this listing -- see
+# FINDING_rev20_flat_asm_is_offset_by_18.md.
 REV20_ASM = REPO / "firmware_stock" / "disasm" / "rev20_flat.asm"
 JUSTIFY = Path(__file__).parent / "rev20_diff_justifications.md"
 
@@ -41,6 +63,58 @@ from audit_sfr_writes import scan_rst, load_manifest  # noqa: E402
 
 
 # --- Rev 20 side --------------------------------------------------- #
+
+def load_rev20_helper_writes() -> set[tuple[str, str, str]]:
+    """Rev 20 writes performed BY A CALLEE against the caller's DPTR.
+
+    The linear scan below cannot see these. The caller loads DPTR and calls a
+    shared helper; the helper issues the MOVX. In a linear listing the
+    instructions following the LCALL are the caller's continuation, not the
+    helper's, so there is nothing to attribute the write to -- and once DPTR
+    tracking correctly stops at control-flow edges, the write vanishes
+    entirely. Before that fix these sites were "found" only because a stale
+    DPTR was carried across branches until some unrelated MOVX turned up; for
+    ACGDCTL that happened to yield the right value, which is luck, not method.
+
+    XDATA_ACCESS_MAP.md models them explicitly as `write-via-helper <target>
+    [<value>]`, built from the binary plus the Ghidra recursive listing. Where
+    the map records the value, use it. Where it does not, the value lives in
+    the helper's own body -- decode the leading `MOV A,#imm` straight from the
+    image rather than assuming one.
+    """
+    MAP = REPO / "firmware_stock" / "disasm" / "XDATA_ACCESS_MAP.md"
+    IMG = REPO / "firmware_stock" / "rev20_firmware_code.bin"
+    if not MAP.exists() or not IMG.exists():
+        return set()
+    img = IMG.read_bytes()
+    text = MAP.read_text(errors="ignore")
+    rev20 = text.split("## rev20", 1)[1].split("## rev22", 1)[0]
+
+    out: set[tuple[str, str, str]] = set()
+    cur = None
+    for line in rev20.splitlines():
+        m = re.match(r"### 0x([0-9A-Fa-f]{4})", line)
+        if m:
+            cur = m.group(1).lower()
+            continue
+        m = re.search(r"write-via-helper\s+0x([0-9A-Fa-f]{4})"
+                      r"(?:\s+0x([0-9A-Fa-f]{1,2}))?", line)
+        if not m or cur is None:
+            continue
+        imm = m.group(2)
+        if imm is None:
+            tgt = int(m.group(1), 16)
+            # helper body: 74 <imm> f0  ->  MOV A,#imm ; MOVX @DPTR,A
+            if tgt + 2 < len(img) and img[tgt] == 0x74 and img[tgt + 2] == 0xF0:
+                imm = "%02x" % img[tgt + 1]
+            else:
+                # value not statically determinable; record the write without
+                # claiming an immediate rather than inventing one
+                out.add((cur, "rmw", "-"))
+                continue
+        out.add((cur, "assign", "0x" + imm.lower().zfill(2)))
+    return out
+
 
 def load_rev20_writes() -> set[tuple[str, str, str]]:
     """
@@ -69,6 +143,29 @@ def load_rev20_writes() -> set[tuple[str, str, str]]:
     RE_MOV_DPL  = re.compile(r"mov\s+dpl\s*,\s*#0x([0-9a-fA-F]{1,2})")
     RE_MOV_DPH  = re.compile(r"mov\s+dph\s*,\s*#0x([0-9a-fA-F]{1,2})")
 
+    # A DPTR load is only good until control flow leaves the straight-line run.
+    # Without this the scanner carried last_dptr across `ret` and branches and
+    # attributed a MOVX in a completely different function to whatever address
+    # was loaded last. That invented three Rev 20 writes -- 0xFF29, 0xFF2B,
+    # 0xFF2C -- which are the SETUP packet buffer (bRequest / wValue / wIndex).
+    # The MCU only ever READS those; the UBM writes them. A phantom Rev 20
+    # write is the dangerous direction of error: it surfaces as REV20_ONLY,
+    # which reads as "stock does this and we do not" and invites copying a
+    # write that does not exist. CLAUDE.md states the rule this restores:
+    # track straight-line only, end the run at any control-flow edge.
+    # NOTE what is deliberately ABSENT: lcall / acall.
+    #
+    # A call does NOT end the run, because this firmware uses the callee to
+    # perform the caller's write -- the caller loads DPTR, calls a shared
+    # helper, and the helper issues the MOVX against the DPTR it inherited.
+    # ACGDCTL is the documented instance: 0x0736 loads #0xFFE2 and LCALLs
+    # 0x0E18, which writes 0x10 to it (see the long comment in streaming.c).
+    # XDATA_ACCESS_MAP.md classifies that site as "write-via-helper 0x0E18".
+    # Ending the run at LCALL loses it, and the gate then reports mboxfw
+    # writing ACGDCTL where stock does not -- a false divergence in the
+    # opposite direction from the phantoms.
+    RE_FLOW = re.compile(r"\b(ret|reti|ljmp|sjmp|ajmp|jmp|jz|jnz|jc|jnc|jb|jnb|jbc|cjne|djnz)\b")
+
     writes: set[tuple[str, str, str]] = set()
     last_dptr = None
     saw_read = False
@@ -82,6 +179,15 @@ def load_rev20_writes() -> set[tuple[str, str, str]]:
         m = RE_DPTR.search(line)
         if m:
             last_dptr = m.group(1).zfill(4)
+            saw_read = False
+            op_class = None
+            op_imm = None
+            continue
+
+        # End the straight-line run. Checked BEFORE the MOVX handling below so
+        # a branch cannot carry a stale DPTR into another function.
+        if RE_FLOW.search(line):
+            last_dptr = None
             saw_read = False
             op_class = None
             op_imm = None
@@ -191,7 +297,7 @@ def main() -> int:
               " tools/audit_sfr_writes.py --update first", file=sys.stderr)
         return 2
 
-    rev20 = load_rev20_writes()
+    rev20 = load_rev20_writes() | load_rev20_helper_writes()
     if not rev20:
         print("ERROR: no writes extracted from Rev 20 disasm — is"
               f" {REV20_ASM} present and non-empty?", file=sys.stderr)
