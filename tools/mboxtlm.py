@@ -92,6 +92,10 @@ BLOCK_FIRST_BUILD = {
 # BLOCK_FIRST_BUILD exists to prevent, and it cannot express "index 8 used to
 # mean something else". A retired block reads as the all-0xFF sentinel.
 BLOCK_RETIRED = {
+    6:  (0x002F, "DMA + C-port live state -- answered why isochronous IN returned "
+                 "zero-length packets (0xFFE1 is ACGCTL, not a DMA enable, so "
+                 "DMACTL0/DMACTL1 had never been armed). Fixed and since measured "
+                 "carrying correct audio; block 5 keeps the endpoint/alt state"),
     3:  (0x002E, "#46 endpoint geometry + DMABCNT0 + playback resyncs -- built to "
                  "tell a starved playback buffer from a thrashing SOF watchdog "
                  "at 96 kHz, and it did (resyncs 0 at 48 kHz, saturated at 96). "

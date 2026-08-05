@@ -126,46 +126,19 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[7] = (unsigned char)((tlm_last_iface << 4) | (tlm_last_alt & 0x0F));
         return 1;
 
-    case 6:
-        /* DMA and C-port live state — the isoc data source.
-         *
-         * SOF fires and the endpoints are enabled, but tlm_vec_iep1 stays
-         * 0: the device never returns a packet for an IN token. For
-         * isochronous there is no NAK, so that means the endpoint buffer
-         * is never filled. streaming_set_rate() arms IEPDCNTX1 = 0 and
-         * relies on the DMA engine to fill it from the C-port; this block
-         * shows whether either half is actually running.
-         *
-         * NOTE: bytes 0-1 used to read XDATA(0xFFE1) under the name
-         * DMACTL1 and treat 0xC0 there as proof the DMA was armed. 0xFFE1
-         * is ACGCTL, a clock-generator register; the reading was real but
-         * meant nothing about DMA. The real channel control registers are
-         * DMACTL0 (0xFFE8) and DMACTL1 (0xFFEE), and bit 7 (DMAEN) is the
-         * bit that matters. Expect 0x89 / 0x82 while streaming.
-         *
-         * byte 2 is CPTCTL (0xFFDC), a control-AND-status register --
-         * datasheet §6.5.4.5. It reads back as the R/W control bits hw_init
-         * wrote (RXIE|TXIE = 0x50) OR'd with whatever the read-only status
-         * bits RXF (7) and TXE (5) currently say, which is why 0x70 is the
-         * normal reading and not a discrepancy. #164.
-         *
-         * This used to carry a caution that reading it might consume
-         * clear-on-read bits. The datasheet refutes that: RXF is cleared by
-         * reading the receive DATA register and TXE by writing the transmit
-         * data register, neither of which is this address. The caution was
-         * invented by the old name CPTSTA. Reading here is side-effect free. */
-        out[0] = DMACTL1;   /* capture channel — bit 7 = DMAEN */
-        out[1] = DMACTL0;   /* playback channel */
-        out[2] = CPTCTL;
-        out[3] = ACGCTL;
-        /* out[4] carried IEPCNF1 until 0x002C. Block 5 byte 4 is the SAME
-         * register read the same way, and the duplicate cost ~7 bytes that the
-         * SOF watchdog's two-sighting rule needed. Reads 0 now. */
-        out[5] = IEPDCNTX1;
-        out[6] = IEPBSIZ1;
-        out[7] = OEPDCNTX2;
-        return 1;
-
+    /* case 6 (DMA + C-port live state) RETIRED 2026-08-05. It was built for
+     * one question -- SOF fires and the endpoints are enabled, so why does the
+     * device never return a packet for an IN token? -- and it answered it: the
+     * bytes at 0xFFE1 that streaming.c believed were DMA channel enables are
+     * ACGCTL, a clock-generator register, so the real DMA channels at
+     * DMACTL0/DMACTL1 had never been armed and the capture buffer was never
+     * filled. That is fixed and the isochronous path has since been measured
+     * carrying correct audio at every rate this firmware supports.
+     *
+     * Block 5 still reports the endpoint config and the alt state, which is
+     * what a streaming investigation starts from. Retired for the code budget
+     * while the open question is EP0 multi-packet loss, which this block has
+     * nothing to say about. */
     /* case 7 (EP0 buffer counts + suspend tally) RETIRED 2026-08-05 for the
      * code budget. Its own text already recorded why it had stopped earning
      * its place: usb_ep0_setup() clears both EP0 Y counts now, "so a read here

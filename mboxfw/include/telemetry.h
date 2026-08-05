@@ -100,7 +100,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x002E   /* 002E: #46 REMOVED. 88.2 and 96 kHz are gone
+#define TLM_BUILD_ID     0x002F   /* 002F: telemetry block 6 retired -- its
+                                   *       question (isoc IN returning
+                                   *       zero-length) is answered and fixed.
+                                   *       eeprom_smoke_test was considered and
+                                   *       KEPT: it is not a health check, it
+                                   *       gates the boot-button DFU trigger,
+                                   *       so cutting it would attempt the
+                                   *       signature invalidate blind.
+                                   * 002E: #46 REMOVED. 88.2 and 96 kHz are gone
                                    *       from the descriptors AND from the
                                    *       code, and the endpoint buffers are
                                    *       back to stock's 640/640.
