@@ -72,15 +72,19 @@ EXPECTED_GAPS = {
                "(Rev 20 0x07BA, Rev 22 0x0798)",
     # 0x25.0-.3 were gaps until #170 (2026-08-03). codec_source_changed() now
     # derives all four from g_mux_state on every publish.
-    (0x25, 4): "#159 -- UAC Selector Unit position (0 = analog, 1 = S/PDIF). "
-               "Read by codec_source_changed(), set by nothing. mboxfw has no "
-               "Selector Unit (removed in build 0x001A, see "
-               "FINDING_macos_one_input_selector.md) and 0 is the analog "
-               "position, so leaving it clear is the correct analog default "
-               "rather than an omission.",
-    (0x25, 5): "S/PDIF receiver engaged (#170). Read by codec_source_changed(), "
-               "set by nothing, so that function's condition is constant-false "
-               "and its else branch always runs.",
+    # 0x25.4 was a gap until #177 (2026-08-04). selector_set_source() in usb.c
+    # now drives it from the UAC1 Selector Unit control, as stock's cmd4/cmd5
+    # do (Rev 20 0x0454 / 0x0466, Rev 22 0x045A / 0x0469).
+    (0x25, 5): "S/PDIF receiver engaged. Stock's only setter is `SETB 0x2d` at "
+               "Rev 20 0x04CA / Rev 22 0x04C0, inside work code 0x0B -- which "
+               "is UNREACHABLE: it fires only when P3.1 falls, and P3.1 is TXD "
+               "on an unconfigured UART, measured to sit high with an S/PDIF "
+               "carrier present and absent (FINDING_p31_is_txd.md, 2026-08-04). "
+               "So the byte exists in both images and never executes in either. "
+               "mboxfw not setting it matches stock's BEHAVIOUR, not its bytes. "
+               "Consequence: codec_source_changed()'s 0x25.5 test is "
+               "constant-false and its else branch always runs -- which is "
+               "exactly what stock does at runtime too.",
 }
 
 

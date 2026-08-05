@@ -33,6 +33,12 @@ static __data unsigned char sof_bcnt_lo = 0xFF;
 /* Currently-active sample rate — mirrors g_sample_rate in usb.c. */
 static __data unsigned long stream_rate = 48000UL;
 
+/* Stock's RAM[0x08]. See streaming.h for the numbering and the citations.
+ * Seeded to 3 because hw_init leaves the part on internal 48 kHz, which is the
+ * mode stock's boot path also lands in — and NOT on mode 1, deliberately: see
+ * the boot-default note in streaming_set_rate(). */
+__data unsigned char g_clock_mode = 3;
+
 /*
  * The two 24-bit constants Rev 20 loads (0x0F_A861 at fcn.0x0DEC/0x0DFE,
  * 0x20_4B6A at fcn.0x0728 @ 0x0771) are ADAPTIVE CLOCK GENERATOR frequency
@@ -112,14 +118,51 @@ void streaming_set_rate(unsigned long hz)
      * and each time the reasoning sounded fine. It is now anchored to a
      * measured sample count rather than to which Rev 20 branch looked most
      * relevant. If a rate ever comes out wrong again, read DCNTX first.
+     *
+     * hz == 0 IS CLOCK MODE 1 — slaved to the incoming S/PDIF stream (#177).
+     * It is not a sentinel this firmware invented: Rev 20's SET_CUR data
+     * handler `ep0_out_data_handler` @0x0D25 tests the rate's low byte and
+     * posts work code 0x06 when it is ZERO (0x0D40-0x0D42), and cmd6
+     * @0x0478 is `MOV R7,#1; LCALL 0x0728` — mode 1, nothing else. The
+     * kernel quirk drives the same encoding from the other side
+     * (`snd_mbox1_set_clk_source`, rate 0 = slave to S/PDIF), and
+     * `setup_get_sample_freq` @0x008A reports 0,0,0 back whenever
+     * RAM[0x08] == 1. Three artifacts, one encoding.
+     *
+     * No frequency word is programmed in this mode, because nothing is
+     * being synthesized — both master clocks come from MCLKI instead.
+     *
+     * MODE 1 MUST NEVER BE THE BOOT DEFAULT, and this is a safety property
+     * rather than a preference. `ACGCTL = 0x0D` sources both codec master
+     * clocks from MCLKI, which is only useful if MCLKI is wired to the
+     * CS8427's RMCK. cs8427_boot_init() writes CONTROL1 = 0x01 with SWCLK = 0
+     * so RMCK carries the recovered clock, and stock's mode 1 is coherent only
+     * under that wiring — but no schematic has been read, so it stays an
+     * inference. If it is wrong, mode 1 leaves the codec with no clock at all.
+     *
+     * What makes that survivable is that the CPU runs from the oscillator, not
+     * from MCLKO: a wrong guess costs audio and nothing else, EP0 keeps
+     * answering, and another vendor request undoes it. No power cycle, no 2 km
+     * round trip. That holds ONLY while every path into this arm is
+     * host-initiated — hw_init leaves the part on mode 3, g_clock_mode is
+     * seeded to 3, and no boot path calls this with 0.
      */
-    if (hz == 48000UL) {
+    if (hz == 0UL) {
+        /* ACGCTL = 0x0D: MCLKO1S = 01, DIVEN, MCLKO2S = 01 — BOTH codec
+         * master clocks sourced from MCLKI, the external clock input
+         * (datasheet §6.5.3.11). Paired with CLOCKSOURCE = 0x41 in the
+         * tail below; the two writes are meaningless apart. */
+        ACGCTL = 0x0D;    /* Rev 20 fcn.0x0728 @ 0x074D — mode 1 */
+        g_clock_mode = 1; /* Rev 20 fcn.0x0728 @ 0x0753 — MOV 0x08,#1 */
+
+    } else if (hz == 48000UL) {
         ACG1FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DEC — mode 3, 48 kHz */
         ACG1FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0DF2 */
         ACG1FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0DF8 */
         ACG2FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DFE */
         ACG2FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0E04 */
         ACG2FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E0A */
+        g_clock_mode = 3; /* Rev 20 fcn.0x0728 @ 0x0791 — MOV 0x08,#3 */
 
     } else {
         ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0765 — mode 2, 44.1 kHz */
@@ -128,12 +171,36 @@ void streaming_set_rate(unsigned long hz)
         ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 */
         ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
         ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
+        g_clock_mode = 2; /* Rev 20 fcn.0x0728 @ 0x0785 — MOV 0x08,#2 */
 
     }
-    /* Shared by both rates: Rev 20's modes 2 and 3 both end at the tail
-     * 0x0E0F..0x0E16, which writes ACGCTL = 0x06 (DIVEN + both MCLKO
-     * sourced from their synthesizers after ÷M). */
-    ACGCTL = 0x06;        /* Rev 20 @ 0x0E10 */
+    if (hz != 0UL) {
+        /* Shared by both rates: Rev 20's modes 2 and 3 both end at the tail
+         * 0x0E0F..0x0E16, which writes ACGCTL = 0x06 (DIVEN + both MCLKO
+         * sourced from their synthesizers after ÷M). Mode 1 does NOT reach
+         * this tail — it writes 0x0D and jumps straight to 0x07C5. */
+        ACGCTL = 0x06;        /* Rev 20 @ 0x0E10 */
+    }
+
+    /* CS8427 CLOCKSOURCE, the other half of the mode.
+     *
+     * Stock queues the (register, value) pair in RAM[0x31]/[0x32] inside each
+     * mode arm and the shared tail issues it once, at 0x07C5-0x07C9:
+     *
+     *   mode 1  @0x0756-0x0759   0x31 = 0x04, 0x32 = 0x41
+     *   mode 2  @0x0788          LCALL 0x0E20 -> 0x31 = 0x04, 0x32 = 0x40
+     *   mode 3  @0x0794          LCALL 0x0E20 -> same
+     *
+     * 0x40 = RUN | RXD=00 (CS8427_RXDILRCK): the receiver PLL follows the
+     * TAS-driven word clock. 0x41 = RUN | RXD=01 (CS8427_RXDAES3INPUT): it
+     * recovers the clock from the incoming AES3 stream instead. One bit is
+     * the entire internal-vs-slaved distinction.
+     *
+     * mboxfw wrote neither until #177 — the boot init left CLOCKSOURCE at
+     * 0x40 from cs8427_boot_init() and no rate change ever revisited it,
+     * which happens to be right for modes 2/3 and is why the omission never
+     * showed up. It is not right for mode 1. */
+    cs8427_write(0x04, (hz == 0UL) ? 0x41 : 0x40);  /* Rev 20 fcn.0x0728 @ 0x07C9 */
 
     /* Common tail — same for both rates. Rev 20 fcn.0x0728 0x07C4-0x07FF.
      *
@@ -210,6 +277,40 @@ void streaming_set_rate(unsigned long hz)
      * 0x22.6 derivation. Neither belongs on a clock-mode change: stock's
      * clock routine calls only 0x0E62, never 0x0F0C. */
     codec_write_word();
+
+    /* CHANNEL STATUS — what the S/PDIF transmitter declares downstream.
+     *
+     * Stock does this OUTSIDE the clock routine, in the two rate work codes,
+     * each branching on the Selector Unit bit 0x25.4 (`JNB 0x2c`):
+     *
+     *   cmd7 (44.1k) @0x0480     cmd8 (48k) @0x049A
+     *     0x0485 JNB 0x2c          0x049F JNB 0x2c
+     *     S/PDIF -> LCALL 0x0568   S/PDIF -> LCALL 0x0568
+     *                reg 0x04 = 0x41 ; reg 0x12 = 0x00
+     *     analog -> reg 0x23 = 0x00  analog -> reg 0x23 = 0x40
+     *               then LCALL 0x0582 -> reg 0x24 = 0x80
+     *
+     * CORU_DATABUF starts at register 0x20, so reg 0x20+n is channel-status
+     * byte n: reg 0x23 = byte 3 = sampling frequency (0x00 = 44.1 kHz,
+     * 0x40 = 48 kHz, MSB-aligned nibble, IEC 60958 consumer) and reg 0x24 =
+     * byte 4 = word length. Register names from
+     * reference/cs8427/alsa_cs8427.h.
+     *
+     * The polarity is the point: when the device is INTERNALLY clocked it is
+     * the master and must declare its rate; when it is slaved it declares
+     * nothing and re-asserts the recovery source instead. Mode 1 skips this
+     * block entirely — stock's cmd6 (rate 0) is `MOV R7,#1; LCALL 0x0728`
+     * and no channel-status write at all. */
+    if (hz != 0UL) {
+        if (g_codec_state_25 & CODEC25_SEL_SPDIF) {
+            cs8427_write(0x04, 0x41);   /* Rev 20 fcn.0x0568 @ 0x0572 */
+            cs8427_write(0x12, 0x00);   /* Rev 20 fcn.0x0568 @ 0x057F */
+        } else {
+            /* Rev 20 cmd7 @0x048E / cmd8 @0x04A8, issued by fcn.0x0582 */
+            cs8427_write(0x23, (hz == 48000UL) ? 0x40 : 0x00);
+            cs8427_write(0x24, 0x80);   /* Rev 20 fcn.0x0582 @ 0x0593 */
+        }
+    }
 }
 
 /*

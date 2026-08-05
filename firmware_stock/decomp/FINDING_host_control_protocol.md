@@ -122,6 +122,23 @@ clock source is host-selectable is a complete and legitimate design.
 
 ## What mboxfw is missing, which a Linux host will actively exercise
 
+> **CORRECTED 2026-08-04 (#177).** Both halves of the paragraph below have
+> changed since it was written, in opposite directions. mboxfw's descriptors
+> were rewritten on 2026-08-03 and **no longer advertise any Selector Unit** —
+> the six mono terminals and two SUs of #159 were replaced by one stereo input
+> terminal (`descriptors.c`, and `FINDING_macos_one_input_selector.md` for why).
+> And build 0x0020 **does implement the handler**, for unit 5, exactly as stock
+> does. So the defect described here is fixed, but the topology claim was stale
+> before the fix landed.
+>
+> The result is stock's own arrangement: the control is answered but not
+> advertised, so only a host that already knows the unit ID — i.e. one with the
+> kernel quirk, or a deliberate control transfer — can reach it. Whether to make
+> it discoverable by serving a real UAC Selector Unit descriptor is #160, still
+> open. Note that at `MBOX_PID=0x2000` the quirk does not apply either, which is
+> why build 0x0020 also carries a device-recipient vendor alias
+> (`TLM_REQ_SET_CLOCK`, `mboxfw/TELEMETRY.md`).
+
 mboxfw ships descriptors ported from stock, so it **advertises Selector Unit 5**
 — and has no handler behind it. A kernel with this quirk applied issues all four
 requests above during setup and on every resume (`snd_mbox1_*_resume`). Against

@@ -52,8 +52,56 @@ facts fall straight out:
     in the same handler. Routing and clocking are not separable in stock's design
     — which is correct, because they are not separable in the hardware.
   * **Selecting analog restores `RAM[0x08]`**, the persisted mode, rather than a
-    constant. So the device remembers which internal rate it was on across an
-    excursion to S/PDIF and back.
+    constant.
+
+> **CORRECTION, 2026-08-04, found while implementing #177.** The sentence that
+> stood here — "the device remembers which internal rate it was on across an
+> excursion to S/PDIF and back" — is **wrong**, and it is wrong in a way that
+> would have been copied straight into mboxfw.
+>
+> Mode 1 writes `MOV 0x08,#0x1` at Rev 20 `0x0753`. So after any excursion to
+> S/PDIF the persisted mode *is* 1, and cmd4's `MOV R7,0x08` re-applies the
+> slaved clock. **Selecting analog does not restore an internal rate; it
+> restores whatever mode ran last, which is mode 1.**
+>
+> Stock never shows this because the kernel quirk always follows a source
+> change with an explicit set-clock-source request, so the stale value is
+> overwritten before it matters. mboxfw keeps a separate `g_internal_rate`
+> instead of mirroring `RAM[0x08]` here — see the comment on that variable in
+> `usb.c`. Mirroring a write without mirroring what overwrites it mirrors
+> nothing.
+>
+> The error came from reading cmd4 and cmd5 without reading the mode arms they
+> dispatch into. Same shape as the Rev20-vs-Rev22 near-miss in §6: the fact was
+> one indirection away from where I was looking.
+
+### cmd6 — the host's third source-and-clock handler, and the one §7 needed
+
+Omitted from the first version of this section, which covered only cmd4/cmd5 and
+so left the "rate = 0 means slaved" encoding resting on the kernel quirk alone.
+It is in the firmware, explicitly. Rev 20's SET_CUR data handler
+`ep0_out_data_handler` @`0x0D25` dispatches on the pending-control byte
+`RAM[0x0D]` and then on the payload's **low byte**:
+
+    0d2a  CJNE A,#0x1,0x0D45      ; RAM[0x0D] == 1 -> sampling frequency
+    0d32  CJNE A,#0x44,0x0D38  ->  0x0a = 7   ; 0x44 = low byte of 44100
+    0d39  CJNE A,#0x80,0x0D3F  ->  0x0a = 8   ; 0x80 = low byte of 48000
+    0d40  JNZ  0x0D45          ->  0x0a = 6   ; ZERO
+    0d47  CJNE A,#0x2,0x0D59      ; RAM[0x0D] == 2 -> Selector Unit
+    0d4e  CJNE A,#0x1,0x0D56  ->  0x0a = 4 (analog) else 5 (S/PDIF)
+
+and cmd6 @`0x0478` is two instructions: `MOV R7,#1; LCALL 0x0728`. **A sample
+rate of zero selects clock mode 1 and nothing else.**
+
+That closes the loop the RE had left open. The kernel's
+`snd_mbox1_set_clk_source(chip, 0)`, `setup_get_sample_freq` @`0x008A` reporting
+0,0,0 whenever `RAM[0x08] == 1`, and this dispatch are three artifacts agreeing
+on one encoding — and only the third of them is a *write* path, so without it
+"rate 0 means slaved" was a read-side claim being used to justify a write.
+
+Note also that stock tests only the low byte, so 0x10044 and 44100 are the same
+request to it. mboxfw parses all three bytes (`usb.c`), which is a deliberate
+divergence and pre-dates #177.
 
 ## 3. Clock modes — `audio_clock_mode_apply`, Rev 20 `0x0728` / Rev 22 `0x070F`
 
@@ -207,7 +255,11 @@ away from where it was being looked for.
 
 ## 7. What mboxfw needs, derived from the above
 
-Not implemented here; this is the specification the implementation follows.
+**IMPLEMENTED 2026-08-04 in build 0x0020 (#177).** All four items below are in
+the firmware; what remains is the hardware measurement. The one correction the
+implementation forced on this document is the `RAM[0x08]` note in §2.
+
+This is the specification the implementation followed.
 
 1. **`clock_mode_1()`** — `ACGCTL = 0x0D`, no frequency word, CS8427
    `CLOCKSOURCE = 0x41`, inside the existing mute bracket. Cites Rev 20 0x074D /

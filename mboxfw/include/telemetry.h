@@ -61,6 +61,30 @@
  * earlier measurement, and a request that can reproduce it is a trap. */
 #define TLM_REQ_SET_MUX  0x13
 
+/* Clock source + Selector Unit, DEVICE recipient (#177).
+ *
+ *   bmRequestType 0x40
+ *   wValue low   0 = slave to the incoming S/PDIF stream (clock mode 1)
+ *                1 = internal 44.1 kHz   2 = internal 48 kHz
+ *   wIndex low   0 = Selector -> analog  1 = Selector -> S/PDIF
+ *                anything else = leave the Selector alone
+ *
+ * This is an ALIAS, not a new capability: the real controls are the UAC1
+ * Selector Unit (0x21/0xA1, wIndex 0x0500) and the endpoint sampling-frequency
+ * control (0x22/0xA2, wIndex 0x0081), both of which are implemented and both of
+ * which stock also serves. It exists for the same reason TLM_REQ_SET_MUX and
+ * the enter-DFU alias do: those two are INTERFACE and ENDPOINT recipient, so
+ * once snd-usb-audio claims the interfaces the host stack rejects them with
+ * EBUSY before they reach the device. At MBOX_PID=0x2000 the kernel's mbox1
+ * quirk does not apply either, so nothing on a stock Linux host issues the
+ * class requests at all — without this the S/PDIF path would be unreachable
+ * from the bench, 1 km away.
+ *
+ * Read block 9 back afterwards: byte 3 carries the Selector bit (0x25.4) and
+ * byte 7 the applied clock mode, so the request can be confirmed rather than
+ * assumed from the absence of a stall. */
+#define TLM_REQ_SET_CLOCK 0x14
+
 /* The three legal source patterns, one-cold, from the stock cycle handlers
  * (Rev 20 fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). */
 #define MUX_PAT_MIC      0x06   /* boot state */
@@ -76,7 +100,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x001F   /* 001F: #175 -- SET_INTERFACE(alt!=0) now
+#define TLM_BUILD_ID     0x0020   /* 0020: #177 -- host-driven S/PDIF. Selector
+                                   *       Unit 5 answers GET_CUR/SET_CUR,
+                                   *       SET_CUR(rate=0) selects clock mode 1
+                                   *       (ACGCTL=0x0D + CLOCKSOURCE=0x41),
+                                   *       and the rate handlers write channel
+                                   *       status. Mode 1 is NEVER the boot
+                                   *       default -- see the note in
+                                   *       streaming_set_rate().
+                                   * 001F: #175 -- SET_INTERFACE(alt!=0) now
                                    *       posts WORK_BRINGUP, so a suspend no
                                    *       longer strands the CS8427 in reset.
                                    *       Plus optional per-unit iSerialNumber

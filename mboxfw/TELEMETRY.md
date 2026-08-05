@@ -211,10 +211,10 @@ Added 2026-07-30.
 | 1 | mono flag (RAM[0x23].6) |
 | 2 | `g_codec_state_23` — high byte of the 16-bit codec chain |
 | 3 | `g_codec_state_25` — low byte |
-| 4 | **live** `P3` — the three button pins, active low |
+| 4 | **live** `P3` — the three button pins, active HIGH |
 | 5 | host mux-set requests accepted |
 | 6 | host mux-set requests rejected as illegal patterns |
-| 7 | zero |
+| 7 | applied clock mode — stock's `RAM[0x08]`: 1 = slaved to S/PDIF, 2 = internal 44.1 kHz, 3 = internal 48 kHz |
 
 This block exists because a measurement that cannot state its own input routing
 cannot be trusted. On 2026-07-29 a full capture session was voided when the mux
@@ -234,6 +234,38 @@ at Rev 20 `0x0AE3-0x0AE9` / Rev 22 `0x0A8D-0x0A93`). It rejects any pattern that
 is not one of the three one-cold values, because `g_mux_state = 0x00` is exactly
 the illegal state that invalidated the earlier measurements. Drive it with
 `tools/mboxtlm.py setmux line line`.
+
+Byte 7 was added by #177, and it is read together with byte 3's bit 4 (the
+Selector Unit position) rather than on its own. Those two are the routing and
+the clock, and **both have to agree**: the CS8427 has no sample-rate converter,
+so S/PDIF input routed in while the part is internally clocked has no valid
+clock and analog routed in while the part is slaved has no master clock at all
+if no carrier is present. `mboxtlm.py` prints them on one line and names the
+mismatch, because neither byte alone shows it.
+
+The companion request is `TLM_REQ_SET_CLOCK` (0x14):
+
+| field | meaning |
+|---|---|
+| `bmRequestType` | 0x40 — **device** recipient |
+| `wValue` low | 0 = slave to S/PDIF, 1 = internal 44.1 kHz, 2 = internal 48 kHz |
+| `wIndex` low | 0 = Selector to analog, 1 = Selector to S/PDIF, other = leave it |
+
+It is an **alias**, not a separate capability. The real controls are UAC1
+Selector Unit 5 (`0x21`/`0xA1`, `wIndex` 0x0500) and the endpoint
+sampling-frequency control (`0x22`/`0xA2`, `wIndex` 0x0081, where a rate of zero
+means "slaved"), both of which mboxfw implements and both of which stock serves.
+The alias exists for the same reason `TLM_REQ_SET_MUX` and the enter-DFU alias
+do: those are interface and endpoint recipient, so the host stack rejects them
+with EBUSY once `snd-usb-audio` binds — and at `MBOX_PID=0x2000` the kernel's
+`mbox1` quirk does not apply, so no host issues them at all. Drive it with
+`tools/mboxtlm.py clock slave --source spdif`.
+
+**This is recoverable over the wire.** Selecting the slaved clock when the
+RMCK→MCLKI inference is wrong, or when no carrier is present, costs audio and
+nothing else: the 8051 runs from the crystal, not from MCLKO, so EP0 keeps
+answering and `clock 48000` undoes it. That is why clock mode 1 is never the
+boot default.
 
 ## What this buys
 

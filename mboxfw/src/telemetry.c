@@ -8,6 +8,7 @@
 #include "mux.h"
 #include "codec.h"
 #include "cs8427.h"
+#include "streaming.h"   /* g_clock_mode, reported in block 9 */
 
 volatile __data unsigned int  tlm_setup_count = 0;
 volatile __data unsigned int  tlm_iep0_count  = 0;
@@ -246,7 +247,12 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[4] = P3;
         out[5] = tlm_mux_sets;
         out[6] = tlm_mux_rejects;
-        out[7] = 0;
+        /* Applied clock mode, stock's RAM[0x08] numbering: 1 = slaved to
+         * S/PDIF, 2 = internal 44.1 kHz, 3 = internal 48 kHz (#177). Byte 3
+         * already carries the Selector position as bit 0x25.4, so these two
+         * together answer "what is it routed to, and what is clocking it" —
+         * the pair that has to agree for S/PDIF input to work at all. */
+        out[7] = g_clock_mode;
         return 1;
 
     /* case 10 (CS8427 read-back probe, #165) RETIRED 2026-08-03. It answered

@@ -68,6 +68,7 @@
 0xffe0  assign    0x0d    # hw_init
 0xffe1  and_not   0x3f    # power
 0xffe1  assign    0x06    # streaming
+0xffe1  assign    0x0d    # streaming
 0xffe1  or        0xc0    # streaming
 0xffe2  assign    0x10    # streaming
 0xffe5  assign    0x61    # streaming

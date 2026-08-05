@@ -78,13 +78,28 @@ volatile __data unsigned char g_dfu_request_pending = 0;
  * logged "cannot set freq 48000 to ep 0x2" once it started binding. */
 #define EP0_OUT_NONE            0
 #define EP0_OUT_SET_SAMPLE_FREQ 1
+#define EP0_OUT_SET_SOURCE      2
 static __data unsigned char g_ep0_out_pending = EP0_OUT_NONE;
 
 /* Current USB device state — updated by SET_CONFIGURATION / SET_INTERFACE. */
 static __data unsigned char g_configured = 0;
 static __data unsigned char g_alt_playback = 0;   /* alt setting on interface 1 */
 static __data unsigned char g_alt_capture  = 0;   /* alt setting on interface 2 */
-static __data unsigned long g_sample_rate  = 48000UL;   /* 24-bit BE on the wire */
+/* The rate REPORTED to the host, 24-bit LE on the wire. Zero is a legal value
+ * and means "slaved to S/PDIF" — see streaming_set_rate()'s hz == 0 arm. */
+static __data unsigned long g_sample_rate  = 48000UL;
+
+/* The last INTERNAL rate the host selected, so switching the Selector Unit back
+ * to analog restores a real clock instead of leaving the part slaved.
+ *
+ * DELIBERATE DIVERGENCE FROM STOCK, and the reason is a stock bug. Rev 20's
+ * cmd4 (Selector -> analog) reloads the persisted mode with `MOV R7,0x08`
+ * @0x0460 — but mode 1 itself writes `MOV 0x08,#0x1` @0x0753, so after any
+ * excursion to S/PDIF the persisted mode IS 1 and selecting analog re-applies
+ * the slaved clock. Stock gets away with it because the kernel quirk always
+ * follows a source change with an explicit set-clock-source request. Keeping a
+ * separate internal rate costs one long and removes the trap. */
+static __data unsigned long g_internal_rate = 48000UL;
 
 /* Pending USB device address, deferred until the SET_ADDRESS status
  * stage has actually been ACKed by the host. Writing USBFADR too early
@@ -485,6 +500,131 @@ static void handle_set_mux(void)
 }
 
 
+/* --- UAC1 Selector Unit (#177) --- */
+
+/*
+ * Selector Unit 5 — analog (1) or S/PDIF (2), and the clock that goes with it.
+ *
+ * Ports Rev 20 cmd4 @0x0454 (analog) and cmd5 @0x0466 (S/PDIF); Rev 22 @0x045A
+ * and @0x0469, instruction-for-instruction identical apart from the shared-tail
+ * refactor. Both handlers are four steps:
+ *
+ *   CLR/SETB 0x2c     ; the Selector position, codec-word bit 0x25.4
+ *   SETB/CLR 0x16     ; panel bit 0x22.6
+ *   LCALL 0x0e62      ; publish the codec word
+ *   LCALL 0x0f0c      ; publish the panel word
+ *   MOV R7,<mode>     ; and apply a clock mode
+ *
+ * SELECTING S/PDIF FORCES CLOCK MODE 1, unconditionally and in the same
+ * handler (`MOV R7,#1` @0x0470). That is not an optimisation to be factored
+ * out later: the CS8427 has no sample-rate converter, so received audio can
+ * only be clocked by the recovered clock. Routing and clocking are inseparable
+ * in the hardware, and stock's design says so.
+ *
+ * Panel bit 0x22.6 is set here via codec_source_changed() rather than by
+ * writing it directly as stock does. That routine computes the SAME value —
+ * 0x22.6 = !(0x25.4) && !(0x25.5) — from the codec word, per the source-cycle
+ * tail at Rev 20 0x0E52-0x0E61. It is identical while 0x25.5 is clear, which
+ * it always is here (nothing in mboxfw sets it: the only stock setter is work
+ * code 0x0B, and that is dead — P3.1 is TXD, see FINDING_p31_is_txd.md).
+ * Deriving it keeps one definition of the bit instead of two.
+ */
+static void selector_set_source(unsigned char spdif)
+{
+    if (spdif) {
+        g_codec_state_25 |= CODEC25_SEL_SPDIF;   /* Rev 20 cmd5 @ 0x0466 */
+    } else {
+        g_codec_state_25 &= (unsigned char)~CODEC25_SEL_SPDIF; /* Rev 20 cmd4 @ 0x0454 */
+    }
+    codec_source_changed();       /* Rev 20 cmd5 @ 0x0468 (CLR 0x16), derived */
+    codec_write_word();           /* Rev 20 cmd5 @ 0x046A — LCALL 0x0E62 */
+    mux_write(g_mux_state);       /* Rev 20 cmd5 @ 0x046D — LCALL 0x0F0C */
+
+    /* S/PDIF -> mode 1. Analog -> the last internal rate the host asked for;
+     * see g_internal_rate for why this is not stock's `MOV R7,0x08`. */
+    g_sample_rate = spdif ? 0UL : g_internal_rate;
+    streaming_set_rate(g_sample_rate);   /* Rev 20 cmd5 @ 0x0472 — LCALL 0x0728 */
+}
+
+/*
+ * The Selector Unit's only control is UAC1 SELECTOR_CONTROL, one byte,
+ * addressed by wIndex = (bUnitID << 8) | AC-interface = 0x0500. The kernel
+ * quirk `snd_mbox1_create_sync_switch` sends exactly this pair:
+ *
+ *   GET: 0xA1 0x81 wValue=0x0000 wIndex=0x0500 wLength=1
+ *   SET: 0x21 0x01 wValue=0x0000 wIndex=0x0500 wLength=1
+ *
+ * with 1 = analog and 2 = S/PDIF. mboxfw has advertised Selector Unit 5 in its
+ * descriptors since the first build and answered neither request — a host with
+ * the quirk applied issues both during setup and on every resume, and got a
+ * stall each time.
+ *
+ * wIndexL (the interface number) is deliberately not matched, for the same
+ * reason handle_setup() is permissive about the DFU trigger: stock does not
+ * check it either (its dispatcher keys on the unit byte alone), and a host that
+ * numbers the AC interface differently is not a reason to refuse.
+ */
+#define UAC_SELECTOR_UNIT_ID   0x05
+#define SELECTOR_ANALOG        0x01
+#define SELECTOR_SPDIF         0x02
+
+/*
+ * Device-recipient alias for both S/PDIF controls — see TLM_REQ_SET_CLOCK in
+ * telemetry.h for why an alias is needed at all (short version: the class
+ * requests are interface/endpoint recipient and become undeliverable once a
+ * host driver claims the interfaces, and at MBOX_PID=0x2000 no host sends them
+ * in the first place).
+ *
+ * The Selector is applied FIRST and the rate second, deliberately: selecting
+ * S/PDIF forces mode 1 as stock does, so applying the rate afterwards is what
+ * lets `wValue=2 wIndex=1` mean "route S/PDIF in but keep the internal 48 kHz
+ * clock" — a state stock can also reach (cmd5 then cmd8) and one worth being
+ * able to ask for on a bench, since it is exactly the configuration that
+ * distinguishes a routing failure from a clocking failure.
+ */
+static void handle_set_clock(void)
+{
+    unsigned long rate;
+
+    if (wValueL == 0) {
+        rate = 0UL;
+    } else if (wValueL == 1) {
+        rate = 44100UL;
+    } else if (wValueL == 2) {
+        rate = 48000UL;
+    } else {
+        reply_stall();
+        return;
+    }
+
+    if (wIndexL == 0 || wIndexL == 1) {
+        selector_set_source(wIndexL);
+    }
+
+    if (rate != 0UL) {
+        g_internal_rate = rate;
+    }
+    g_sample_rate = rate;
+    streaming_set_rate(rate);
+    reply_zero_length();
+}
+
+static void handle_selector_unit_request(void)
+{
+    if (bReq == UAC_SET_CUR) {
+        /* One-byte data stage still in flight — same deferral as the
+         * sampling-frequency control; the work happens in VEC_OEP0. */
+        g_ep0_out_pending = EP0_OUT_SET_SOURCE;
+    } else if (bReq == UAC_GET_CUR) {
+        unsigned char pos = (g_codec_state_25 & CODEC25_SEL_SPDIF)
+                                ? SELECTOR_SPDIF : SELECTOR_ANALOG;
+        stage_immediate(&pos, 1);
+    } else {
+        reply_stall();
+    }
+}
+
+
 /* --- UAC1 class request dispatcher --- */
 
 static void handle_class_endpoint_request(void)
@@ -607,6 +747,8 @@ static void handle_setup(void)
             reply_zero_length();
         } else if (bReq == TLM_REQ_SET_MUX && !(bmReq & 0x80)) {
             handle_set_mux();
+        } else if (bReq == TLM_REQ_SET_CLOCK && !(bmReq & 0x80)) {
+            handle_set_clock();   /* #177 */
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             /* Same latch as the Digi class request; see
              * handle_digi_enter_dfu(). This alias exists because the class
@@ -707,6 +849,8 @@ static void handle_setup(void)
              * use 0x21/wIndex 0, which still matches. */
             if (bReq == 0x00 && wValueL == 0x0A && wValueH == 0x00) {
                 handle_digi_enter_dfu();
+            } else if (wIndexH == UAC_SELECTOR_UNIT_ID) {
+                handle_selector_unit_request();   /* #177 */
             } else {
                 /* TODO: feature-unit volume/mute if we add them */
                 reply_stall();
@@ -976,10 +1120,40 @@ void usb_service(void)
                                    | ((unsigned long)src[1] << 8)
                                    | ((unsigned long)src[2] << 16);
                 g_ep0_out_pending = EP0_OUT_NONE;
-                if (rate == 44100UL || rate == 48000UL) {
-                    g_sample_rate = rate;
+                /* Zero is accepted and means "slave to the incoming S/PDIF
+                 * stream" (#177). Stock reads only the low byte and tests it
+                 * against 0x44 / 0x80 / 0x00, posting work codes 7 / 8 / 6 —
+                 * `ep0_out_data_handler` @0x0D25-0x0D42 — and code 6 @0x0478
+                 * is clock mode 1. The kernel quirk's snd_mbox1_set_clk_source
+                 * sends this same zero. We still parse all three bytes, so a
+                 * host asking for 65536 Hz gets a stall rather than silently
+                 * being slaved. */
+                if (rate == 0UL) {
+                    g_sample_rate = 0UL;
+                    streaming_set_rate(0UL);
+                    reply_zero_length();
+                } else if (rate == 44100UL || rate == 48000UL) {
+                    g_sample_rate  = rate;
+                    g_internal_rate = rate;
                     streaming_set_rate(rate);
                     reply_zero_length();   /* status stage */
+                } else {
+                    reply_stall();
+                }
+            } else if (g_ep0_out_pending == EP0_OUT_SET_SOURCE) {
+                __xdata unsigned char *src =
+                    (__xdata unsigned char *)EP0_OUT_BUF_ADDR;
+                unsigned char pos = src[0];
+                g_ep0_out_pending = EP0_OUT_NONE;
+                /* Rev 20 `ep0_out_data_handler` @0x0D4E branches on the byte
+                 * being 1: work code 4 (analog) if so, work code 5 (S/PDIF)
+                 * for anything else. We reject anything that is not 1 or 2
+                 * rather than treating 0 or 7 as "S/PDIF" — a Selector Unit
+                 * with two inputs has two legal positions, and stalling an
+                 * illegal one is what tells the host it asked wrongly. */
+                if (pos == SELECTOR_ANALOG || pos == SELECTOR_SPDIF) {
+                    selector_set_source(pos == SELECTOR_SPDIF);
+                    reply_zero_length();
                 } else {
                     reply_stall();
                 }

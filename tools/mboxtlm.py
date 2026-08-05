@@ -64,6 +64,7 @@ AUDIO_PIDS = (0x1000,) + tuple(range(0x2000, 0x2010))
 TLM_REQ_READ = 0x10        # bmRequestType 0xC0, wValue = block index
 TLM_REQ_RESET = 0x11       # bmRequestType 0x40
 TLM_REQ_SET_MUX = 0x13     # bmRequestType 0x40, wValue = mux, wIndex = mono
+TLM_REQ_SET_CLOCK = 0x14   # bmRequestType 0x40, wValue = clock, wIndex = source
 REQ_IN = 0xC0              # vendor | device-to-host | device
 REQ_OUT = 0x40             # vendor | host-to-device | device
 
@@ -102,6 +103,15 @@ BLOCK_RETIRED = {
 # fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). The firmware
 # rejects anything else, so the same names are the tool's vocabulary.
 SOURCES = {"mic": 0x06, "line": 0x05, "inst": 0x03}
+
+# #177. The Selector Unit position (codec-word bit 0x25.4) and the applied
+# clock mode (stock's RAM[0x08] numbering, reported in block 9 byte 7).
+SELECTOR_NAMES = {0: "analog", 1: "S/PDIF"}
+CLOCK_MODE_NAMES = {1: "slaved to S/PDIF (mode 1)",
+                    2: "internal 44.1 kHz (mode 2)",
+                    3: "internal 48 kHz (mode 3)"}
+# wValue low byte of TLM_REQ_SET_CLOCK.
+CLOCK_ARG = {"slave": 0, "44100": 1, "48000": 2}
 SOURCE_NAMES = {v: k for k, v in SOURCES.items()}
 
 PHASE_BITS = [(0x01, "USB_INIT"), (0x02, "HW_INIT"), (0x04, "ATTACH"),
@@ -371,7 +381,26 @@ def block9(b):
         "  (active HIGH: 1 = pressed)"
         % (b[4], (b[4] >> 3) & 1, (b[4] >> 4) & 1, (b[4] >> 5) & 1),
         "host mux sets accepted=%d  rejected=%d" % (b[5], b[6]),
+        # #177. The two facts that have to agree for S/PDIF input to work:
+        # what the Selector routes to the codec (codec-word bit 0x25.4) and
+        # what is clocking it. Slaved routing with an internal clock, or
+        # analog routing with a slaved clock, are both silently wrong -- the
+        # CS8427 has no sample-rate converter, so there is nothing to
+        # reconcile the two. Printing them on one line makes the mismatch
+        # visible instead of requiring it to be inferred from two blocks.
+        "selector  =%s   clock=%s"
+        % (SELECTOR_NAMES[(b[3] >> 4) & 1], CLOCK_MODE_NAMES.get(b[7],
+                                                                 "?(0x%02X)" % b[7])),
     ]
+    if ((b[3] >> 4) & 1) and b[7] != 1:
+        out.append("  MISMATCH: routed to S/PDIF but clocked internally. The"
+                   " CS8427 has no sample-rate converter, so received audio"
+                   " has no valid clock. Fix with: mboxtlm.py clock slave"
+                   " --source spdif")
+    elif not ((b[3] >> 4) & 1) and b[7] == 1:
+        out.append("  MISMATCH: routed to analog but slaved to S/PDIF. If no"
+                   " carrier is present there is no master clock at all."
+                   " Fix with: mboxtlm.py clock 48000 --source analog")
     if "ILLEGAL" in (n1, n2):
         out.append("  ILLEGAL PATTERN: not one of mic/line/inst. No source is"
                    " selected, so any audio measurement taken now is void --"
@@ -708,6 +737,34 @@ def cmd_setmux(dev, args):
     show(9, read_block(dev, 9), args.raw, device_build=device_build(dev))
 
 
+def cmd_clock(dev, args):
+    """Select the clock source and, optionally, the Selector Unit position.
+
+    Safe to point at a running device, and recoverable over the wire if the
+    S/PDIF path turns out not to work: the 8051 is clocked from the crystal,
+    not from MCLKO, so slaving to an absent carrier costs audio and nothing
+    else. EP0 keeps answering and another `clock 48000` undoes it. No power
+    cycle, which matters because the units are ~1 km away.
+
+    This is a DEVICE-recipient vendor alias for two class controls the device
+    also implements (Selector Unit 5, and the endpoint sampling-frequency
+    control whose magic zero means "slaved"). The alias exists because those
+    are interface/endpoint recipient and the host stack rejects them with
+    EBUSY once snd-usb-audio binds -- and at MBOX_PID=0x2000 the kernel's
+    mbox1 quirk does not apply, so nothing issues them in the first place.
+    """
+    wvalue = CLOCK_ARG[args.clock]
+    windex = {"analog": 0, "spdif": 1, "keep": 0xFF}[args.source]
+    dev.ctrl_transfer(REQ_OUT, TLM_REQ_SET_CLOCK, wvalue, windex, None, 2000)
+    print("requested clock=%s source=%s (wValue=0x%04X wIndex=0x%02X)"
+          % (args.clock, args.source, wvalue, windex))
+    # Read it back rather than infer success from the absence of a stall --
+    # same reasoning as setmux. A request that is accepted and does not take
+    # looks identical to one that worked.
+    print()
+    show(9, read_block(dev, 9), args.raw, device_build=device_build(dev))
+
+
 def main():
     # --raw is accepted on BOTH sides of the subcommand. It was top-level
     # only at first, so the natural `read 6 --raw` died with "unrecognized
@@ -746,6 +803,14 @@ def main():
     sp.add_argument("ch1", choices=sorted(SOURCES), help="channel 1 source")
     sp.add_argument("ch2", choices=sorted(SOURCES), help="channel 2 source")
     sp.add_argument("--mono", choices=("on", "off", "keep"), default="keep")
+    sp = sub.add_parser("clock", parents=[common],
+                        help="select the clock source (and the input selector)")
+    sp.add_argument("clock", choices=sorted(CLOCK_ARG),
+                    help="slave = follow the incoming S/PDIF stream")
+    sp.add_argument("--source", choices=("analog", "spdif", "keep"),
+                    default="keep",
+                    help="also move the Selector Unit; note that selecting "
+                         "spdif forces the slaved clock, as stock does")
 
     args = p.parse_args()
     global TARGET_SERIAL, TARGET_ADDR
@@ -761,7 +826,7 @@ def main():
     {"all": cmd_all, "read": cmd_read, "raw": cmd_raw,
      "watch": cmd_watch, "reset": cmd_reset,
      "ep0test": cmd_ep0test,
-     "setmux": cmd_setmux}[args.cmd](dev, args)
+     "setmux": cmd_setmux, "clock": cmd_clock}[args.cmd](dev, args)
 
 
 if __name__ == "__main__":
