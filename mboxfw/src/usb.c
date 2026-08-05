@@ -541,9 +541,25 @@ static void selector_set_source(unsigned char spdif)
     mux_write(g_mux_state);       /* Rev 20 cmd5 @ 0x046D — LCALL 0x0F0C */
 
     /* S/PDIF -> mode 1. Analog -> the last internal rate the host asked for;
-     * see g_internal_rate for why this is not stock's `MOV R7,0x08`. */
-    g_sample_rate = spdif ? 0UL : g_internal_rate;
-    streaming_set_rate(g_sample_rate);   /* Rev 20 cmd5 @ 0x0472 — LCALL 0x0728 */
+     * see g_internal_rate for why this is not stock's `MOV R7,0x08`.
+     *
+     * #179: g_sample_rate is deliberately NOT touched here. It is the value of
+     * the endpoint's SAMPLING_FREQUENCY control — what the host last set — and
+     * a source change does not set that control. Zeroing it made GET_CUR
+     * answer 0,0,0 after a selector change, which is stock's behaviour
+     * (`setup_get_sample_freq` @0x008A reports zeroes whenever RAM[0x08] == 1)
+     * and is what the kernel quirk's snd_mbox1_is_spdif_synced looks for — but
+     * 0 is not a legal UAC1 sampling frequency, and a host without the quirk
+     * reads it as the device contradicting the rate it just set.
+     *
+     * Reporting the host's own value satisfies both readers: the quirk only
+     * ever reads back a value it wrote itself (it sets 0 for S/PDIF sync and
+     * 48000 otherwise, snd_mbox1_clk_switch_update), and a generic host gets
+     * an answer that agrees with its request. The clock is now driven by the
+     * Selector position in firmware, so nothing needs the rate control to
+     * carry the "slaved" flag any more — that overload was load-bearing only
+     * while the source and the clock were set independently. */
+    streaming_set_rate(spdif ? 0UL : g_internal_rate);  /* Rev 20 cmd5 @ 0x0472 */
 }
 
 /*
@@ -1135,7 +1151,40 @@ void usb_service(void)
                 } else if (rate == 44100UL || rate == 48000UL) {
                     g_sample_rate  = rate;
                     g_internal_rate = rate;
-                    streaming_set_rate(rate);
+                    /* #179. While the Selector Unit is on S/PDIF the clock
+                     * stays slaved, whatever rate the host asks for — pass 0,
+                     * which is streaming_set_rate()'s mode-1 arm.
+                     *
+                     * The requested rate is not meaningful when slaved: the
+                     * rate is whatever arrives on the wire, and the CS8427 has
+                     * no sample-rate converter to reconcile a difference. A
+                     * host opening a stream sends SET_CUR(48000) as a matter
+                     * of course, and honouring it re-programmed the ACG to the
+                     * internal synth (mode 3) while the audio data still came
+                     * from the S/PDIF receiver. That configuration was
+                     * MEASURED slipping one sample every 4.53 s — 40 slips in
+                     * 180 s at a metronome-regular 4.65 s mean gap, i.e. the
+                     * 4.6 ppm offset between the two crystals — against 3 in
+                     * 180 s when slaved, all at the switch instant.
+                     *
+                     * The rate is still recorded in g_internal_rate, so
+                     * returning the Selector to analog applies it; and
+                     * g_sample_rate still reports it to the host, so GET_CUR
+                     * answers with the value the host set rather than
+                     * contradicting it.
+                     *
+                     * NOT a porting error inherited from a misread: stock has
+                     * the same tension. Its cmd7/cmd8 (Rev 20 @ 0x0480/0x049A,
+                     * Rev 22 @ 0x0466/0x0480) call the clock routine with mode
+                     * 2 or 3 — ACGCTL = 0x06, internal synth — and only then
+                     * branch on 0x25.4 to re-assert CLOCKSOURCE = 0x41. The
+                     * CS8427 ends up recovering from AES3 while the TAS
+                     * synthesizes its own master clock, which is the same
+                     * split. Stock is playable because the kernel quirk
+                     * follows every source change with an explicit rate-0
+                     * request; a class-compliant host sends no such thing. */
+                    streaming_set_rate(
+                        (g_codec_state_25 & CODEC25_SEL_SPDIF) ? 0UL : rate);
                     reply_zero_length();   /* status stage */
                 } else {
                     reply_stall();

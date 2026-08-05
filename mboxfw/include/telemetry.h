@@ -100,7 +100,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0021   /* 0021: #160 -- the Selector Unit is now
+#define TLM_BUILD_ID     0x0022   /* 0022: #179 -- selecting S/PDIF now HOLDS the
+                                   *       slaved clock. A SET_CUR(rate) while the
+                                   *       Selector is on S/PDIF re-runs mode 1
+                                   *       instead of mode 2/3, so opening a
+                                   *       stream no longer un-slaves the part
+                                   *       and re-creates the 4.53 s slip. GET_CUR
+                                   *       reports the host's own rate rather
+                                   *       than 0,0,0.
+                                   * 0021: #160 -- the Selector Unit is now
                                    *       ADVERTISED, not just answered: an
                                    *       S/PDIF input terminal (ID 6) and a
                                    *       Selector Unit (ID 5) on the path to
