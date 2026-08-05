@@ -1,0 +1,84 @@
+# 96 kHz: capture works cleanly, playback is silent, and the OUT buffer is why
+
+Build 0x002A on both units, 2026-08-05. Measured, four arms, one variable each.
+
+## The alignment fix worked, and only for capture
+
+| arm | rms dBFS | g@1k | peak | |
+|---|---|---|---|---|
+| play 48 -> cap 48 | -29.85 | 0.022744 | 0.0456 | baseline |
+| play 96 -> cap 48 | **-97.48** | 0.000005 | 0.0001 | silent |
+| play 48 -> cap 96 | **-29.85** | 0.022732 | **0.0456** | identical to baseline |
+| play 96 -> cap 96 | -76.60 | 0.000008 | 0.0078 | |
+
+On 0x0029 the `play 48 -> cap 96` arm read peak **1.0002** — the correct tone
+at the correct amplitude with full-scale samples spliced into it. On 0x002A,
+with BSIZ 640 -> 576, the same arm reads peak 0.0456 and matches the 48 kHz
+baseline to four decimal places in level and in tone energy.
+
+**96 kHz capture is not merely working, it is indistinguishable in quality from
+48 kHz.** The circular-buffer alignment hypothesis was right, for that half.
+
+## Playback is not a clock problem, and not a plumbing problem
+
+Everything the instruments can see is correct at 96 kHz:
+
+    last SET_INTERFACE   iface 1 alt 2       (the doubled-rate alt)
+    OEPCNF2              0xC5                (endpoint enabled, ISO, BPS=5)
+    DMACTL0              0x82   DMAEN=1      (playback DMA running)
+    clock mode           7                   (internal 96 kHz, dividers /2)
+    OEPBSIZ2 / OEPBBAX2  0x48 / 0x44         (576 B at 0xFA20)
+    OEPDCNTX2            0xE0 -> NAK + 0x60  = 96 SAMPLES PER FRAME
+
+That last line is the one that matters. Bit 7 is NAK and the count is bits 6:0,
+so 0xB0 at 48 kHz is 48 samples and 0xE0 at 96 kHz is 96. **The right number of
+samples is arriving in the buffer.** The data is there, the clock is right, the
+DMA is enabled, and no audio comes out.
+
+## What changed against the run that DID produce 96 kHz audio
+
+`FINDING_46_codec_converts_at_96k.md` measured playback working at 96 kHz: a 2
+kHz tone came back at 4 kHz, exactly, reversibly. That was build 0x0024, where
+the device was switched to mode 7 MID-STREAM while the host still streamed 48
+kHz on alt 1. So the converters do run at 96 kHz on the playback path -- that
+result stands, and it rules out the codec as the cause here.
+
+The difference is the OUT buffer's size **in frames**:
+
+    0x0024, working:   640 B buffer, 288 B host frames  -> 2.2 frames
+    0x002A, silent:    576 B buffer, 576 B host frames  -> 1.0 frames
+
+At one frame the USB engine is writing the same region the DMA is reading,
+every frame, with no second frame to ping-pong against. At 2.2 frames the DMA
+drains a completed frame while USB fills elsewhere.
+
+Capture survives the same single-frame geometry because the direction is
+reversed -- the DMA fills and the IN token drains whatever is present when the
+host asks. Playback has to have a *completed* buffer before the DMA may take
+it, and with one frame there is never a completed buffer that is not also the
+one being written.
+
+## The constraint this runs into, which is a hardware limit
+
+If playback at 96 kHz needs two frames, it needs **1152 B**. The endpoint
+buffer region is 0xFA20-0xFF27, **1288 B total**, shared with capture. Capture
+at 96 kHz needs at least one 576 B frame:
+
+    1152 (playback, 2 frames) + 576 (capture, 1 frame) = 1728 > 1288
+
+**Duplex 96 kHz does not fit in this part's endpoint RAM**, independent of any
+bus-bandwidth question and independent of firmware quality. Simplex 96 kHz
+playback fits (1152 + 136 spare) only if capture is not streaming.
+
+That is a stronger and earlier limit than the full-speed bandwidth ceiling this
+task was expecting to hit (~9.2 Mbit/s of payload on a 12 Mbit/s bus). The bus
+might have allowed duplex 96; the buffer RAM does not.
+
+## What is still unanswered
+
+**Whether the analog path carries content above 24 kHz.** That needs a >24 kHz
+tone, which needs a 96 kHz PLAYER, which is exactly what is broken. So the
+question that motivated flashing both units -- does 96 kHz buy real bandwidth,
+or only a correct-looking clock -- is still open and is blocked on playback.
+
+Capture is proven clean at 96 kHz, so the moment playback works, the sweep runs.
