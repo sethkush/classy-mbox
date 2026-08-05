@@ -535,3 +535,52 @@ pair must be set either way, and it already is on every path that streams.
     captured 0 BYTES, a dead stream; this arm captured a full 571392 B of
     zeros. Same dBFS reading, completely different meaning, which is exactly
     why `iso_loopback.py` now refuses to report on a starved arm.
+
+## COMPLETE — the pair gates BOTH directions. Measured 2026-08-04.
+
+The capture half was settled above by holding the pair low on unit A. The
+output half is invisible to a self-loop (`out2 -> src2` puts one unit's DAC and
+ADC in series), so it was measured across the two units, with the experiment
+moved onto **B** so A stayed on working firmware throughout.
+
+B flashed to 0x001E at `MBOX_PID=0x2001` — 5308 bytes against B's 0x001D at
+5311, the same 3-byte `orl _g_codec_state_23,#0x0c` removed, all 32 gates
+passing with `MBOX_EXPECT_BUILD_ID=0x001E`. Then `B out1 -> A src1`, B playing,
+A (on 0x001D, capture path known good) listening:
+
+    B on 0x001D, pair HIGH  ->  A ch1 = -28.12 dBFS
+    B on 0x001E, pair LOW   ->  A ch1 = -99.21 dBFS   (A ch2 idle: -94.96)
+
+71 dB. Same cable, same tone, same listener, one variable: the instruction.
+
+**The stream genuinely ran** — the check the earlier host-side attempt failed
+to make. `aplay` returned clean, and B's own telemetry moved across the tone:
+
+    B sof_count  52421 -> 55683    (3262 SOFs ~ the 3.26 s tone)
+    B alt_seen   0x03              (playback alt was set)
+    B codec word 0x10C0 throughout (pair never rose; SET_CUR did not raise it)
+
+So B was streaming, with a running clock, and its output carried nothing.
+
+### The two signatures differ, and both fit
+
+| arm | what was measured | result |
+|---|---|---|
+| A on 0x001E, own capture | A's ADC data with the gate closed | **exact zeros**, 0/95232 non-zero |
+| B on 0x001E, heard by A | B's analog output with the gate closed | **noise floor**, -99.21 dBFS |
+
+Not a contradiction — the difference is which converter is live. In the first
+arm the gated path *is* the one producing the samples, so the samples are
+digital zero. In the second, A's ADC is healthy and simply hears analog
+silence, which renders as A's own noise floor rather than as zeros. Both say
+the same thing: with the pair low, no audio crosses in either direction.
+
+### Settled
+
+`0x23.2`/`0x23.3` are a **global audio-path enable**, gating playback and
+capture together — not an output-only mute. The reading in `codec.h` ("mute /
+audio-path enable pair") and in `streaming.c` is correct, and is now measured
+in both directions rather than inferred from where stock happens to set it.
+
+`BENCH_WIRING.md`'s claim that the cross-links buy what the self-loop cannot is
+no longer a design note; this is the measurement that needed them.
