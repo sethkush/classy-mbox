@@ -72,31 +72,60 @@
 #define EP0_IN_BUF_ADDR    0xFA18
 #define EP0_MAX_PACKET     8
 
-/* Audio streaming buffers — larger, further into the shared window. */
-/* Audio streaming buffers in TAS1020A shared memory.
+/* Audio streaming buffers in TAS1020B shared memory. #162.
  *
- * Sizing constraint (48 kHz stereo 24-bit): 2ch × 3B × 48 samples/frame
- * = 288 B/frame. A buffer smaller than one frame silently truncates
- * every USB packet — the previous 256 B (0x100) size did exactly that
- * for 48 kHz and would have shipped garbled audio despite otherwise-
- * correct enumeration (found by tools/diff_vs_rev20.py bulk resolution
- * 2026-07-23). Rev 20 uses 640 B (0x280) — 2.2× a 48 kHz frame, room
- * for jitter + high-water headroom.
+ * NOW STOCK'S GEOMETRY EXACTLY: 640 B each, contiguous from 0xFA20.
  *
- * We use 512 B (0x200) to fit both buffers below the 0xFF00 SFR
- * boundary while keeping ≥ 1.7× 48 kHz frame headroom:
- *   EP0 IN/OUT   : 0xFA10-0xFA1F (16 B, unchanged)
- *   EP1 IN       : 0xFB00-0xFCFF (512 B, capture)
- *   EP2 OUT      : 0xFD00-0xFEFF (512 B, playback)
- *   free tail    : 0xFF00-0xFF27 (SFRs start at 0xFF28)
- * All non-overlapping, all below the SFR window.
+ *   Rev 20 fcn.0x0970: OEPBBAX2 = 0x44 @ 0x09A2, IEPBBAX1 = 0x94 @ 0x09A8,
+ *                      OEPBSIZ2 = 0x50 @ 0x09AE, IEPBSIZ1 = 0x50 @ 0x09B4
+ *   Rev 22 fcn.0x0891: the same four, @ 0x08C3 / 0x08C9 / 0x08CF / 0x08D5
  *
- * If we ever add 88.2/96 kHz support, revisit: 96 kHz needs 576 B/frame
- * → 512 B truncates. Bump both to 0x300 and move EP2 to 0xFE00 (then
- * EP1 free-tail collision at 0xFE00 forces reworking EP1 too). */
-#define EP1_IN_BUF_ADDR    0xFB00   /* capture buffer  (device → host) */
-#define EP2_OUT_BUF_ADDR   0xFD00   /* playback buffer (host → device) */
-#define EP_AUDIO_BUF_SIZE  0x0200   /* 512 B — ≥ 288 B (48 kHz frame) + slack */
+ * (IEPBSIZ1's constant is carried in A from the OEPBSIZ2 write immediately
+ * before it — Rev 20 0x09AB / Rev 22 0x08CC hold
+ * `90 ff 9a 74 50 f0 90 ff 62 f0` — which is why the access map
+ * reports it as "write-computed" rather than as a literal 0x50. Same
+ * accumulator-reuse pattern the DPTR-arithmetic warning in CLAUDE.md covers.)
+ *
+ * THE OLD 512 B RESTED ON A CONSTRAINT THAT DOES NOT EXIST. The previous
+ * comment here justified 0x200 as fitting "below the 0xFF00 SFR boundary",
+ * and then listed a free tail of 0xFF00-0xFF27 three lines later — the same
+ * comment contradicting itself. Datasheet Figure 6-3 gives the real map:
+ *
+ *   0xFFB0-0xFFFF   memory-mapped registers        (80 B)
+ *   0xFF30-0xFFAF   endpoint configuration blocks  (128 B)
+ *   0xFF28-0xFF2F   setup data packet buffer       (8 B)
+ *   0xFA64-0xFF27   ENDPOINT DATA BUFFERS          (1220 B)
+ *   0xFA10-0xFA63   ROM support                    (84 B)
+ *
+ * Nothing is reserved at 0xFF00. The buffer region ends at 0xFF27, and
+ * stock's capture buffer runs to exactly 0xFF1F.
+ *
+ * WHY THE SIZE MATTERS, per §6.4.4.4: for an ISOCHRONOUS endpoint, BSIZ
+ * sizes a single circular buffer rather than one packet. At 48 kHz stereo
+ * 24-bit a USB frame is 2ch x 3B x 48 = 288 B, so 512 B cannot hold two
+ * frames and 640 B can. A buffer that cannot hold the frame being filled
+ * plus the frame being drained has no slack for the host servicing late.
+ *
+ *   EP0 IN/OUT : 0xFA10-0xFA1F   (16 B, unchanged)
+ *   EP2 OUT    : 0xFA20-0xFC9F   (640 B, playback)  base 0x44
+ *   EP1 IN     : 0xFCA0-0xFF1F   (640 B, capture)   base 0x94
+ *   free tail  : 0xFF20-0xFF27   (8 B)
+ *
+ * Both buffers sit partly in the region Figure 6-3 labels "ROM support".
+ * That is deliberate and is what stock does: per TI Mmap.h line 24, the ROM
+ * DFU code and the application never run at the same time, so the area is
+ * app-owned while our firmware runs. mboxfw has ALREADY relied on this since
+ * its first build — EP0's buffers at 0xFA10 are inside the same region, and
+ * they demonstrably work on hardware. #162 extends an assumption that is
+ * already load-bearing rather than making a new one.
+ *
+ * 88.2/96 kHz (#46) needs 576 B/frame, so 640 B holds only one frame at 96
+ * kHz. Two 96 kHz frames would need 1152 B each and 2304 B total, which does
+ * not fit in the 1288 B available — supporting 96 kHz means single-frame
+ * buffers, not just bigger ones. */
+#define EP2_OUT_BUF_ADDR   0xFA20   /* playback buffer (host → device) */
+#define EP1_IN_BUF_ADDR    0xFCA0   /* capture buffer  (device → host) */
+#define EP_AUDIO_BUF_SIZE  0x0280   /* 640 B — stock's size, 2.2x a 48 kHz frame */
 
 /* USB audio streaming endpoints — Rev 20 uses EP1 IN + EP2 OUT.
  * (Per TI Reg_stc1.h: IEPCNF1=0xFF60, OEPCNF2=0xFF98. Earlier RE notes

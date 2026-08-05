@@ -390,3 +390,45 @@ A second discriminator rides along free once #157 is in: with DATAFLOW pointing
 the CS8427's output at the AES3 receiver, driving the source selector (IRAM
 0x25.4 / `TLM_REQ_SET_MUX`) should **change** the artifact if two drivers share
 the net, and leave it untouched if they do not.
+
+---
+
+## RESOLVED 2026-08-04 — §3 and §4 shipped as #162 and #163 (build 0x0023)
+
+Both divergences this document raised are now closed in code.
+
+**§3, the 640-vs-512 size and the layout.** `EP_AUDIO_BUF_SIZE` is 0x280 and
+the bases are stock's: EP2 OUT at 0xFA20, EP1 IN at 0xFCA0, contiguous through
+0xFF1F. The "0xFF00 SFR boundary" this document called self-imposed was worse
+than that — the comment asserting it listed a free tail at 0xFF00-0xFF27 three
+lines below, contradicting itself in the same breath. Datasheet Figure 6-3
+gives the region as 0xFA64-0xFF27 for endpoint data buffers, with the setup
+packet buffer at 0xFF28-0xFF2F above it.
+
+**§4, the re-declaration under live pointers.** The four base/size writes moved
+out of `streaming_playback_enable()` / `streaming_capture_enable()` and into
+`usb_ep0_setup()`, which is where stock has them (Rev 20 fcn.0x0970, Rev 22
+fcn.0x0891) and which mboxfw already re-runs on resume exactly as stock does.
+The stream-arm path now touches only xEPCNF and DMAEN, matching stock.
+
+**An unusually strong check fell out of it.** SDCC's emitted code for the four
+assignments is **byte-for-byte identical to stock's 22-byte block** at Rev 20
+0x099F:
+
+```
+stock  0x099F:  90 ff 99 74 44 f0  90 ff 61 74 94 f0  90 ff 9a 74 50 f0  90 ff 62 f0
+mboxfw 0x0BBD:  90 FF 99 74 44 F0  90 FF 61 74 94 F0  90 FF 9A 74 50 F0  90 FF 62 F0
+```
+
+Same registers, same order, same accumulator reuse for the second BSIZ write —
+SDCC and Keil converged independently. That also explains why the access map
+reports `IEPBSIZ1` as "write-computed" in *both* images rather than as a
+literal 0x50: the constant is carried in `A` from the preceding write, so it is
+not adjacent to the store. `diff_vs_rev20.py` now counts all four as matches
+(73, up from 69; changed addresses 25 -> 21).
+
+**What this does NOT establish.** The prediction in §4 — that re-basing under
+read-only DMA/UBM pointers leaves a constant, sample-clock-locked region the
+DMA never refills — is a prediction, not a diagnosis, and it never matched the
+artifact's 48-byte period. Closing the divergence removes it as a variable; it
+does not confirm it was the cause. The next capture decides that.

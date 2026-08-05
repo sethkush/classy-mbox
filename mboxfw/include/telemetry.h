@@ -100,7 +100,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0022   /* 0022: #179 -- selecting S/PDIF now HOLDS the
+#define TLM_BUILD_ID     0x0023   /* 0023: #162 + #163 -- stock's endpoint buffer
+                                   *       geometry. 640 B each, contiguous from
+                                   *       0xFA20 (playback) and 0xFCA0 (capture),
+                                   *       and base/size written ONCE in
+                                   *       usb_ep0_setup() instead of on every
+                                   *       SET_INTERFACE(alt=1). The emitted code
+                                   *       is byte-identical to stock's 22-byte
+                                   *       block at Rev 20 0x099F.
+                                   * 0022: #179 -- selecting S/PDIF now HOLDS the
                                    *       slaved clock. A SET_CUR(rate) while the
                                    *       Selector is on S/PDIF re-runs mode 1
                                    *       instead of mode 2/3, so opening a

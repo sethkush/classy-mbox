@@ -939,6 +939,46 @@ void usb_ep0_setup(void)
     OEPDCNTY0 = 0;
     IEPCNF0  = 0x84;
     OEPCNF0  = 0x84;
+
+    /* AUDIO endpoint buffer base + size. #163.
+     *
+     * These belong here and not in the stream-arm path, which is where mboxfw
+     * had them (streaming_playback_enable / streaming_capture_enable re-wrote
+     * all four on every SET_INTERFACE(alt=1)). Stock writes each exactly once
+     * per image, in THIS routine -- the XDATA access map finds one site per
+     * register in each image and it tracks DPTR arithmetic, so that is not a
+     * scanning artefact:
+     *
+     *   Rev 20 fcn.0x0970 @ 0x09A2 / 0x09A8 / 0x09AE / 0x09B4
+     *   Rev 22 fcn.0x0891 @ 0x08C3 / 0x08C9 / 0x08CF / 0x08D5
+     *
+     * Stock's own stream-start path touches only xEPCNF and the DMAEN bit.
+     *
+     * WHY RE-DECLARING A LIVE BUFFER IS NOT HARMLESS. The DMA read pointer
+     * (Ch1RdPtr 0xFFB5/0xFFB6) and the UBM write pointer (Ch1WrPtr
+     * 0xFFB7/0xFFB8) are READ-ONLY per §6.5.2.8-11. There is no way to reset
+     * them to match a re-declared buffer, so re-basing underneath live
+     * pointers leaves them wherever they happened to be. The predicted
+     * symptom is a constant, sample-clock-locked region the DMA never refills
+     * and the UBM keeps transmitting.
+     *
+     * That is the character of the #147 capture artifact, though NOT its
+     * 48-byte period, so this is a divergence worth closing rather than a
+     * diagnosis. Stated as a prediction so the next capture either confirms
+     * or refutes it.
+     *
+     * Being in usb_ep0_setup() also gets stock's resume behaviour for free:
+     * stock's resume tail calls this same routine (Rev 20 fcn.0x0526 @ 0x0554
+     * -> fcn.0x0970), so "written once at init" is really "written by this
+     * routine", which runs at init and on resume. power.c already calls it. */
+    OEPBBAX2 = EP_BBAX(EP2_OUT_BUF_ADDR);  /* Rev 20 fcn.0x0970 @ 0x09A2,
+                                            * Rev 22 fcn.0x0891 @ 0x08C3 */
+    IEPBBAX1 = EP_BBAX(EP1_IN_BUF_ADDR);   /* Rev 20 fcn.0x0970 @ 0x09A8,
+                                            * Rev 22 fcn.0x0891 @ 0x08C9 */
+    OEPBSIZ2 = EP_BSIZE(EP_AUDIO_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09AE,
+                                             * Rev 22 fcn.0x0891 @ 0x08CF */
+    IEPBSIZ1 = EP_BSIZE(EP_AUDIO_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09B4,
+                                             * Rev 22 fcn.0x0891 @ 0x08D5 */
 }
 
 void usb_init(void)

@@ -24,8 +24,10 @@
 #include "cs8427.h"
 
 /* SOF watchdog shadow of the playback DMA buffer content — Rev 22's
- * RAM[0x1B]:RAM[0x1C]. 0xFF/0xFF is an impossible real count for a 512-byte
- * buffer, so it doubles as "no reading yet" and forces the first frame of a
+ * RAM[0x1B]:RAM[0x1C]. 0xFF/0xFF is an impossible real count for a 640-byte
+ * buffer (#162 -- and it was equally impossible for the 512-byte one this
+ * comment used to name), so it doubles as "no reading yet" and forces the
+ * first frame of a
  * stream to be evaluated. See streaming_sof(). */
 static __data unsigned char sof_bcnt_hi = 0xFF;
 static __data unsigned char sof_bcnt_lo = 0xFF;
@@ -215,13 +217,21 @@ void streaming_set_rate(unsigned long hz)
      *
      * Rev 20 clears the four BYTE-COUNT registers (X and Y buffer counts
      * for both streaming endpoints) and nothing else. It does NOT touch
-     * IEPBSIZ1/OEPBSIZ2 — those are the buffer SIZE registers, programmed
-     * once in streaming_capture_enable()/streaming_playback_enable().
+     * IEPBSIZ1/OEPBSIZ2 — those are the buffer SIZE registers, and as of
+     * #163 they are written in usb_ep0_setup() and nowhere else, which is
+     * where stock writes them.
+     *
+     * This comment previously ended with "Rev 20 sets BBAX/BSIZ exactly once
+     * at 0x09B1-0x09C6 and never again" while stating in the same breath that
+     * mboxfw programmed them "once in streaming_capture_enable() /
+     * streaming_playback_enable()". Those are not the same "once": stock's is
+     * once per boot, mboxfw's was once per SET_INTERFACE(alt=1). The
+     * divergence was written down here, correctly, and read as agreement.
+     *
      * This code used to zero the SIZE registers instead of the Y counts,
      * which left whichever endpoint was already streaming with a
      * zero-length buffer if a SET_CUR(sample rate) arrived after
-     * SET_INTERFACE. Rev 20 sets BBAX/BSIZ exactly once at 0x09B1-0x09C6
-     * and never again. */
+     * SET_INTERFACE. */
     ACG2DCTL = 0x10;         /* Rev 20 fcn.0x0728 — CITATION UNVERIFIED, see note */
     IEPDCNTX1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07D3 */
     IEPDCNTY1 = 0;           /* Rev 20 fcn.0x0728 @ 0x07D8 */
@@ -414,8 +424,11 @@ void streaming_playback_enable(unsigned char on)
          * the previous stream. */
         sof_bcnt_hi = 0xFF;
         sof_bcnt_lo = 0xFF;
-        OEPBBAX2 = EP_BBAX(EP2_OUT_BUF_ADDR);
-        OEPBSIZ2 = EP_BSIZE(EP_AUDIO_BUF_SIZE);
+        /* #163: base and size are NOT re-declared here. usb_ep0_setup() sets
+         * them once, as stock does -- the DMA and UBM pointers into this
+         * buffer are read-only, so re-basing under them cannot reset them.
+         * Stock's stream-start path touches only xEPCNF and DMAEN, and this
+         * path now matches it. */
         OEPDCNTX2 = 0;
         /* 0xC5 = IEPEN | ISO | BPS field 5 (6 bytes per sample, i.e.
          * stereo 24-bit) per datasheet §6.4.4.6.2. */
@@ -442,8 +455,8 @@ void streaming_capture_enable(unsigned char on)
          * interface 2. cs8427_boot_init() carries the guard internally, so
          * this is a no-op on every start after the first. */
         cs8427_boot_init();
-        IEPBBAX1 = EP_BBAX(EP1_IN_BUF_ADDR);
-        IEPBSIZ1 = EP_BSIZE(EP_AUDIO_BUF_SIZE);
+        /* #163: see the note in streaming_playback_enable() -- base and size
+         * belong to usb_ep0_setup(), written once. */
         IEPDCNTX1 = 0;
         /* 0xC5 = IEPEN | ISO | BPS field 5 (6 bytes per sample) per
          * datasheet §6.4.4.6.2. Rev 20 fcn.0x0398 @ 0x03C4 */
