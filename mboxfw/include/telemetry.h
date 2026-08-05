@@ -7,10 +7,19 @@
  * costs a 2 km round trip, so the loaded image has to answer questions
  * over the wire instead of by reflashing a variant.
  *
- * Every read is EXACTLY 8 bytes — one EP0 packet. The defect under
- * investigation is the multi-packet continuation path, so telemetry must
- * never depend on it: 1- and 2-packet transfers measured 60/60 on
- * hardware, 3+ packets 53/60 or worse. Host selects a block via wValue.
+ * Every read is EXACTLY 8 bytes — one EP0 packet. Host selects a block via
+ * wValue.
+ *
+ * This was originally forced: the multi-packet continuation path was losing
+ * ~12% of IN packets past the first (3 packets 53/60, 23 packets 9/60 on
+ * 2026-07-27), so telemetry was designed never to depend on it. THAT DEFECT IS
+ * FIXED — re-measured 2026-08-05 at 300/300 on 36-packet transfers, on both
+ * units and both host-controller families, 21,600 packets with no loss. See
+ * FINDING_ep0_multipacket_loss_is_fixed.md.
+ *
+ * The constraint stays anyway, because it is simple and proven and costs
+ * nothing. It is no longer a workaround, so anything new may use multi-packet
+ * replies if there is a reason to.
  */
 
 #ifndef MBOXFW_TELEMETRY_H

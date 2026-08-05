@@ -11,12 +11,23 @@ instead be answerable over the wire, repeatedly, from 1 km away.
 
 **1. Telemetry reads must be single-packet.**
 
-The bug we are chasing *is* the multi-packet EP0 continuation path. If reading
-telemetry needed a multi-packet transfer, then on a failing build the telemetry
-would fail too — we would be measuring the instrument with the broken thing it
-is measuring. So every telemetry read returns **exactly 8 bytes** (one EP0
-packet, on the path measured 60/60 reliable) and the host reads a *block index*
-in `wValue`. Reading 64 bytes of state is 8 independent single-packet reads.
+Originally this was forced. The bug being chased *was* the multi-packet EP0
+continuation path, and if reading telemetry needed a multi-packet transfer then
+on a failing build the telemetry would fail too — measuring the instrument with
+the broken thing it is measuring. So every telemetry read returns **exactly 8
+bytes** (one EP0 packet) and the host reads a *block index* in `wValue`.
+Reading 64 bytes of state is 8 independent single-packet reads.
+
+**That defect is fixed.** Re-measured 2026-08-05: 300/300 complete on 36-packet
+transfers, both units, both host-controller families, 21,600 packets with no
+loss — against 9/60 at 23 packets on 2026-07-27. The fix was the `VECINT = 0`
+reordering in `usb.c`'s VEC_IEP0 case and it had been shipped for weeks before
+anyone re-ran the experiment. See
+`firmware_stock/decomp/FINDING_ep0_multipacket_loss_is_fixed.md`.
+
+The single-packet rule stays regardless, because it is simple and proven and
+costs nothing. It is no longer a workaround, so new work may use multi-packet
+replies where that is the better shape.
 
 **2. Vendor requests, device recipient.**
 
