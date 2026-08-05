@@ -228,9 +228,9 @@ mutation that does not change the image tests nothing.
 
 # #171 — where the mute pair actually rests, and why it has never shown
 
-2026-08-04, static. No hardware: neither host had an Mbox on the bus when this
-was written (`lsusb` on 192.168.1.76 and .86 shows no `0dba` device), so the
-measurement below is designed but **not taken**.
+2026-08-04. The static analysis came first and the measurement followed the
+same day, on Mbox A / 192.168.1.76, build 0x001D. **Both are now confirmed on
+hardware** — see "Measured" at the end.
 
 ## The complete write set for 0x23.2 / 0x23.3 in mboxfw
 
@@ -322,3 +322,91 @@ zeroing at 0x080B-0x080E, `LCALL acg_set_freq_48k_family` at 0x081B,
 `LCALL acg_dptr_inc_then_set_both_dctl_10` at 0x081E, and `ACGCTL |= 0xC0` at
 0x0827. Same shape as the pair: stock establishes a running clock during
 bring-up, mboxfw waits for the host to ask.
+
+## Measured — 2026-08-04, Mbox A on 192.168.1.76, build 0x001D
+
+### The boot divergence is real on hardware, not just in the simulator
+
+`sim_p1_waveform.py` has reported `0x10C0` vs stock's `0x1CC0` for months. The
+device now says the same thing.
+
+Getting a clean reading took three power cycles, because **the host contaminates
+the boot state within seconds**. `snd-usb-audio` binds on hotplug and issues
+SET_INTERFACE + SET_CUR on both interfaces, so every previous session has read
+the post-`SET_CUR` value and never the boot value. `modprobe -r` is not enough:
+the replug re-autoloads the module via MODALIAS before a read can land. What
+worked was blocking autoload outright:
+
+    echo "install snd_usb_audio /bin/true" > /etc/modprobe.d/zz-mbox-test.conf
+    modprobe -r snd_usb_audio
+    <replug>
+
+Fresh boot, driver blocked (bus resets 3, suspends 0):
+
+    codec word = 0x10C0     mute pair LOW, RESET_N high
+    alt_seen   = 0x00       <- the control: nothing set an alt setting
+    setup      = 18
+
+Then, **same boot, single variable** — remove the blocker and load the driver:
+
+    codec word = 0x1CC0     mute pair HIGH
+    alt_seen   = 0x03       playback-on|capture-on
+    setup      = 36
+
+`alt_seen` moving 0x00 -> 0x03 and the setup count 18 -> 36 are what make this a
+controlled result rather than a coincidence: the pair rises exactly when the
+class driver binds and issues its SET_CUR, which is the single writer the binary
+analysis predicted (`orl _g_codec_state_23,#0x0c`, one site, streaming.rst
+0x0D7A).
+
+So the causal chain is closed end to end on hardware:
+
+    boot                      -> 0x10C0   (pair low; stock rests at 0x1CC0)
+    class driver binds        -> 0x1CC0   (SET_CUR raises the pair)
+
+**What is still NOT measured** is what the two lines actually do. Establishing
+where they rest is not the same as naming them, and the functional test still
+needs a stream with the pair low — which means raw isochronous I/O, since any
+ALSA path sends SET_CUR first. `pyusb` 1.3.1 (the only USB package in
+`~/mbox-venv`) cannot do isochronous transfers; that needs `python-libusb1`.
+#171 stays open on that question. Do not patch on the strength of the state
+reading alone.
+
+### The suspend path loses the codec word — measured, and it is a real defect
+
+Found while chasing the above. One controlled suspend/resume cycle, before and
+after, nothing else touched:
+
+    codec word   0x1CC0 -> 0x0000
+    suspends          3 -> 4
+    susr/resr       7/7 -> 9/9
+    mux word     0xF6   -> 0xF6      (restored)
+
+`do_suspend()` zeroes both halves of the codec word. The resume path calls
+`hw_init()`, which re-seeds `g_mux_state` to 0xF6 — so the **panel** chain comes
+back — but nothing re-publishes the **codec** chain. `cs8427_boot_init()` is the
+only setter of `RESET_N` (`orl ...,#0x10`, one site, cs8427.rst 0x0003D1) and is
+called from `main.c:427` alone, never on resume.
+
+Consequence: after any USB suspend the external chip is **held in reset for the
+rest of the attach**, the source nibble reads MIC whatever was selected, and only
+the mute pair ever comes back (via the next SET_CUR). Recoverable only by a power
+cycle. Tracked as #175.
+
+This also gives #149 most of its answer: resume itself works — four cycles
+completed, the device answers EP0 after each. What fails is state restoration,
+which is not the failure that task was watching for.
+
+### One thing that does not reconcile
+
+Before the suspend test, the device read `codec word = 0x1CC0` with
+`suspends = 3` already counted, on a 13-minute-old boot. By the mechanism
+measured above that is impossible: bit 4 comes only from `cs8427_boot_init()`,
+which runs once, at boot. A host re-bind after resume restores the mute pair
+(0x0C) but cannot restore RESET_N (0x10).
+
+Either something else re-published the word, or those three increments took a
+path that skipped the clear. Recorded as an open discrepancy rather than
+explained away — the measured before/after is solid on its own, and inventing a
+reconciliation for the earlier reading would be exactly the move this project
+keeps having to undo.
