@@ -165,10 +165,28 @@ absolute dBFS against each other.
 
 **The serial is the identity. The PID is not.**
 
-| unit | serial | sysfs | ALSA card | notes |
-|---|---|---|---|---|
-| **A** | **`RK10874600Q`** | `2-1.3` | `Mboxclassc` | carries the self-loops |
-| **B** | **`RK1672500M`** | `2-1.4` | `Mboxclassc_1` | crossed pair only |
+| unit | serial | sysfs | notes |
+|---|---|---|---|
+| **A** | **`RK10874600Q`** | `2-1.3` | carries the self-loops |
+| **B** | ~~`RK1672500M`~~ **NONE** | `2-1.4` | crossed pair only; see below |
+
+> **B SERVES NO SERIAL as of build 0x0020 (2026-08-04).** The #177 image was
+> built with `MBOX_PID=0x2000` but *without* `MBOX_UNIT=B`, so B enumerates with
+> `serial_number == None`. Address it with `--addr` until it is reflashed; that
+> costs a DFU trigger and a physical replug. `--serial RK1672500M` now silently
+> matches nothing, which reads as "unit absent" rather than as an error.
+>
+> The ALSA card **numbers** are not listed here on purpose. They are assigned in
+> enumeration order and moved when the host was rebooted on 2026-08-04 —
+> `Mboxclassc` went from card 0 to card 1, and the two units swapped which card
+> index each held. Resolve them at use time instead:
+>
+>     for c in /proc/asound/card*/usbid; do echo "$c $(cat $c)"; done
+>     ls -l /proc/asound/ | grep card      # names -> indices
+>     cat /proc/asound/cards               # shows the usb-...-1.3 / -1.4 path
+>
+> The **sysfs path is the reliable link** between an ALSA card and a physical
+> unit, because it names the socket.
 
 Both units build at **`MBOX_PID=0x2000`** — the same product, because they ARE
 the same product. Each is built with `make MBOX_UNIT=A` / `=B`, which serves
@@ -201,8 +219,13 @@ exits with a listing rather than picking the first match, because a reading
 taken from the wrong unit looks exactly like a valid one:
 
     mboxtlm.py read 0 --serial RK10874600Q      # unit A
-    mboxtlm.py read 0 --serial RK1672500M       # unit B
+    mboxtlm.py read 0 --addr 2:3                # unit B -- serves NO serial, see above
     mboxtlm.py read 0 --addr 2:21               # fallback for pre-0x001F builds
+
+Bus addresses change on every replug and on every host reboot, so re-read them
+rather than reusing a number from an earlier session:
+
+    lsusb | grep -i 0dba
 
 `mboxflash_linux.py` has the same discipline via `--addr bus:addr`, and keeps
 it: **in DFU both units enumerate as `ffff:fffe` and carry no serial at all**,
