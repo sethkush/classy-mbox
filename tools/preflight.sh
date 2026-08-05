@@ -117,6 +117,11 @@ else
     # seen a byte, and a retired second reader was 6 blocks behind the
     # firmware. FINDING_telemetry_roundtrip.md.
     check "telemetry round-trip (fw -> host tool)" python3 tools/sim_telemetry_roundtrip.py
+    # The round-trip gate above proves the DECODER is right. This proves the
+    # tool talks to the unit you named: `--serial` given before the subcommand
+    # was silently discarded by argparse, and with one unit attached that read
+    # the wrong device and printed a perfectly valid-looking result.
+    check "mboxtlm unit selection"              python3 tools/mboxtlm.py --selftest
     check "verify_setup_paths"        python3 tools/verify_setup_paths.py
     check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
     check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py

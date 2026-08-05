@@ -650,12 +650,12 @@ def cmd_all(dev, args):
               % (build, served, NUM_BLOCKS - 1))
         print()
     for i in range(NUM_BLOCKS):
-        show(i, read_block(dev, i), args.raw, device_build=build)
+        show(i, read_block(dev, i), getattr(args, "raw", False), device_build=build)
         print()
 
 
 def cmd_read(dev, args):
-    show(args.block, read_block(dev, args.block), args.raw,
+    show(args.block, read_block(dev, args.block), getattr(args, "raw", False),
          device_build=device_build(dev))
 
 
@@ -734,7 +734,7 @@ def cmd_setmux(dev, args):
     # A stall raises, but a request that is accepted and then does not take
     # would otherwise look identical to one that worked.
     print()
-    show(9, read_block(dev, 9), args.raw, device_build=device_build(dev))
+    show(9, read_block(dev, 9), getattr(args, "raw", False), device_build=device_build(dev))
 
 
 def cmd_clock(dev, args):
@@ -762,21 +762,43 @@ def cmd_clock(dev, args):
     # same reasoning as setmux. A request that is accepted and does not take
     # looks identical to one that worked.
     print()
-    show(9, read_block(dev, 9), args.raw, device_build=device_build(dev))
+    show(9, read_block(dev, 9), getattr(args, "raw", False), device_build=device_build(dev))
 
 
-def main():
+def build_parser():
     # --raw is accepted on BOTH sides of the subcommand. It was top-level
     # only at first, so the natural `read 6 --raw` died with "unrecognized
     # arguments" -- mid-experiment, against a device that does not stay on
     # the bus indefinitely. A diagnostic tool that is fussy about argument
     # order costs a whole run to find out.
+    #
+    # Every option here uses default=SUPPRESS, and that is load-bearing rather
+    # than tidy. `common` is a parent of the top-level parser AND of every
+    # subparser, so both define the same destinations. argparse parses the
+    # subcommand's arguments SECOND, into the same namespace -- so an ordinary
+    # default writes None over whatever was given before the subcommand, and
+    # `mboxtlm.py --serial RK1672500M read 0` selects no unit at all while
+    # exiting 0 on the parse.
+    #
+    # With two units attached that failed safe, because find_device() treats
+    # ambiguity as a hard error and the operator sees it. With ONE unit
+    # attached it did not: --serial naming the absent unit silently talked to
+    # the one that happened to be plugged in, and the reading looked valid.
+    # That is precisely the misattribution find_device() exists to prevent,
+    # arriving through the argument parser instead of through the bus scan.
+    #
+    # SUPPRESS makes the subparser leave the destination alone unless the flag
+    # was actually given on that side, so a value from either side survives.
+    # The reads below all go through getattr(..., <default>) to cope with the
+    # attribute being absent entirely.
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--raw", action="store_true", help="also print raw bytes")
-    common.add_argument("--serial", metavar="SN",
+    common.add_argument("--raw", action="store_true",
+                        default=argparse.SUPPRESS,
+                        help="also print raw bytes")
+    common.add_argument("--serial", metavar="SN", default=argparse.SUPPRESS,
                         help="select the unit by USB serial number "
                              "(build 0x001F+; see BENCH_WIRING.md)")
-    common.add_argument("--addr", metavar="BUS:ADDR",
+    common.add_argument("--addr", metavar="BUS:ADDR", default=argparse.SUPPRESS,
                         help="select the unit by USB bus:address, for builds "
                              "that serve no serial")
 
@@ -812,6 +834,49 @@ def main():
                     help="also move the Selector Unit; note that selecting "
                          "spdif forces the slaved clock, as stock does")
 
+    return p
+
+
+def _selftest():
+    """Guard the argument-order safety property, which regressed silently.
+
+    `common` is a parent of both the top-level parser and every subparser, so
+    an ordinary default on those options writes None over a value given before
+    the subcommand. That is not cosmetic: with a single unit attached,
+    `--serial <the absent unit> read 0` then selected whatever WAS plugged in
+    and printed a reading that looked entirely valid, which is the exact
+    misattribution find_device() exists to prevent.
+
+    Asserted on both sides of the subcommand because the failure is
+    one-sided -- the after-form always worked, so testing only that would have
+    passed throughout the period the tool was broken.
+    """
+    p = build_parser()
+    fails = []
+    for argv, what in (
+            (["--serial", "SN1", "read", "0"],  "serial before subcommand"),
+            (["read", "0", "--serial", "SN1"],  "serial after subcommand"),
+            (["--addr", "2:7", "read", "0"],    "addr before subcommand"),
+            (["read", "0", "--addr", "2:7"],    "addr after subcommand"),
+            (["--raw", "read", "0"],            "raw before subcommand"),
+            (["read", "0", "--raw"],            "raw after subcommand")):
+        a = p.parse_args(argv)
+        key = argv[0].lstrip("-") if argv[0].startswith("-") else argv[2].lstrip("-")
+        got = getattr(a, key, None)
+        if got in (None, False):
+            fails.append("%s: %s is %r" % (what, key, got))
+    for f in fails:
+        print("SELFTEST FAIL: %s" % f)
+    if fails:
+        return 1
+    print("SELFTEST PASS: unit selectors survive on both sides of the subcommand")
+    return 0
+
+
+def main():
+    if "--selftest" in sys.argv:
+        sys.exit(_selftest())
+    p = build_parser()
     args = p.parse_args()
     global TARGET_SERIAL, TARGET_ADDR
     TARGET_SERIAL = getattr(args, "serial", None)
