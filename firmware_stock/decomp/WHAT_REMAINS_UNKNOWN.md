@@ -62,8 +62,8 @@ dispatched by `fcn.0x02EE` via a 14-entry `LJMP` table at `0x0300`
 | 0x08 | 0x049A | 0x0D3C EP0-OUT done | mode 3 + CS8427 reg 0x23/0x40 | **no** |
 | 0x09 | 0x04B4 | *none* | mode 4 | **no** |
 | 0x0A | 0x04BC | *none* | mode 5 | **no** |
-| 0x0B | 0x04C4 | 0x0AF6 main loop, P3.1 | S/PDIF present -> CS8427 init | **no** (#145) |
-| 0x0C | 0x0511 | 0x0B07 main loop, P3.1 | S/PDIF absent -> mode 1 | **no** (#145) |
+| 0x0B | 0x04C4 | *unreachable* — P3.1 is TXD, never falls | CS8427 init + mode 3 | **no**, dead in stock |
+| 0x0C | 0x0511 | *unreachable* — needs 0x0B to arm the latch | mode 1 | **no**, dead in stock |
 | 0x0D | 0x0518 | 0x005B class request | zero a 3-arg call, clear OEPDCNTX0 | **no** |
 | 0x0E | 0x0526 | 0x0006 SUSR vector | suspend / resume | **yes**, new |
 

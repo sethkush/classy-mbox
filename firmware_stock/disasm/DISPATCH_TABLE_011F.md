@@ -153,7 +153,22 @@ distinguishable by the third byte and by the surrounding code, so the
 
 ---
 
-# What P3.1 actually is: S/PDIF / external clock presence
+# ~~What P3.1 actually is: S/PDIF / external clock presence~~
+
+> **CORRECTED 2026-08-04 — P3.1 is TXD; both handlers are unreachable.**
+> The decode of the two handlers below is correct and still the reference for
+> what they contain. The *conclusion this section draws about P3.1* is not.
+>
+> P3.1 is the serial port transmit pin (TI `Utils.SRC:67`, `TXD BIT 0B0H.1`);
+> neither image configures `SCON`/`SBUF`, and the pin rests high. Measured with
+> two units on crossed S/PDIF: pulling one unit's S/PDIF IN leaves P3.1 at 1,
+> control unit unchanged. Code 0x0B needs P3.1 == 0, and only 0x0B arms the
+> latch 0x0C needs, so **neither work code can ever be posted on this board.**
+>
+> Consequence for #145, stated below as "this resolves the mechanism": the
+> mechanism is real in the bytes and dead in the hardware. There is nothing to
+> port. The host-driven path in `decomp/FINDING_host_control_protocol.md` is the
+> only route to slaving. See `decomp/FINDING_p31_is_txd.md`.
 
 Decoding the two handlers the 0x0300 table points at settles the question left
 open in `IRAM_BITS_ANNOTATION.md`.

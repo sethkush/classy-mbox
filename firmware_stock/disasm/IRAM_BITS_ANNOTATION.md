@@ -23,11 +23,27 @@ already pressed" half of the edge detection:
     Rev 20 0x0AFC  JNB 0x01,0x0B0D
 
 That is P3.1, tested twice in the function at 0x0A96 — the same function that
-owns the overlaid locals 0x27–0x2B. **P3.1 is the S/PDIF / external-clock
-presence input.** Asserted, it raises work code 0x0B, whose handler at 0x04C4
+owns the overlaid locals 0x27–0x2B. ~~**P3.1 is the S/PDIF / external-clock
+presence input.**~~ Asserted, it raises work code 0x0B, whose handler at 0x04C4
 switches to clock mode 3 and starts the CS8427 with CLOCKSOURCE = 0x41;
 released, it raises code 0x0C, whose handler at 0x0511 reverts to mode 1
 (internal clock). Full derivation in `DISPATCH_TABLE_011F.md`.
+
+> **CORRECTED 2026-08-04 — P3.1 is TXD, and neither handler is reachable.**
+> P3.1 is the 8051 serial port transmit pin: TI's own source for this part gives
+> `TXD BIT 0B0H.1` (`reference/tas1020a/ti_uac_reference/ROM/Utils.SRC:67`), and
+> P3 is at 0xB0. Neither stock image ever touches `SCON` or `SBUF`, so the UART
+> is unconfigured and the pin rests high.
+>
+> Measured 2026-08-04 on two units with crossed S/PDIF: pulling the coax from
+> one unit's S/PDIF IN does not move P3.1 (`P3 = 0xC2` seated, pulled and
+> re-seated, with the other unit as a control). Since code 0x0B requires
+> P3.1 == 0 and only code 0x0B arms the latch that code 0x0C needs, **a
+> permanently-high P3.1 makes both handlers dead code in stock.**
+>
+> The description of the two handlers below is still an accurate read of their
+> bytes. It is what they *would* do. Nothing posts either code on this board.
+> See `decomp/FINDING_p31_is_txd.md`.
 
 An earlier draft here guessed "the first place to look for the TRS jack-presence
 switches". That guess is withdrawn — the handlers name the function outright, and
@@ -270,7 +286,14 @@ button handler -> if it acted, both shift words are republished. **The panel is
 only ever read and rewritten on a timer tick**, which is the mechanism any
 firmware has to reproduce for the buttons to work at all.
 
-## 0x20.1 — P3.1, an insert/remove input, not a momentary button
+## 0x20.1 — P3.1, read as an insert/remove input; it is TXD and never moves
+
+> **CORRECTED 2026-08-04.** The reading below — "the shape of a jack-presence /
+> plug-detect line" — is withdrawn. P3.1 is TXD (TI `Utils.SRC:67`), the UART is
+> never configured in either image, and a cable-pull test on real crossed S/PDIF
+> showed the pin does not move. The *shape* argument was sound and is kept; what
+> it lacked was any check that the pin was an input at all.
+> See `decomp/FINDING_p31_is_txd.md`.
 
 Continuing the same loop body:
 
