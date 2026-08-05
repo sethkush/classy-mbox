@@ -14,15 +14,18 @@ Call the units **A** (the "first unit", the one carrying the self-loops) and
 |---|---|---|---|
 | A line out 1 | **B** line source 1 | TS 1/4" | yes |
 | B line out 1 | **A** line source 1 | TS 1/4" | yes |
-| A S/PDIF out | A S/PDIF in | coax | no — self-loop |
+| A S/PDIF out | **B** S/PDIF in | coax | yes — crossed 2026-08-04 |
+| B S/PDIF out | **A** S/PDIF in | coax | yes — crossed 2026-08-04 |
 | A line out 2 | A line source 2 | TRS 1/4" | no — self-loop |
 
-B carries no self-loops. Its only connection is the crossed pair on channel 1.
+A carries the only remaining self-loop (out2 -> src2). Everything else is
+crossed between the units.
 
     A out1 ──────TS─────► B src1
     B out1 ──────TS─────► A src1
     A out2 ──TRS──► A src2
-    A spdif out ──► A spdif in
+    A spdif out ──coax──► B spdif in
+    B spdif out ──coax──► A spdif in
 
 ## What this newly buys
 
@@ -41,11 +44,19 @@ settles it. This rig is what settles it — flash A with `MBOX_PLAYBACK_BYOR=1`
 and B with `=0`, cross-feed, and the direction that produces a tone names the
 playback BYOR value.
 
-**A closed S/PDIF clock loop on A.** Relevant to #145, with the caveat that if
-the firmware slaves its clock to S/PDIF in, A's receiver is looking at A's own
-transmitter, whose clock derives from the thing being slaved. Lock is not
-evidence of correct slaving in that configuration; use B as the S/PDIF source
-if #145 needs a real external clock.
+**A real external S/PDIF clock — the self-loop was retired 2026-08-04.**
+A's S/PDIF used to loop back on itself, which is circular for the only thing it
+was needed for: if the firmware slaves its clock to S/PDIF in, A's receiver is
+watching A's own transmitter, whose clock derives from the thing being slaved.
+Lock proves nothing in that configuration.
+
+The two S/PDIF ports are now crossed, so each unit's receiver sees a genuinely
+independent transmitter. That is what #145 needs.
+
+**When slaving is implemented, only ONE unit may slave.** Both units currently
+run on their internal clocks, so the crossed pair is safe as it stands; if both
+were told to slave to S/PDIF in, the topology would be circular again with no
+master anywhere. Master/slave, not peer/peer.
 
 ## Selecting the source — CLOSED 2026-07-30, build 0x0013
 
