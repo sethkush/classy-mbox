@@ -137,6 +137,10 @@ else
     # and it ran 6 of ~30 gates while claiming to run every non-hardware one.
     # Two hand-maintained lists drift; this makes the drift an error.
     check "per-commit runner covers preflight"  python3 tools/check_gate_coverage.py
+    # #154. The flasher's read-back compare, exercised with no device: the
+    # transport needs hardware, the pass/fail logic does not, and the header
+    # checksum rule is easy to get wrong in either direction.
+    check "flasher read-back compare logic"     python3 tools/mboxflash_linux.py --selftest
     check "verify_setup_paths"        python3 tools/verify_setup_paths.py
     check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
     check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py

@@ -104,6 +104,8 @@ for sha in $commits; do
             { python3 tools/xdata_access_map.py --selftest >> /tmp/ci_gate.log 2>&1 || exit 27; }
         [[ -f tools/mboxtlm.py ]] && \
             { python3 tools/mboxtlm.py --selftest >> /tmp/ci_gate.log 2>&1 || exit 27; }
+        [[ -f tools/mboxflash_linux.py ]] && \
+            { python3 tools/mboxflash_linux.py --selftest >> /tmp/ci_gate.log 2>&1 || exit 27; }
 
         # --- simulator tier: ~73 s, opt out with CI_SKIP_SIM=1 ---
         if [[ -z "${CI_SKIP_SIM:-}" ]]; then

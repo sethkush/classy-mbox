@@ -332,6 +332,71 @@ def dfu_download(dev, block, data, timeout=5000):
                              data if data else None, timeout)
 
 
+UPLOAD_BLOCK = 64      # TAS1020B boot ROM's practical ceiling per transfer
+
+
+def dfu_upload(dev, block, length=UPLOAD_BLOCK, timeout=5000):
+    """One DFU_UPLOAD block. Returns the bytes the device chose to send.
+
+    DFU 1.0 §6.2: issue UPLOAD with wValue = 0, 1, 2, ...; the device returns
+    up to wTransferSize bytes each time, and a short or zero-length return is
+    end-of-image. bmRequestType 0xA1 = class, device-to-host, interface.
+    """
+    return bytes(dev.ctrl_transfer(REQ_IN, DFU_UPLOAD, block, DFU_INTERFACE,
+                                   length, timeout))
+
+
+def dfu_read_eeprom(dev, cap=8192, progress=True):
+    """Read the whole EEPROM back over DFU_UPLOAD.
+
+    Requires dfuIDLE -- the boot ROM will not serve UPLOAD mid-download. The
+    caller checks state; this just does the loop.
+    """
+    acc = bytearray()
+    for block in range(0, (cap // UPLOAD_BLOCK) + 2):
+        got = dfu_upload(dev, block)
+        if not got:
+            if progress:
+                print("  block %d returned 0 bytes -> end of image" % block)
+            break
+        acc += got
+        if progress and block % 16 == 0:
+            print("  block %3d  got %3d bytes  total %d" % (block, len(got), len(acc)))
+        if len(got) < UPLOAD_BLOCK:
+            if progress:
+                print("  block %d short read (%d B) -> end of image" % (block, len(got)))
+            break
+        if len(acc) >= cap:
+            break
+    return bytes(acc)
+
+
+def normalise_for_compare(dumped, expected):
+    """Return (dumped, expected, notes) with known-benign differences removed.
+
+    THE HEADER CHECKSUM BYTE READS BACK AS 0x00. mboxflash/main.m cmd_dump
+    records this from the macOS side: "TAS1020A DFU_UPLOAD returns 0x00 for the
+    header chksum byte (empirically observed -- the boot ROM appears to mask
+    off byte 0 of the image on upload as a soft anti-tamper)."
+
+    A naive byte-compare therefore reports a mismatch at offset 0 on a
+    perfectly good flash. Recompute it the way the macOS dumper does --
+    sum(bytes[1:18]) & 0xFF -- and compare that against the image instead, so
+    the check still covers the byte rather than skipping it.
+    """
+    notes = []
+    d = bytearray(dumped)
+    if len(d) >= 18 and d[0] == 0x00 and expected[0] != 0x00:
+        recomputed = sum(d[1:18]) & 0xFF
+        notes.append("byte 0 (header checksum) read back as 0x00; boot ROM masks "
+                     "it on upload. Recomputed from bytes 1..17 as 0x%02X, image "
+                     "has 0x%02X -- %s"
+                     % (recomputed, expected[0],
+                        "match" if recomputed == expected[0] else "MISMATCH"))
+        d[0] = recomputed
+    return bytes(d), expected, notes
+
+
 def dfu_get_status(dev, timeout=5000):
     raw = dev.ctrl_transfer(REQ_IN, DFU_GETSTATUS, 0, DFU_INTERFACE, 6, timeout)
     if len(raw) < 6:
@@ -454,6 +519,70 @@ def _hub_port_for(dev):
     except Exception:
         pass
     return None, None
+
+def _open_idle_for_read():
+    """Open the DFU device and insist on dfuIDLE before any UPLOAD.
+
+    The boot ROM does not serve UPLOAD in the middle of a download, and
+    poking at it there is exactly how a download gets stranded -- reaching
+    dfuMANIFEST is the only proof a download took (POLICY / CLAUDE.md), so
+    nothing here may run while one is in flight.
+    """
+    dev = open_dfu()
+    # dfu_get_status_retry RAISES on exhaustion rather than returning None;
+    # an `if st is None` guard here would be a check for something that cannot
+    # happen, which reads as coverage and is not.
+    st = dfu_get_status_retry(dev)
+    print("  DFU state: %s / %s" % (state_name(st[4]), status_name(st[0])))
+    if st[4] != dfuIDLE:
+        sys.exit("device is not in dfuIDLE (state %s).\n"
+                 "Read-back needs an idle DFU device. If a download is in\n"
+                 "flight, let it finish -- do NOT interrupt it." % state_name(st[4]))
+    return dev
+
+
+def cmd_dump(args):
+    """Read the EEPROM back to a file over DFU_UPLOAD."""
+    dev = _open_idle_for_read()
+    blob = dfu_read_eeprom(dev)
+    if len(blob) < 18:
+        sys.exit("dump too short (%d B) -- not a valid EEPROM image" % len(blob))
+    with open(args.out, "wb") as fh:
+        fh.write(blob)
+    print("wrote %d bytes to %s" % (len(blob), args.out))
+    print("NOTE: byte 0 (header checksum) reads back as 0x00 -- the boot ROM")
+    print("      masks it on upload. Recompute it before feeding this file")
+    print("      back to `flash`, or use `verify` which handles it.")
+    return 0
+
+
+def cmd_verify(args):
+    """Read the EEPROM back and compare it against an image file."""
+    expected = load_image(args.image)
+    dev = _open_idle_for_read()
+    print("reading %d bytes back for comparison..." % len(expected))
+    dumped = dfu_read_eeprom(dev)
+    print("  read %d bytes; image is %d bytes" % (len(dumped), len(expected)))
+
+    d, e, notes = normalise_for_compare(dumped, expected)
+    for n in notes:
+        print("  " + n)
+
+    n = min(len(d), len(e))
+    diffs = [i for i in range(n) if d[i] != e[i]]
+    if len(d) < len(e):
+        print("  SHORT: device returned %d bytes, image has %d" % (len(d), len(e)))
+    if not diffs and len(d) >= len(e):
+        print("VERIFY PASS: %d bytes read back identical to %s" % (len(e), args.image))
+        return 0
+
+    print("VERIFY FAIL: %d differing byte(s) in the first %d" % (len(diffs), n))
+    for i in diffs[:16]:
+        print("    offset 0x%04X  device 0x%02X  image 0x%02X" % (i, d[i], e[i]))
+    if len(diffs) > 16:
+        print("    ... and %d more" % (len(diffs) - 16))
+    return 1
+
 
 def cmd_flash(args):
     recs = validate(args.image, quiet=True)
@@ -650,7 +779,75 @@ def cmd_flash(args):
     return 0
 
 
+def _selftest():
+    """Exercise the read-back compare logic with no device attached.
+
+    The transport needs hardware; the part that decides pass/fail does not,
+    and it is the part that can silently be wrong. In particular the header
+    checksum rule: the boot ROM returns 0x00 for byte 0 on UPLOAD, so a naive
+    compare fails on a good flash and a compare that simply SKIPS byte 0 stops
+    checking it at all. Both are wrong in opposite directions.
+    """
+    fails = []
+
+    def chk(name, cond):
+        if not cond:
+            fails.append(name)
+
+    # a plausible 32-byte image whose byte 0 is a correct header checksum
+    body = bytes(range(1, 18)) + b"\xAA" * 14
+    img = bytes([sum(body[:17]) & 0xFF]) + body
+
+    # 1. a good read-back differs only in byte 0, which reads as 0x00
+    dumped = b"\x00" + img[1:]
+    d, e, notes = normalise_for_compare(dumped, img)
+    chk("good readback compares equal", d == e)
+    chk("good readback explains byte 0", any("match" in n and "MISMATCH" not in n
+                                             for n in notes))
+
+    # 2. byte 0 is still CHECKED, not skipped: corrupt a header byte so the
+    #    recomputed checksum no longer matches the image's
+    bad_hdr = b"\x00" + bytes([img[1] ^ 0xFF]) + img[2:]
+    d2, e2, notes2 = normalise_for_compare(bad_hdr, img)
+    chk("corrupt header is caught", d2 != e2)
+    chk("corrupt header is reported", any("MISMATCH" in n for n in notes2))
+
+    # 3. a payload difference is caught
+    bad_body = bytearray(dumped); bad_body[25] ^= 0x01
+    d3, e3, _ = normalise_for_compare(bytes(bad_body), img)
+    chk("payload difference is caught", d3 != e3)
+
+    # 3b. THE DISCRIMINATING CASE. Everything above still passes if byte 0 is
+    #     blindly accepted instead of recomputed, because each corruption also
+    #     perturbs some other byte and is caught there -- a mutation that
+    #     replaced the recomputation with `d[0] = expected[0]` survived the
+    #     first four checks. What only recomputation can catch: an image whose
+    #     stored header checksum disagrees with its OWN header bytes, read back
+    #     from a device that programmed it faithfully. Every payload byte then
+    #     matches; the only evidence is that the recomputed checksum differs
+    #     from what the image claims.
+    liar = bytes([(sum(body[:17]) & 0xFF) ^ 0x5A]) + body    # byte 0 is a lie
+    d3b, e3b, notes3b = normalise_for_compare(b"\x00" + liar[1:], liar)
+    chk("image with a wrong stored checksum is caught", d3b != e3b)
+    chk("wrong stored checksum is reported", any("MISMATCH" in n for n in notes3b))
+
+    # 4. an all-0x00 byte 0 in the IMAGE itself must not trigger the rewrite
+    img0 = b"\x00" + img[1:]
+    d4, _, notes4 = normalise_for_compare(b"\x00" + img[1:], img0)
+    chk("no rewrite when image byte 0 is itself 0x00", not notes4)
+
+    for f in fails:
+        print("SELFTEST FAIL: %s" % f)
+    if fails:
+        return 1
+    print("SELFTEST PASS: read-back compare handles the masked header checksum, "
+          "still catches header and payload corruption")
+    return 0
+
+
 def main():
+    if "--selftest" in sys.argv:
+        return _selftest()
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -662,6 +859,12 @@ def main():
     p = sub.add_parser("flash", help="write an image to the EEPROM over DFU")
     p.add_argument("image")
     p.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    # Read-only. Both need dfuIDLE and neither writes anything, so they cannot
+    # strand a download -- see _open_idle_for_read().
+    p = sub.add_parser("dump", help="read the EEPROM back to a file (DFU_UPLOAD)")
+    p.add_argument("out")
+    p = sub.add_parser("verify", help="read the EEPROM back and diff it against an image")
+    p.add_argument("image")
     for _p in sub.choices.values():
         _p.add_argument("--addr", metavar="BUS:ADDR", default=None,
                         help="target one unit when several are on the bus, "
@@ -672,7 +875,8 @@ def main():
         _b, _a = args.addr.split(":")
         TARGET_ADDR = (int(_b), int(_a))
     return {"probe": cmd_probe, "validate": cmd_validate,
-            "info": cmd_info, "flash": cmd_flash}[args.cmd](args)
+            "info": cmd_info, "flash": cmd_flash,
+            "dump": cmd_dump, "verify": cmd_verify}[args.cmd](args)
 
 
 if __name__ == "__main__":
