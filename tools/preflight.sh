@@ -122,6 +122,11 @@ else
     # was silently discarded by argparse, and with one unit attached that read
     # the wrong device and printed a perfectly valid-looking result.
     check "mboxtlm unit selection"              python3 tools/mboxtlm.py --selftest
+    # #180. A citation is a claim; an un-gated citation format is an unchecked
+    # one. rev20_flat.asm disassembles the EEPROM (addresses = true + 0x12),
+    # and a dozen citations quoted it in a free-form shape that
+    # check_citation_targets.py does not parse, so nothing ever verified them.
+    check "no citations from rev20_flat.asm"    python3 tools/check_flat_asm_citations.py
     check "verify_setup_paths"        python3 tools/verify_setup_paths.py
     check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
     check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py

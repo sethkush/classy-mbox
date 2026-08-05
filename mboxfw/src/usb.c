@@ -902,11 +902,21 @@ void usb_ep0_setup(void)
     OEPBBAX0 = EP_BBAX(EP0_OUT_BUF_ADDR);
     OEPBSIZ0 = EP_BSIZE(EP0_MAX_PACKET);
 
-    /* Enable EP0. Rev 20's reset init (rev20_flat.asm @ 0x099e/0x09a7)
-     * writes 0x84 to IEPCNF0 (0xFFA8) and OEPCNF0 (0xFF68) — bit 7 =
-     * USBIE (enable) + bit 2 (interrupt-on-transaction). Earlier drafts
-     * of this file wrote 0xFA which was a guess; 0x84 is what the
-     * shipping vendor firmware uses. */
+    /* Enable EP0. Bit 7 = USBIE (enable) + bit 2 (interrupt-on-transaction).
+     * Earlier drafts of this file wrote 0xFA, which was a guess; 0x84 is what
+     * the shipping vendor firmware uses.
+     *
+     * #180: this cited "rev20_flat.asm @ 0x099e/0x09a7" and paired the two
+     * register NAMES with each other's addresses. rev20_flat.asm disassembles
+     * the EEPROM, so its addresses are true + 0x12 (see
+     * FINDING_rev20_flat_asm_is_offset_by_18.md) -- but 0x099e happens to be a
+     * real address here, which is exactly why the label could not be trusted
+     * either way. Re-derived from the access map, and the pairing is the
+     * opposite of what was written: 0xFFA8 is OEPCNF0 and 0xFF68 is IEPCNF0,
+     * per TI Reg_stc1.h lines 109/170 and regs.h. 0x09a7 is not a write site
+     * in either image. */
+    /* OEPCNF0 = 0xFFA8: Rev 20 fcn.0x0970 @ 0x0995, Rev 22 fcn.0x0891 @ 0x08B6
+     * IEPCNF0 = 0xFF68: Rev 20 fcn.0x0970 @ 0x099B, Rev 22 fcn.0x0891 @ 0x08BC */
     /* IEPDCNTX0 top bit is the NAK flag. TI's engUsbInit starts EP0 IN
      * in NAK state (0x80) so the first IN token doesn't ship a spurious
      * zero-length packet before we have data to send. Ours previously
@@ -1011,8 +1021,9 @@ void usb_init(void)
      * telemetry block 5 measured tlm_sof_count == 0 on hardware for
      * exactly that reason — we had masked the frame clock off.
      *
-     * Rev 20 uses 0x9F (RSTR|SOF|PSOF|SETUP|STPOW) at rev20_flat.asm
-     * 0x09FE-0x0A03. The old comment here claimed switching to 0x9F
+     * Rev 20 uses 0x9F (RSTR|SOF|PSOF|SETUP|STPOW) at Rev 20 fcn.0x0970 @
+     * 0x09EC, Rev 22 fcn.0x0891 @ 0x090D (#180: was cited as "rev20_flat.asm
+     * 0x09FE", which is that listing's EEPROM-relative address, +0x12). The old comment here claimed switching to 0x9F
      * "would silence our SETUP handler" because STPOW was bit 5 —
      * both parts are wrong. STPOW is bit 0 and SETUP is bit 2, and
      * 0x9F sets both; commit 189c219 corrected the same error in
@@ -1032,8 +1043,11 @@ void usb_init(void)
     g_ep0_reply_remaining = 0;
     g_ep0_out_pending = EP0_OUT_NONE;
 
-    /* Settle before attach. Rev 20 (rev20_flat.asm 0x0AC5-0x0AD8) runs a
-     * ~65k-iter outer loop between finishing peripheral init and enabling
+    /* Settle before attach. Rev 20 @ 0x0AB3-0x0AC6, Rev 22 @ 0x0A5D-0x0A70
+     * (#180: was "rev20_flat.asm 0x0AC5-0x0AD8", +0x12). The loop is
+     * byte-identical in both images -- `d3 e5 29 94 00 e5 28 94 00 40 0a e5 29
+     * 15 29 70 ef 15 28 80 eb`, a 16-bit down-counter on IRAM 0x28:0x29 --
+     * a ~65k-iter outer loop between finishing peripheral init and enabling
      * EA / attaching D+. Gives the USB engine time to reach a stable idle
      * state. mboxfw's outer order runs hw_init/cs8427/codec AFTER usb_init
      * so a lot of settle time exists naturally, but the extra ~15 ms loop

@@ -53,8 +53,13 @@ def parse_ihx(text: str) -> bytes:
 
 
 # The subset of usb_init writes whose values are enumeration-critical.
-# These are Rev 20's exact values from rev20_flat.asm lines 1202-1226
-# (fcn.0x0982). v22 byte-identical per v22_vs_v20_diff.md.
+# These are Rev 20's exact values from fcn.0x0970 (Rev 22 fcn.0x0891).
+# #180: this cited "rev20_flat.asm lines 1202-1226 (fcn.0x0982)". That listing
+# disassembles rev20_eeprom.bin including its 18-byte header, so its addresses
+# -- and the function label derived from them -- are the true address + 0x12;
+# 0x0982 - 0x12 = 0x0970. Values themselves were unaffected, since the listing
+# decodes the real code correctly and only its addresses are shifted.
+# flat-asm-ok
 #
 # (sfr, expected_value, note)
 CHECKS = [

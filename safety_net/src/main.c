@@ -61,8 +61,12 @@
 #define VEC_RSTR   0x17
 #define VEC_NONE   0x24
 
-/* USBCTL attach bit — CONN (D+ pullup). Rev 20 (rev20_flat.asm 0x0ADE)
- * does `USBCTL |= 0x80` from a known-0 base, final value 0x80 (CONN
+/* USBCTL attach bit — CONN (D+ pullup). Rev 20 @ 0x0ACC, Rev 22 @ 0x0A76
+ * (#180: was cited as "rev20_flat.asm 0x0ADE"; that listing disassembles the
+ * EEPROM so its addresses are true + 0x12. True 0x0ADE is `f4 12 0e d5`,
+ * CPL A / LCALL -- unrelated code. True 0x0ACC is
+ * `90 ff fc e0 44 80 f0` = MOV DPTR,#USBCTL; MOVX A,@DPTR; ORL A,#0x80; MOVX.)
+ * Stock does `USBCTL |= 0x80` from a known-0 base, final value 0x80 (CONN
  * only, FEN cleared). safety_net previously assigned 0xC0 (matching
  * TI reference UsbEng.c:647) but Flash #2 in BRICK_LOG.md is exactly
  * the bug where assigning USBCTL clobbers boot-ROM state; POLICY §2
@@ -729,7 +733,8 @@ static void usb_service(void)
              *
              * NOTE 2026-07-25 (corrected): earlier revs wrote
              * USBIMSK = 0x9F here (matching Rev 20's RSTR handler at
-             * rev20_flat.asm 0x0F7E). Removed after datasheet §6.5.1.3
+             * Rev 20 @ 0x0F6E, Rev 22 @ 0x0F8F -- #180, was
+             * "rev20_flat.asm 0x0F7E", +0x12; flat-asm-ok). Removed after §6.5.1.3
              * verification: USBIMSK is NOT cleared by bus reset, so
              * the rewrite is redundant either way. Both 0xE5 and 0x9F
              * enable SETUP (bit 2) + STPOW (bit 0). Earlier claim that
@@ -780,8 +785,14 @@ void main(void)
     /* DISCONNECT FIRST. Boot ROM leaves USBCTL with CONN asserted after
      * its DFU manifest; if we run init while the host is still trying to
      * enumerate boot ROM, the two enumerations race and the host times
-     * out. Rev 20 (rev20_flat.asm 0x0AB8 and 0x08E2) explicitly writes
-     * `USBCTL = 0` twice at the very top of main(). Because USBCTL is
+     * out. #180 CORRECTION: this said Rev 20 "explicitly writes USBCTL = 0
+     * twice at the very top of main()", citing rev20_flat.asm 0x0AB8 and  flat-asm-ok
+     * 0x08E2. Both addresses are EEPROM-relative (+0x12), and re-deriving them
+     * shows the two sites are NOT the same register: true 0x08D0 is USBCTL
+     * (write-computed; Rev 22 @ 0x07F1) and true 0x0AA6 is USBIMSK = 0x00
+     * (Rev 22 @ 0x0A50). So stock zeroes USBCTL once and masks interrupts
+     * once, not USBCTL twice.  The carve-out below still applies to our own
+     * single USBCTL = 0. Because USBCTL is
      * boot-ROM-owned but this is an intentional disconnect (POLICY §2
      * carve-out), a direct write is correct here. */
     USBCTL = 0;
@@ -802,7 +813,9 @@ void main(void)
      *
      * Rev 20 does `GLOBCTL |= 0x01` too — but ONLY AFTER programming
      * CPTCNF/CPTBRRX/CPTBRTX to configure the codec port first (see
-     * rev20_flat.asm 0x08e2..0x0946). safety_net has no codec setup, so
+     * Rev 20 @ 0x08D0..0x0934, Rev 22 @ 0x07F1..0x0855 -- #180, was
+     * "rev20_flat.asm 0x08e2..0x0946", +0x12; flat-asm-ok; CPTEN is set at
+     * Rev 20 0x0934 / Rev 22 0x0855). safety_net has no codec setup, so
      * we must skip this write entirely. Boot ROM's GLOBCTL=0x04 (LPWR
      * on, CPTEN off) is already correct for USB-only operation. */
 
@@ -840,7 +853,9 @@ void main(void)
     OEPCNF0  = 0x84;
 
     /* USBFADR = 0 — device starts unaddressed. TI UsbEng.c engUsbInit
-     * line 635; Rev 20 rev20_flat.asm 0x0910. */
+     * line 635; Rev 20 @ 0x09F2, Rev 22 @ 0x0913. #180: was cited as
+     * "rev20_flat.asm 0x0910" (flat-asm-ok), wrong BOTH ways -- true 0x0910 is a
+     * CPTCNF4 write and 0x0910-0x12 is GLOBCTL. Neither is USBFADR. */
     USBFADR  = 0;
 
     STAGE(3);
@@ -858,7 +873,8 @@ void main(void)
      * path in VEC_IEP0 relies on. Datasheet §6.5.7.2.
      *
      * Rev 20 uses 0x9F (RSTR|SOF|PSOF|SETUP|reserved|STPOW) at
-     * rev20_flat.asm 0x09FE — deliberately different: they need SOF
+     * Rev 20 @ 0x09EC, Rev 22 @ 0x090D (#180: was "rev20_flat.asm 0x09FE",
+     * +0x12) — deliberately different: they need SOF
      * for streaming, we need SUSR/RESR for suspend/resume. Both
      * enable SETUP+STPOW so enumeration works either way. */
     USBIMSK = 0xE5;
@@ -878,7 +894,8 @@ void main(void)
 
     STAGE(4);
 
-    /* Settle. Rev 20 (rev20_flat.asm 0x0AC5-0x0AD8) runs a ~65k-iter
+    /* Settle. Rev 20 @ 0x0AB3-0x0AC6, Rev 22 @ 0x0A5D-0x0A70 (#180: was
+     * "rev20_flat.asm 0x0AC5-0x0AD8", +0x12; flat-asm-ok) runs a ~65k-iter
      * outer loop between finishing init and enabling EA/CONN. This
      * gives the USB engine time to reach a stable idle state before
      * unmasking global interrupts and attaching D+. */

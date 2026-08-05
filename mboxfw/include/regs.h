@@ -62,9 +62,15 @@
 #define OEPDCNTX0   XDATA(0xFFAB)
 #define OEPDCNTY0   XDATA(0xFFAF)   /* Y buffer count — OEPCNFn + 7 */
 
-/* EP0 packet buffers — placed manually in TAS1020A shared-mem window
- * starting at 0xF800. Rev 20's fcn.0x0982 disasm (rev20_flat.asm:1202-1220)
- * shows OEPBBAX0=0x42 written first, then IEPBBAX0 via `inc a` (0x43).
+/* EP0 packet buffers — placed manually in TAS1020B shared-mem window
+ * starting at 0xF800. Stock writes OEPBBAX0=0x42 first, then IEPBBAX0 via
+ * `inc a` (0x43):
+ *   OEPBBAX0: Rev 20 fcn.0x0970 @ 0x0970, Rev 22 fcn.0x0891 @ 0x0891
+ *   IEPBBAX0: Rev 20 fcn.0x0970 @ 0x0976, Rev 22 fcn.0x0891 @ 0x0897
+ * #180: this cited "fcn.0x0982 disasm (rev20_flat.asm:1202-1220)". BOTH the
+ * function label and the line range came from that listing, which
+ * disassembles the EEPROM including its 18-byte header -- and 0x0982 - 0x12
+ * = 0x0970, so even the function number was offset. flat-asm-ok.
  * Encoded as base_addr/8: 0x42*8 = 0xFA10 (OUT), 0x43*8 = 0xFA18 (IN).
  * (Earlier drafts had these swapped; symptomatic bug was that EP0 IN
  *  packets would land where the host wrote OUT, corrupting SETUP data.) */

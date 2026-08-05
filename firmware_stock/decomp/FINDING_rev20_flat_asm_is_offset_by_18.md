@@ -145,3 +145,70 @@ already justified for 0xAC, now recorded in its own row.
   the dependency on a listing whose addresses are wrong. The union with the
   access map gets the same write set today, so this is cleanup, not a
   correctness gap.
+
+---
+
+## #180 RESOLVED 2026-08-05 — all citations re-derived, and two were false
+
+Every flat-asm-sourced citation was re-derived against
+`rev20_firmware_code.bin` and `rev22_firmware_code.bin` using the access map,
+never by subtracting 0x12 blindly. That caution was justified: **the offset
+was not the whole story.**
+
+**Correct as written, merely mislabelled (1).** `usb.c` cited
+`rev20_flat.asm @ 0x099e` for the EP0 enable, and 0x099E *is* the real
+`IEPCNF0` write site. It was derived from a correct source and labelled with
+the wrong one. Blind arithmetic would have broken it. It did carry a separate
+error: the two register names were paired with each other's addresses
+(0xFFA8 is OEPCNF0 and 0xFF68 is IEPCNF0, per TI Reg_stc1.h 109/170).
+
+**Off by exactly 0x12 (most of them).** USBCTL CONN, the USBIMSK 0x9F sites,
+the DMA channel/timeslot block, both ACGCTL sites, the settle loop, the
+USBCTL-zero site. Each now cites both images.
+
+**Wrong in BOTH directions — i.e. simply false (2).**
+
+1. `safety_net/src/main.c` cited `rev20_flat.asm 0x0910` for `USBFADR = 0`.
+   True 0x0910 is a `CPTCNF4` write; 0x0910 − 0x12 is `GLOBCTL`. Neither is
+   USBFADR, which stock writes at Rev 20 0x09F2 / Rev 22 0x0913.
+
+2. `rev20_diff_justifications_safety_net.md` claimed *"TI UsbEng.c:640, Rev 20
+   rev20_flat.asm 0x0917 both use 0xE5"* for `USBIMSK`. **Rev 20 never writes
+   USBIMSK = 0xE5.** Byte-scanned: its only USBIMSK values are 0xFF (0x03F1),
+   0x9F (0x09EC, 0x0550, 0x0F6E) and 0x00 (0x0AA6). The 0xE5 seen at flat
+   0x0917 is `CPTCNF2` at true 0x0905 — a codec-port register. A value
+   collision plus a wrong-register attribution, in a table a gate reads.
+   Only the TI reference ever supported 0xE5; the Rev 20 half is withdrawn.
+
+Also corrected: the function label `fcn.0x0982` in `regs.h` and
+`verify_usb_init.py` was itself flat-relative — 0x0982 − 0x12 = 0x0970, the
+real function. The offset had propagated into function *names*, not just
+addresses.
+
+### The structural fix
+
+`tools/check_flat_asm_citations.py`, wired into preflight (34 gates now).
+Quoting an address next to `rev20_flat.asm` is an error; `flat-asm-ok` on the
+line annotates a known-wrong citation being retired. Verified to fail on an
+injected citation.
+
+These survived for months because the free-form `rev20_flat.asm @ 0xNNNN`
+shape is not what `check_citation_targets.py` parses. **An un-gated citation
+format is an unverified claim** — the gate did not miss them, it was never
+looking. That is the reusable lesson, and it is why the fix is a gate rather
+than ten edits.
+
+Two other gates caught errors in the corrections themselves while this was
+being written: `check_sfr_names.py` flagged explanatory text that put a
+register name beside a different register's address, and `check_byte_quotes.py`
+had earlier flagged stock bytes cited against the `MOVX` address when the run
+starts at the `MOV DPTR` three bytes earlier.
+
+The mboxfw image is byte-identical across this change (`ef1ab9ab…`, the 0x0023
+image running on unit B): comments and tables only.
+
+### Still open
+
+`tools/diff_vs_rev20_safety_net.py` reads the same listing with its own copy of
+the DPTR scanner and did not get the straight-line fix. Its stock-side data has
+the phantom-write flaw described above.
