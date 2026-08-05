@@ -129,3 +129,78 @@ eliminate. Made rev-aware; it now checks 55 Rev 20 and 7 Rev 22 citations,
 including two pre-existing Rev 22 citations that had been silently skipped.
 Mutation-tested against a far-wrong address and against an address inside a data
 table, and it correctly reports Rev 22 access sites rather than Rev 20's.
+
+---
+
+## VERIFIED ON HARDWARE 2026-08-05 — build 0x0023, unit B
+
+First confirmation that **mboxfw playback works at all.** B played, A captured
+over the analog cross-link (`B out1 -> A src1`, BENCH_WIRING.md).
+
+### 1. Does playback work?
+
+Yes, and cleanly. Steady window t=2..17 s, 720000 frames:
+
+```
+peak 382267   rms 269882   -29.9 dBFS
+crest 1.4164                        (pure sine = 1.4142)
+zero crossings -> 1000.00 Hz        (exactly)
+THD 0.03%                           (2nd harmonic -71.3 dB, 3rd -80.5 dB)
+glitch events, 2% linear-prediction residual: 0 in 15 s
+envelope: 269885 +/- 5 rms per 0.5 s block for the whole run
+```
+
+-29.9 dBFS matches the ~-28 dBFS this analog path measured independently in
+BENCH_WIRING.md, so the level is the cable, not the firmware.
+
+**A measurement error worth recording.** The first pass reported crest 4.407
+and 943.8 Hz and looked like badly distorted audio. Both numbers were
+artifacts: the capture was started 1 s before the player, and a startup
+transient at t=0 (peak 1187758, ~4x the tone) dominated whole-file statistics
+and suppressed the zero-crossing rate. Whole-file aggregates over a window
+that includes transients describe the transient, not the signal. The envelope
+profile is what exposed it -- the "quiet" blocks began at t=0.2 s, before
+playback had even started, which is impossible for a playback defect.
+
+### 2. Does the watchdog fire?
+
+**No. `pb_resyncs` stayed 0** at baseline, at t=3/8/13 s mid-stream, and after
+teardown.
+
+That number is only meaningful with proof the code ran, because "never needed"
+and "never ran" produce the same 0. Two independent observables, both sampled
+mid-stream:
+
+```
+sof_count:  303 (idle) -> 2921 -> 7856 -> 12787      ~1000/s: the SOF ISR runs
+mux word:   0xED (idle) -> 0x6D (playing)            bit 7 = playback_running
+```
+
+`mux word` bit 7 is driven by `panel_update_streaming()` from exactly the
+`playback_running` flag that `streaming_sof()` early-returns on. ISR running +
+gate open => the watchdog body executes on every SOF. So the count is a real
+"the buffer was always frame-aligned", not silence from dead code.
+
+Nothing upstream misaligns the playback buffer under mboxfw. The watchdog is
+insurance that has not yet been called on.
+
+### 3. The deliberate divergence (gated on `playback_running`)
+
+Nothing is lost. Rev 22 runs the check unconditionally; mboxfw skips it while
+playback is stopped. `sof_count` climbs while idle (303 before any stream), so
+the ISR is live in exactly the window where the two firmwares differ -- and in
+that window DMAEN is clear and the host has no buffer, so the only thing Rev
+22's version can do with a stale count is write `OEPCNF2 = 0xC5` and set
+DMAEN, enabling playback nobody asked for. The gate exists to prevent that,
+and the idle reading confirms the gate is the only thing standing between us
+and it.
+
+### Not established
+
+That the watchdog *works* -- only that it is reachable, correctly gated, and
+never triggered in 17 s of aligned playback. Forcing a genuine misalignment
+would need a deliberately mis-sized host transfer; nothing here exercises the
+resync path itself. Rev 20's lack of a SOF handler remains the leading
+candidate for the "needs a v22 flash before playback works" bug, but mboxfw
+playback working on the first hardware test means this port has no measured
+before/after to attribute it to.
