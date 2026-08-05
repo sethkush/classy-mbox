@@ -119,7 +119,42 @@
  * 352 B at 48 kHz -- roughly 0.11 ms of tolerance for a late host instead of
  * 0.6 ms. There is no room to enlarge: the two buffers already occupy 1280 of
  * the 1288 B available. */
-#define AUDIO_MAX_PACKET_LEN_2X  582
+/* MBOX_882_DIAG (#46 diagnostic, build 0x002D) — retarget alt 2 at 88.2 kHz
+ * ALONE and shrink the reservation to what that rate actually needs.
+ *
+ * 0x002C measured BOTH 88.2 and 96 kHz as duplex-denied and simplex-OK. For
+ * 96 kHz that is a hardware fact: 576 B/frame per direction does not fit a
+ * full-speed frame twice over. For 88.2 kHz it is an artefact of OUR
+ * descriptor packing — it shares alt 2 with 96 kHz, and the host reserves
+ * bandwidth from wMaxPacketSize, so 88.2 pays 96 kHz's 582 B bill for
+ * bandwidth it never uses. 88.2 kHz needs 89 samples x 6 = 534 B.
+ *
+ * Whether 48 fewer bytes changes the answer is genuinely marginal and cannot
+ * be reasoned out from here. The binding constraint is EHCI split-transaction
+ * scheduling: a full-speed transfer behind a transaction translator is carved
+ * into ~188 B start-splits, one per microframe, out of the 8 in a frame.
+ *
+ *     294 B (48 kHz, alt 1)   2 start-splits   4 of 8 duplex   WORKS
+ *     534 B (this build)      3 start-splits   6 of 8 duplex   THE QUESTION
+ *     582 B (alt 2 normally)  4 start-splits   8 of 8 + CS     DENIED
+ *
+ * So this build exists to answer one question and is not shippable: it drops
+ * 96 kHz from the descriptors entirely, because an endpoint that reserved 534
+ * B and then received a 576 B packet would babble. Do NOT issue
+ * TLM_REQ_SET_CLOCK wValue 4 (96 kHz) against this image for the same reason.
+ *
+ * It costs NEGATIVE bytes — one constant plus one fewer rate triplet — which
+ * is the point: settle the question before spending ~92 bytes on a third alt
+ * setting that may buy nothing. */
+#if defined(MBOX_882_DIAG)
+#  define AUDIO_MAX_PACKET_LEN_2X  534
+#  define FMT_2X_NRATES            1
+#else
+#  define AUDIO_MAX_PACKET_LEN_2X  582
+#  define FMT_2X_NRATES            2
+#endif
+/* Type I format descriptor: 8 fixed bytes + 3 per discrete rate. */
+#define FMT_2X_LEN  (8 + 3 * FMT_2X_NRATES)
 
 
 /* --- Descriptor lengths ---------------------------------------------
@@ -192,7 +227,8 @@
 /* Per streaming interface: alt 0 (9) + alt 1 (9+7+14+9+7) + alt 2 (9+7+14+9+7).
  * #46 added the alt-2 row on each; a wTotalLength that does not grow with it
  * truncates the parse at exactly the point the new alt begins. */
-#define AS_IFACE_LEN        (9 + (9 + 7 + 14 + 9 + 7) + (9 + 7 + 14 + 9 + 7))
+#define AS_IFACE_LEN        (9 + (9 + 7 + 14 + 9 + 7) \
+                             + (9 + 7 + FMT_2X_LEN + 9 + 7))
 
 #define APP_CFG_TOTAL_LEN   (9 + 9 + AC_BLOCK_LEN + AS_IFACE_LEN + AS_IFACE_LEN)
 

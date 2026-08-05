@@ -37,6 +37,28 @@ EXTRA_CFLAGS += -DTLM_BUILD_ID=0x0026
 endif
 endif
 
+# #46 EXPERIMENT ONLY -- `make MBOX_882_DIAG=1` retargets alt 2 at 88.2 kHz
+# alone and drops its wMaxPacketSize from 582 to 534, the packet 88.2 kHz
+# actually needs (89 samples x 6).
+#
+# 0x002C measured 88.2 AND 96 as duplex-denied, simplex-OK. For 96 that is a
+# hardware fact. For 88.2 it is an artefact of sharing alt 2 with 96: the host
+# reserves bandwidth from wMaxPacketSize, so 88.2 pays a bill 48 bytes larger
+# than it needs. Whether that changes the EHCI split-transaction verdict
+# (3 start-splits per direction instead of 4) cannot be reasoned out -- it
+# needs a flash.
+#
+# NOT SHIPPABLE: 96 kHz is absent from the descriptors in this build, because
+# an endpoint reserving 534 B that received a 576 B packet would babble. Do not
+# issue TLM_REQ_SET_CLOCK wValue 4 against it. Reports itself as 0x002D.
+#
+# Costs NEGATIVE bytes (one constant, one fewer rate triplet), which is the
+# point: settle the question before spending ~92 bytes on a third alt setting.
+MBOX_882_DIAG ?=
+ifneq ($(MBOX_882_DIAG),)
+EXTRA_CFLAGS += -DMBOX_882_DIAG -DTLM_BUILD_ID=0x002D
+endif
+
 # Per-unit serial number. `make MBOX_UNIT=A` / `=B` serves iSerialNumber with
 # the serial printed on that unit, so BOTH units can build at the same
 # MBOX_PID and still be addressed individually by the host. Undefined = no

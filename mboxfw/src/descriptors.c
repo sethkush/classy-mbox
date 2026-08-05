@@ -248,15 +248,18 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     1,
     0x01, 0x00,
 
-    /* Type I Format descriptor, 2 discrete rates (14 bytes) */
-    14, USB_DT_CS_INTERFACE, UAC_AS_FORMAT_TYPE,
+    /* Type I Format descriptor, FMT_2X_NRATES discrete rates.
+     * MBOX_882_DIAG drops 96000 and shrinks this to 11 bytes — see usb.h. */
+    FMT_2X_LEN, USB_DT_CS_INTERFACE, UAC_AS_FORMAT_TYPE,
     0x01,
     AUDIO_NUM_CHANNELS,
     AUDIO_SUBFRAME_BYTES,
     AUDIO_BIT_RESOLUTION,
-    0x02,                  /* bSamFreqType = 2 discrete rates */
+    FMT_2X_NRATES,         /* bSamFreqType = discrete rate count */
     0x88, 0x58, 0x01,      /* 88200 Hz */
+#if !defined(MBOX_882_DIAG)
     0x00, 0x77, 0x01,      /* 96000 Hz */
+#endif
 
     /* Standard AS isochronous endpoint (9 bytes) */
     9, USB_DT_ENDPOINT,
@@ -336,15 +339,18 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     1,
     0x01, 0x00,
 
-    /* Type I Format descriptor, 2 discrete rates (14 bytes) */
-    14, USB_DT_CS_INTERFACE, UAC_AS_FORMAT_TYPE,
+    /* Type I Format descriptor, FMT_2X_NRATES discrete rates.
+     * MBOX_882_DIAG drops 96000 and shrinks this to 11 bytes — see usb.h. */
+    FMT_2X_LEN, USB_DT_CS_INTERFACE, UAC_AS_FORMAT_TYPE,
     0x01,
     AUDIO_NUM_CHANNELS,
     AUDIO_SUBFRAME_BYTES,
     AUDIO_BIT_RESOLUTION,
-    0x02,                  /* bSamFreqType = 2 discrete rates */
+    FMT_2X_NRATES,         /* bSamFreqType = discrete rate count */
     0x88, 0x58, 0x01,      /* 88200 Hz */
+#if !defined(MBOX_882_DIAG)
     0x00, 0x77, 0x01,      /* 96000 Hz */
+#endif
 
     /* Standard AS isochronous endpoint (9 bytes) */
     9, USB_DT_ENDPOINT,
