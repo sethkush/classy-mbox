@@ -876,26 +876,37 @@ def _selftest():
     #    proves it agrees with the device. It is also what caught the original
     #    design error -- verify compared against the 8140-byte record file when
     #    the device returns the 5920-byte EEPROM image.
+    #
+    #    It is compared against ITSELF with byte 0 restored, NOT against
+    #    whatever mboxfw/build currently holds. The first version did the
+    #    latter, and every firmware change after 0x0023 then failed this gate
+    #    for the one reason that is not a defect: the build moved. A frozen
+    #    fixture can only be evidence about the build it was taken from.
     here = os.path.dirname(os.path.abspath(__file__))
     fixture = os.path.join(here, "testdata", "B_0x0023_eeprom_dump.bin")
-    img_path = os.path.join(os.path.dirname(here), "mboxfw", "build",
-                            "mboxfw_flasher.bin")
-    if os.path.exists(fixture) and os.path.exists(img_path):
+    if os.path.exists(fixture):
         real = open(fixture, "rb").read()
-        try:
-            _b, _s, recs = load_image(img_path)
-            built = eeprom_image_from_records(recs)
-        except SystemExit:
-            built = None
-        if built is not None:
-            chk("fixture size matches reassembled image (%d vs %d)"
-                % (len(real), len(built)), len(real) == len(built))
-            rd, re_, notes5 = normalise_for_compare(real, built)
-            chk("real device readback compares equal after normalisation",
-                rd == re_)
-            chk("real readback's byte 0 was masked to 0x00", real[0] == 0x00)
-            chk("recomputed checksum matches the image's stored one",
-                (sum(real[1:18]) & 0xFF) == built[0])
+        chk("real readback's byte 0 was masked to 0x00", real[0] == 0x00)
+        # The header's own payload-size field (bytes 16:17, big-endian) has to
+        # account for everything after the 18-byte header. This is the device's
+        # bytes checking the device's bytes -- no build involved.
+        chk("real readback length matches its own payloadSize field",
+            len(real) == 18 + ((real[16] << 8) | real[17]))
+        # What the host believed it wrote: identical bytes, with byte 0 holding
+        # the checksum the boot ROM masks out on read-back.
+        expected = bytes([sum(real[1:18]) & 0xFF]) + real[1:]
+        rd, re_, notes5 = normalise_for_compare(real, expected)
+        chk("real device readback compares equal after normalisation",
+            rd == re_)
+        chk("the byte-0 rewrite is what makes it equal",
+            any("checksum" in n for n in notes5))
+        # And a single flipped payload byte in the same real image is still
+        # caught -- the normalisation forgives byte 0 and nothing else.
+        bent = bytearray(expected)
+        bent[100] ^= 0x01
+        rd6, re6, _ = normalise_for_compare(real, bytes(bent))
+        chk("a flipped payload byte in the real image is still caught",
+            rd6 != re6)
 
     for f in fails:
         print("SELFTEST FAIL: %s" % f)

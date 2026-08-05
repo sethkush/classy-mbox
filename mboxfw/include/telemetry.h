@@ -66,6 +66,7 @@
  *   bmRequestType 0x40
  *   wValue low   0 = slave to the incoming S/PDIF stream (clock mode 1)
  *                1 = internal 44.1 kHz   2 = internal 48 kHz
+ *                3 = internal 88.2 kHz   4 = internal 96 kHz   (#46)
  *   wIndex low   0 = Selector -> analog  1 = Selector -> S/PDIF
  *                anything else = leave the Selector alone
  *
@@ -100,7 +101,19 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0023   /* 0023: #162 + #163 -- stock's endpoint buffer
+#define TLM_BUILD_ID     0x0024   /* 0024: #46 -- 88.2 and 96 kHz reachable, via
+                                   *       TLM_REQ_SET_CLOCK wValue 3/4 ONLY. The
+                                   *       synthesizer cannot reach 2x (12-25 MHz
+                                   *       range, and 48 kHz already runs it at
+                                   *       24.576 MHz), so the doubling is in the
+                                   *       C-port dividers: CPTCNF4/CPTRXCNF4 go
+                                   *       /4 -> /2 and the frequency word is
+                                   *       unchanged. Clock modes 6 and 7. NOT in
+                                   *       the descriptors: whether the codec
+                                   *       CONVERTS at 96 kHz is unmeasured, and
+                                   *       until it is no host can select a rate
+                                   *       whose analog behaviour is unknown.
+                                   * 0023: #162 + #163 -- stock's endpoint buffer
                                    *       geometry. 640 B each, contiguous from
                                    *       0xFA20 (playback) and 0xFCA0 (capture),
                                    *       and base/size written ONCE in

@@ -41,6 +41,11 @@ static __data unsigned long stream_rate = 48000UL;
  * the boot-default note in streaming_set_rate(). */
 __data unsigned char g_clock_mode = 3;
 
+/* Last value written to the C-port serial-clock dividers (CPTCNF4/CPTRXCNF4),
+ * seeded to hw_init's boot value so a rate request that does not change it
+ * writes nothing. See streaming_set_rate(). */
+static __data unsigned char cport_div = 0x03;
+
 /*
  * The two 24-bit constants Rev 20 loads (0x0F_A861 at fcn.0x0DEC/0x0DFE,
  * 0x20_4B6A at fcn.0x0728 @ 0x0771) are ADAPTIVE CLOCK GENERATOR frequency
@@ -56,7 +61,123 @@ __data unsigned char g_clock_mode = 3;
  */
 void streaming_set_rate(unsigned long hz)
 {
+    /* #46 — 88.2 and 96 kHz reuse the 44.1 and 48 kHz frequency words and
+     * halve the C-port serial-clock divider instead. Nothing else differs.
+     *
+     * WHY NOT A BIGGER SYNTH WORD. Datasheet §2.2.6.1 gives the synthesizer
+     * output as 600/N MHz for 24 <= N < 50, i.e. a range of 12-25 MHz, and
+     * §2.2.6 states the same range for the block. Stock's 48 kHz word
+     * 0x61A80F is N = 24.4140625 -> 24.576 MHz, which is the datasheet's own
+     * worked example, and 24.576 MHz is 512 x 48000. Keeping that ratio at 96
+     * kHz would need 49.152 MHz, twice the top of the synthesizer's range.
+     * There is no 96 kHz frequency word; the part cannot make one.
+     *
+     * WHAT IS AVAILABLE. Per Figure 2-1 the C-port serial clock is
+     * CSCLK = MCLKO / B with B from CPTCNF4[2:0] (playback) and
+     * CSCLK2 = MCLKO2 / B2 with B2 from CPTRXCNF4[2:0] (capture), encoded
+     * 001b = /2, 010b = /3, 011b = /4 (§6.5.4.13). The frame is a fixed 128
+     * bits, so at MCLKO = 24.576 MHz, B = 4 gives 6.144 MHz / 128 = 48 kHz and
+     * B = 2 gives 12.288 MHz / 128 = 96 kHz. The codec then sees MCLK = 256fs
+     * rather than 512fs, which is an ordinary ratio for a converter running at
+     * 96 kHz.
+     *
+     * THIS IS MEASURED, not projected. When CPTRXCNF4 was wrongly left at 0x01
+     * between 2026-07-26 and 2026-07-28, hardware read a steady IEPDCNTX1 of
+     * 96 samples per USB frame where stock delivers 48, and 88 where stock
+     * delivers 44 — both exactly 2x, from this divider alone. See the long
+     * comment on CPTRXCNF4 in hw_init.c. That accident is the whole mechanism
+     * of this feature; all that was missing was doing it on purpose, to both
+     * dividers, with the frequency word left alone.
+     *
+     * WHAT IS NOT ESTABLISHED: whether the CONVERTERS follow. The codec has no
+     * register interface — its entire control surface is the 16-bit word in
+     * codec.c (mute pair, reset, mono, source), with no rate or mode field —
+     * so it must be deriving its rate from MCLK and the frame clock, and
+     * nothing in the firmware can tell us whether its modulators are specified
+     * to 96 kHz. That is a bench question, and until it is answered these
+     * rates are reachable ONLY through the vendor request (TLM_REQ_SET_CLOCK
+     * wValue 3/4). They are deliberately NOT in the descriptors and the class
+     * SET_CUR path still stalls them, so no host can select a rate whose
+     * analog behaviour has not been measured.
+     *
+     * NOVEL — reason: stock has no 88.2/96 kHz path. Its only /2 write is the
+     * mode-5 branch (Rev 20 0x07A0, Rev 22 0x077E), which sets CPTRXCNF4 alone
+     * and is unreachable — nothing posts work code 0x0A (see
+     * FINDING_codec_word_bits_resolved.md). The CPTEN bracket below is that
+     * branch's ordering; the playback-side divider write has no stock
+     * precedent at all. */
+    unsigned char dbl = (unsigned char)(hz > 50000UL);
+
     stream_rate = hz;
+    if (dbl) {
+        hz >>= 1;   /* 88200 -> 44100, 96000 -> 48000: from here down the
+                     * frequency word, the clock mode and the channel-status
+                     * base are those of the half-rate, unchanged. */
+    }
+    if (hz != 0UL) {
+        /* Stock's mode-5 ordering, extended to the playback divider:
+         * CPTEN off, program, CPTEN on, clear VECINT.
+         *   0799  GLOBCTL &= 0xFE
+         *   07a0  CPTRXCNF4 = 0x01
+         *   07a6  GLOBCTL |= 0x01
+         *   07af  VECINT = 0
+         * The codec port is stopped across the divider change because the
+         * divider feeds the clock the port is actively framing with.
+         *
+         * BOTH DIRECTIONS OF THE CHANGE ARE HANDLED. Restoring /4 matters as
+         * much as setting /2: a device that had been to 96 kHz and was then
+         * asked for 48 kHz would otherwise stay at 256fs and play back an
+         * octave high, with no register left disagreeing to find it by. The
+         * /4 values are hw_init's, cited there.
+         *
+         * hz == 0 (slaved to S/PDIF) skips this entirely: the incoming stream
+         * decides the rate, and stock's mode 1 touches no C-port register.
+         *
+         * The bracket fires only when the value actually CHANGES. Stock's
+         * modes 2 and 3 touch no C-port register at all, so writing the /4
+         * value on every
+         * SET_CUR(48000) would put a CPTEN stop/start into the ordinary rate
+         * path — on a live stream, on a part whose USB engine is already up
+         * (#47). The common path stays byte-identical to what 0x0023 ran; the
+         * bracket fires only on a genuine divider change. `cport_div` is
+         * seeded to hw_init's boot value, so the first 48 kHz request after a
+         * cold boot writes nothing. */
+        unsigned char b = dbl ? 0x01 : 0x03;
+        if (b != cport_div) {
+        cport_div = b;
+        GLOBCTL  &= 0xFE;   /* Rev 20 fcn.0x0728 @ 0x0799, Rev 22 @ 0x0777 */
+        CPTCNF4   = b;      /* /4 Rev 20 fcn.0x08CB @ 0x0911, Rev 22 fcn.0x07EC @ 0x0832.
+                             * /2 is NOVEL — reason: playback-side doubling.
+                             * Stock's mode 5 halves only the receive divider. */
+        CPTRXCNF4 = b;      /* /4 Rev 20 fcn.0x08CB @ 0x0929, Rev 22 fcn.0x07EC @ 0x084A;
+                             * /2 Rev 20 fcn.0x0728 @ 0x07A0, Rev 22 @ 0x077E */
+        GLOBCTL  |= 0x01;   /* Rev 20 fcn.0x0728 @ 0x07A6, Rev 22 @ 0x0784 */
+        /* STOCK'S NEXT WRITE IS DELIBERATELY NOT COPIED. Both images follow
+         * the CPTEN re-enable with VECINT = 0 — Rev 20 stores at 0x07B1, Rev
+         * 22 at 0x078F, reached by INC DPTR off the GLOBCTL write the helper
+         * at 0x0DEB / 0x0EC7 just performed, which is why a listing that stops
+         * at the LCALL puts it two bytes earlier.
+         *
+         * It is omitted for the reason CLAUDE.md gives for not mirroring a
+         * write on "stock does it" alone. Two things are true here that are
+         * not true of the rest of this bracket:
+         *
+         *   - The branch it comes from has NEVER RUN. Mode 5 is reachable only
+         *     from work code 0x0A, and nothing in either image posts 0x0A (see
+         *     FINDING_codec_word_bits_resolved.md). This is the one citation
+         *     in this file whose behaviour no hardware has ever exercised.
+         *   - VECINT is how usb_service() learns which USB event fired (see
+         *     isr.c). streaming_set_rate() runs out of a control-request
+         *     handler, on a LIVE USB engine that mboxfw brings up before
+         *     hw_init (#47) — precisely the ordering difference CLAUDE.md
+         *     warns about. Clearing the vector register there can discard a
+         *     pending endpoint event that stock, servicing USB later, would
+         *     never have had in flight.
+         *
+         * The divider change does not need it: CPTEN off/on is what makes the
+         * write safe, and that half is copied. */
+        }
+    }
 
     /* Prelude — seed both adaptive-clock-generator digital control
      * registers with 0x10, exactly as Rev 20 does.
@@ -184,6 +305,14 @@ void streaming_set_rate(unsigned long hz)
         ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
         g_clock_mode = 2; /* Rev 20 fcn.0x0728 @ 0x0785 — MOV 0x08,#2 */
 
+    }
+    /* #46 — NOVEL: modes 6 and 7 are 88.2 and 96 kHz, i.e. modes 2 and 3 with
+     * the C-port dividers halved. Stock numbers 1..5 and posts none above 5,
+     * so 6/7 extend the space rather than colliding with it. Telemetry block 9
+     * byte 7 reports this, which is how a bench run tells a doubled rate from
+     * its base rate without inferring it from what was requested. */
+    if (dbl) {
+        g_clock_mode += 4;
     }
     if (hz != 0UL) {
         /* Shared by both rates: Rev 20's modes 2 and 3 both end at the tail
@@ -326,7 +455,25 @@ void streaming_set_rate(unsigned long hz)
             cs8427_write(0x12, 0x00);   /* Rev 20 fcn.0x0568 @ 0x057F */
         } else {
             /* Rev 20 cmd7 @0x048E / cmd8 @0x04A8, issued by fcn.0x0582 */
-            cs8427_write(0x23, (hz == 48000UL) ? 0x40 : 0x00);
+            /* #46 adds the doubled-rate codes. IEC 60958 consumer channel
+             * status byte 3 holds the sampling frequency in bits 24-27, and
+             * the CS8427 presents that field in the register's HIGH nibble,
+             * bit 24 first — so the register value is the bit-reverse of
+             * ALSA's 4-bit code (include/uapi/sound/asound.h,
+             * IEC958_AES3_CON_FS_*):
+             *
+             *   44.1 kHz  code 0x0 = 0000b -> 0000b -> 0x00   (stock)
+             *   48   kHz  code 0x2 = 0010b -> 0100b -> 0x40   (stock)
+             *   88.2 kHz  code 0x8 = 1000b -> 0001b -> 0x10
+             *   96   kHz  code 0xA = 1010b -> 0101b -> 0x50
+             *
+             * The two stock values are what fixes the convention: 48 kHz is
+             * the only one of the four whose code has a single set bit in a
+             * position that distinguishes reversed from straight, and stock
+             * writes 0x40, not 0x20. The doubled bit is the same 0x10 in both
+             * new codes, which is why this is an OR rather than a table. */
+            cs8427_write(0x23, ((hz == 48000UL) ? 0x40 : 0x00)
+                             | (dbl ? 0x10 : 0x00));
             cs8427_write(0x24, 0x80);   /* Rev 20 fcn.0x0582 @ 0x0593 */
         }
     }

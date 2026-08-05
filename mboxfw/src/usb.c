@@ -608,6 +608,10 @@ static void handle_set_clock(void)
         rate = 44100UL;
     } else if (wValueL == 2) {
         rate = 48000UL;
+    } else if (wValueL == 3) {
+        rate = 88200UL;     /* #46 */
+    } else if (wValueL == 4) {
+        rate = 96000UL;     /* #46 */
     } else {
         reply_stall();
         return;
