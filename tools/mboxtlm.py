@@ -109,9 +109,19 @@ SOURCES = {"mic": 0x06, "line": 0x05, "inst": 0x03}
 SELECTOR_NAMES = {0: "analog", 1: "S/PDIF"}
 CLOCK_MODE_NAMES = {1: "slaved to S/PDIF (mode 1)",
                     2: "internal 44.1 kHz (mode 2)",
-                    3: "internal 48 kHz (mode 3)"}
+                    3: "internal 48 kHz (mode 3)",
+                    # #46. Modes 2 and 3 with the C-port dividers halved
+                    # (CPTCNF4/CPTRXCNF4 /4 -> /2). Same ACG frequency word --
+                    # the synthesizer tops out at 25 MHz and 48 kHz already
+                    # runs it at 24.576 MHz, so there is no 96 kHz word.
+                    6: "internal 88.2 kHz (mode 6, divider /2)",
+                    7: "internal 96 kHz (mode 7, divider /2)"}
 # wValue low byte of TLM_REQ_SET_CLOCK.
-CLOCK_ARG = {"slave": 0, "44100": 1, "48000": 2}
+#
+# 88200/96000 are build 0x0024+ and are NOT in the descriptors -- the class
+# SET_CUR path still stalls them. Until the bench shows the codec converts at
+# those rates, this request is the only way to reach them, deliberately.
+CLOCK_ARG = {"slave": 0, "44100": 1, "48000": 2, "88200": 3, "96000": 4}
 SOURCE_NAMES = {v: k for k, v in SOURCES.items()}
 
 PHASE_BITS = [(0x01, "USB_INIT"), (0x02, "HW_INIT"), (0x04, "ATTACH"),
