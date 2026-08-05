@@ -14,13 +14,25 @@ playback at 48 kHz simultaneously.
 **The USB engine is already doing it.** Those two DCNT registers are hardware
 counters, and they show 96 samples in and 48 samples out in the same frame.
 
-This also settles the scheduling question that killed 88.2 duplex. 5 microframes
-fits, where 6 does not:
+This also settles the scheduling question that killed 88.2 duplex -- and
+corrects the start-split model that entry proposed. A 582 B endpoint needs
+ceil(582/188) = 4 start-splits, so 96-in/48-out is 4 + 2 = 6, the SAME six as
+88.2 duplex at 534 + 534, which is denied. Split count does not discriminate.
 
-    2 + 2 = 4   48 kHz duplex          WORKS
-    3 + 2 = 5   96 in / 48 out         WORKS (this measurement)
-    3 + 3 = 6   88.2 duplex @ 534 B    DENIED
-    4 + 4 = 8   96 duplex @ 582 B      DENIED
+Total RESERVED bytes does, taken from wMaxPacketSize rather than from the rate
+actually running:
+
+     588 B   48 in  / 48 out       WORKS
+     876 B   96 in  / 48 out       WORKS  (this measurement)
+     876 B   88.2 in / 44.1 out    WORKS  (measured, same alts so same schedule)
+    1068 B   88.2 duplex @ 534     DENIED
+    1164 B   96 duplex @ 582       DENIED
+
+Threshold between 876 and 1068 B. Note the third row is not an extra
+concession: 88.2-in/44.1-out selects alt 2 for capture and alt 1 for playback,
+exactly as 96-in/48-out does, so it is the same reservation and the same
+schedule. Measured anyway rather than assumed: 0 denials, IEPDCNTX1 = 0x58
+(88 samples/frame in), OEPDCNTX2 = 0xAC (NAK + 44 samples/frame out).
 
 ## The blocker is firmware, in two places
 

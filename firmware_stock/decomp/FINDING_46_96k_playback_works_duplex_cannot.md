@@ -149,22 +149,36 @@ for the same budget. Alt 2 retargeted at 88.2 kHz alone with wMaxPacketSize
 | 88.2 kHz @ 534 B | **6553** | -75.92 dBFS | 0.000001 | no coherent tone |
 | 48 kHz @ 294 B | **0** | -29.11 dBFS | 0.005449 | 1 kHz dominant |
 
-Dropping the reservation 582 -> 534 changed NOTHING. So the boundary is not
-between 3 and 4 start-splits as the previous entry supposed -- it is between
-**2 and 3**. Duplex works only when each direction fits in 2 microframes:
+Dropping the reservation 582 -> 534 changed NOTHING.
 
-    <= 376 B/frame  = 2 start-splits  -> duplex OK
-    >= 534 B/frame  = 3 start-splits  -> duplex DENIED
+**CORRECTION, later the same day.** The first version of this entry concluded
+from that null result that the boundary lay "between 2 and 3 start-splits per
+direction", and derived a ~62 kHz duplex ceiling from it. That model is WRONG
+and the asymmetric measurements falsify it: a 582 B endpoint needs
+ceil(582/188) = 4 start-splits, so 96-in/48-out is 4 + 2 = 6 -- the same six as
+88.2 duplex at 534 + 534 -- and it schedules fine while 88.2 duplex does not.
+Same split count, opposite outcomes.
 
-376 B is 62 samples, so **no rate above ~62 kHz can be duplex on this
-hardware**, whatever the descriptors say. 88.2 needs 89 samples and 96 needs 96;
-neither was ever going to fit. 44.1 and 48 kHz (44/48 samples) sit comfortably
-inside.
+What fits EVERY measurement is total reserved bytes, reserved from
+wMaxPacketSize rather than from the rate actually in use:
 
-CONSEQUENCE: a third alt setting for 88.2 at 534 B would buy nothing, and the
-~92 bytes it would have cost are not worth spending. Alt 2 stays as it is,
-carrying both doubled rates at 582 B, and both are simplex-only. The diagnostic
-cost NEGATIVE bytes and settled it in one flash.
+    294 + 294 =  588   48 in  / 48 out      WORKS
+    582 + 294 =  876   96 in  / 48 out      WORKS
+    582 + 294 =  876   88.2 in / 44.1 out   WORKS
+    534 + 534 = 1068   88.2 duplex          DENIED
+    582 + 582 = 1164   96 duplex            DENIED
+
+So the threshold is between 876 and 1068 B, and the duplex ceiling is a
+per-direction reservation of 438-534 B, i.e. somewhere between 73 and 89 kHz.
+It cannot be pinned further from the data in hand, and the exact figure does
+not matter: 88.2 and 96 are both outside it and 44.1/48 is comfortably inside.
+
+CONSEQUENCE, unchanged: a third alt setting for 88.2 at 534 B would buy
+nothing, and the ~92 bytes it would have cost are not worth spending. Alt 2
+stays as it is, carrying both doubled rates at 582 B, and both are
+duplex-denied. The diagnostic cost NEGATIVE bytes and settled it in one flash --
+and note that it settled the SHIPPING question correctly even though the model
+it suggested was wrong.
 
 TOOL FIX made in the same session: tone_peak.py reported the silent 88.2
 capture as "1 kHz dominant, ZCR agrees" -- a confident verdict on a file with
