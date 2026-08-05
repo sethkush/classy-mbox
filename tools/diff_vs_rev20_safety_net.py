@@ -37,11 +37,36 @@ REV20_ASM = REPO / "firmware_stock" / "disasm" / "rev20_flat.asm"
 JUSTIFY = Path(__file__).parent / "rev20_diff_justifications_safety_net.md"
 
 # Reuse scan_rst — same SDCC codegen conventions in both firmwares.
-# load_rev20_writes is shared too; Rev 20 disasm is a fixed input,
-# not per-firmware.
+# The Rev 20 side is shared with diff_vs_rev20.py rather than reimplemented;
+# the stock image is a fixed input, not a per-firmware one.
+#
+# #180: BOTH halves of that import matter, and one of them was missing.
+#
+# load_rev20_writes() is a linear scan of rev20_flat.asm, which disassembles
+# rev20_eeprom.bin INCLUDING its 18-byte header, so its addresses are the true
+# code address + 0x12 (FINDING_rev20_flat_asm_is_offset_by_18.md). This gate
+# consumes only (SFR address, pattern, immediate) and never an instruction
+# address, so the offset does not reach its output — same as diff_vs_rev20.py.
+# Because the function is imported rather than copied, this gate also picked up
+# the 2026-08-05 fix that stopped DPTR tracking leaking across control-flow
+# edges, which had invented three Rev 20 writes into the setup packet buffer.
+# Sharing the implementation is what made that fix free here.
+#
+# load_rev20_helper_writes() was NOT being imported, and that is a real gap:
+# stock performs some writes from a callee against the caller's DPTR (the
+# caller loads DPTR, LCALLs a shared helper, the helper issues the MOVX). A
+# linear listing cannot see those at all. Without them the Rev 20 baseline is
+# short by five (addr, pattern, immediate) tuples across four addresses —
+# ACGDCTL, CPTRXCNF4, CPTCNF3 and ACG2FRQ0 — every one of which would be
+# reported as a divergence that does not exist, in the direction that reads as
+# "stock does this and safety_net does not". Ported here so both gates see the
+# same stock image.
 sys.path.insert(0, str(Path(__file__).parent))
 from audit_sfr_writes import scan_rst  # noqa: E402
-from diff_vs_rev20 import load_rev20_writes  # noqa: E402
+from diff_vs_rev20 import (  # noqa: E402
+    load_rev20_writes,
+    load_rev20_helper_writes,
+)
 
 
 def load_safety_net_writes() -> set[tuple[str, str, str]]:
@@ -85,7 +110,7 @@ def main() -> int:
               f" `make -C safety_net` first?", file=sys.stderr)
         return 2
 
-    rev20 = load_rev20_writes()
+    rev20 = load_rev20_writes() | load_rev20_helper_writes()
     if not rev20:
         print(f"ERROR: no writes extracted from Rev 20 disasm — is"
               f" {REV20_ASM} present and non-empty?", file=sys.stderr)

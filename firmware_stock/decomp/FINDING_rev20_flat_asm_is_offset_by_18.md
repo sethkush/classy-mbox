@@ -212,3 +212,41 @@ image running on unit B): comments and tables only.
 `tools/diff_vs_rev20_safety_net.py` reads the same listing with its own copy of
 the DPTR scanner and did not get the straight-line fix. Its stock-side data has
 the phantom-write flaw described above.
+
+---
+
+## Follow-up 2026-08-05 — the safety_net gate, and why it never complained
+
+`diff_vs_rev20_safety_net.py` shares the Rev 20 side by IMPORT rather than by
+copy, so it inherited the straight-line DPTR fix for free — the phantom
+0xFF29/0xFF2B/0xFF2C writes were gone from its baseline the moment
+`diff_vs_rev20.py` was fixed. That is the whole argument for sharing an
+implementation instead of duplicating it.
+
+What it did NOT import was `load_rev20_helper_writes()`, so its Rev 20 baseline
+was short by four tuples — `CPTRXCNF4 = 0x03` (helper 0x0DEB), `CPTCNF3 = 0xA8`
+(helper 0x0FF4), `ACGDCTL = 0x10` (helper 0x0E18) and `ACG2FRQ0 = 0x20`
+(helper 0x0E0F). Every one would have read as a divergence that does not
+exist. Now imported.
+
+**The gate was already failing, and had been for some time: six unjustified
+diffs before this change touched anything.** It is wired into neither
+`preflight.sh` nor `ci_bisect_gates.sh`. Nothing ran it, so nothing reported
+it. *A gate no runner invokes is a file, not a gate* — and it is a worse
+failure than a missing gate, because the file's existence reads as coverage.
+Now wired into preflight's safety_net branch (17 gates there) and
+mutation-tested by deleting a justification row.
+
+Nine rows added, each derived rather than rubber-stamped: `GLOBCTL |= CPTEN`
+is deliberately omitted per #122 (§6.5.7.4 requires the codec-port registers to
+be programmed first, and safety_net programs none); the three codec/clock
+helper writes are the same "safety_net has no audio path" reason its
+neighbours already carry; the MEMCFG/VECINT/USBCTL `runtime` entries are
+classifier shapes for writes already justified in literal form.
+
+Nine OTHER rows were **withdrawn**: the ones justifying Rev 20 "boot-ROM
+SETUP-packet scratch writes" to 0xFF29/0xFF2B/0xFF2C. Those addresses are the
+setup data packet buffer — the UBM writes them, the MCU only reads them, and
+Rev 20 never writes them at all. They were justifications written for the
+scanner's phantoms. Kept in place and struck, rather than deleted, as the
+record of an explanation authored for a fact that was never true.

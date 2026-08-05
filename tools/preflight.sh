@@ -85,6 +85,12 @@ if [[ "$TARGET" == "safety_net" ]]; then
     # Safety-net path: minimal, single-file image whose sole job is
     # to enumerate on USB and accept the Digi DFU class trigger.
     check "verify_safety_net init writes"   python3 tools/verify_safety_net.py
+    # This gate existed and ran NOWHERE. Not preflight, not ci_bisect_gates --
+    # so it had been failing silently with six unjustified diffs. A gate no
+    # runner invokes is a file, not a gate. Wired in 2026-08-05 alongside the
+    # scanner-parity fix that gave it the same Rev 20 baseline diff_vs_rev20.py
+    # uses (straight-line DPTR tracking + writes performed via a helper).
+    check "Rev-20 SFR diff justified (safety_net)" python3 tools/diff_vs_rev20_safety_net.py
     check "mboxflash --validate on target"  ./mboxflash/mboxflash --validate "$IMG"
 else
     check "code size within budget"             python3 tools/check_code_size.py
