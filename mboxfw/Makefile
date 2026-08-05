@@ -30,6 +30,27 @@ ifeq ($(MBOX_NO_MUTE_PAIR),1)
 EXTRA_CFLAGS += -DMBOX_NO_MUTE_PAIR -DTLM_BUILD_ID=0x001E
 endif
 
+# #46 EXPERIMENT ONLY -- `make MBOX_MUTE_PAIR_MASK=0x04` (or 0x08) raises only
+# ONE of the two bits. #171 settled that the PAIR gates both directions, but it
+# only ever varied them together -- the 0x001E build removed both. Whether
+# 0x23.2 and 0x23.3 are one gate or two (playback and capture separately) is
+# still open, and it is the whole question for a UAC Feature Unit: a Mute
+# control is honest only if muting one direction leaves the other alone.
+#
+# Costs nothing at runtime -- it is a compile-time constant folded into the one
+# `orl` -- so the answer needs a flash, not a code change. Reports itself as
+# TLM_BUILD_ID 0x0025 (0x04, playback candidate) or 0x0026 (0x08).
+MBOX_MUTE_PAIR_MASK ?=
+ifneq ($(MBOX_MUTE_PAIR_MASK),)
+EXTRA_CFLAGS += -DMBOX_MUTE_PAIR_MASK=$(MBOX_MUTE_PAIR_MASK)
+ifeq ($(MBOX_MUTE_PAIR_MASK),0x04)
+EXTRA_CFLAGS += -DTLM_BUILD_ID=0x0025
+endif
+ifeq ($(MBOX_MUTE_PAIR_MASK),0x08)
+EXTRA_CFLAGS += -DTLM_BUILD_ID=0x0026
+endif
+endif
+
 # Per-unit serial number. `make MBOX_UNIT=A` / `=B` serves iSerialNumber with
 # the serial printed on that unit, so BOTH units can build at the same
 # MBOX_PID and still be addressed individually by the host. Undefined = no
