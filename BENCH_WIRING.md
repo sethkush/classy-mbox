@@ -124,6 +124,44 @@ absolute dBFS against each other.
 
 ## Identifying the units
 
-Both units enumerate as audio-mode Mboxes. Build with distinct `MBOX_PID`
-values in `0x2000..0x200F` (the flasher treats the whole range as audio-mode
-aliases) and distinct `TLM_BUILD_ID`, so block 0 names which unit answered.
+Both units enumerate as audio-mode Mboxes, told apart by `MBOX_PID` in
+`0x2000..0x200F` (the flasher treats the whole range as audio-mode aliases):
+
+| unit | PID | sysfs | ALSA card |
+|---|---|---|---|
+| **A** | `0dba:2000` | `2-1.3` | `Mboxclassc` |
+| **B** | `0dba:2001` | `2-1.4` | `Mboxclassc_1` |
+
+The PID is what distinguishes them, not `TLM_BUILD_ID`. An earlier version of
+this section advised distinct build ids too; do not do that while both units
+run the same firmware — the build id states which *code* is running, and
+faking a difference to label a *unit* makes block 0 lie about the thing it
+exists to prove. Address a specific unit by PID (`usb.core.find(idProduct=…)`),
+which is also the only safe way to send one of them an enter-DFU trigger.
+
+## B is NOT stock — corrected 2026-08-04
+
+This document previously described B as a stock unit and warned that its
+source select was front-panel only. **B has been running mboxfw all along.**
+It was found on build **`0x000B`**, which is why it looked broken: `0x000B`
+predates the ACGCTL/DIVEN fix, the CS8427 SPI framing and RESET release, and
+#170's codec source nibble. It also predates telemetry block 9, so reads of
+that block returned the all-`0xFF` unknown-block sentinel — numbers that look
+like a live reading and are not one.
+
+**Both units now run `0x001D`**, flashed 2026-08-04 (B at `MBOX_PID=0x2001`;
+the two images differ in exactly one byte, the PID, at offset `0x1B53`).
+
+Consequences for measurement:
+
+  * B takes `setmux` over the wire like A does. It still **boots to MIC on
+    both channels** (`mux=0xF6`) while the loopbacks feed LINE inputs, so
+    `setmux line line` is required on B after every power cycle, exactly as
+    for A. This is the 2026-07-29 trap and it now applies to both units.
+  * B answers the full telemetry block map, so a measurement involving B can
+    state its own routing instead of having it assumed.
+  * B is a usable signal source and capture reference. `A out1 -> B src1`
+    measures A's output with A's input out of the circuit — which is the one
+    thing A's `out2 -> src2` self-loop structurally cannot do, since it puts
+    A's DAC and ADC in series. That is what would separate the output half of
+    the #171 mute pair from the capture half already proven.
