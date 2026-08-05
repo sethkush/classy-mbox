@@ -31,6 +31,14 @@
  * stream to be evaluated. See streaming_sof(). */
 static __data unsigned char sof_bcnt_hi = 0xFF;
 static __data unsigned char sof_bcnt_lo = 0xFF;
+/* #46. Set when the SOF watchdog saw a misaligned DMABCNT0 on the PREVIOUS
+ * frame. The teardown needs two consecutive sightings -- see streaming_sof().
+ *
+ * __bit, not a byte: this is one boolean read and written in the SOF interrupt,
+ * and the 8051 reaches bit-addressable IRAM with SETB/CLR/JB (2-3 bytes each)
+ * where a byte needs MOV direct,#imm plus a compare. The image had 4 bytes of
+ * headroom and this is what closed the gap. */
+static __bit sof_misaligned = 0;
 
 /* Currently-active sample rate — mirrors g_sample_rate in usb.c. */
 static __data unsigned long stream_rate = 48000UL;
@@ -569,6 +577,7 @@ void streaming_playback_enable(unsigned char on)
          * the previous stream. */
         sof_bcnt_hi = 0xFF;
         sof_bcnt_lo = 0xFF;
+        sof_misaligned = 0;
         /* #163: base and size are NOT re-declared here. usb_ep0_setup() sets
          * them once, as stock does -- the DMA and UBM pointers into this
          * buffer are read-only, so re-basing under them cannot reset them.
@@ -711,10 +720,44 @@ void streaming_sof(void)
         while (rem >= (AUDIO_NUM_CHANNELS * AUDIO_SUBFRAME_BYTES))
             rem -= (AUDIO_NUM_CHANNELS * AUDIO_SUBFRAME_BYTES);
         if (rem == 0) {
+            sof_misaligned = 0;
             return;                  /* aligned — Rev 22 @ 0x0D7E */
         }
     }
 
+    /* DELIBERATE DIVERGENCE from Rev 22 (#46): the misalignment must PERSIST
+     * across two consecutive SOFs before the DMA is torn down. Rev 22 acts on
+     * the first sighting (0x0D7E falls straight through to 0x0D80).
+     *
+     * Measured on 0x002B: resyncs 0 at 48 kHz, SATURATED at 96 kHz, on the
+     * same firmware and the same stream. The two rates differ in whether this
+     * function evaluates alignment at all. At 48 kHz DMABCNT0 is a dead-steady
+     * 294 B, so the `unchanged -> nothing to do` exit above (Rev 22 @ 0x0D71)
+     * takes every frame and the remainder is never computed. At 96 kHz the
+     * C-port drains 576 B/frame against a 696 B buffer, the fill level jitters
+     * (156, 162, ...), and the remainder is computed every frame.
+     *
+     * The DMA moves 3 bytes per time slot -- DMATSH/DMATSL program BPTS = 3 B
+     * with two slots per stereo sample (§6.5.2.1/§6.5.2.2) -- so the read
+     * pointer passes through the middle of a sample, and an SOF snapshot that
+     * lands there reads content = 3 (mod 6) on a perfectly healthy stream.
+     *
+     * A REAL misalignment is persistent: the pointer stays offset within the
+     * frame and every later frame reads the same non-zero remainder, which is
+     * the condition Rev 22's comment describes ("would thereafter emit bytes
+     * offset within the frame"). A mid-sample snapshot corrects itself on the
+     * very next frame. One extra frame of delay costs nothing against a fault
+     * that is by definition permanent, and it is the difference between a
+     * watchdog and a metronome.
+     *
+     * Rev 22 gets away without this because it never ran at a rate where the
+     * count moved -- so for stock's own 48 kHz behaviour the two versions are
+     * identical, and this cannot regress it. */
+    if (sof_misaligned == 0) {
+        sof_misaligned = 1;
+        return;                      /* first sighting — wait one frame */
+    }
+    sof_misaligned = 0;
 
     /* Counted, not silent. This watchdog firing occasionally is normal
      * operation; firing every frame means playback is being restarted faster
@@ -722,7 +765,9 @@ void streaming_sof(void)
      * host — both present as a stream that runs without error and emits
      * nothing, which is exactly what 96 kHz playback did on 0x002A. Block 3
      * byte 5. Saturating at 0xFF so a thrash pins the counter rather than
-     * wrapping to a small value that reads as healthy. */
+     * wrapping to a small value that reads as healthy -- with the two-sighting
+     * rule above a healthy stream should read 0 or a small number, so
+     * saturation now means a genuinely persistent fault. */
     TLM_INC8(tlm_playback_resyncs);
 
     DMACTL0 &= (unsigned char)~DMA_EN;  /* Rev 22 fcn.0x0D58 @ 0x0D80 */

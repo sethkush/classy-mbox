@@ -360,7 +360,9 @@ def block6(b):
         dec_dmactl(b[1], "DMACTL0 (playback, EP2 OUT)"),
         dec_cptctl(b[2]),
         "ACGCTL=0x%02X   (adaptive clock generator control)" % b[3],
-        dec_iepcnf(b[4]),
+        # b[4] carried IEPCNF1 until build 0x002C, which dropped it: block 5
+        # byte 4 is the same register read the same way, and the duplicate's
+        # ~7 bytes went to the SOF watchdog's two-sighting rule.
         "IEPDCNTX1=0x%02X (capture EP byte count -- 0 = buffer armed/empty)" % b[5],
         "IEPBSIZ1=0x%02X  (capture EP buffer = %d bytes; regs.h EP_BSIZE "
         "encodes size>>3)" % (b[6], b[6] * 8),

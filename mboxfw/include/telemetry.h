@@ -101,7 +101,26 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x002B   /* 002B: #46 -- asymmetric endpoint buffers,
+#define TLM_BUILD_ID     0x002C   /* 002C: #46 -- the SOF playback watchdog now
+                                   *       needs the misalignment to PERSIST
+                                   *       across two consecutive SOFs before it
+                                   *       tears the DMA down. 0x002B measured
+                                   *       resyncs 0 at 48 kHz and SATURATED at
+                                   *       96 on the same firmware: at 48 kHz
+                                   *       DMABCNT0 is a steady 294 B so the
+                                   *       watchdog takes its unchanged-exit
+                                   *       every frame and never evaluates
+                                   *       alignment at all, while at 96 kHz the
+                                   *       fill level jitters and it evaluates
+                                   *       every frame. The DMA moves 3 bytes
+                                   *       per time slot, so an SOF snapshot can
+                                   *       land mid-sample and read 3 (mod 6) on
+                                   *       a healthy stream. A real misalignment
+                                   *       persists; that one does not. Also
+                                   *       drops block 6's duplicate IEPCNF1
+                                   *       (block 5 byte 4 is the same read) to
+                                   *       pay for it.
+                                   * 002B: #46 -- asymmetric endpoint buffers,
                                    *       playback 696 B / capture 576 B, plus
                                    *       the instrument to tell two failure
                                    *       modes apart. 0x002A made capture at

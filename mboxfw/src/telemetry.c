@@ -207,7 +207,9 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[1] = DMACTL0;   /* playback channel */
         out[2] = CPTCTL;
         out[3] = ACGCTL;
-        out[4] = IEPCNF1;
+        /* out[4] carried IEPCNF1 until 0x002C. Block 5 byte 4 is the SAME
+         * register read the same way, and the duplicate cost ~7 bytes that the
+         * SOF watchdog's two-sighting rule needed. Reads 0 now. */
         out[5] = IEPDCNTX1;
         out[6] = IEPBSIZ1;
         out[7] = OEPDCNTX2;
