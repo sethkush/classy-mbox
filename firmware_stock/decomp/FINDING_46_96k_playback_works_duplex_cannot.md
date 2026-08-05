@@ -136,3 +136,39 @@ one per microframe, from the 8 microframes in a frame.
 diagnostic image that sets alt 2's wMaxPacketSize to 534 and lists 88200 only
 -- one constant and one dropped rate entry, costing negative bytes -- rather
 than adding a third alt setting (~92 B of descriptors) on spec.
+
+## ANSWERED: 88.2 kHz cannot be duplex either, and the boundary is 2 splits
+
+Build 0x002D (MBOX_882_DIAG) on unit A, whose out2 -> src2 self-loop makes a
+duplex test self-contained -- no second device, so no second stream competing
+for the same budget. Alt 2 retargeted at 88.2 kHz alone with wMaxPacketSize
+534 B, confirmed parsed by the host (`Altset 2 / Rates: 88200`).
+
+| A duplex, self-loop | denials | level | g@1k | verdict |
+|---|---|---|---|---|
+| 88.2 kHz @ 534 B | **6553** | -75.92 dBFS | 0.000001 | no coherent tone |
+| 48 kHz @ 294 B | **0** | -29.11 dBFS | 0.005449 | 1 kHz dominant |
+
+Dropping the reservation 582 -> 534 changed NOTHING. So the boundary is not
+between 3 and 4 start-splits as the previous entry supposed -- it is between
+**2 and 3**. Duplex works only when each direction fits in 2 microframes:
+
+    <= 376 B/frame  = 2 start-splits  -> duplex OK
+    >= 534 B/frame  = 3 start-splits  -> duplex DENIED
+
+376 B is 62 samples, so **no rate above ~62 kHz can be duplex on this
+hardware**, whatever the descriptors say. 88.2 needs 89 samples and 96 needs 96;
+neither was ever going to fit. 44.1 and 48 kHz (44/48 samples) sit comfortably
+inside.
+
+CONSEQUENCE: a third alt setting for 88.2 at 534 B would buy nothing, and the
+~92 bytes it would have cost are not worth spending. Alt 2 stays as it is,
+carrying both doubled rates at 582 B, and both are simplex-only. The diagnostic
+cost NEGATIVE bytes and settled it in one flash.
+
+TOOL FIX made in the same session: tone_peak.py reported the silent 88.2
+capture as "1 kHz dominant, ZCR agrees" -- a confident verdict on a file with
+no signal in it. The g1-vs-g2 ratio test is satisfied by noise (0.000001 vs
+0.000000) and the -80 dBFS silence guard did not fire because the floor sat at
+-75.92. It now also requires the strongest bin to exceed 5% of rms; the real
+loopback reads 15.6% and the silent capture 0.7%.

@@ -83,8 +83,14 @@ def read_wav_mono(path, channel=0, skip_s=0.5, take_s=3.0):
     return out, sr
 
 
-def analyse(path, skip=0.5, take=3.0):
-    x, sr = read_wav_mono(path, 0, skip, take)
+def analyse(path, skip=0.5, take=3.0, channel=0):
+    """channel selects which interleaved channel to read (0 = left).
+
+    Not always 0: unit A's self-loop is out2 -> src2, i.e. the RIGHT channel,
+    so a duplex measurement taken through it reads silence on channel 0 and
+    would look exactly like a failed stream. See BENCH_WIRING.md.
+    """
+    x, sr = read_wav_mono(path, channel, skip, take)
     n = len(x)
     rms = math.sqrt(sum(v * v for v in x) / n) if n else 0.0
     peak = max((abs(v) for v in x), default=0.0)
@@ -101,7 +107,7 @@ def analyse(path, skip=0.5, take=3.0):
     g1 = goertzel(y, sr, 1000.0)
     g2 = goertzel(y, sr, 2000.0)
 
-    print("  %s" % path)
+    print("  %s%s" % (path, "" if channel == 0 else "  [channel %d]" % channel))
     print("    window        %.2f s at %d Hz" % (n / float(sr), sr))
     print("    level         %.2f dBFS rms, peak %.4f" % (dbfs, peak))
     print("    zero-crossing %8.1f Hz" % zcr_hz)
@@ -109,8 +115,27 @@ def analyse(path, skip=0.5, take=3.0):
     if max(g1, g2) > 0:
         ratio = 20 * math.log10((g2 + 1e-12) / (g1 + 1e-12))
         print("    2k vs 1k      %+.1f dB" % ratio)
+    # Is there a COHERENT tone at all, or just broadband noise?
+    #
+    # A ratio test between g1 and g2 is satisfied by noise: an 88.2 kHz duplex
+    # capture that the host had refused to schedule read g1 = 0.000001 against
+    # g2 = 0.000000 and was reported as "1 kHz dominant, ZCR agrees" -- a
+    # confident verdict on a silent file. The -80 dBFS guard below did not fire
+    # because the floor sat at -75.92.
+    #
+    # So compare the tone against the energy in the same capture rather than
+    # against the other tone. For a clean sinusoid the Goertzel magnitude is a
+    # fixed fraction of the rms (measured 0.156 on a known-good 48 kHz loopback:
+    # rms 0.035, g1 0.005449); noise puts almost nothing in any single bin
+    # (0.0063 on the silent capture). 0.05 sits ~8x below the real case and ~8x
+    # above the noise case.
+    coherent = max(g1, g2) > 0.05 * rms
     if dbfs < -80:
         print("    VERDICT       silent -- nothing to read a pitch from")
+    elif not coherent:
+        print("    VERDICT       no coherent tone -- broadband noise only "
+              "(strongest bin is %.1f%% of rms; a real tone is ~15%%)"
+              % (100.0 * max(g1, g2) / rms if rms else 0.0))
     elif g2 > g1 * 2 and abs(zcr_hz - 2000) < abs(zcr_hz - 1000):
         print("    VERDICT       2 kHz dominant, ZCR agrees -> DOUBLED")
     elif g1 > g2 * 2 and abs(zcr_hz - 1000) < abs(zcr_hz - 2000):
@@ -127,8 +152,10 @@ if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     opts = dict(a[2:].split("=", 1) for a in sys.argv[1:] if a.startswith("--"))
     if not args:
-        raise SystemExit("usage: tone_peak.py [--skip=S] [--take=S] <capture.wav> [...]")
+        raise SystemExit("usage: tone_peak.py [--skip=S] [--take=S] "
+                         "[--channel=N] <capture.wav> [...]")
     skip = float(opts.get("skip", 0.5))
     take = float(opts.get("take", 3.0))
+    channel = int(opts.get("channel", 0))
     for p in args:
-        analyse(p, skip, take)
+        analyse(p, skip, take, channel)
