@@ -31,6 +31,7 @@ echo "Range:     $RANGE"
 echo "Commits:   $(echo "$commits" | wc -l | tr -d ' ')"
 echo
 
+REPO_ROOT=$(pwd)
 TMPWT=$(mktemp -d)
 trap 'git worktree remove --force "$TMPWT" 2>/dev/null || true; rm -rf "$TMPWT"' EXIT
 
@@ -44,6 +45,18 @@ for sha in $commits; do
     # Fresh worktree per commit so state is clean.
     git worktree remove --force "$TMPWT" 2>/dev/null || true
     git worktree add --detach "$TMPWT" "$sha" >/dev/null 2>&1
+
+    # Overlay the reference tree from the working copy. TI's headers and the
+    # datasheet extracts are INPUTS to the gates, not code under test, and a
+    # large part of reference/ is untracked -- Reg_stc1.h among it. Without
+    # this, check_sfr_names.py cannot find the canonical SFR names in a fresh
+    # worktree and fails for a reason that has nothing to do with the commit.
+    # Using the current tree is also the correct semantics: a vendor header
+    # does not have a per-commit version.
+    if [[ -d "$REPO_ROOT/reference" ]]; then
+        rm -rf "$TMPWT/reference"
+        ln -s "$REPO_ROOT/reference" "$TMPWT/reference"
+    fi
 
     # #158, 2026-08-05. The comment here used to read "every non-hardware
     # gate we have". It ran SIX gates out of about thirty, and the excuse did
@@ -101,8 +114,13 @@ for sha in $commits; do
             done
         fi
         exit 0
-    )
-    rc=$?
+    ) && rc=0 || rc=$?
+    # `set -e` means a failing subshell terminates the SCRIPT unless its status
+    # is consumed by a conditional. Written as `( ... ); rc=$?` this script has
+    # never been able to report a FAIL: it died on the first failing gate,
+    # before the reporting below, while its own comment promised "Continue
+    # walking -- we want a full report, not first-fail bail". Pre-existing;
+    # found 2026-08-05 when a newly-added gate failed for the first time.
 
     if (( rc == 0 )); then
         printf "%sPASS%s\n" "$GREEN" "$NORMAL"
