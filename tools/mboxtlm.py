@@ -459,15 +459,76 @@ TITLES = {
 
 # ------------------------------------------------------------------- transport
 
+# Unit selectors, set from --serial / --addr. Both default to None, meaning
+# "the only unit on the bus".
+TARGET_SERIAL = None
+TARGET_ADDR = None
+
+
+def _serial_of(dev):
+    """Serial string, or None. Reading it can fail on a busy or claimed
+    device, and a failure here must not look like 'no serial' -- it is
+    reported as unknown so it can never accidentally MATCH a filter."""
+    try:
+        return dev.serial_number
+    except Exception:
+        return None
+
+
 def find_device():
+    """The one audio-mode Mbox to talk to.
+
+    Two units share the bench and, since build 0x001F, both may build at the
+    SAME MBOX_PID -- which is the point: the PID says which PRODUCT this is,
+    not which UNIT (see usb.h, iSerialNumber). So a PID match no longer
+    identifies a unit, and this used to return whichever one usb.core.find
+    happened to enumerate first.
+
+    Silently picking one is the dangerous behaviour: every reading would look
+    perfectly valid and be attributed to the wrong unit. Ambiguity is a hard
+    error, exactly as it already is in mboxflash_linux.py, and for the same
+    reason -- there a wrong guess writes firmware to the wrong device.
+    """
     if not HAVE_USB:
         sys.exit("pyusb not installed. On the void box: ~/mbox-venv/bin/python")
+
+    found = []
     for pid in AUDIO_PIDS:
-        dev = usb.core.find(idVendor=MBOX_VID, idProduct=pid)
-        if dev is not None:
-            return dev, pid
-    sys.exit("no audio-mode Mbox found (looked for %04x:%s)"
-             % (MBOX_VID, "/".join("%04x" % p for p in AUDIO_PIDS)))
+        for dev in usb.core.find(find_all=True, idVendor=MBOX_VID,
+                                 idProduct=pid):
+            found.append((dev, pid))
+
+    if TARGET_SERIAL is not None:
+        found = [(d, p) for d, p in found if _serial_of(d) == TARGET_SERIAL]
+    if TARGET_ADDR is not None:
+        found = [(d, p) for d, p in found
+                 if (d.bus, d.address) == TARGET_ADDR]
+
+    if not found:
+        what = []
+        if TARGET_SERIAL is not None:
+            what.append("serial %s" % TARGET_SERIAL)
+        if TARGET_ADDR is not None:
+            what.append("addr %d:%d" % TARGET_ADDR)
+        sys.exit("no audio-mode Mbox found (looked for %04x:%s%s)"
+                 % (MBOX_VID, "/".join("%04x" % p for p in AUDIO_PIDS),
+                    (", " + " and ".join(what)) if what else ""))
+
+    if len(found) > 1:
+        lines = []
+        for d, p in found:
+            sn = _serial_of(d)
+            lines.append("    %04x:%04x  bus %d addr %d  serial %s"
+                         % (MBOX_VID, p, d.bus, d.address,
+                            sn if sn else "(none)"))
+        sys.exit("%d audio-mode Mboxes are attached and none was selected:\n"
+                 "%s\n"
+                 "Pick one with --serial <SN> (preferred -- it names the UNIT)\n"
+                 "or --addr <bus>:<addr>. Refusing to guess: a reading taken\n"
+                 "from the wrong unit looks exactly like a valid one."
+                 % (len(found), "\n".join(lines)))
+
+    return found[0]
 
 
 def read_block(dev, index, timeout=2000):
@@ -655,6 +716,12 @@ def main():
     # order costs a whole run to find out.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--raw", action="store_true", help="also print raw bytes")
+    common.add_argument("--serial", metavar="SN",
+                        help="select the unit by USB serial number "
+                             "(build 0x001F+; see BENCH_WIRING.md)")
+    common.add_argument("--addr", metavar="BUS:ADDR",
+                        help="select the unit by USB bus:address, for builds "
+                             "that serve no serial")
 
     p = argparse.ArgumentParser(description=__doc__.split("\n")[1],
                                 parents=[common],
@@ -681,6 +748,14 @@ def main():
     sp.add_argument("--mono", choices=("on", "off", "keep"), default="keep")
 
     args = p.parse_args()
+    global TARGET_SERIAL, TARGET_ADDR
+    TARGET_SERIAL = getattr(args, "serial", None)
+    if getattr(args, "addr", None):
+        try:
+            b, a = args.addr.split(":")
+            TARGET_ADDR = (int(b), int(a))
+        except ValueError:
+            sys.exit("--addr wants BUS:ADDR, e.g. --addr 2:12")
     dev, pid = find_device()
     print("# %04x:%04x audio mode\n" % (MBOX_VID, pid))
     {"all": cmd_all, "read": cmd_read, "raw": cmd_raw,

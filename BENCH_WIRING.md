@@ -150,22 +150,54 @@ in a balanced input shorts ring to sleeve — and is not a firmware finding. Any
 comparison across the two paths has to be relative-to-its-own-baseline, not
 absolute dBFS against each other.
 
-## Identifying the units
+## Identifying the units — SERIAL NUMBERS
 
-Both units enumerate as audio-mode Mboxes, told apart by `MBOX_PID` in
-`0x2000..0x200F` (the flasher treats the whole range as audio-mode aliases):
+**The serial is the identity. The PID is not.**
 
-| unit | PID | sysfs | ALSA card |
-|---|---|---|---|
-| **A** | `0dba:2000` | `2-1.3` | `Mboxclassc` |
-| **B** | `0dba:2001` | `2-1.4` | `Mboxclassc_1` |
+| unit | serial | sysfs | ALSA card | notes |
+|---|---|---|---|---|
+| **A** | **`RK10874600Q`** | `2-1.3` | `Mboxclassc` | carries the self-loops |
+| **B** | **`RK1672500M`** | `2-1.4` | `Mboxclassc_1` | crossed pair only |
 
-The PID is what distinguishes them, not `TLM_BUILD_ID`. An earlier version of
-this section advised distinct build ids too; do not do that while both units
-run the same firmware — the build id states which *code* is running, and
-faking a difference to label a *unit* makes block 0 lie about the thing it
-exists to prove. Address a specific unit by PID (`usb.core.find(idProduct=…)`),
-which is also the only safe way to send one of them an enter-DFU trigger.
+Both units build at **`MBOX_PID=0x2000`** — the same product, because they ARE
+the same product. Each is built with `make MBOX_UNIT=A` / `=B`, which serves
+its serial as USB string #3 (see `mboxfw/include/usb.h`). Read it with
+`lsusb -v`, `cat /sys/bus/usb/devices/*/serial`, or `dev.serial_number`.
+
+The sysfs paths are stable for the current cabling but are a property of which
+socket the cable is in, not of the unit. If a cable moves, the serial is still
+right and the path is not. **Trust the serial.**
+
+### Why not the PID
+
+Until 2026-08-04 the two were told apart by giving each a different `MBOX_PID`
+(A `0x2000`, B `0x2001`). That works and is wrong twice over:
+
+  * the PID says which **product** this is, not which **unit**, so two
+    identical devices claimed to be different models;
+  * it changes **driver binding** — the exact variable an A/B measurement has
+    to hold still. Comparing two units on different PIDs means comparing them
+    under potentially different quirk handling.
+
+It also nearly caused a real accident: the #171 experiment image was built for
+A's PID, and flashing it to B unchanged would have given both units the same
+PID with no way to tell them apart.
+
+### Addressing one unit
+
+`mboxtlm.py` **refuses to guess** when more than one unit is attached — it
+exits with a listing rather than picking the first match, because a reading
+taken from the wrong unit looks exactly like a valid one:
+
+    mboxtlm.py read 0 --serial RK10874600Q      # unit A
+    mboxtlm.py read 0 --serial RK1672500M       # unit B
+    mboxtlm.py read 0 --addr 2:21               # fallback for pre-0x001F builds
+
+`mboxflash_linux.py` has the same discipline via `--addr bus:addr`, and keeps
+it: **in DFU both units enumerate as `ffff:fffe` and carry no serial at all**,
+so bus/address is the only discriminator there. The safe habit when flashing
+one of two attached units is unchanged — trigger DFU by addressing the target
+explicitly, then confirm exactly one `ffff:fffe` is on the bus before writing.
 
 ## B is NOT stock — corrected 2026-08-04
 
