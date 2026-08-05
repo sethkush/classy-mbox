@@ -128,7 +128,7 @@ never filled".
 |---|---|
 | 0 | **live** `DMACTL1` — capture channel; bit 7 = DMAEN |
 | 1 | **live** `DMACTL0` — playback channel |
-| 2 | **live** `CPTSTA`. Caution: read only on request, in case bits clear on read |
+| 2 | **live** `CPTCTL` (0xFFDC) — control AND status, §6.5.4.5. Reads as the written control bits OR the read-only RXF/TXE status, so 0x70 for a written 0x50 is correct, not a discrepancy. No clear-on-read bits. |
 | 3 | **live** `ACGCTL` |
 | 4 | **live** `IEPCNF1` |
 | 5 | **live** `IEPDCNTX1` |

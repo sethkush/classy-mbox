@@ -262,11 +262,32 @@ def block5(b):
     return out
 
 
+def dec_cptctl(v):
+    """CPTCTL (0xFFDC) -- datasheet §6.5.4.5, control AND status in one byte.
+
+    Printing the raw byte is what let `write 0x50, read 0x70` look like a
+    discrepancy in four separate investigations. It is not one: bits 6/4 are
+    the R/W interrupt enables hw_init writes, bits 7/5 are read-only status
+    the hardware owns, and 0x70 is simply 0x50 with TXE set. Naming the bits
+    makes that legible at the point of reading instead of three docs away.
+    """
+    bits = []
+    if v & 0x80: bits.append("RXF(rx reg full, RO)")
+    if v & 0x40: bits.append("RXIE(rx int en)")
+    if v & 0x20: bits.append("TXE(tx reg empty, RO)")
+    if v & 0x10: bits.append("TXIE(tx int en)")
+    if v & 0x06: bits.append("CID=%d(secondary codec)" % ((v >> 1) & 3))
+    bits.append("CRST=%d(%s)" % (v & 1, "released" if v & 1 else "codec held in reset"))
+    note = ""
+    if (v & 0x50) == 0x50:
+        note = "   [RXIE|TXIE = the 0x50 hw_init writes; bits 7/5 are hardware's]"
+    return "CPTCTL=0x%02X   %s%s" % (v, " | ".join(bits), note)
+
 def block6(b):
     out = [
         dec_dmactl(b[0], "DMACTL1 (capture, EP1 IN) "),
         dec_dmactl(b[1], "DMACTL0 (playback, EP2 OUT)"),
-        "CPTSTA=0x%02X   (C-port status; may be clear-on-read)" % b[2],
+        dec_cptctl(b[2]),
         "ACGCTL=0x%02X   (adaptive clock generator control)" % b[3],
         dec_iepcnf(b[4]),
         "IEPDCNTX1=0x%02X (capture EP byte count -- 0 = buffer armed/empty)" % b[5],

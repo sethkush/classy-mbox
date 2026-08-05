@@ -304,8 +304,8 @@ rev20	xdata	0xFFD5	CPTRXCNF3	mboxfw/include/regs.h	name
 rev22	xdata	0xFFD5	CPTRXCNF3	mboxfw/include/regs.h	name
 rev20	xdata	0xFFD6	CPTRXCNF2	mboxfw/include/regs.h	name
 rev22	xdata	0xFFD6	CPTRXCNF2	mboxfw/include/regs.h	name
-rev20	xdata	0xFFDC	CPTSTA	mboxfw/include/regs.h	name
-rev22	xdata	0xFFDC	CPTSTA	mboxfw/include/regs.h	name
+rev20	xdata	0xFFDC	CPTCTL	mboxfw/include/regs.h	name
+rev22	xdata	0xFFDC	CPTCTL	mboxfw/include/regs.h	name
 rev20	xdata	0xFFDD	CPTCNF4	mboxfw/include/regs.h	name
 rev22	xdata	0xFFDD	CPTCNF4	mboxfw/include/regs.h	name
 rev20	xdata	0xFFDE	CPTCNF3	mboxfw/include/regs.h	name
@@ -518,7 +518,7 @@ rev20	xdata	0xFFC3	I2C_SADDR: 3 site(s), write/write-computed	disasm/XDATA_ACCES
 rev20	xdata	0xFFD4	CPTRXCNF4: 2 site(s), write/write-via-helper 0x0DEB	disasm/XDATA_ACCESS_MAP.md	explained
 rev20	xdata	0xFFD5	CPTRXCNF3: 2 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
 rev20	xdata	0xFFD6	CPTRXCNF2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
-rev20	xdata	0xFFDC	CPTSTA: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev20	xdata	0xFFDC	CPTCTL: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
 rev20	xdata	0xFFDD	CPTCNF4: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
 rev20	xdata	0xFFDE	CPTCNF3: 3 site(s), write/write-via-helper 0x0FF4	disasm/XDATA_ACCESS_MAP.md	explained
 rev20	xdata	0xFFDF	CPTCNF2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
@@ -576,7 +576,7 @@ rev22	xdata	0xFFC3	I2C_SADDR: 3 site(s), write/write-computed	disasm/XDATA_ACCES
 rev22	xdata	0xFFD4	CPTRXCNF4: 2 site(s), write/write-via-helper 0x0EC7	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFD5	CPTRXCNF3: 2 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFD6	CPTRXCNF2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
-rev22	xdata	0xFFDC	CPTSTA: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
+rev22	xdata	0xFFDC	CPTCTL: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFDD	CPTCNF4: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFDE	CPTCNF3: 2 site(s), write/write-computed	disasm/XDATA_ACCESS_MAP.md	explained
 rev22	xdata	0xFFDF	CPTCNF2: 1 site(s), write	disasm/XDATA_ACCESS_MAP.md	explained

@@ -213,7 +213,7 @@ with OR/AND of the given mask.
 ### 0xFFD6  CPTRXCNF2
     0x091D  write 0x25
 
-### 0xFFDC  CPTSTA
+### 0xFFDC  CPTCTL
     0x0917  write 0x50
 
 ### 0xFFDD  CPTCNF4
@@ -522,7 +522,7 @@ with OR/AND of the given mask.
 ### 0xFFD6  CPTRXCNF2
     0x083E  write 0x25
 
-### 0xFFDC  CPTSTA
+### 0xFFDC  CPTCTL
     0x0838  write 0x50
 
 ### 0xFFDD  CPTCNF4

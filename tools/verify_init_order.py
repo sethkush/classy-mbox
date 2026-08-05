@@ -82,7 +82,7 @@ ORDER_EXEMPT = {
         "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
     frozenset(("GLOBCTL", "CPTCNF4")):
         "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
-    frozenset(("GLOBCTL", "CPTSTA")):
+    frozenset(("GLOBCTL", "CPTCTL")):
         "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
     frozenset(("GLOBCTL", "CPTRXCNF2")):
         "deliberate: GLOBCTL bit 1 after usb_init() silences USB (measured)",
@@ -258,7 +258,7 @@ def mboxfw_sequence(fn="_hw_init"):
                 continue
             # SDCC walks adjacent registers by adjusting DPL and keeping DPH.
             # hw_init's codec block is written that way -- CPTCNF1 down to
-            # CPTSTA at 0xFFE0..0xFFDC with `dec dpl` between stores -- so a
+            # CPTCTL at 0xFFE0..0xFFDC with `dec dpl` between stores -- so a
             # parser that only tracks full DPTR loads reports five writes to
             # CPTCNF1 instead of one each to five different registers.
             if dptr is not None:

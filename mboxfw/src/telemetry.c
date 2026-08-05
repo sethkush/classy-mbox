@@ -165,12 +165,20 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
          * DMACTL0 (0xFFE8) and DMACTL1 (0xFFEE), and bit 7 (DMAEN) is the
          * bit that matters. Expect 0x89 / 0x82 while streaming.
          *
-         * CAUTION: if CPTSTA has clear-on-read bits, reading it here
-         * consumes them. Reads are only issued when a host explicitly
-         * asks for block 6, never in the normal path. */
+         * byte 2 is CPTCTL (0xFFDC), a control-AND-status register --
+         * datasheet §6.5.4.5. It reads back as the R/W control bits hw_init
+         * wrote (RXIE|TXIE = 0x50) OR'd with whatever the read-only status
+         * bits RXF (7) and TXE (5) currently say, which is why 0x70 is the
+         * normal reading and not a discrepancy. #164.
+         *
+         * This used to carry a caution that reading it might consume
+         * clear-on-read bits. The datasheet refutes that: RXF is cleared by
+         * reading the receive DATA register and TXE by writing the transmit
+         * data register, neither of which is this address. The caution was
+         * invented by the old name CPTSTA. Reading here is side-effect free. */
         out[0] = DMACTL1;   /* capture channel — bit 7 = DMAEN */
         out[1] = DMACTL0;   /* playback channel */
-        out[2] = CPTSTA;
+        out[2] = CPTCTL;
         out[3] = ACGCTL;
         out[4] = IEPCNF1;
         out[5] = IEPDCNTX1;

@@ -228,9 +228,18 @@ void hw_init(void)
                          * value is 0xA8 (Rev 20 @0x0358 via fcn.0x0FF4,
                          * Rev 22 @0x035E via fcn.0x0FE2); mboxfw diverges
                          * deliberately and by measurement. #161. */
-    CPTCNF4   = 0x03;   /* 0xFFDD — stock writes 0x03 */
-    CPTSTA    = 0x50;   /* 0xFFDC — stock writes 0x50 */
-    CPTRXCNF2 = 0x25;   /* 0xFFD6 — stock writes 0x25 */
+    /* These three carried only "stock writes 0xNN" with no address, which is
+     * an assertion rather than a citation -- the pre-commit gate only asked
+     * when #164's rename made one of them a changed line. Addresses from
+     * XDATA_ACCESS_MAP.md; all three sit in the same boot-init function in
+     * each image, adjacent to the CPTCNF3 write cited above. */
+    CPTCNF4   = 0x03;   /* Rev 20 fcn.0x08CB @ 0x0911, Rev 22 fcn.0x07EC @ 0x0832 */
+    /* CPTCTL (0xFFDC), renamed from CPTSTA -- see regs.h. 0x50 = RXIE | TXIE,
+     * the two R/W interrupt-enable bits. Reading this register back gives
+     * 0x70, which is NOT a discrepancy: bit 5 (TXE) is read-only status the
+     * hardware owns. FINDING_cptctl_is_control_and_status.md. #164. */
+    CPTCTL    = 0x50;   /* Rev 20 fcn.0x08CB @ 0x0917, Rev 22 fcn.0x07EC @ 0x0838 */
+    CPTRXCNF2 = 0x25;   /* Rev 20 fcn.0x08CB @ 0x091D, Rev 22 fcn.0x07EC @ 0x083E */
     /* Capture path, BYOR clear. Stock's BOOT init writes 0xAC here (Rev 20
      * fcn.0x08CB @ 0x0923, Rev 22 @0x0844), but its RUNNING value is 0xA8 —
      * the helper at 0x0FF4 writes the same byte to CPTCNF3 and CPTRXCNF3 on

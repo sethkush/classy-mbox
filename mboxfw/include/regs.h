@@ -190,7 +190,48 @@
 #define CPTRXCNF4   XDATA(0xFFD4)
 #define CPTRXCNF3   XDATA(0xFFD5)
 #define CPTRXCNF2   XDATA(0xFFD6)
-#define CPTSTA      XDATA(0xFFDC)
+/* 0xFFDC. #164, and the answer is not the one the task assumed.
+ *
+ * TI's Reg_stc1.h defines BOTH names at this one address (lines 49-50), and
+ * the datasheet settles which is canonical and why there are two: §6.5.4.5
+ * "Codec Port Interface Control AND STATUS Register (CPTCTL - Address FFDCh)".
+ * The register-map table at §6.5.4 lists it as CPTCTL. One address, mixed
+ * types, per the datasheet's own bit table:
+ *
+ *   bit 7  RXF   R    receive data register full   (hardware sets)
+ *   bit 6  RXIE  R/W  receive interrupt enable
+ *   bit 5  TXE   R    transmit data register empty (hardware sets)
+ *   bit 4  TXIE  R/W  transmit interrupt enable
+ *   bit 3   —    R    reserved
+ *   bit 2:1 CID  R/W  codec ID (AC'97 primary/secondary select)
+ *   bit 0  CRST  R/W  codec reset -> the CRESET output pin
+ *
+ * CPTCTL, because a register you WRITE is named for what the write does, and
+ * every bit mboxfw writes here is an R/W control bit. CPTSTA is TI's alias for
+ * reading the same address.
+ *
+ * THIS CLOSES THE 0x70 QUESTION. hw_init writes 0x50 and telemetry reads 0x70
+ * back, and that gap was flagged as unexplained in four FINDING docs (147,
+ * 170, capture_works_anyway, globctl_bits_named_and_cpten_missing), each time
+ * as "hardware is not holding the value written". Decode it instead:
+ *
+ *   write 0x50 = RXIE | TXIE            -- both R/W, both take
+ *   read  0x70 = RXIE | TXE | TXIE      -- the same two, plus TXE
+ *
+ * TXE is bit 5, read-only, and set by hardware when the transmit data register
+ * has been sent to the codec. Every writable bit reads back exactly as
+ * written; the one extra bit is hardware reporting its own state, which is the
+ * entire purpose of a control-and-status register. Nothing was ever wrong. The
+ * name was: "STA" said the whole register was status, hw_init treated the
+ * whole thing as control, and the truth is that it is per-bit.
+ *
+ * The datasheet also refutes the "may be clear-on-read" caution this name
+ * invented in telemetry.c: RXF is cleared by reading the receive DATA
+ * register and TXE by writing the transmit data register -- not by reading
+ * this one. Reading CPTCTL for telemetry is free of side effects.
+ *
+ * See FINDING_cptctl_is_control_and_status.md. */
+#define CPTCTL      XDATA(0xFFDC)
 #define CPTCNF4     XDATA(0xFFDD)
 #define CPTCNF3     XDATA(0xFFDE)
 #define CPTCNF2     XDATA(0xFFDF)
