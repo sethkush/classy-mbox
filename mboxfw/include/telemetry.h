@@ -101,7 +101,21 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0029   /* 0029: #46 -- 88.2/96 kHz are now CLASS
+#define TLM_BUILD_ID     0x002A   /* 002A: #46 fix attempt + instrument.
+                                   *       Endpoint buffers 640 -> 576 B: an
+                                   *       ALIGNMENT fix, not a size cut. An
+                                   *       isochronous BSIZ sizes a CIRCULAR
+                                   *       buffer, and 640 is a whole number of
+                                   *       frames at NEITHER rate (2.22 at 48
+                                   *       kHz, 1.11 at 96) so the wrap point
+                                   *       moves every frame. 576 is exactly 2
+                                   *       frames at 48 kHz and exactly 1 at
+                                   *       96. Bases 0xFA20 / 0xFC60.
+                                   *       Block 3 revived as a live read of
+                                   *       OEPBSIZ2/OEPBBAX2/IEPBBAX1, to tell
+                                   *       a buffer bug from a register that
+                                   *       never took.
+                                   * 0029: #46 -- 88.2/96 kHz are now CLASS
                                    *       COMPLIANT. Each streaming interface
                                    *       gains an alt 2 advertising the two
                                    *       doubled rates at wMaxPacketSize 582,

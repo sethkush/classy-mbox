@@ -129,9 +129,34 @@
  * kHz. Two 96 kHz frames would need 1152 B each and 2304 B total, which does
  * not fit in the 1288 B available — supporting 96 kHz means single-frame
  * buffers, not just bigger ones. */
+/* #46, 2026-08-05: 640 -> 576, and this is an ALIGNMENT fix, not a size cut.
+ *
+ * BSIZ sizes a single CIRCULAR buffer for an isochronous endpoint (§6.4.4.4).
+ * If the buffer is not a whole number of frames, the wrap point moves by the
+ * remainder every frame and frames straddle it at a different offset each
+ * time. 640 is a whole number of frames at NEITHER rate: 640/288 = 2.22 at
+ * 48 kHz, 640/576 = 1.11 at 96 kHz.
+ *
+ *   576 = 2 x 288 exactly at 48 kHz
+ *   576 = 1 x 576 exactly at 96 kHz
+ *
+ * One value, frame-aligned at both, and it still holds two whole frames at
+ * 48 kHz. Stock only ever ran 48 kHz, where 352 B of slack meant the drain
+ * stayed ahead of the wrap and the misalignment never showed; at 96 kHz the
+ * slack is 64 B and it showed immediately -- build 0x0029 measured capture
+ * carrying the right tone at the right amplitude with FULL-SCALE samples
+ * spliced in (peak 1.0002 against 0.0456 on the same tone at 48 kHz).
+ *
+ * Two buffers of 576 = 1152 B, inside the 1288 B available, with 136 B spare
+ * at 0xFEA0-0xFF27. The bases move because the playback buffer shrank.
+ *
+ * THIS IS A DEPARTURE FROM STOCK's 640 and is deliberate -- see
+ * tools/rev20_diff_justifications.md. Stock's value is right for stock, which
+ * has no 96 kHz mode; it is wrong for a part that has one. */
 #define EP2_OUT_BUF_ADDR   0xFA20   /* playback buffer (host → device) */
-#define EP1_IN_BUF_ADDR    0xFCA0   /* capture buffer  (device → host) */
-#define EP_AUDIO_BUF_SIZE  0x0280   /* 640 B — stock's size, 2.2x a 48 kHz frame */
+#define EP1_IN_BUF_ADDR    0xFC60   /* capture buffer  (device → host) */
+#define EP_AUDIO_BUF_SIZE  0x0240   /* 576 B — a whole number of frames at
+                                     * BOTH 48 kHz (2) and 96 kHz (1) */
 
 /* USB audio streaming endpoints — Rev 20 uses EP1 IN + EP2 OUT.
  * (Per TI Reg_stc1.h: IEPCNF1=0xFF60, OEPCNF2=0xFF98. Earlier RE notes

@@ -92,21 +92,33 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         put16(&out[6], tlm_last_wlength);
         return 1;
 
-    /* case 3 (VECINT histogram) RETIRED 2026-08-05 for the code budget.
-     * It answered "is the ISR firing spuriously, and are unhandled vectors
-     * arriving?" -- and the answer has been no since #152 settled that a bus
-     * reset does not clear USBIMSK and #175 settled the suspend path. The
-     * susr/resr tally it carried is likewise closed.
-     *
-     * The tlm_vec_* counters are still INCREMENTED in isr.c. That is
-     * deliberate: removing the increments touches the interrupt path to save
-     * bytes we do not yet need, and re-adding this block is a `git show` away.
-     * When the next squeeze comes, those increments are the follow-up.
-     *
-     * Blocks 4, 5 and 6 are kept precisely because the 96 kHz descriptor work
-     * needs them -- endpoint config, live byte counts, DMA and CPTCTL state
-     * are how a 576 B frame gets verified. Retiring an instrument the next
-     * task needs to make room for that task is not a saving. */
+    case 3:
+        /* #46 ENDPOINT GEOMETRY, live out of the registers.
+         *
+         * Reuses the index the VECINT histogram vacated. It exists because
+         * build 0x0029 produced two failures at 96 kHz whose causes are
+         * indistinguishable from the host side -- playback dead silent
+         * (-97 dBFS) and capture carrying the right tone with full-scale
+         * samples spliced in -- and both are consistent with either a buffer
+         * problem or a DMA that never moved. Block 6 already reports the DMA
+         * enables and the byte counts; what was missing is the geometry the
+         * hardware ACTUALLY holds, as opposed to what the source says it
+         * wrote. Those differ exactly when a write is being overwritten, and
+         * that is the case worth being able to see.
+         *
+         * Only the three the OTHER blocks do not already carry: block 5 has
+         * IEPCNF1/OEPCNF2, block 6 has IEPBSIZ1, IEPDCNTX1 and OEPDCNTX2. The
+         * first draft of this block re-reported all eight and did not fit in
+         * the 51 free bytes -- which was the right way to find out that seven
+         * eighths of it was duplication.
+         *
+         * BSIZ and BBAX are in 8-byte units: 0x48 = 576 B, 0x44 = 0xFA20,
+         * 0x8C = 0xFC60. Bytes 3-7 read 0. */
+        out[0] = OEPBSIZ2;
+        out[1] = OEPBBAX2;
+        out[2] = IEPBBAX1;
+        return 1;
+
     case 4:
         /* Peripheral results — separates a hardware fault from a
          * firmware fault without a scope. */

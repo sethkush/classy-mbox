@@ -96,9 +96,6 @@ BLOCK_RETIRED = {
     # went to restoring iSerialNumber and toward the 88.2/96 kHz descriptors.
     # Blocks 4/5/6 were deliberately NOT retired: the descriptor work needs
     # them to verify a 576 B frame.
-    3:  (0x0027, "VECINT histogram -- the ISR-health question has been closed "
-                 "since #152 (a bus reset does not clear USBIMSK) and #175 "
-                 "(suspend/resume); the counters are still kept in isr.c"),
     7:  (0x0027, "EP0 buffer counts + suspend tally -- #148 settled the Y-count "
                  "question and usb_ep0_setup() now clears both, so it read 0 "
                  "either way; block 1 remains the EP0-loss instrument"),
@@ -241,14 +238,36 @@ def block2(b):
 
 
 def block3(b):
-    out = ["VECINT histogram (saturating at 255):",
-           "  setup=%d iep0=%d oep0=%d rstr=%d none=%d other=%d"
-           % (b[0], b[1], b[2], b[3], b[4], b[5]),
-           "  susr=%d resr=%d   (bus suspend / resume)" % (b[6], b[7])]
-    if b[4]:
-        out.append("  NOTE: nonzero 'none' -- ISR firing with no vector set")
-    if b[5]:
-        out.append("  NOTE: nonzero 'other' -- an unhandled vector is arriving")
+    """#46 endpoint geometry, read live out of the registers.
+
+    Only the three the other blocks do not already carry -- block 5 has
+    IEPCNF1/OEPCNF2, block 6 has IEPBSIZ1, IEPDCNTX1 and OEPDCNTX2.
+
+    BSIZ and BBAX are in 8-byte units. What this exists to catch is the
+    geometry the hardware HOLDS disagreeing with what the source says it
+    wrote, which is what a silently overwritten register looks like and is
+    indistinguishable from a buffer bug from the host side.
+    """
+    bsz, obb, ibb = b[0], b[1], b[2]
+    out = [
+        "OEPBSIZ2 =0x%02X  (%d B, playback circular buffer)" % (bsz, bsz * 8),
+        "OEPBBAX2 =0x%02X  (playback base 0x%04X)" % (obb, 0xF800 + obb * 8),
+        "IEPBBAX1 =0x%02X  (capture  base 0x%04X)" % (ibb, 0xF800 + ibb * 8),
+    ]
+    # 576 B is a whole number of frames at both rates; 640 is at neither.
+    if bsz * 8 == 576:
+        out.append("  576 B = 2 frames at 48 kHz, 1 frame at 96 kHz --"
+                   " frame-aligned at both")
+    elif bsz:
+        rem48, rem96 = (bsz * 8) % 288, (bsz * 8) % 576
+        if rem48 or rem96:
+            out.append("  NOT frame-aligned: %d B leaves %d B over at 48 kHz"
+                       " and %d B at 96 kHz. An isochronous BSIZ sizes a"
+                       " CIRCULAR buffer, so the wrap point moves by the"
+                       " remainder every frame." % (bsz * 8, rem48, rem96))
+    if obb and ibb and (obb + bsz) > ibb:
+        out.append("  OVERLAP: playback runs to 0x%04X, capture starts 0x%04X"
+                   % (0xF800 + (obb + bsz) * 8 - 1, 0xF800 + ibb * 8))
     return out
 
 
@@ -516,7 +535,7 @@ TITLES = {
     0: "identity and liveness",
     1: "EP0 continuation forensics",
     2: "last SETUP seen",
-    3: "VECINT histogram",
+    3: "endpoint geometry (#46)",
     4: "peripheral results + port state",
     5: "isochronous streaming state",
     6: "DMA and C-port live state",

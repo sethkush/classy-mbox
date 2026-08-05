@@ -12,7 +12,7 @@
 0xff2e  rmw       -       # usb
 0xff60  assign    0x00    # streaming,usb
 0xff60  assign    0xc5    # streaming
-0xff61  assign    0x94    # usb
+0xff61  assign    0x8c    # usb
 0xff62  runtime   -       # usb
 0xff63  assign    0x00    # streaming
 0xff67  runtime   -       # streaming
@@ -31,7 +31,7 @@
 0xff98  assign    0xc5    # streaming
 0xff98  runtime   -       # streaming,usb
 0xff99  assign    0x44    # usb
-0xff9a  assign    0x50    # usb
+0xff9a  assign    0x48    # usb
 0xff9b  assign    0x00    # streaming
 0xff9b  runtime   -       # streaming
 0xff9f  runtime   -       # streaming
