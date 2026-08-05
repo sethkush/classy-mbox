@@ -92,6 +92,16 @@ BLOCK_FIRST_BUILD = {
 # BLOCK_FIRST_BUILD exists to prevent, and it cannot express "index 8 used to
 # mean something else". A retired block reads as the all-0xFF sentinel.
 BLOCK_RETIRED = {
+    # #46 headroom. Both answered questions that are closed, and the bytes
+    # went to restoring iSerialNumber and toward the 88.2/96 kHz descriptors.
+    # Blocks 4/5/6 were deliberately NOT retired: the descriptor work needs
+    # them to verify a 576 B frame.
+    3:  (0x0027, "VECINT histogram -- the ISR-health question has been closed "
+                 "since #152 (a bus reset does not clear USBIMSK) and #175 "
+                 "(suspend/resume); the counters are still kept in isr.c"),
+    7:  (0x0027, "EP0 buffer counts + suspend tally -- #148 settled the Y-count "
+                 "question and usb_ep0_setup() now clears both, so it read 0 "
+                 "either way; block 1 remains the EP0-loss instrument"),
     8:  (0x001A, "boot-ROM handoff snapshot -- answered "
                  "WHAT_REMAINS_UNKNOWN.md 3a (the ROM does leave an EP0 Y "
                  "count non-zero) and confirmed GLOBCTL=0x04 at handoff"),

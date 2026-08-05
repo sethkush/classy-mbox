@@ -409,11 +409,8 @@ void streaming_set_rate(unsigned long hz)
      * nothing at runtime. See MBOX_MUTE_PAIR_MASK in the Makefile — the open
      * question is whether these are one gate or two, which is exactly what
      * decides whether a UAC Feature Unit can carry an honest Mute. */
-#ifndef MBOX_MUTE_PAIR_MASK
-#define MBOX_MUTE_PAIR_MASK 0x0C
-#endif
-#if !defined(MBOX_NO_MUTE_PAIR) && (MBOX_MUTE_PAIR_MASK != 0)
-    g_codec_state_23 |= (unsigned char)MBOX_MUTE_PAIR_MASK;
+#if !defined(MBOX_NO_MUTE_PAIR) && (CODEC23_MUTE_PAIR != 0)
+    g_codec_state_23 |= (unsigned char)CODEC23_MUTE_PAIR;
 #endif
     /* ACGCTL bits 6-7, NOT a DMA arm. The old comment here claimed this
      * armed DMA channels 0+1; 0xFFE1 is the adaptive clock generator

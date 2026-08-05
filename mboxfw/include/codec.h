@@ -80,6 +80,14 @@ void codec_init(void);
  */
 #define CODEC23_MODE5_A      0x04u  /* 0x23.2 — mute / audio-path enable pair, */
 #define CODEC23_MODE5_B      0x08u  /* 0x23.3   released together after settle */
+/* #46. The pair as one mask, so the mute-split experiment
+ * (MBOX_MUTE_PAIR_MASK in the Makefile) can vary it without putting an
+ * unresolvable macro in front of latch_word_bit_diff.py -- that gate reads
+ * the CODEC23_ and CODEC25_ defines out of this file and over-estimates anything it
+ * cannot resolve, which is safe but reports a false stale-gap. */
+#ifndef CODEC23_MUTE_PAIR
+#define CODEC23_MUTE_PAIR    0x0Cu  /* CODEC23_MODE5_A | CODEC23_MODE5_B */
+#endif
 #define CODEC23_RESET_N      0x10u  /* 0x23.4 — external-chip RESET, ACTIVE LOW.
                                      * Rev 20 SETB 0x1c @0x0840 (Rev 22 @0x09E5,
                                      * @0x0BB5) releases it once at boot. */

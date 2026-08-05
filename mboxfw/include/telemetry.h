@@ -101,7 +101,13 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0024   /* 0024: #46 -- 88.2 and 96 kHz reachable, via
+#define TLM_BUILD_ID     0x0027   /* 0027: same firmware as 0024 with MBOX_UNIT=B,
+                                   *       which 0024 was flashed WITHOUT -- so it
+                                   *       served no iSerialNumber and B had to be
+                                   *       addressed by bus:addr. 0025/0026 stay
+                                   *       reserved for the MBOX_MUTE_PAIR_MASK
+                                   *       variants (see the Makefile).
+                                   * 0024: #46 -- 88.2 and 96 kHz reachable, via
                                    *       TLM_REQ_SET_CLOCK wValue 3/4 ONLY. The
                                    *       synthesizer cannot reach 2x (12-25 MHz
                                    *       range, and 48 kHz already runs it at

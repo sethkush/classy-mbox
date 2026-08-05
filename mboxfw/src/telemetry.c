@@ -102,23 +102,21 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         put16(&out[6], tlm_last_wlength);
         return 1;
 
-    case 3:
-        /* VECINT histogram. A large `none` means the ISR is firing
-         * spuriously; a nonzero `other` means a vector we do not handle
-         * is arriving. */
-        out[0] = tlm_vec_setup;
-        out[1] = tlm_vec_iep0;
-        out[2] = tlm_vec_oep0;
-        out[3] = tlm_vec_rstr;
-        out[4] = tlm_vec_none;
-        out[5] = tlm_vec_other;
-        /* SUSR/RESR belong in the VECINT histogram -- this is what a "VECINT
-         * histogram" means -- and these two bytes were spare. Block 7 reported
-         * them first only because it was the block being added at the time. */
-        out[6] = tlm_vec_susr;
-        out[7] = tlm_vec_resr;
-        return 1;
-
+    /* case 3 (VECINT histogram) RETIRED 2026-08-05 for the code budget.
+     * It answered "is the ISR firing spuriously, and are unhandled vectors
+     * arriving?" -- and the answer has been no since #152 settled that a bus
+     * reset does not clear USBIMSK and #175 settled the suspend path. The
+     * susr/resr tally it carried is likewise closed.
+     *
+     * The tlm_vec_* counters are still INCREMENTED in isr.c. That is
+     * deliberate: removing the increments touches the interrupt path to save
+     * bytes we do not yet need, and re-adding this block is a `git show` away.
+     * When the next squeeze comes, those increments are the follow-up.
+     *
+     * Blocks 4, 5 and 6 are kept precisely because the 96 kHz descriptor work
+     * needs them -- endpoint config, live byte counts, DMA and CPTCTL state
+     * are how a 576 B frame gets verified. Retiring an instrument the next
+     * task needs to make room for that task is not a saving. */
     case 4:
         /* Peripheral results — separates a hardware fault from a
          * firmware fault without a scope. */
@@ -186,42 +184,15 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[7] = OEPDCNTX2;
         return 1;
 
-    case 7:
-        /* EP0 buffer counts, live, plus the suspend/resume tally.
-         *
-         * Bytes 0-3 exist to settle one specific open question: whether the
-         * boot ROM leaves the EP0 *Y* buffer counts non-zero when it hands
-         * over. Both stock images clear them at init and mboxfw did not
-         * (Rev 20 fcn.0x0970 @ 0x0984/0x0988), which is a candidate for the
-         * measured ~12% geometric loss of EP0 IN packets past the second.
-         * usb_ep0_setup() now clears both, so a read here shows 0 whether or
-         * not the residue was ever there — which is exactly why bytes 0-1 are
-         * the Y counts and not a saved copy: they answer "is the UBM putting
-         * anything back into Y while we run?", which is the version of the
-         * question that is still live after the fix.
-         *
-         * Neither Y count appeared in any earlier block, so before this there
-         * was no way to look at them at all.
-         *
-         * Bytes 4-5: the suspend path. tlm_suspends is bumped immediately
-         * before PCON idle, and reading it at all proves the device came back
-         * out — so any non-zero value is a completed suspend/resume cycle. If
-         * susr counts climb while suspends stays 0, the guard is rejecting
-         * them (device not configured). */
-        out[0] = IEPDCNTY0;
-        out[1] = OEPDCNTY0;
-        out[2] = IEPDCNTX0;
-        out[3] = OEPDCNTX0;
-        out[4] = tlm_suspends;
-        /* Playback frame-alignment resyncs -- Rev 22's SOF watchdog firing.
-         * See streaming_sof(). Non-zero is the watchdog doing its job; a count
-         * that climbs steadily means something keeps misaligning the stream. */
-        out[5] = tlm_playback_resyncs;
-        out[6] = 0;                 /* spare */
-        out[7] = PCON;
-        return 1;
-
-
+    /* case 7 (EP0 buffer counts + suspend tally) RETIRED 2026-08-05 for the
+     * code budget. Its own text already recorded why it had stopped earning
+     * its place: usb_ep0_setup() clears both EP0 Y counts now, "so a read here
+     * shows 0 whether or not the residue was ever there". #148 settled the
+     * Y-count question and #149/#175 settled suspend/resume.
+     *
+     * The ~12% geometric EP0 IN loss it was built to chase is still open, but
+     * this block is no longer the instrument for it -- block 1's chunk/drain
+     * accounting is, and that stays. */
     /* case 8 (boot-ROM handoff snapshot) RETIRED 2026-08-03. It answered
      * WHAT_REMAINS_UNKNOWN.md §3a -- the ROM DOES leave an EP0 Y count
      * non-zero -- and confirmed GLOBCTL = 0x04 at handoff, on this part. Both
