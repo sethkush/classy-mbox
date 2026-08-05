@@ -410,3 +410,63 @@ path that skipped the clear. Recorded as an open discrepancy rather than
 explained away — the measured before/after is solid on its own, and inventing a
 reconciliation for the earlier reading would be exactly the move this project
 keeps having to undo.
+
+## The pair CANNOT be isolated from the host — negative result, 2026-08-04
+
+The experiment designed above was built and run. It does not work, and the
+reason is worth recording because it rules out the whole host-side approach.
+
+`tools/iso_loopback.py` (python-libusb1, the project's first raw-isochronous
+rig) streams a 1 kHz tone on ch2 into the `out2 -> src2` loopback and captures
+it back, with ch1 as a silent control. On a clean boot with `snd-usb-audio`
+blocked it correctly observed:
+
+    initial codec word = 0x10C0   pair LOW
+    after setmux line line: 0x10CF   pair still LOW   <- assumption confirmed
+
+then streamed arm A with the pair low, sent `SET_CUR(48000)`, confirmed
+`0x1CCF` (pair HIGH), and streamed arm B.
+
+    arm A (pair LOW ):  captured 0 bytes
+    arm B (pair HIGH):  ch2 1 kHz -26.29 dBFS, ch1 control -98.22 dBFS
+
+**Arm A captured nothing, and that is not silence.** `SET_INTERFACE(alt=1)`
+does arm the endpoints (`IEPCNF1 = 0xC5`, `DMACTL1 |= DMA_EN`,
+`streaming_capture_enable()`), so the endpoint was live. But
+`streaming_set_rate()` is the **only** code that programs the adaptive clock
+generator — `ACG1FRQ*`, `ACG2FRQ*`, `ACGCTL = 0x06` with DIVEN. Without
+`SET_CUR` there is no MCLKO, the codec is never clocked, no I2S frame reaches
+the C-port, the DMA never clears its NACK flag, and the UBM answers every IN
+token with a NULL packet — the exact zero-length-isoc signature this file's
+sibling comment in `streaming.c` records from the DIVEN bug.
+
+So arm A was dead for want of a clock, not muted. **`SET_CUR` raises the pair
+and starts the clock in one indivisible request**, and no other host request
+touches either. The pair is not separable from the outside.
+
+The first version of the harness printed
+`delta +213.71 dB => the pair is an output mute. READING CONFIRMED.`
+It reached that by treating "no data" as -240 dBFS. A measurement that cannot
+tell a muted stream from a stream that never ran is not a measurement, and this
+one would have written a false confirmation into a document that four other
+files cite. `iso_loopback.py` now aborts if an arm captures under 100 ms of
+audio, and says why.
+
+### What would actually settle it
+
+A build, not a host request — the same method that settled #161. Build 0x001E
+= 0x001D with exactly one line removed from `streaming_set_rate()`:
+
+    g_codec_state_23 |= (unsigned char)0x0C;     /* delete this, nothing else */
+
+Then `SET_CUR` does everything it does today *except* raise the pair, and the
+clock comes up either way. Single variable, one flash:
+
+  * audio still works  -> the pair is NOT an output mute on this path, and the
+    reading carried since `FINDING_open_questions.md` §1.6 is wrong
+  * audio dies         -> the pair IS required for the audio path, reading
+    confirmed, and stock's bring-up ordering should be ported
+
+Either outcome is decisive, and the failure mode is benign: a build that boots
+and enumerates but is silent is exactly the state 0x001C already occupied, and
+it is recoverable by reflashing.
