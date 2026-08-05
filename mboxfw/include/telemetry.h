@@ -101,7 +101,20 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0028   /* 0028: dead weight cut -- ten telemetry
+#define TLM_BUILD_ID     0x0029   /* 0029: #46 -- 88.2/96 kHz are now CLASS
+                                   *       COMPLIANT. Each streaming interface
+                                   *       gains an alt 2 advertising the two
+                                   *       doubled rates at wMaxPacketSize 582,
+                                   *       kept separate from alt 1's 294 so a
+                                   *       host reserves the bandwidth it is
+                                   *       about to use rather than the worst
+                                   *       case. SET_CUR accepts them, and
+                                   *       stalls a rate whose class disagrees
+                                   *       with a running stream's alt -- the
+                                   *       part has one clock for both
+                                   *       directions and cannot hold 48 one
+                                   *       way and 96 the other.
+                                   * 0028: dead weight cut -- ten telemetry
                                    *       counters that were written on every
                                    *       interrupt and read by nobody once
                                    *       blocks 3 and 7 retired, the vestigial

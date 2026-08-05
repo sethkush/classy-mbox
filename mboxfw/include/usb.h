@@ -108,6 +108,19 @@
  * Bump slightly for the adaptive-endpoint slew allowance. */
 #define AUDIO_MAX_PACKET_LEN   294
 
+/* #46: alt 2 carries 88.2/96 kHz. 2ch x 3B x 96 = 576, plus the same slack
+ * byte allowance -> 582. It gets its OWN alternate setting rather than joining
+ * alt 1's rate list, because wMaxPacketSize is per-endpoint-descriptor and the
+ * host reserves bus bandwidth from it: a single alt advertising all four rates
+ * would reserve 582 B/frame even while running at 48 kHz. Two alts let the
+ * host reserve what it is actually about to use.
+ *
+ * 582 fits the 640 B endpoint buffer (regs.h), but with 64 B of slack against
+ * 352 B at 48 kHz -- roughly 0.11 ms of tolerance for a late host instead of
+ * 0.6 ms. There is no room to enlarge: the two buffers already occupy 1280 of
+ * the 1288 B available. */
+#define AUDIO_MAX_PACKET_LEN_2X  582
+
 
 /* --- Descriptor lengths ---------------------------------------------
  *
@@ -176,9 +189,12 @@
  * twice and have to move together. */
 #define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 8 + 9 + 9)
 
-#define APP_CFG_TOTAL_LEN   (9 + 9 + AC_BLOCK_LEN \
-                              + 9 + 9 + 7 + 14 + 9 + 7 \
-                              + 9 + 9 + 7 + 14 + 9 + 7)
+/* Per streaming interface: alt 0 (9) + alt 1 (9+7+14+9+7) + alt 2 (9+7+14+9+7).
+ * #46 added the alt-2 row on each; a wTotalLength that does not grow with it
+ * truncates the parse at exactly the point the new alt begins. */
+#define AS_IFACE_LEN        (9 + (9 + 7 + 14 + 9 + 7) + (9 + 7 + 14 + 9 + 7))
+
+#define APP_CFG_TOTAL_LEN   (9 + 9 + AC_BLOCK_LEN + AS_IFACE_LEN + AS_IFACE_LEN)
 
 /* Set by the Digi enter-DFU class request handler, consumed by main().
  * See handle_digi_enter_dfu() in usb.c for why the work is deferred. */
