@@ -71,3 +71,27 @@ a 96 kHz player and a 96 kHz listener simultaneously, which needs them on
 different transaction translators, i.e. one unit physically moved to the other
 host controller (the void box has a second bus, usb1, currently carrying only a
 webcam). No firmware change reaches this.
+
+## 0x002C: the two-sighting rule, measured
+
+Same chain, same tone, A playing to B capturing at 48 kHz.
+
+| build | resyncs | level | g@1k | analyser verdict |
+|---|---|---|---|---|
+| 0x002A play 96 | (no counter) | -97.48 dBFS | 0.000005 | silent |
+| 0x002B play 96 | **255 (sat)** | -39.72 | 0.001446 | no clean agreement |
+| **0x002C play 96** | **1** | **-37.65** | **0.002327** | 1 kHz dominant, ZCR agrees |
+| 0x002C play 48 (control) | 0 | -37.57 | 0.002294 | 1 kHz dominant, ZCR agrees |
+
+96 kHz playback is now within 0.08 dB and 1.4% of tone energy of the 48 kHz
+control, and both pass the agreement check that 0x002B's 96 kHz arm failed.
+
+resyncs reads 1 at t=2 s and the SAME 1 at t=6 s, so the watchdog fired once
+during stream ramp-up and never again. That is the seeded shadow working as
+designed: sof_bcnt_hi/lo start 0xFF/0xFF so the first frame of a stream is
+always evaluated, and a genuinely mid-fill buffer at start can read misaligned
+twice running. It is not a residual fault, and it is exactly the reading the
+saturating counter could not have distinguished from a thrash.
+
+DMABCNT0 still jitters at 96 kHz (156 -> 162) and is still steady at 48 kHz
+(174). That was never the defect -- the defect was ACTING on the jitter.
