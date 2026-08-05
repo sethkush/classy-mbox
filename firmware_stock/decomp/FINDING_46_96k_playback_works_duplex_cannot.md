@@ -54,11 +54,24 @@ is budgeted per TT. Two 582 B isochronous endpoints is 1164 B of payload per
 ~1350 byte-times Linux will allocate, and the second stream is refused.
 
 **The same arithmetic applies to ONE Mbox streaming both directions at 96 kHz**
--- the same 2 x 582 B, the same frame, the same TT. So 96 kHz is inherently
-SIMPLEX on this hardware. This is a stronger limit than the endpoint-RAM
+-- the same 2 x 582 B, the same frame, the same TT.
+
+MEASURED DIRECTLY, 2026-08-05, so this is no longer an inference from the
+two-units-on-one-hub case. Unit B alone, playing and capturing at 96 kHz on
+build 0x002C:
+
+    usb 2-1.2: cannot submit urb 0, error -28: not enough bandwidth
+
+and the identical test at 48 kHz produces no kernel output at all and runs
+clean. One device, one cable, both directions: refused at 96 kHz, fine at 48.
+
+So 96 kHz is inherently SIMPLEX on this hardware. This is a stronger limit than the endpoint-RAM
 ceiling recorded in FINDING_46_96k_capture_works_playback_starves.md (1152 +
 576 = 1728 > 1288): that one is about where the buffers live, this one would
-still bite with unlimited buffer RAM.
+still bite with unlimited buffer RAM. Indeed the RAM ceiling is MOOT: it
+describes a configuration the host refuses to schedule before the buffers
+could ever matter. The TAS1020B is full-speed only, so there is no faster
+mode to escape into.
 
 Capture at 96 kHz is unaffected and still correct: with A playing 1 kHz at
 48 kHz, B captured at 96 kHz reading -27.88 dBFS, identical to B capturing the
