@@ -101,7 +101,28 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x002A   /* 002A: #46 fix attempt + instrument.
+#define TLM_BUILD_ID     0x002B   /* 002B: #46 -- asymmetric endpoint buffers,
+                                   *       playback 696 B / capture 576 B, plus
+                                   *       the instrument to tell two failure
+                                   *       modes apart. 0x002A made capture at
+                                   *       96 kHz correct and left playback
+                                   *       silent with NOTHING visibly wrong
+                                   *       from the host. The two directions do
+                                   *       not want the same thing: capture
+                                   *       needs the wrap frame-aligned, and
+                                   *       playback needs slack the drain can
+                                   *       live in. 576 B is exactly one frame
+                                   *       at 96 kHz, i.e. zero slack, which is
+                                   *       where playback fails. 696 = 116 whole
+                                   *       samples (a multiple of 6 AND 8) and
+                                   *       is the largest that fits beside
+                                   *       capture's 576 in the 1288 B region.
+                                   *       Block 3 now also reports DMABCNT0 and
+                                   *       the playback resync count, so a null
+                                   *       result says whether the buffer is
+                                   *       starved or the SOF watchdog is
+                                   *       thrashing. See regs.h.
+                                   * 002A: #46 fix attempt + instrument.
                                    *       Endpoint buffers 640 -> 576 B: an
                                    *       ALIGNMENT fix, not a size cut. An
                                    *       isochronous BSIZ sizes a CIRCULAR
@@ -254,6 +275,11 @@ extern volatile __data unsigned int  tlm_drains;
 extern volatile __data unsigned int  tlm_rstr_count;
 extern volatile __data unsigned int  tlm_loop_count;
 extern volatile __data unsigned char tlm_stalls;
+/* Times streaming_sof() tore the playback DMA down and restarted it because
+ * DMABCNT0 was not a whole number of samples (block 3, byte 5). Saturating,
+ * so a thrashing watchdog pins it at 0xFF rather than wrapping to a small
+ * number that reads as healthy. Restored in 0x002B -- see telemetry.c case 3. */
+extern volatile __data unsigned char tlm_playback_resyncs;
 extern volatile __data unsigned char tlm_stage;
 extern volatile __data unsigned char tlm_phases;
 

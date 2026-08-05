@@ -989,10 +989,10 @@ void usb_ep0_setup(void)
                                             * Rev 22 fcn.0x0891 @ 0x08C3 */
     IEPBBAX1 = EP_BBAX(EP1_IN_BUF_ADDR);   /* Rev 20 fcn.0x0970 @ 0x09A8,
                                             * Rev 22 fcn.0x0891 @ 0x08C9 */
-    OEPBSIZ2 = EP_BSIZE(EP_AUDIO_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09AE,
-                                             * Rev 22 fcn.0x0891 @ 0x08CF */
-    IEPBSIZ1 = EP_BSIZE(EP_AUDIO_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09B4,
-                                             * Rev 22 fcn.0x0891 @ 0x08D5 */
+    OEPBSIZ2 = EP_BSIZE(EP_PLAYBACK_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09AE,
+                                                * Rev 22 fcn.0x0891 @ 0x08CF */
+    IEPBSIZ1 = EP_BSIZE(EP_CAPTURE_BUF_SIZE);  /* Rev 20 fcn.0x0970 @ 0x09B4,
+                                                * Rev 22 fcn.0x0891 @ 0x08D5 */
 }
 
 void usb_init(void)

@@ -147,15 +147,58 @@
  * carrying the right tone at the right amplitude with FULL-SCALE samples
  * spliced in (peak 1.0002 against 0.0456 on the same tone at 48 kHz).
  *
- * Two buffers of 576 = 1152 B, inside the 1288 B available, with 136 B spare
- * at 0xFEA0-0xFF27. The bases move because the playback buffer shrank.
+ * Two buffers of 576 = 1152 B, inside the 1288 B available. The bases move
+ * because the playback buffer shrank. (Superseded for the playback side by
+ * the 0x002B note below, which spends the leftover 136 B on playback slack.)
  *
  * THIS IS A DEPARTURE FROM STOCK's 640 and is deliberate -- see
  * tools/rev20_diff_justifications.md. Stock's value is right for stock, which
  * has no 96 kHz mode; it is wrong for a part that has one. */
+/* #46, 2026-08-05 (build 0x002B): the two buffers stop being the same size.
+ *
+ * 576/576 made capture correct at 96 kHz (peak 1.0002 -> 0.0456, matching the
+ * 48 kHz baseline to four decimals) and left playback silent: measured on
+ * 0x002A at -97.5 dBFS with OEPCNF2=0xC5, alt 2 held for the whole run, DMAEN
+ * set, OEPDCNTX2 reporting 96 samples/frame arriving, and zero host-side
+ * errors or underruns. Everything says the data reaches the endpoint and
+ * nothing comes out of the C-port.
+ *
+ * The asymmetry is not arbitrary — the two directions do not need the same
+ * thing from a circular buffer. Capture needs the WRAP to land on a frame
+ * boundary, because the DMA writes into it continuously and a moving wrap
+ * point splices samples (that is what 640 B did). Playback needs SLACK: the
+ * DMA drains what the host has already finished writing, so a buffer of
+ * exactly one frame gives the read pointer nowhere to be that the write
+ * pointer is not. 576 B is one frame at 96 kHz, so playback has zero slack
+ * there, and it is exactly at 96 kHz that playback fails.
+ *
+ * 696 B = 116 samples = 1.208 frames at 96 kHz, 2.417 at 48 kHz.
+ *
+ * Why 696 and not the 712 that the byte budget alone would allow: the size
+ * must be a multiple of 6 (one stereo 24-bit sample) as well as of 8 (the
+ * BSIZ granularity), hence a multiple of 24. A buffer that is not a whole
+ * number of SAMPLES puts the read pointer mid-sample on every wrap, which is
+ * precisely the misalignment Rev 22's SOF watchdog exists to detect and
+ * recover from (streaming_sof(); Rev 22 fcn.0x0D58). 712 is not a multiple of
+ * 6; 696 is the largest multiple of 24 that fits.
+ *
+ * Playback does NOT need whole frames the way capture does — stock ran 640 B
+ * (2.22 frames at 48 kHz, and not a multiple of 6 either) for its entire life,
+ * with the watchdog as the backstop. That is the arrangement being restored
+ * here, sized for 96 kHz.
+ *
+ * Budget: 696 + 576 = 1272 of the 1288 B available (0xFA20-0xFF27), 16 B
+ * spare. This is the ceiling. Two whole frames for playback at 96 kHz would
+ * be 1152, and 1152 + 576 = 1728 > 1288 — so if 1.2 frames is not enough
+ * slack, duplex 96 kHz does not fit in this part's endpoint RAM at all, and
+ * the answer is rate-dependent geometry or simplex-only 96 kHz playback.
+ * Build 0x002B reports DMABCNT0 and the resync count in telemetry block 3
+ * so that a null result says WHICH of those it is. */
 #define EP2_OUT_BUF_ADDR   0xFA20   /* playback buffer (host → device) */
-#define EP1_IN_BUF_ADDR    0xFC60   /* capture buffer  (device → host) */
-#define EP_AUDIO_BUF_SIZE  0x0240   /* 576 B — a whole number of frames at
+#define EP1_IN_BUF_ADDR    0xFCD8   /* capture buffer  (device → host) */
+#define EP_PLAYBACK_BUF_SIZE 0x02B8 /* 696 B — 116 whole samples, 1.21 frames
+                                     * at 96 kHz: slack, not frame alignment */
+#define EP_CAPTURE_BUF_SIZE  0x0240 /* 576 B — a whole number of frames at
                                      * BOTH 48 kHz (2) and 96 kHz (1) */
 
 /* USB audio streaming endpoints — Rev 20 uses EP1 IN + EP2 OUT.

@@ -240,8 +240,14 @@ def block2(b):
 def block3(b):
     """#46 endpoint geometry, read live out of the registers.
 
-    Only the three the other blocks do not already carry -- block 5 has
+    Only what the other blocks do not already carry -- block 5 has
     IEPCNF1/OEPCNF2, block 6 has IEPBSIZ1, IEPDCNTX1 and OEPDCNTX2.
+
+    Bytes 3-5 (build 0x002B) are the playback fill level DMABCNT0 and the
+    resync count, which together say WHY playback is silent: a starved buffer
+    reads a fill level at or near zero with few resyncs, a thrashing SOF
+    watchdog reads a climbing resync count. Both look identical from the host
+    otherwise, which is what made 0x002A undiagnosable.
 
     BSIZ and BBAX are in 8-byte units. What this exists to catch is the
     geometry the hardware HOLDS disagreeing with what the source says it
@@ -249,22 +255,45 @@ def block3(b):
     indistinguishable from a buffer bug from the host side.
     """
     bsz, obb, ibb = b[0], b[1], b[2]
+    bcnt = (b[3] << 8) | b[4]
+    resyncs = b[5]
+    nbytes = bsz * 8
     out = [
-        "OEPBSIZ2 =0x%02X  (%d B, playback circular buffer)" % (bsz, bsz * 8),
+        "OEPBSIZ2 =0x%02X  (%d B, playback circular buffer)" % (bsz, nbytes),
         "OEPBBAX2 =0x%02X  (playback base 0x%04X)" % (obb, 0xF800 + obb * 8),
         "IEPBBAX1 =0x%02X  (capture  base 0x%04X)" % (ibb, 0xF800 + ibb * 8),
+        "DMABCNT0 =%d B  (playback fill level at the last SOF)" % bcnt,
+        "resyncs  =%d%s" % (resyncs, " (SATURATED)" if resyncs == 0xFF else ""),
     ]
-    # 576 B is a whole number of frames at both rates; 640 is at neither.
-    if bsz * 8 == 576:
-        out.append("  576 B = 2 frames at 48 kHz, 1 frame at 96 kHz --"
-                   " frame-aligned at both")
-    elif bsz:
-        rem48, rem96 = (bsz * 8) % 288, (bsz * 8) % 576
-        if rem48 or rem96:
-            out.append("  NOT frame-aligned: %d B leaves %d B over at 48 kHz"
-                       " and %d B at 96 kHz. An isochronous BSIZ sizes a"
-                       " CIRCULAR buffer, so the wrap point moves by the"
-                       " remainder every frame." % (bsz * 8, rem48, rem96))
+    # Playback and capture want different things from a circular buffer, so
+    # do not judge the playback size by capture's rule. Capture needs the WRAP
+    # frame-aligned (a moving wrap point splices samples). Playback needs
+    # SLACK: the drain has to have somewhere to be that the host is not
+    # concurrently writing, and whole frames buy it nothing. What playback
+    # does need is a whole number of SAMPLES, or the read pointer lands
+    # mid-sample on every wrap -- which is what the resync watchdog catches.
+    if nbytes % 6:
+        out.append("  NOT a whole number of samples: %d B leaves %d B of a"
+                   " 6-byte sample over at the wrap, so the read pointer"
+                   " lands mid-sample and the SOF watchdog will fire."
+                   % (nbytes, nbytes % 6))
+    if nbytes:
+        out.append("  playback slack: %.2f frames at 48 kHz, %.2f at 96 kHz"
+                   % (nbytes / 288.0, nbytes / 576.0))
+        if nbytes <= 576:
+            out.append("  at 96 kHz this is one frame or less -- ZERO slack,"
+                       " the 0x002A silent-playback configuration")
+    # Which of the two failure modes, if playback is silent -- see telemetry.c
+    # case 3. These are only meaningful sampled MID-STREAM.
+    if resyncs >= 0x20:
+        out.append("  WATCHDOG THRASH: the playback DMA is being torn down and"
+                   " restarted; it never runs long enough to emit.")
+    elif bcnt == 0:
+        out.append("  fill level 0: the DMA has nothing to drain. Buffer"
+                   " starved, not misaligned.")
+    elif bcnt and bcnt % 6:
+        out.append("  fill level is not a whole sample (%d %% 6 = %d)"
+                   % (bcnt, bcnt % 6))
     if obb and ibb and (obb + bsz) > ibb:
         out.append("  OVERLAP: playback runs to 0x%04X, capture starts 0x%04X"
                    % (0xF800 + (obb + bsz) * 8 - 1, 0xF800 + ibb * 8))

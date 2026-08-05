@@ -716,6 +716,15 @@ void streaming_sof(void)
     }
 
 
+    /* Counted, not silent. This watchdog firing occasionally is normal
+     * operation; firing every frame means playback is being restarted faster
+     * than it can produce sound, and the two are indistinguishable from the
+     * host — both present as a stream that runs without error and emits
+     * nothing, which is exactly what 96 kHz playback did on 0x002A. Block 3
+     * byte 5. Saturating at 0xFF so a thrash pins the counter rather than
+     * wrapping to a small value that reads as healthy. */
+    TLM_INC8(tlm_playback_resyncs);
+
     DMACTL0 &= (unsigned char)~DMA_EN;  /* Rev 22 fcn.0x0D58 @ 0x0D80 */
     OEPDCNTX2 = 0;                      /* Rev 22 fcn.0x0D58 @ 0x0D87 */
     OEPDCNTY2 = 0;                      /* Rev 22 fcn.0x0D58 @ 0x0D8C */

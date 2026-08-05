@@ -17,6 +17,7 @@ volatile __data unsigned int  tlm_drains      = 0;
 volatile __data unsigned int  tlm_rstr_count  = 0;
 volatile __data unsigned int  tlm_loop_count  = 0;
 volatile __data unsigned char tlm_stalls      = 0;
+volatile __data unsigned char tlm_playback_resyncs = 0;
 volatile __data unsigned char tlm_mux_sets    = 0;
 volatile __data unsigned char tlm_mux_rejects = 0;
 volatile __data unsigned char tlm_stage       = 0;
@@ -112,11 +113,40 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
          * the 51 free bytes -- which was the right way to find out that seven
          * eighths of it was duplication.
          *
-         * BSIZ and BBAX are in 8-byte units: 0x48 = 576 B, 0x44 = 0xFA20,
-         * 0x8C = 0xFC60. Bytes 3-7 read 0. */
+         * BSIZ and BBAX are in 8-byte units: on 0x002B, 0x57 = 696 B and
+         * 0x44 = 0xFA20 for playback, 0x9B = 0xFCD8 for capture.
+         *
+         * Bytes 3-5 added in 0x002B to settle WHY playback is silent at 96
+         * kHz. 0x002A ruled out everything visible from the host: the
+         * endpoint was enabled, alt 2 was held for the whole run, DMAEN was
+         * set, samples were arriving, and the host reported no error. Two
+         * mechanisms survive that, and they need different fixes:
+         *
+         *   (a) the buffer is too small -- the DMA has nothing to drain that
+         *       the host is not concurrently overwriting. Then DMABCNT0
+         *       (bytes 3-4, the playback fill level, §6.5.2.4) sits at or
+         *       near zero while the stream runs, and resyncs stays low.
+         *
+         *   (b) streaming_sof()'s Rev 22 watchdog is thrashing -- the fill
+         *       level is not a multiple of 6, so it tears the DMA down and
+         *       restarts it, every frame, and playback never runs long
+         *       enough to emit. Then resyncs (byte 5) climbs at roughly the
+         *       SOF rate and DMABCNT0 is non-zero but misaligned.
+         *
+         * Both look identical from outside the device, which is why 0x002A
+         * could not distinguish them and this build can. DMABCNT0 is stable
+         * for the whole frame after SOF (§6.5.2.4), so reading it here needs
+         * no coordination with the SOF handler.
+         *
+         * resyncs is the counter cut in 0x0028's reclaim as "dead". It was
+         * not dead, it was untested -- nothing had yet run playback at a rate
+         * where the watchdog could fire. Byte 6-7 read 0. */
         out[0] = OEPBSIZ2;
         out[1] = OEPBBAX2;
         out[2] = IEPBBAX1;
+        out[3] = DMABCNT0H;
+        out[4] = DMABCNT0L;
+        out[5] = tlm_playback_resyncs;
         return 1;
 
     case 4:
@@ -262,6 +292,7 @@ void tlm_reset_counters(void)
     tlm_drains      = 0;
     tlm_rstr_count  = 0;
     tlm_stalls      = 0;
+    tlm_playback_resyncs = 0;
     tlm_sof_count = 0;
     tlm_vec_iep1  = 0;
     tlm_vec_oep2  = 0;
