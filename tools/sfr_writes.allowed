@@ -12,8 +12,8 @@
 0xff2e  rmw       -       # usb
 0xff60  assign    0x00    # streaming,usb
 0xff60  assign    0xc5    # streaming
-0xff61  assign    0x9b    # usb
-0xff62  assign    0x48    # usb
+0xff61  assign    0x94    # usb
+0xff62  runtime   -       # usb
 0xff63  assign    0x00    # streaming
 0xff67  runtime   -       # streaming
 0xff68  and_not   0xd7    # usb
@@ -31,7 +31,7 @@
 0xff98  assign    0xc5    # streaming
 0xff98  runtime   -       # streaming,usb
 0xff99  assign    0x44    # usb
-0xff9a  assign    0x57    # usb
+0xff9a  assign    0x50    # usb
 0xff9b  assign    0x00    # streaming
 0xff9b  runtime   -       # streaming
 0xff9f  runtime   -       # streaming
@@ -46,8 +46,7 @@
 0xffab  assign    0x00    # usb
 0xffaf  runtime   -       # usb
 0xffb0  or        0x01    # hw_init
-0xffb1  and_not   0xfe    # streaming
-0xffb1  or        0x01    # hw_init,streaming
+0xffb1  or        0x01    # hw_init
 0xffb1  or        0x02    # main
 0xffb1  runtime   -       # hw_init
 0xffb2  assign    0x00    # usb
@@ -60,12 +59,10 @@
 0xffc3  assign    0xa0    # eeprom
 0xffc3  assign    0xa1    # eeprom
 0xffd4  assign    0x03    # hw_init
-0xffd4  runtime   -       # streaming
 0xffd5  assign    0xac    # hw_init
 0xffd6  assign    0x25    # hw_init
 0xffdc  assign    0x50    # hw_init
 0xffdd  assign    0x03    # hw_init
-0xffdd  runtime   -       # streaming
 0xffde  assign    0xac    # hw_init
 0xffdf  assign    0xe5    # hw_init
 0xffe0  assign    0x0d    # hw_init

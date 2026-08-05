@@ -17,7 +17,6 @@ volatile __data unsigned int  tlm_drains      = 0;
 volatile __data unsigned int  tlm_rstr_count  = 0;
 volatile __data unsigned int  tlm_loop_count  = 0;
 volatile __data unsigned char tlm_stalls      = 0;
-volatile __data unsigned char tlm_playback_resyncs = 0;
 volatile __data unsigned char tlm_mux_sets    = 0;
 volatile __data unsigned char tlm_mux_rejects = 0;
 volatile __data unsigned char tlm_stage       = 0;
@@ -91,62 +90,14 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         put16(&out[6], tlm_last_wlength);
         return 1;
 
-    case 3:
-        /* #46 ENDPOINT GEOMETRY, live out of the registers.
-         *
-         * Reuses the index the VECINT histogram vacated. It exists because
-         * build 0x0029 produced two failures at 96 kHz whose causes are
-         * indistinguishable from the host side -- playback dead silent
-         * (-97 dBFS) and capture carrying the right tone with full-scale
-         * samples spliced in -- and both are consistent with either a buffer
-         * problem or a DMA that never moved. Block 6 already reports the DMA
-         * enables and the byte counts; what was missing is the geometry the
-         * hardware ACTUALLY holds, as opposed to what the source says it
-         * wrote. Those differ exactly when a write is being overwritten, and
-         * that is the case worth being able to see.
-         *
-         * Only the three the OTHER blocks do not already carry: block 5 has
-         * IEPCNF1/OEPCNF2, block 6 has IEPBSIZ1, IEPDCNTX1 and OEPDCNTX2. The
-         * first draft of this block re-reported all eight and did not fit in
-         * the 51 free bytes -- which was the right way to find out that seven
-         * eighths of it was duplication.
-         *
-         * BSIZ and BBAX are in 8-byte units: on 0x002B, 0x57 = 696 B and
-         * 0x44 = 0xFA20 for playback, 0x9B = 0xFCD8 for capture.
-         *
-         * Bytes 3-5 added in 0x002B to settle WHY playback is silent at 96
-         * kHz. 0x002A ruled out everything visible from the host: the
-         * endpoint was enabled, alt 2 was held for the whole run, DMAEN was
-         * set, samples were arriving, and the host reported no error. Two
-         * mechanisms survive that, and they need different fixes:
-         *
-         *   (a) the buffer is too small -- the DMA has nothing to drain that
-         *       the host is not concurrently overwriting. Then DMABCNT0
-         *       (bytes 3-4, the playback fill level, §6.5.2.4) sits at or
-         *       near zero while the stream runs, and resyncs stays low.
-         *
-         *   (b) streaming_sof()'s Rev 22 watchdog is thrashing -- the fill
-         *       level is not a multiple of 6, so it tears the DMA down and
-         *       restarts it, every frame, and playback never runs long
-         *       enough to emit. Then resyncs (byte 5) climbs at roughly the
-         *       SOF rate and DMABCNT0 is non-zero but misaligned.
-         *
-         * Both look identical from outside the device, which is why 0x002A
-         * could not distinguish them and this build can. DMABCNT0 is stable
-         * for the whole frame after SOF (§6.5.2.4), so reading it here needs
-         * no coordination with the SOF handler.
-         *
-         * resyncs is the counter cut in 0x0028's reclaim as "dead". It was
-         * not dead, it was untested -- nothing had yet run playback at a rate
-         * where the watchdog could fire. Byte 6-7 read 0. */
-        out[0] = OEPBSIZ2;
-        out[1] = OEPBBAX2;
-        out[2] = IEPBBAX1;
-        out[3] = DMABCNT0H;
-        out[4] = DMABCNT0L;
-        out[5] = tlm_playback_resyncs;
-        return 1;
-
+    /* case 3 (#46 endpoint geometry + DMABCNT0 + playback resyncs) RETIRED
+     * 2026-08-05 with the 88.2/96 kHz support it was built for. It existed to
+     * tell a starved playback buffer from a thrashing SOF watchdog at 96 kHz,
+     * and it did exactly that -- resyncs read 0 at 48 kHz and saturated at 96,
+     * which is what identified the two as separate defects. With the doubled
+     * rates gone the geometry is stock's again and the watchdog never
+     * evaluates at 44.1/48, so there is nothing left for it to discriminate.
+     * Block 6 still carries the live DMA state. */
     case 4:
         /* Peripheral results — separates a hardware fault from a
          * firmware fault without a scope. */
@@ -291,7 +242,6 @@ void tlm_reset_counters(void)
     tlm_drains      = 0;
     tlm_rstr_count  = 0;
     tlm_stalls      = 0;
-    tlm_playback_resyncs = 0;
     tlm_sof_count = 0;
     tlm_vec_iep1  = 0;
     tlm_vec_oep2  = 0;

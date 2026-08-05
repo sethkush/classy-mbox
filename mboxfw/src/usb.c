@@ -608,10 +608,6 @@ static void handle_set_clock(void)
         rate = 44100UL;
     } else if (wValueL == 2) {
         rate = 48000UL;
-    } else if (wValueL == 3) {
-        rate = 88200UL;     /* #46 */
-    } else if (wValueL == 4) {
-        rate = 96000UL;     /* #46 */
     } else {
         reply_stall();
         return;
@@ -989,10 +985,10 @@ void usb_ep0_setup(void)
                                             * Rev 22 fcn.0x0891 @ 0x08C3 */
     IEPBBAX1 = EP_BBAX(EP1_IN_BUF_ADDR);   /* Rev 20 fcn.0x0970 @ 0x09A8,
                                             * Rev 22 fcn.0x0891 @ 0x08C9 */
-    OEPBSIZ2 = EP_BSIZE(EP_PLAYBACK_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09AE,
-                                                * Rev 22 fcn.0x0891 @ 0x08CF */
-    IEPBSIZ1 = EP_BSIZE(EP_CAPTURE_BUF_SIZE);  /* Rev 20 fcn.0x0970 @ 0x09B4,
-                                                * Rev 22 fcn.0x0891 @ 0x08D5 */
+    OEPBSIZ2 = EP_BSIZE(EP_AUDIO_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09AE,
+                                             * Rev 22 fcn.0x0891 @ 0x08CF */
+    IEPBSIZ1 = EP_BSIZE(EP_AUDIO_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09B4,
+                                             * Rev 22 fcn.0x0891 @ 0x08D5 */
 }
 
 void usb_init(void)
@@ -1198,39 +1194,7 @@ void usb_service(void)
                     g_sample_rate = 0UL;
                     streaming_set_rate(0UL);
                     reply_zero_length();
-                } else if (rate == 44100UL || rate == 48000UL
-                           || rate == 88200UL || rate == 96000UL) {
-                    /* #46. The doubled rates live on alt 2, which advertises
-                     * wMaxPacketSize 582; alt 1 advertises 294. The host
-                     * reserves bandwidth from whichever alt it selected, so a
-                     * rate whose class disagrees with an ACTIVE stream's alt
-                     * would put a 576 B packet on an endpoint reserved for
-                     * 294 -- a babble, seen by the host as a broken stream
-                     * with no indication of why.
-                     *
-                     * It has to be checked against BOTH streams, not just the
-                     * one this request names. The part has a single clock for
-                     * both directions: modes 6 and 7 program both ACG
-                     * synthesizers and both C-port dividers together, and
-                     * per-direction rates are stock's mode 5, which is
-                     * unreachable dead code in both images. So capture at 48
-                     * kHz with playback at 96 is not a configuration this
-                     * hardware can hold, and the honest answer to a host that
-                     * asks for it is a stall -- the same reasoning that makes
-                     * an out-of-list rate stall rather than silently round.
-                     *
-                     * A stream on alt 0 is not running and constrains nothing.
-                     */
-                    unsigned char want2 = (unsigned char)(rate > 50000UL);
-                    if ((g_alt_playback && ((g_alt_playback == 2) != want2))
-                     || (g_alt_capture  && ((g_alt_capture  == 2) != want2))) {
-                        /* if/else rather than an early return: nothing
-                         * follows this switch today, so `return` would be
-                         * equivalent -- and would silently stop being
-                         * equivalent the moment anything is added after it,
-                         * on one path out of many. */
-                        reply_stall();
-                    } else {
+                } else if (rate == 44100UL || rate == 48000UL) {
                     g_sample_rate  = rate;
                     g_internal_rate = rate;
                     /* #179. While the Selector Unit is on S/PDIF the clock
@@ -1268,7 +1232,6 @@ void usb_service(void)
                     streaming_set_rate(
                         (g_codec_state_25 & CODEC25_SEL_SPDIF) ? 0UL : rate);
                     reply_zero_length();   /* status stage */
-                    }
                 } else {
                     reply_stall();
                 }

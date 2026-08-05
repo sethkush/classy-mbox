@@ -226,53 +226,6 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0x00,                  /* bLockDelayUnits */
     0x00, 0x00,            /* wLockDelay */
 
-    /* Alt 2: 88.2/96 kHz (9 bytes) — #46.
-     *
-     * A SEPARATE alt setting, not two more rates on alt 1, because
-     * wMaxPacketSize is what the host reserves bus bandwidth from. All four
-     * rates on one alt would reserve 582 B/frame even at 48 kHz. See
-     * AUDIO_MAX_PACKET_LEN_2X in usb.h.
-     *
-     * The device has ONE clock for both directions -- modes 6 and 7 program
-     * both ACG synthesizers and both C-port dividers together -- so it cannot
-     * run capture at 48 kHz while playback is at 96. usb.c stalls the SET_CUR
-     * that would ask for it rather than letting the mismatch reach the wire as
-     * a 576 B packet on an endpoint the host reserved 294 for. */
-    9, USB_DT_INTERFACE,
-    1, 2, 1,
-    0x01, UAC_SUBCLASS_STREAM, 0x00, 0,
-
-    /* Class-specific AS General descriptor (7 bytes) */
-    7, USB_DT_CS_INTERFACE, UAC_AS_GENERAL,
-    TERM_USB_OUT_STREAM,
-    1,
-    0x01, 0x00,
-
-    /* Type I Format descriptor, FMT_2X_NRATES discrete rates.
-     * MBOX_882_DIAG drops 96000 and shrinks this to 11 bytes — see usb.h. */
-    FMT_2X_LEN, USB_DT_CS_INTERFACE, UAC_AS_FORMAT_TYPE,
-    0x01,
-    AUDIO_NUM_CHANNELS,
-    AUDIO_SUBFRAME_BYTES,
-    AUDIO_BIT_RESOLUTION,
-    FMT_2X_NRATES,         /* bSamFreqType = discrete rate count */
-    0x88, 0x58, 0x01,      /* 88200 Hz */
-#if !defined(MBOX_882_DIAG)
-    0x00, 0x77, 0x01,      /* 96000 Hz */
-#endif
-
-    /* Standard AS isochronous endpoint (9 bytes) */
-    9, USB_DT_ENDPOINT,
-    EP_AUDIO_OUT,
-    UAC_EP_ISO | UAC_EP_SYNC_ADAPTIVE,
-    AUDIO_MAX_PACKET_LEN_2X & 0xFF, (AUDIO_MAX_PACKET_LEN_2X >> 8) & 0xFF,
-    1,
-    0,
-    0,
-
-    /* Class-specific iso audio EP descriptor (7 bytes) */
-    7, USB_DT_CS_ENDPOINT, UAC_AS_GENERAL,
-    0x01, 0x00, 0x00, 0x00,
 
     /* ==================================================================
      * Interface 2: AudioStreaming — capture (device → host on EP1 IN)
@@ -317,53 +270,6 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     7, USB_DT_CS_ENDPOINT, UAC_AS_GENERAL,
     0x01, 0x00, 0x00, 0x00,
 
-    /* Alt 2: 88.2/96 kHz (9 bytes) — #46.
-     *
-     * A SEPARATE alt setting, not two more rates on alt 1, because
-     * wMaxPacketSize is what the host reserves bus bandwidth from. All four
-     * rates on one alt would reserve 582 B/frame even at 48 kHz. See
-     * AUDIO_MAX_PACKET_LEN_2X in usb.h.
-     *
-     * The device has ONE clock for both directions -- modes 6 and 7 program
-     * both ACG synthesizers and both C-port dividers together -- so it cannot
-     * run capture at 48 kHz while playback is at 96. usb.c stalls the SET_CUR
-     * that would ask for it rather than letting the mismatch reach the wire as
-     * a 576 B packet on an endpoint the host reserved 294 for. */
-    9, USB_DT_INTERFACE,
-    2, 2, 1,
-    0x01, UAC_SUBCLASS_STREAM, 0x00, 0,
-
-    /* Class-specific AS General descriptor (7 bytes) */
-    7, USB_DT_CS_INTERFACE, UAC_AS_GENERAL,
-    TERM_USB_IN_STREAM,
-    1,
-    0x01, 0x00,
-
-    /* Type I Format descriptor, FMT_2X_NRATES discrete rates.
-     * MBOX_882_DIAG drops 96000 and shrinks this to 11 bytes — see usb.h. */
-    FMT_2X_LEN, USB_DT_CS_INTERFACE, UAC_AS_FORMAT_TYPE,
-    0x01,
-    AUDIO_NUM_CHANNELS,
-    AUDIO_SUBFRAME_BYTES,
-    AUDIO_BIT_RESOLUTION,
-    FMT_2X_NRATES,         /* bSamFreqType = discrete rate count */
-    0x88, 0x58, 0x01,      /* 88200 Hz */
-#if !defined(MBOX_882_DIAG)
-    0x00, 0x77, 0x01,      /* 96000 Hz */
-#endif
-
-    /* Standard AS isochronous endpoint (9 bytes) */
-    9, USB_DT_ENDPOINT,
-    EP_AUDIO_IN,
-    UAC_EP_ISO | UAC_EP_SYNC_ADAPTIVE,
-    AUDIO_MAX_PACKET_LEN_2X & 0xFF, (AUDIO_MAX_PACKET_LEN_2X >> 8) & 0xFF,
-    1,
-    0,
-    0,
-
-    /* Class-specific iso audio EP descriptor (7 bytes) */
-    7, USB_DT_CS_ENDPOINT, UAC_AS_GENERAL,
-    0x01, 0x00, 0x00, 0x00,
 };
 
 /* --- String descriptors --------------------------------------------- */

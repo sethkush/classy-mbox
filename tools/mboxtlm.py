@@ -92,6 +92,11 @@ BLOCK_FIRST_BUILD = {
 # BLOCK_FIRST_BUILD exists to prevent, and it cannot express "index 8 used to
 # mean something else". A retired block reads as the all-0xFF sentinel.
 BLOCK_RETIRED = {
+    3:  (0x002E, "#46 endpoint geometry + DMABCNT0 + playback resyncs -- built to "
+                 "tell a starved playback buffer from a thrashing SOF watchdog "
+                 "at 96 kHz, and it did (resyncs 0 at 48 kHz, saturated at 96). "
+                 "Retired with the 88.2/96 kHz support: the geometry is stock's "
+                 "again and the watchdog never evaluates at 44.1/48"),
     # #46 headroom. Both answered questions that are closed, and the bytes
     # went to restoring iSerialNumber and toward the 88.2/96 kHz descriptors.
     # Blocks 4/5/6 were deliberately NOT retired: the descriptor work needs
@@ -116,19 +121,15 @@ SOURCES = {"mic": 0x06, "line": 0x05, "inst": 0x03}
 SELECTOR_NAMES = {0: "analog", 1: "S/PDIF"}
 CLOCK_MODE_NAMES = {1: "slaved to S/PDIF (mode 1)",
                     2: "internal 44.1 kHz (mode 2)",
-                    3: "internal 48 kHz (mode 3)",
-                    # #46. Modes 2 and 3 with the C-port dividers halved
-                    # (CPTCNF4/CPTRXCNF4 /4 -> /2). Same ACG frequency word --
-                    # the synthesizer tops out at 25 MHz and 48 kHz already
-                    # runs it at 24.576 MHz, so there is no 96 kHz word.
-                    6: "internal 88.2 kHz (mode 6, divider /2)",
-                    7: "internal 96 kHz (mode 7, divider /2)"}
+                    3: "internal 48 kHz (mode 3)"}
 # wValue low byte of TLM_REQ_SET_CLOCK.
 #
-# 88200/96000 are build 0x0024+ and are NOT in the descriptors -- the class
-# SET_CUR path still stalls them. Until the bench shows the codec converts at
-# those rates, this request is the only way to reach them, deliberately.
-CLOCK_ARG = {"slave": 0, "44100": 1, "48000": 2, "88200": 3, "96000": 4}
+# 88200/96000 were arms 3 and 4 until the doubled rates were removed
+# (2026-08-05) -- gone from the firmware, not merely undeclared. The converter
+# follows MCLK, which the synthesizer cannot double, so those rates folded
+# about the base rate's Nyquist instead of resolving.
+# See FINDING_46_no_bandwidth_above_24k.md.
+CLOCK_ARG = {"slave": 0, "44100": 1, "48000": 2}
 SOURCE_NAMES = {v: k for k, v in SOURCES.items()}
 
 PHASE_BITS = [(0x01, "USB_INIT"), (0x02, "HW_INIT"), (0x04, "ATTACH"),

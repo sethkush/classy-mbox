@@ -123,83 +123,29 @@
  * app-owned while our firmware runs. mboxfw has ALREADY relied on this since
  * its first build — EP0's buffers at 0xFA10 are inside the same region, and
  * they demonstrably work on hardware. #162 extends an assumption that is
- * already load-bearing rather than making a new one.
+ * already load-bearing rather than making a new one. */
+/* Back to STOCK's geometry, 2026-08-05, when 88.2/96 kHz were removed.
  *
- * 88.2/96 kHz (#46) needs 576 B/frame, so 640 B holds only one frame at 96
- * kHz. Two 96 kHz frames would need 1152 B each and 2304 B total, which does
- * not fit in the 1288 B available — supporting 96 kHz means single-frame
- * buffers, not just bigger ones. */
-/* #46, 2026-08-05: 640 -> 576, and this is an ALIGNMENT fix, not a size cut.
+ * These were 696 B playback / 576 B capture. Both values existed ONLY to serve
+ * 96 kHz: 576 is a whole number of frames at 96 kHz (1) as well as 48 (2), and
+ * 696 gave playback the slack it needs when a frame is 576 B rather than 288.
+ * With the doubled rates gone the justification goes with them, and stock's
+ * 640/640 -- proven across two shipped firmwares at 44.1 and 48 kHz -- is the
+ * value to hold.
  *
- * BSIZ sizes a single CIRCULAR buffer for an isochronous endpoint (§6.4.4.4).
- * If the buffer is not a whole number of frames, the wrap point moves by the
- * remainder every frame and frames straddle it at a different offset each
- * time. 640 is a whole number of frames at NEITHER rate: 640/288 = 2.22 at
- * 48 kHz, 640/576 = 1.11 at 96 kHz.
+ * This also restores the byte-identical write block #162 matched: stock carries
+ * the constant in A across both BSIZ writes (Rev 20 0x09AB / Rev 22 0x08CC hold
+ * `90 ff 9a 74 50 f0 90 ff 62 f0`), which only works when the two sizes are
+ * equal. Two different constants forced a second `MOV A,#imm`.
  *
- *   576 = 2 x 288 exactly at 48 kHz
- *   576 = 1 x 576 exactly at 96 kHz
- *
- * One value, frame-aligned at both, and it still holds two whole frames at
- * 48 kHz. Stock only ever ran 48 kHz, where 352 B of slack meant the drain
- * stayed ahead of the wrap and the misalignment never showed; at 96 kHz the
- * slack is 64 B and it showed immediately -- build 0x0029 measured capture
- * carrying the right tone at the right amplitude with FULL-SCALE samples
- * spliced in (peak 1.0002 against 0.0456 on the same tone at 48 kHz).
- *
- * Two buffers of 576 = 1152 B, inside the 1288 B available. The bases move
- * because the playback buffer shrank. (Superseded for the playback side by
- * the 0x002B note below, which spends the leftover 136 B on playback slack.)
- *
- * THIS IS A DEPARTURE FROM STOCK's 640 and is deliberate -- see
- * tools/rev20_diff_justifications.md. Stock's value is right for stock, which
- * has no 96 kHz mode; it is wrong for a part that has one. */
-/* #46, 2026-08-05 (build 0x002B): the two buffers stop being the same size.
- *
- * 576/576 made capture correct at 96 kHz (peak 1.0002 -> 0.0456, matching the
- * 48 kHz baseline to four decimals) and left playback silent: measured on
- * 0x002A at -97.5 dBFS with OEPCNF2=0xC5, alt 2 held for the whole run, DMAEN
- * set, OEPDCNTX2 reporting 96 samples/frame arriving, and zero host-side
- * errors or underruns. Everything says the data reaches the endpoint and
- * nothing comes out of the C-port.
- *
- * The asymmetry is not arbitrary — the two directions do not need the same
- * thing from a circular buffer. Capture needs the WRAP to land on a frame
- * boundary, because the DMA writes into it continuously and a moving wrap
- * point splices samples (that is what 640 B did). Playback needs SLACK: the
- * DMA drains what the host has already finished writing, so a buffer of
- * exactly one frame gives the read pointer nowhere to be that the write
- * pointer is not. 576 B is one frame at 96 kHz, so playback has zero slack
- * there, and it is exactly at 96 kHz that playback fails.
- *
- * 696 B = 116 samples = 1.208 frames at 96 kHz, 2.417 at 48 kHz.
- *
- * Why 696 and not the 712 that the byte budget alone would allow: the size
- * must be a multiple of 6 (one stereo 24-bit sample) as well as of 8 (the
- * BSIZ granularity), hence a multiple of 24. A buffer that is not a whole
- * number of SAMPLES puts the read pointer mid-sample on every wrap, which is
- * precisely the misalignment Rev 22's SOF watchdog exists to detect and
- * recover from (streaming_sof(); Rev 22 fcn.0x0D58). 712 is not a multiple of
- * 6; 696 is the largest multiple of 24 that fits.
- *
- * Playback does NOT need whole frames the way capture does — stock ran 640 B
- * (2.22 frames at 48 kHz, and not a multiple of 6 either) for its entire life,
- * with the watchdog as the backstop. That is the arrangement being restored
- * here, sized for 96 kHz.
- *
- * Budget: 696 + 576 = 1272 of the 1288 B available (0xFA20-0xFF27), 16 B
- * spare. This is the ceiling. Two whole frames for playback at 96 kHz would
- * be 1152, and 1152 + 576 = 1728 > 1288 — so if 1.2 frames is not enough
- * slack, duplex 96 kHz does not fit in this part's endpoint RAM at all, and
- * the answer is rate-dependent geometry or simplex-only 96 kHz playback.
- * Build 0x002B reports DMABCNT0 and the resync count in telemetry block 3
- * so that a null result says WHICH of those it is. */
+ * 640 is not a whole number of frames at 48 kHz (2.22) or of samples (106.67),
+ * and that is fine here: it was only ever a problem at 96 kHz, where the slack
+ * was 64 B instead of 352. Rev 22's SOF watchdog is the backstop stock ships
+ * for it. See FINDING_46_no_bandwidth_above_24k.md for why the doubled rates
+ * went. */
 #define EP2_OUT_BUF_ADDR   0xFA20   /* playback buffer (host → device) */
-#define EP1_IN_BUF_ADDR    0xFCD8   /* capture buffer  (device → host) */
-#define EP_PLAYBACK_BUF_SIZE 0x02B8 /* 696 B — 116 whole samples, 1.21 frames
-                                     * at 96 kHz: slack, not frame alignment */
-#define EP_CAPTURE_BUF_SIZE  0x0240 /* 576 B — a whole number of frames at
-                                     * BOTH 48 kHz (2) and 96 kHz (1) */
+#define EP1_IN_BUF_ADDR    0xFCA0   /* capture buffer  (device → host) */
+#define EP_AUDIO_BUF_SIZE  0x0280   /* 640 B — stock's size, both endpoints */
 
 /* USB audio streaming endpoints — Rev 20 uses EP1 IN + EP2 OUT.
  * (Per TI Reg_stc1.h: IEPCNF1=0xFF60, OEPCNF2=0xFF98. Earlier RE notes

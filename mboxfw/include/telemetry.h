@@ -66,7 +66,6 @@
  *   bmRequestType 0x40
  *   wValue low   0 = slave to the incoming S/PDIF stream (clock mode 1)
  *                1 = internal 44.1 kHz   2 = internal 48 kHz
- *                3 = internal 88.2 kHz   4 = internal 96 kHz   (#46)
  *   wIndex low   0 = Selector -> analog  1 = Selector -> S/PDIF
  *                anything else = leave the Selector alone
  *
@@ -101,7 +100,26 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x002C   /* 002C: #46 -- the SOF playback watchdog now
+#define TLM_BUILD_ID     0x002E   /* 002E: #46 REMOVED. 88.2 and 96 kHz are gone
+                                   *       from the descriptors AND from the
+                                   *       code, and the endpoint buffers are
+                                   *       back to stock's 640/640.
+                                   *       Measured: the converter follows
+                                   *       MCLK, and the ACG cannot double it
+                                   *       (2.2.6.1 caps the synthesizer at
+                                   *       25 MHz; 48 kHz already runs it at
+                                   *       24.576 = 512 fs). So the doubled
+                                   *       rates presented the codec with
+                                   *       256 fs, it kept converting at the
+                                   *       base rate, and every tone folded
+                                   *       about that rate's Nyquist --
+                                   *       30 kHz came back as 18, 40 kHz as 8.
+                                   *       They cost double bandwidth, cost
+                                   *       duplex entirely, and returned a
+                                   *       folded spectrum. No firmware change
+                                   *       reaches this. See
+                                   *       FINDING_46_no_bandwidth_above_24k.md.
+                                   * 002C: #46 -- the SOF playback watchdog now
                                    *       needs the misalignment to PERSIST
                                    *       across two consecutive SOFs before it
                                    *       tears the DMA down. 0x002B measured
@@ -294,11 +312,6 @@ extern volatile __data unsigned int  tlm_drains;
 extern volatile __data unsigned int  tlm_rstr_count;
 extern volatile __data unsigned int  tlm_loop_count;
 extern volatile __data unsigned char tlm_stalls;
-/* Times streaming_sof() tore the playback DMA down and restarted it because
- * DMABCNT0 was not a whole number of samples (block 3, byte 5). Saturating,
- * so a thrashing watchdog pins it at 0xFF rather than wrapping to a small
- * number that reads as healthy. Restored in 0x002B -- see telemetry.c case 3. */
-extern volatile __data unsigned char tlm_playback_resyncs;
 extern volatile __data unsigned char tlm_stage;
 extern volatile __data unsigned char tlm_phases;
 
