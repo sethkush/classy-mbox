@@ -114,3 +114,50 @@ What is refuted is a **persistent level tied to the clock mode or the routing**.
 A transient during the SPI burst is not refuted and was not tested. Recorded
 because the previous three P3 stories were each built on one unchecked sample,
 and this one was caught only by re-sampling instead of writing it up.
+
+## The control is discoverable with no quirk — verified 2026-08-04, build 0x0021
+
+#177 made the S/PDIF path work; #160 made a host able to find it. Until 0x0021
+mboxfw answered Selector Unit 5 but declared no Selector Unit, so only a host
+that already knew the unit ID could reach it. Adding an S/PDIF input terminal
+(ID 6, type 0x0605), a Selector Unit (ID 5, pins [2, 6]) and repointing the
+capture output terminal's `bSourceID` to the unit changed that.
+
+`snd-usb-audio` on the void box, at `MBOX_PID=0x2000` where the `mbox1` quirk
+does **not** apply, now enumerates the control from the descriptors alone:
+
+    card 1 (B, build 0x0021)   Simple mixer control 'PCM Capture Source'
+                               Items: 'Line' 'IEC958 In'
+    card 2 (A, build 0x001F)   no such control
+
+The kernel derived both item names from the terminal types it parsed — 0x0603
+"line connector" and 0x0605 "S/PDIF interface". Nothing in the firmware supplies
+those strings.
+
+Driving it moves the hardware, end to end:
+
+    amixer -c 1 cset numid=3 1   ->  codec word 0x1CC0 -> 0x1CD0  (bit 0x25.4)
+                                     selector = S/PDIF
+                                     clock    = slaved to S/PDIF (mode 1)
+
+    amixer -c 1 cset numid=3 0   ->  codec word 0x1CD0 -> 0x1CC0
+                                     selector = analog
+                                     clock    = internal 48 kHz (mode 3)
+
+Two things to notice in that trace.
+
+**Selecting S/PDIF forced the slaved clock by itself**, from a plain ALSA
+control, because the handler ports stock's cmd5 side effect. The kernel quirk
+documents that behaviour ("Setting the input source to S/PDIF resets the clock
+source to S/PDIF") and here it happens with no quirk loaded at all.
+
+**Returning to analog restored 48 kHz**, which is where the deliberate
+divergence from stock earns itself. Stock's cmd4 reloads `RAM[0x08]`, and mode 1
+writes `RAM[0x08] = 1`, so stock would have come back from this excursion still
+slaved — see the correction in §2 of `FINDING_spdif_path_rev20_rev22.md`.
+mboxfw keeps `g_internal_rate` separately and returns to a real clock. The bug
+is only invisible on stock because its host always follows a source change with
+an explicit set-clock-source request.
+
+Still not measured on macOS. That one selector is the shape Apple's driver
+models ("items are PATHS, not pins") is read from its source, not observed.

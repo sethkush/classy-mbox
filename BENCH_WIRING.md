@@ -168,13 +168,13 @@ absolute dBFS against each other.
 | unit | serial | sysfs | notes |
 |---|---|---|---|
 | **A** | **`RK10874600Q`** | `2-1.3` | carries the self-loops |
-| **B** | ~~`RK1672500M`~~ **NONE** | `2-1.4` | crossed pair only; see below |
+| **B** | **`RK1672500M`** | `2-1.4` | crossed pair only |
 
-> **B SERVES NO SERIAL as of build 0x0020 (2026-08-04).** The #177 image was
-> built with `MBOX_PID=0x2000` but *without* `MBOX_UNIT=B`, so B enumerates with
-> `serial_number == None`. Address it with `--addr` until it is reflashed; that
-> costs a DFU trigger and a physical replug. `--serial RK1672500M` now silently
-> matches nothing, which reads as "unit absent" rather than as an error.
+> Build 0x0020 briefly served NO serial on B — it was built with
+> `MBOX_PID=0x2000` but without `MBOX_UNIT=B`, so `--serial RK1672500M` matched
+> nothing and read as "unit absent" rather than as an error. Fixed in 0x0021.
+> **Always pass `MBOX_UNIT=` when building an image destined for a specific
+> unit**; the omission is silent at build time and only shows up 1 km away.
 >
 > The ALSA card **numbers** are not listed here on purpose. They are assigned in
 > enumeration order and moved when the host was rebooted on 2026-08-04 —
@@ -219,7 +219,7 @@ exits with a listing rather than picking the first match, because a reading
 taken from the wrong unit looks exactly like a valid one:
 
     mboxtlm.py read 0 --serial RK10874600Q      # unit A
-    mboxtlm.py read 0 --addr 2:3                # unit B -- serves NO serial, see above
+    mboxtlm.py read 0 --serial RK1672500M       # unit B
     mboxtlm.py read 0 --addr 2:21               # fallback for pre-0x001F builds
 
 Bus addresses change on every replug and on every host reboot, so re-read them
