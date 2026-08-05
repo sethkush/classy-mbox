@@ -45,9 +45,25 @@ for sha in $commits; do
     git worktree remove --force "$TMPWT" 2>/dev/null || true
     git worktree add --detach "$TMPWT" "$sha" >/dev/null 2>&1
 
-    # Build + fast gates only (per-commit CI shouldn't run the slow
-    # hardware-dependent stuff). Sim smoke + descriptor + wrap_hex +
-    # audit + size — every non-hardware gate we have.
+    # #158, 2026-08-05. The comment here used to read "every non-hardware
+    # gate we have". It ran SIX gates out of about thirty, and the excuse did
+    # not survive contact: sim_smoke.sh drives s51 too, so "hardware-dependent"
+    # never distinguished what was left out. Speed did — and then not even
+    # that, because the eleven omitted static gates cost 0.6 SECONDS in total.
+    #
+    # This script exists so a future brick can be bisected. A gate absent from
+    # it is a regression bisect cannot find, and the ones missing included
+    # diff_vs_rev20, audit_sfr_writes, the citation gates and the CS8427
+    # framing waveform -- i.e. most of what has actually caught defects.
+    #
+    # Tiers:
+    #   static  ~0.6 s/commit  -- always run
+    #   sim     ~73  s/commit  -- s51-driven; set CI_SKIP_SIM=1 to omit, which
+    #                             is an explicit choice rather than a silent
+    #                             gap. sim_p1_waveform alone is 54 s of that
+    #                             and is the ONLY check of CS8427 SPI framing.
+    # tools/check_gate_coverage.py enforces that this list keeps up with
+    # preflight's.
     (
         cd "$TMPWT" || exit 1
         rm -rf mboxfw/build safety_net/build 2>/dev/null || true
@@ -61,6 +77,29 @@ for sha in $commits; do
         python3 tools/test_wrap_hex_golden.py >> /tmp/ci_gate.log 2>&1 || exit 26
         [[ -f tools/check_code_size.py ]] && \
             python3 tools/check_code_size.py >> /tmp/ci_gate.log 2>&1 || true
+
+        # --- static tier: ~0.6 s for all of it ---
+        for g in audit_sfr_writes diff_vs_rev20 check_sfr_names \
+                 check_byte_quotes check_citation_targets \
+                 check_flat_asm_citations latch_word_bit_diff \
+                 verify_init_order verify_conn_reachable verify_reachability \
+                 sfr_direct_diff; do
+            [[ -f "tools/$g.py" ]] || continue
+            python3 "tools/$g.py" >> /tmp/ci_gate.log 2>&1 || exit 27
+        done
+        [[ -f tools/xdata_access_map.py ]] && \
+            { python3 tools/xdata_access_map.py --selftest >> /tmp/ci_gate.log 2>&1 || exit 27; }
+        [[ -f tools/mboxtlm.py ]] && \
+            { python3 tools/mboxtlm.py --selftest >> /tmp/ci_gate.log 2>&1 || exit 27; }
+
+        # --- simulator tier: ~73 s, opt out with CI_SKIP_SIM=1 ---
+        if [[ -z "${CI_SKIP_SIM:-}" ]]; then
+            for g in sim_ep0_requests sim_telemetry_roundtrip sim_ep0_diff \
+                     sim_p1_waveform; do
+                [[ -f "tools/$g.py" ]] || continue
+                python3 "tools/$g.py" >> /tmp/ci_gate.log 2>&1 || exit 28
+            done
+        fi
         exit 0
     )
     rc=$?
@@ -80,6 +119,8 @@ for sha in $commits; do
             24) reason="verify_cs8427 failure" ;;
             25) reason="verify_setup_paths failure" ;;
             26) reason="wrap_hex golden failure" ;;
+            27) reason="static gate failure (SFR/citation/reachability) — see /tmp/ci_gate.log" ;;
+            28) reason="simulator gate failure (EP0 / telemetry / CS8427 framing) — see /tmp/ci_gate.log" ;;
             *)  reason="unknown failure (rc=$rc)" ;;
         esac
         printf "    → %s\n" "$reason"

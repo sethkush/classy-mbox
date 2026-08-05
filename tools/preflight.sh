@@ -133,6 +133,10 @@ else
     # and a dozen citations quoted it in a free-form shape that
     # check_citation_targets.py does not parse, so nothing ever verified them.
     check "no citations from rev20_flat.asm"    python3 tools/check_flat_asm_citations.py
+    # #158. ci_bisect_gates.sh is what makes `git bisect` usable after a brick,
+    # and it ran 6 of ~30 gates while claiming to run every non-hardware one.
+    # Two hand-maintained lists drift; this makes the drift an error.
+    check "per-commit runner covers preflight"  python3 tools/check_gate_coverage.py
     check "verify_setup_paths"        python3 tools/verify_setup_paths.py
     check "usb_init unconditionally reached"    python3 tools/verify_conn_reachable.py
     check "SFR writes match manifest"           python3 tools/audit_sfr_writes.py
