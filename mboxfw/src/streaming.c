@@ -146,6 +146,15 @@ void streaming_set_rate(unsigned long hz)
      * round trip. That holds ONLY while every path into this arm is
      * host-initiated — hw_init leaves the part on mode 3, g_clock_mode is
      * seeded to 3, and no boot path calls this with 0.
+     *
+     * RESOLVED 2026-08-04, build 0x0020 on hardware: the inference was right.
+     * With the CS8427 as serial slave (SOMS = 0, so OSCLK/OLRCK are TAS
+     * outputs derived from MCLKO), a dead MCLKI in this mode would stop the
+     * C-port and the DMA would emit zero-length packets. Capture instead ran
+     * 576000 frames in 12.00 s with bit-stable content across the switch —
+     * S/PDIF in at a bit-exact -9.0 dBFS. See FINDING_spdif_input_works.md.
+     * The boot-default rule stays: it costs nothing and it is what made the
+     * question safe to ask remotely in the first place.
      */
     if (hz == 0UL) {
         /* ACGCTL = 0x0D: MCLKO1S = 01, DIVEN, MCLKO2S = 01 — BOTH codec
