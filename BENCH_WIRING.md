@@ -114,6 +114,34 @@ and vanishes when its own channel's selector goes to MIC, is demonstrably
 travelling through the selected line input rather than leaking across inside
 the chip.
 
+## All three links measured — 2026-08-04
+
+The topology above was asserted from memory until now, and this bench has
+already had one routing claim turn out wrong (the out2 self-loop was in src1,
+found only because a tone appeared on the wrong channel). Every link has now
+been driven with a 1 kHz tone at -6 dBFS on ch1 only, both units on 0x001D,
+both `setmux line line`:
+
+| link | level at the far end | unfed channel |
+|---|---|---|
+| `A out1 -> B src1` | **-28.07 dBFS** | B ch2 -93.83 dBFS |
+| `B out1 -> A src1` | **-28.12 dBFS** | A ch2 -97.18 dBFS |
+| `A out2 -> A src2` (self-loop) | **-26.33 dBFS** | A ch1 -95.31 dBFS |
+
+The two crossed TS legs agree to 0.05 dB. The self-loop reads ~1.8 dB hotter,
+consistent with the TS-vs-TRS note above rather than with any firmware
+difference — a TS plug in a balanced input shorts ring to sleeve.
+
+~66 dB between a fed and an unfed channel is the discrimination any loopback
+result rests on. Quote it when a measurement claims a channel is silent.
+
+**What the cross-links buy that the self-loop cannot.** `out2 -> src2` puts one
+unit's DAC and ADC in series, so a null result implicates both and names
+neither. `A out1 -> B src1` measures A's output with A's input entirely out of
+the circuit. That is the only way to separate an output fault from an input
+fault, and it is what #171 needs to finish: the mute pair is proven to gate the
+capture path, and whether it also gates playback is invisible to a self-loop.
+
 ## Cable-type caveat on level comparisons
 
 Source 1 is fed over **TS** (unbalanced) and source 2 over **TRS**. A level
