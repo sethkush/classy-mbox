@@ -470,3 +470,68 @@ clock comes up either way. Single variable, one flash:
 Either outcome is decisive, and the failure mode is benign: a build that boots
 and enumerates but is silent is exactly the state 0x001C already occupied, and
 it is recoverable by reflashing.
+
+## SETTLED — 0x23.2/0x23.3 gate the audio data path. Measured, 2026-08-04.
+
+Build 0x001E (`make MBOX_NO_MUTE_PAIR=1`) is 0x001D with exactly one
+instruction removed — `orl _g_codec_state_23,#0x0c`, 3 bytes, verified absent
+in the listing with every other write to the word intact. Flashed to Mbox A,
+manifest reached, block 0 confirms 0x001E running.
+
+Same rig, same tone, same code path (`iso_loopback.py --single`), one variable
+— the image:
+
+    build 0x001D   codec word 0x1CCF   pair HIGH
+      ch1 (unconnected)  1 kHz  -98.30 dBFS   rms -96.27 dBFS
+      ch2 (looped)       1 kHz  -26.25 dBFS   rms -29.25 dBFS
+      95232 frames
+
+    build 0x001E   codec word 0x10CF   pair LOW
+      ch1  0 non-zero samples / 95232      min +0.000000000 max +0.000000000
+      ch2  0 non-zero samples / 95232      min +0.000000000 max +0.000000000
+      95232 frames
+
+**The pair is required for audio.** The reading carried on inference since
+`FINDING_open_questions.md` §1.6 — and leaned on by `streaming.c`, `codec.h`
+and two findings — is confirmed by measurement rather than by argument.
+
+### It is a DIGITAL gate, not an analog mute
+
+The stream is healthy in both arms: 95232 frames each, identical count, clock
+up, DMA cycling. Only the sample values differ. And the discriminator is ch1,
+which carries no tone and whose cable runs to a disconnected unit:
+
+  * 0x001D ch1 = -98.30 dBFS — that is A's own ADC noise floor on an open input
+  * 0x001E ch1 = **exactly zero, 0 of 95232 samples non-zero**
+
+An analog output mute would leave the ADC's self-noise untouched, because the
+converter keeps running. Zeroing even the noise floor means the **capture data
+path itself is gated** — at or upstream of the codec's serial output, not in
+the analog domain. Hard `0x000000`, not attenuation.
+
+### What this does NOT establish
+
+Whether the pair also gates PLAYBACK. The bench loopback `out2 -> src2` puts
+A's output and A's input in series, so a null result implicates both and names
+neither — the same limitation recorded in BENCH_WIRING.md for #147. What is
+proven is that the capture side is zeroed; the output side is untested and
+would need unit B (`A out1 -> B src1`) to isolate.
+
+That question is now optional rather than blocking: for mboxfw's purposes the
+pair must be set either way, and it already is on every path that streams.
+
+### Consequences
+
+  * The bring-up ordering divergence is no longer cosmetic. Stock raises the
+    pair BEFORE releasing the external RESET (Rev 20 0x0831/0x0833 then 0x0840);
+    mboxfw releases RESET with it low and raises the pair only on the first
+    SET_CUR. Now that the lines are known to gate real data, porting stock's
+    order into `cs8427_boot_init()` has a measured motive rather than a
+    "stock does it" one.
+  * #175 gets sharper. A USB suspend zeroes the codec word, and only the mute
+    pair ever comes back (via the next SET_CUR) — never RESET_N. So post-suspend
+    the audio path is restored but the external chip stays in reset.
+  * The earlier host-side attempt could never have answered this. Its arm A
+    captured 0 BYTES, a dead stream; this arm captured a full 571392 B of
+    zeros. Same dBFS reading, completely different meaning, which is exactly
+    why `iso_loopback.py` now refuses to report on a starved arm.
