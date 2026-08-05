@@ -53,22 +53,51 @@ It delivered 576000 frames in 12.00 s, at full rate, with bit-stable content,
 for eight seconds after the switch. **MCLKI is alive in mode 1, so RMCK feeds
 it.** The safety caveat in `streaming_set_rate()` is discharged.
 
-## What this run did NOT show
+## Slaving does real work — measured, 2×180 s
 
-**That slaving is *necessary*.** B received the tone cleanly at t=0..3 as well,
-while still on its internal 48 kHz clock with `CLOCKSOURCE = 0x40`. Both units
-are nominally at 48 kHz from the same family of synthesizer settings, and 12 s is
-far too short for the drift between two free-running crystals to accumulate into
-an audible glitch. The failure mode that slaving prevents — periodic sample slips
-as the receiver's read pointer laps the writer's — needs a long run, or two units
-deliberately clocked apart, to demonstrate.
+The first run showed slaving was *stable* but not that it was *necessary*: B
+received the tone cleanly on its own clock too, because both units sit at
+nominally 48 kHz and 12 s is far too short for two crystals to drift apart by a
+whole sample. Repeated at 180 s per arm, after the host reboot.
 
-So: slaving works and is stable. "Without it, S/PDIF input breaks" is correct in
-principle (the CS8427 has no sample-rate converter — that is the CS8420) and is
-*not* something this measurement proves.
+Detection is a linear-prediction residual with no tuned threshold. For a pure
+sinusoid, `x[n] - 2cos(w)x[n-1] + x[n-2] == 0` exactly; a dropped or repeated
+sample breaks the recurrence. Threshold = 2 % of the signal's own peak, and the
+observed residuals reach 99 % of peak, so the margin is three orders of
+magnitude, not a judgement call.
 
-**Persistence across a power cycle** is also untested. B's EEPROM holds a valid
-0x0020 image, so a power cycle boots it; nothing here depended on that.
+    unslaved   40 slip events in 180 s
+               mean gap 4.65 s, and the sequence is a metronome:
+               16.0 20.5 25.0 29.6 34.1 38.6 43.2 47.7 52.2 56.8 61.3 65.8 ...
+
+    slaved      3 events, two of them at t=3.2 s -- the switch itself --
+               and one at 17.6 s. Then NOTHING for the remaining 162 s.
+
+**One sample every 4.53 s at 48 kHz is a 4.6 ppm offset between the two
+crystals**, which is an entirely ordinary figure for two uncompensated
+oscillators. That is the mechanism, quantified: the receiver's read pointer laps
+the writer's at the drift rate, and each lap drops or repeats a sample.
+
+So the claim is now measured rather than argued from the datasheet: without
+clock slaving, S/PDIF input glitches **every few seconds, indefinitely**. With
+it, the glitches stop. The CS8427 has no sample-rate converter (that is the
+CS8420) and nothing else in the path can reconcile two independent clocks.
+
+The residual event at 17.6 s is unexplained and is one event in 162 s against 40
+in 180 s. It is as likely to be a USB or DMA hiccup as a clock slip; nothing
+here distinguishes them.
+
+## Persistence across a power cycle: confirmed
+
+The host was rebooted and both units physically replugged on 2026-08-04. B came
+back at `0dba:2000` running **build 0x0020**, with `bus resets: 3` — a genuine
+cold-boot count, not the saturated value a warm device shows — and
+`selector = analog, clock = internal 48 kHz (mode 3)`.
+
+Two things follow. The `ffff:fffe` + bus-reset app-switch path **does write
+EEPROM**; it is not a RAM-only load, despite the flasher's warning at manifest
+time being about the pre-switch window. And the boot default holds across a real
+power cycle: mode 1 is never entered unless a host asks.
 
 ## Incidental: a P3.0 transient that was not a signal
 
