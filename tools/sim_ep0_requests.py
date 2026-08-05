@@ -545,12 +545,40 @@ def main():
     print(f"    reassembled {len(data)} of {total} bytes")
     if args.verbose:
         print("    " + " ".join(f"{b:02X}" for b in data))
-    expect_chunks = (total + 7) // 8
+    # Data packets, plus a terminating zero-length packet when the payload is
+    # an exact multiple of the 8-byte EP0 MaxPacketSize.
+    #
+    # `drain` (see run_session) stops at the first SHORT packet, because that
+    # is how a control read ends. When total % 8 == 0 there is no short data
+    # packet, so the drain runs on and sees the zero-length packet the transfer
+    # cleanup arms -- one extra entry, count 0, and NOT a repeated chunk.
+    #
+    # This is required behaviour, not a quirk to tolerate. A real host asks for
+    # the config descriptor with wLength 255 or 0xFFFF, so the 200 bytes we
+    # return are shorter than wLength AND a multiple of the packet size, and
+    # USB 2.0 §5.5.3 requires a zero-length packet to terminate that data
+    # stage. The gate happens to ask for exactly wTotalLength, which is the one
+    # case where the ZLP is optional rather than mandatory.
+    #
+    # #160 is what surfaced this: adding the S/PDIF input terminal and the
+    # Selector Unit took the configuration bundle from 180 to exactly 200
+    # bytes. The old expectation was ceil(total/8) with no allowance for the
+    # terminator, so it read a correct transfer as "a chunk was repeated".
+    expect_data = (total + 7) // 8
+    expect_chunks = expect_data + (1 if total % 8 == 0 else 0)
     if len(counts) != expect_chunks:
         fails.append(
             f"the transfer took {len(counts)} chunks; {total} bytes at 8 per "
-            f"packet is {expect_chunks}. A short count means the continuation "
+            f"packet is {expect_data}"
+            + (" data packets plus a zero-length terminator"
+               if total % 8 == 0 else "")
+            + f", i.e. {expect_chunks}. A short count means the continuation "
             f"stopped early; a long one means a chunk was repeated.")
+    elif total % 8 == 0 and counts[-1] != 0:
+        fails.append(
+            f"the payload is a multiple of the packet size, so the final "
+            f"packet has to be the zero-length terminator; it is "
+            f"{counts[-1]} bytes. That is a repeated chunk, not a terminator.")
     if data != want:
         first = next((i for i in range(min(len(data), len(want)))
                       if data[i] != want[i]), min(len(data), len(want)))

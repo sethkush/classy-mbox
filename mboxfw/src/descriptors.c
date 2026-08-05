@@ -120,6 +120,46 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0x03, 0x00,             /* wChannelConfig = FL + FR */
     0, 0,                   /* iChannel, iTerminal */
 
+    /* ---- Input Terminal: S/PDIF receiver (12 bytes) ---- #160
+     *
+     * The CS8427's AES3 receiver, routed to the codec port by the Selector
+     * Unit below. Stereo, because the receiver is stereo (CONTROL2 = 0x20
+     * leaves both receiver and transmitter in stereo).
+     *
+     * 0x0605 is "S/PDIF interface" from the UAC1 Terminal Types document
+     * §2.4 (External Terminals) — the same value stock declares. */
+    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
+    TERM_SPDIF_IN,
+    UAC_TT_SPDIF & 0xFF, (UAC_TT_SPDIF >> 8) & 0xFF,
+    0,                      /* bAssocTerminal */
+    2,                      /* bNrChannels */
+    0x03, 0x00,             /* wChannelConfig = FL + FR */
+    0, 0,                   /* iChannel, iTerminal */
+
+    /* ---- Selector Unit: analog vs S/PDIF (8 bytes) ---- #160
+     *
+     * bLength = 6 + bNrInPins per UAC1 §4.3.2.4. Pin ORDER IS THE PROTOCOL:
+     * SET_CUR/GET_CUR carry a 1-based index into baSourceID, so pin 1 =
+     * analog and pin 2 = S/PDIF. That is exactly the encoding the handler in
+     * usb.c implements and the kernel quirk documents ("ANALOG Source -> 0x01,
+     * S/PDIF Source -> 0x02"). Swapping these two bytes would silently invert
+     * the control on every host.
+     *
+     * Why one selector and not two: mboxfw briefly declared a per-channel
+     * Selector Unit each (#159) and that was removed, because Apple's driver
+     * creates every input selector as kIOAudioControlChannelIDAll and cannot
+     * express per-channel source select at all — see
+     * FINDING_macos_one_input_selector.md. A SINGLE selector choosing between
+     * two whole signal paths is precisely the model that driver does have
+     * ("items are PATHS, not pins"), so this is the shape that suits both
+     * hosts rather than the one that suited only Linux. */
+    8, USB_DT_CS_INTERFACE, UAC_AC_SELECTOR_UNIT,
+    UNIT_SELECTOR,
+    2,                      /* bNrInPins */
+    TERM_ANALOG_IN,         /* baSourceID(1) — position 1 = analog */
+    TERM_SPDIF_IN,          /* baSourceID(2) — position 2 = S/PDIF */
+    0,                      /* iSelector */
+
     /* ---- Output Terminal: analog line-out (9 bytes) ---- */
     9, USB_DT_CS_INTERFACE, UAC_AC_OUTPUT_TERMINAL,
     TERM_LINE_OUT,
@@ -133,7 +173,12 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     TERM_USB_IN_STREAM,
     UAC_TT_USB_STREAMING & 0xFF, (UAC_TT_USB_STREAMING >> 8) & 0xFF,
     0,
-    TERM_ANALOG_IN,        /* bSourceID = analog input */
+    /* #160: the capture stream is now fed by the SELECTOR, not by the analog
+     * terminal directly. This one byte is what puts the selector on the path
+     * to the output terminal — and a host walks the topology backwards from
+     * the output terminal, so a selector that nothing routes through is a
+     * selector the host never finds, however correct its own descriptor is. */
+    UNIT_SELECTOR,         /* bSourceID = the analog/S-PDIF selector */
     0,
 
     /* ==================================================================

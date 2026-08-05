@@ -100,7 +100,13 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0020   /* 0020: #177 -- host-driven S/PDIF. Selector
+#define TLM_BUILD_ID     0x0021   /* 0021: #160 -- the Selector Unit is now
+                                   *       ADVERTISED, not just answered: an
+                                   *       S/PDIF input terminal (ID 6) and a
+                                   *       Selector Unit (ID 5) on the path to
+                                   *       the capture terminal, matching stock's
+                                   *       own IDs and the kernel quirk.
+                                   * 0020: #177 -- host-driven S/PDIF. Selector
                                    *       Unit 5 answers GET_CUR/SET_CUR,
                                    *       SET_CUR(rate=0) selects clock mode 1
                                    *       (ACGCTL=0x0D + CLOCKSOURCE=0x41),

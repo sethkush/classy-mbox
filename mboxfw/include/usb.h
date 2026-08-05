@@ -82,6 +82,22 @@
 #define TERM_ANALOG_IN         0x02   /* mic/line/inst analog capture         */
 #define TERM_LINE_OUT          0x03   /* analog line output                   */
 #define TERM_USB_IN_STREAM     0x04   /* device → host audio (capture data)   */
+/* #160. These two are NOT arbitrary despite the comment above — they are
+ * stock's own numbering, and matching it makes three things agree that
+ * previously only agreed in pairs:
+ *
+ *   - rev20_descriptors_decoded.md records SU bUnitID = 5 with
+ *     baSourceID = [2 (Analog), 6 (S/PDIF)] in the stock UAC block;
+ *   - the kernel quirk hardcodes wIndex = 0x0500 = (unit 5 << 8) | AC iface
+ *     (reference/mbox1_mixer_quirks.c.snippet);
+ *   - mboxfw's handler has answered unit 5 since #177.
+ *
+ * Until now mboxfw served no Selector Unit at all, so the handler answered a
+ * control that nothing advertised — stock's arrangement, and the reason Linux
+ * needs a quirk rather than generic UAC support. Declaring it makes the
+ * advertised topology true and the control discoverable with no quirk. */
+#define TERM_SPDIF_IN          0x06   /* S/PDIF receiver as a capture source  */
+#define UNIT_SELECTOR          0x05   /* analog-vs-S/PDIF Selector Unit       */
 
 /* Audio format */
 #define AUDIO_NUM_CHANNELS     2
@@ -152,7 +168,13 @@
 
 /* Total configuration-bundle length. Sum of every descriptor in
  * descriptors.c, in host-parse order. Edit both together. */
-#define AC_BLOCK_LEN        (10 + 12 + 12 + 9 + 9)
+/*            header  IT-usb  IT-analog  IT-spdif  SU  OT-lineout  OT-usbin
+ * #160 added the S/PDIF input terminal (12) and the Selector Unit (6 + 2
+ * source pins = 8). A host that reads a short wTotalLength silently ignores
+ * every unit past it, which presents as "the selector does not exist" rather
+ * than as a descriptor error — so this and the array below are the same fact
+ * twice and have to move together. */
+#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 8 + 9 + 9)
 
 #define APP_CFG_TOTAL_LEN   (9 + 9 + AC_BLOCK_LEN \
                               + 9 + 9 + 7 + 14 + 9 + 7 \
