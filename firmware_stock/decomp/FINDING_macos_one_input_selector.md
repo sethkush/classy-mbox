@@ -108,3 +108,61 @@ the IO registry shows only a thin `AppleUSBAudioControlNub`. The 273.4.1 code
 predicts the observed behaviour exactly (one all-channels control, first
 selector in the path), which is strong corroboration, but it is not proof for
 the current driver. Anyone revisiting this should re-measure before assuming.
+
+
+---
+
+# FOLLOW-UP 2026-08-04: the prediction held, and #160 exploits it
+
+This document was written to explain why *two* per-channel Selector Units could
+not work on macOS. It also implied what *would*: the driver builds exactly one
+input selector, at `kIOAudioControlChannelIDAll`, populated from the **paths**
+to the output terminal. #160 built precisely that shape — a single Selector Unit
+choosing between the analog input terminal and an S/PDIF input terminal — and it
+was measured on macOS 26.5.2 (Apple Silicon), build 0x0021, unit B.
+
+    device 97: Mbox (classc
+      uid = AppleUSBAudioEngine:Digidesign:Mbox (classc:RK1672500M:2,1
+      input data sources: 2
+        id 0x1  name = External Line Connector
+        id 0x2  name = External SPDIF Interface
+      CURRENT input source: 0x1
+      rates: 44100-44100, 48000-48000
+
+Three things worth recording.
+
+**Two sources, one control.** The earlier attempt produced one control that
+moved channel 1 only. This produces one control with two meaningful items,
+because the choice being offered is now a whole signal path rather than a
+per-channel source — which is the model the driver actually has.
+
+**macOS named both items itself**, from the terminal types it parsed: 0x0603
+"line connector" and 0x0605 "S/PDIF interface". Linux independently produced
+'Line' and 'IEC958 In' from the same two bytes. No string in the firmware
+supplies either, and no quirk is loaded on either host.
+
+**The serial is load-bearing in the device UID.** `...:RK1672500M:2,1` — so
+macOS keys per-device settings on the iSerialNumber that #178 restored. Two
+units with no serial would collide here.
+
+Setting it works from Core Audio:
+
+    AudioObjectSetPropertyData(kAudioDevicePropertyDataSource, input) -> 2
+      status 0 (noErr), readback 2
+    ... -> 1
+      status 0 (noErr), readback 1
+
+**Limit of that last check, stated because it is easy to overclaim.** The
+readback is Core Audio's value, and this Mac has no pyusb, so the device-side
+codec word was NOT confirmed from here. What the `noErr` does establish is that
+AppleUSBAudio issued the SET_CUR and the device did not stall it — a rejected
+request surfaces as an error. The device-side half of the same request path is
+confirmed on Linux, where the identical control moved `g_codec_state_25` bit
+0x25.4 and the clock mode (`FINDING_spdif_input_works.md`).
+
+**Do not conclude that S/PDIF input is usable on macOS yet.** Selecting the
+S/PDIF source slaves the clock, but opening a stream sends SET_CUR(48000) on the
+sampling-frequency control and drops back to the internal clock — measured on
+Linux, task #179. In that state the device is routed to S/PDIF while clocked
+internally, which slips a sample every ~4.5 s. The routing is class-compliant
+and discoverable; the clocking is not fixed yet.
