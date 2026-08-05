@@ -584,3 +584,49 @@ in both directions rather than inferred from where stock happens to set it.
 
 `BENCH_WIRING.md`'s claim that the cross-links buy what the self-loop cannot is
 no longer a design note; this is the measurement that needed them.
+
+## #175 fixed and verified — build 0x001F, 2026-08-04
+
+The suspend defect recorded above is fixed, and the fix is stock's own
+mechanism rather than an invention.
+
+**Root cause: the guard was implemented, the recall was not.**
+`cs8427_boot_init()` returns early once IRAM 0x25.6 is set, and the comment
+above that test already described the intended design — that `do_suspend()`
+zeroing the codec word clears the bit, and that this is how stock re-arms the
+bring-up. Nothing ever called the function a second time, so the re-arm never
+fired. Half a pattern, with the half that was present documenting the half that
+was missing.
+
+Stock's side, in both images:
+
+    cmd2_apply_iface1_alt   Rev 20 0x038F  JB 0x2e,0x0395
+                                   0x0392  LCALL 0x080b
+    (also 0x0416 iface 2, 0x04C8; Rev 22 0x0363/0x0393/0x0416/0x04C8)
+
+`SET_INTERFACE(alt != 0)` now posts `WORK_BRINGUP`, dispatched to
+`cs8427_boot_init()` from the main loop — deferred because the SETUP handler is
+ISR context and that function bit-bangs SPI with settle delays, which is the
+same reason stock runs cmd2 from its dispatcher. +18 bytes.
+
+Measured, one full cycle:
+
+    baseline                 codec=0x1CCF   RESET_N=SET   pair=SET
+    after suspend+resume     codec=0x0000   RESET_N=LOW   pair=LOW
+    after next stream start  codec=0x1CC0   RESET_N=SET   pair=SET
+    after setmux             codec=0x1CCF   mux=0xED      suspends=1
+    B out1 -> A src1         -28.12 dBFS — identical to the pre-suspend baseline
+
+On 0x001D the same sequence ended at `0x0C00`: the mute pair returned via
+SET_CUR and RESET_N was gone until a power cycle. Suspend still clears the word
+— that is correct and matches stock. What changed is that the next stream start
+rebuilds it.
+
+This also closes #149. Resume always worked; five cycles completed across the
+session and the device answered EP0 after every one. The defect was state
+restoration, which the question "does suspend/resume work?" could not have
+found — only watching the codec word across a deliberate cycle did.
+
+One caution for whoever reads block 7 next: `tlm_suspends` is byte **4**, not
+byte 5. Byte 5 is `tlm_playback_resyncs`, and reading it instead produced a
+confident "suspends=0" on a cycle that had plainly happened.
