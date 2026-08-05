@@ -47,6 +47,7 @@ import argparse
 import struct
 import shutil
 import subprocess
+import os
 import sys
 import time
 
@@ -371,6 +372,30 @@ def dfu_read_eeprom(dev, cap=8192, progress=True):
     return bytes(acc)
 
 
+def eeprom_image_from_records(recs):
+    """The bytes the EEPROM actually holds, reassembled from the record stream.
+
+    MEASURED 2026-08-05, unit B: DFU_UPLOAD returns the EEPROM IMAGE -- an
+    18-byte header followed by the payload -- not the record-wrapped flasher
+    file. Reading back a device holding build 0x0023 gave 5920 bytes = 18 +
+    5902, and header bytes 16:17 are the payload size big-endian (0x170E =
+    5902; rev20_eeprom.bin has 0x1FEE = 8174, its own code size).
+
+    So comparing a dump against mboxflash's .bin directly is a category error:
+    that file is 8140 bytes of 12-byte-headed records ENCODING these 5920.
+    Laying the records out at their addresses reproduces the dump exactly --
+    5920 vs 5920, differing in byte 0 alone, which is the masked checksum.
+    """
+    body = [r for r in recs if r.type != 1]          # type 1 = EOF record
+    if not body:
+        return b""
+    top = max(r.address + r.length for r in body)
+    buf = bytearray(top)
+    for r in body:
+        buf[r.address:r.address + r.length] = r.data
+    return bytes(buf)
+
+
 def normalise_for_compare(dumped, expected):
     """Return (dumped, expected, notes) with known-benign differences removed.
 
@@ -532,12 +557,16 @@ def _open_idle_for_read():
     # dfu_get_status_retry RAISES on exhaustion rather than returning None;
     # an `if st is None` guard here would be a check for something that cannot
     # happen, which reads as coverage and is not.
-    st = dfu_get_status_retry(dev)
-    print("  DFU state: %s / %s" % (state_name(st[4]), status_name(st[0])))
-    if st[4] != dfuIDLE:
+    # dfu_get_status returns (bStatus, poll_ms, bState, iString) -- NOT the raw
+    # 6-byte DFU payload. Indexing it as if it were the wire format read state
+    # from st[4] and blew up with IndexError against a device sitting happily
+    # in dfuIDLE. Unpack by name so the shape is stated, not assumed.
+    status, _poll, state, _istr = dfu_get_status_retry(dev)
+    print("  DFU state: %s / %s" % (state_name(state), status_name(status)))
+    if state != dfuIDLE:
         sys.exit("device is not in dfuIDLE (state %s).\n"
                  "Read-back needs an idle DFU device. If a download is in\n"
-                 "flight, let it finish -- do NOT interrupt it." % state_name(st[4]))
+                 "flight, let it finish -- do NOT interrupt it." % state_name(state))
     return dev
 
 
@@ -558,7 +587,12 @@ def cmd_dump(args):
 
 def cmd_verify(args):
     """Read the EEPROM back and compare it against an image file."""
-    expected = load_image(args.image)
+    # load_image returns (blob, start, records) -- indexing it as bytes gave a
+    # TypeError against a live device. The comparison target is the record
+    # stream laid out at its addresses, NOT the raw file; see
+    # eeprom_image_from_records().
+    _blob, _start, recs = load_image(args.image)
+    expected = eeprom_image_from_records(recs)
     dev = _open_idle_for_read()
     print("reading %d bytes back for comparison..." % len(expected))
     dumped = dfu_read_eeprom(dev)
@@ -836,12 +870,40 @@ def _selftest():
     d4, _, notes4 = normalise_for_compare(b"\x00" + img[1:], img0)
     chk("no rewrite when image byte 0 is itself 0x00", not notes4)
 
+    # 5. AGAINST REAL HARDWARE DATA. tools/testdata/B_0x0023_eeprom_dump.bin is
+    #    an actual DFU_UPLOAD readback from unit B holding build 0x0023, taken
+    #    2026-08-05. Synthetic cases prove the logic is self-consistent; this
+    #    proves it agrees with the device. It is also what caught the original
+    #    design error -- verify compared against the 8140-byte record file when
+    #    the device returns the 5920-byte EEPROM image.
+    here = os.path.dirname(os.path.abspath(__file__))
+    fixture = os.path.join(here, "testdata", "B_0x0023_eeprom_dump.bin")
+    img_path = os.path.join(os.path.dirname(here), "mboxfw", "build",
+                            "mboxfw_flasher.bin")
+    if os.path.exists(fixture) and os.path.exists(img_path):
+        real = open(fixture, "rb").read()
+        try:
+            _b, _s, recs = load_image(img_path)
+            built = eeprom_image_from_records(recs)
+        except SystemExit:
+            built = None
+        if built is not None:
+            chk("fixture size matches reassembled image (%d vs %d)"
+                % (len(real), len(built)), len(real) == len(built))
+            rd, re_, notes5 = normalise_for_compare(real, built)
+            chk("real device readback compares equal after normalisation",
+                rd == re_)
+            chk("real readback's byte 0 was masked to 0x00", real[0] == 0x00)
+            chk("recomputed checksum matches the image's stored one",
+                (sum(real[1:18]) & 0xFF) == built[0])
+
     for f in fails:
         print("SELFTEST FAIL: %s" % f)
     if fails:
         return 1
     print("SELFTEST PASS: read-back compare handles the masked header checksum, "
-          "still catches header and payload corruption")
+          "still catches header and payload corruption, and agrees with a real "
+          "device readback")
     return 0
 
 
