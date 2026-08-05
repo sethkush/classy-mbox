@@ -323,8 +323,14 @@ extern volatile __data unsigned char tlm_codec_status;
  * when the user holds the button, instead of another guess costing a
  * power cycle. Nothing in the boot ROM or Rev 20 records port state, so
  * there is no reference behaviour to copy here. */
-extern volatile __data unsigned char tlm_p1_boot;
-extern volatile __data unsigned char tlm_p3_boot;
+/* tlm_p1_boot / tlm_p3_boot RETIRED in 0x002B. They existed to compare the
+ * port latches at handoff against a live read, and that question is closed:
+ * 48V is a mechanical switch that firmware never sees, mono is IRAM 0x23.6,
+ * and the three source patterns are known (0x06 mic / 0x05 line / 0x03 inst).
+ * Block 4 keeps the LIVE P1/P3 reads, which is what bench work uses. Retired
+ * for the 18 bytes that put iSerialNumber back into an image that also has the
+ * 96 kHz playback instrumentation -- being able to name WHICH unit a reading
+ * came from outranks a settled comparison. */
 
 /* Isochronous streaming (block 5).
  *

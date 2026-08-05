@@ -44,8 +44,6 @@ volatile __data unsigned char tlm_alt_seen   = 0;
 /* 0xFF = not sampled, so a block-8 read of all-0xFF means main() never ran
  * that far rather than "the boot ROM left everything at 0xFF". */
 
-volatile __data unsigned char tlm_p1_boot = 0xFF;  /* 0xFF = not sampled */
-volatile __data unsigned char tlm_p3_boot = 0xFF;
 
 
 /* Little-endian 16-bit store, matching how the host unpacks the blocks. */
@@ -157,12 +155,11 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[2] = tlm_codec_status;
         out[3] = tlm_stalls;
         /* Bytes 4-5 are LIVE port reads, sampled at the moment the host
-         * asks. Hold the button while reading block 4 and compare against
-         * the boot samples in 6-7 to see which bit actually moves. */
+         * asks. Hold the button while reading block 4 to see which bit moves.
+         * Bytes 6-7 carried the handoff samples until 0x002B; see telemetry.h
+         * for why they went and what replaced them. They now read 0. */
         out[4] = P1;
         out[5] = P3;
-        out[6] = tlm_p1_boot;
-        out[7] = tlm_p3_boot;
         return 1;
 
     case 5:
@@ -284,8 +281,8 @@ void tlm_reset_counters(void)
      * It is a one-time observation of what the boot ROM handed us, taken before
      * main() writes anything; zeroing it on a counter reset would turn a real
      * measurement into a plausible-looking zero, which is the exact failure this
-     * block exists to avoid. tlm_p1_boot/tlm_p3_boot are omitted for the same
-     * reason. */
+     * block exists to avoid. The P1/P3 handoff samples were omitted for the same
+     * reason before they were retired entirely in 0x002B. */
     tlm_setup_count = 0;
     tlm_iep0_count  = 0;
     tlm_chunks      = 0;

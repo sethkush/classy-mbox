@@ -308,8 +308,11 @@ def block4(b):
         "cs8427_status:   %s" % res(b[1]),
         "codec_status:    %s" % res(b[2]),
         "stalls:          %d" % b[3],
-        "P1 live=0x%02X boot=0x%02X   P3 live=0x%02X boot=0x%02X"
-        % (b[4], b[6], b[5], b[7]),
+        # Bytes 6-7 carried the handoff samples until build 0x002B, which
+        # retired them: the question they answered (which port bit does a
+        # front-panel control move?) is closed, and the bytes bought back
+        # iSerialNumber alongside the 96 kHz playback instrumentation.
+        "P1 live=0x%02X   P3 live=0x%02X" % (b[4], b[5]),
     ]
 
 

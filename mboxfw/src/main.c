@@ -33,7 +33,8 @@ extern void usb_service(void);
  * Recovery cost an SDA short with the unit's I/O unhooked. BRICK_LOG.md #3.
  *
  * AND WHY IT MOVED BACK, 2026-08-03. The early call was justified with "P3
- * pull-ups are already enabled at handoff ... tlm_p3_boot is sampled before
+ * pull-ups are already enabled at handoff ... the P3 handoff sample
+ * (retired in 0x002B) was taken before
  * hw_init() and reads 0xFB, P3.3 high." Two errors:
  *
  *   - 0xFB was byte 5 of the telemetry block, the LIVE P3 read. The boot
@@ -262,7 +263,7 @@ void main(void)
      * handoff value is to sample it before we touch anything — so this sits
      * above the USBCTL = 0 below, which would otherwise destroy byte 4.
      *
-     * Reads only; nothing is driven. Same pattern as tlm_p1_boot/tlm_p3_boot
+     * Reads only; nothing is driven. Same pattern as the retired P1/P3 handoff samples
      * further down, which sample the ports before hw_init() drives them.
      *
      * Byte 2 also verifies the assumption behind hw_init()'s GLOBCTL |= 0x02:
@@ -297,8 +298,6 @@ void main(void)
      * inference that has never fired in practice, and there is no reference
      * firmware behaviour to copy — neither Rev 20 nor the boot ROM records
      * port state anywhere. Reads only; no pin is driven. */
-    tlm_p1_boot = P1;
-    tlm_p3_boot = P3;
 
     CANARY(0, CANARY_MAIN);
     STAGE(1);
@@ -322,7 +321,7 @@ void main(void)
      * is pressed -- the state in which this escape could never fire, in any
      * build up to 0x0015. See FINDING_buttons_are_active_high.md.
      *
-     * P3's latch is believed high at handoff (tlm_p3_boot measured 0xFF on
+     * P3's latch is believed high at handoff (the handoff sample, retired in 0x002B, measured 0xFF on
      * this part), but that is one measurement of one boot ROM on one unit, and
      * a stuck-low latch would silently disable the escape. Writing it costs
      * two bytes and removes the assumption.
