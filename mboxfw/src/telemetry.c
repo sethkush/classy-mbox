@@ -28,16 +28,6 @@ volatile __data unsigned int  tlm_last_wvalue = 0;
 volatile __data unsigned int  tlm_last_windex = 0;
 volatile __data unsigned int  tlm_last_wlength = 0;
 
-volatile __data unsigned char tlm_vec_setup = 0;
-volatile __data unsigned char tlm_vec_iep0  = 0;
-volatile __data unsigned char tlm_vec_oep0  = 0;
-volatile __data unsigned char tlm_vec_rstr  = 0;
-volatile __data unsigned char tlm_vec_none  = 0;
-volatile __data unsigned char tlm_vec_other = 0;
-volatile __data unsigned char tlm_vec_susr  = 0;
-volatile __data unsigned char tlm_vec_resr  = 0;
-volatile __data unsigned char tlm_suspends  = 0;
-volatile __data unsigned char tlm_playback_resyncs = 0;
 
 volatile __data unsigned char tlm_eeprom_ok     = 0xFF;  /* 0xFF = not run */
 volatile __data unsigned char tlm_cs8427_status = 0xFF;
@@ -260,16 +250,6 @@ void tlm_reset_counters(void)
     tlm_drains      = 0;
     tlm_rstr_count  = 0;
     tlm_stalls      = 0;
-    tlm_vec_setup = 0;
-    tlm_vec_iep0  = 0;
-    tlm_vec_oep0  = 0;
-    tlm_vec_rstr  = 0;
-    tlm_vec_none  = 0;
-    tlm_vec_other = 0;
-    tlm_vec_susr  = 0;
-    tlm_vec_resr  = 0;
-    tlm_suspends  = 0;
-    tlm_playback_resyncs = 0;
     tlm_sof_count = 0;
     tlm_vec_iep1  = 0;
     tlm_vec_oep2  = 0;

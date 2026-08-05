@@ -83,7 +83,6 @@ static void do_suspend(void)
     MONO_OFF();
     mux_write(g_mux_state);
 
-    tlm_suspends++;
 
     /* ---- Sleep. Any enabled interrupt resumes execution on the next line.
      * PCON bit 0 is IDL; bit 1 (PD, power-down) is deliberately NOT set —

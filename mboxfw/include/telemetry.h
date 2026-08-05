@@ -95,13 +95,24 @@
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
 /* The Makefile may pre-define this for a one-off diagnostic image (see
- * MBOX_NO_MUTE_PAIR). Keep exactly ONE `#define TLM_BUILD_ID <literal>` line in
+ * MBOX_MUTE_PAIR_MASK). Keep exactly ONE `#define TLM_BUILD_ID <literal>` line in
  * this file: sim_telemetry_roundtrip.py parses it with a line regex and takes
  * the last match, so a second literal here makes the gate compare the image
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0027   /* 0027: same firmware as 0024 with MBOX_UNIT=B,
+#define TLM_BUILD_ID     0x0028   /* 0028: dead weight cut -- ten telemetry
+                                   *       counters that were written on every
+                                   *       interrupt and read by nobody once
+                                   *       blocks 3 and 7 retired, the vestigial
+                                   *       no-op switch at the top of
+                                   *       usb_service() they were the only
+                                   *       content of, and the settled #171
+                                   *       MBOX_NO_MUTE_PAIR switch. 224 bytes
+                                   *       free. NOT YET FLASHED -- 0027 is what
+                                   *       runs on B; this rides along with the
+                                   *       next image.
+                                   * 0027: same firmware as 0024 with MBOX_UNIT=B,
                                    *       which 0024 was flashed WITHOUT -- so it
                                    *       served no iSerialNumber and B had to be
                                    *       addressed by bus:addr. 0025/0026 stay
@@ -227,25 +238,15 @@ extern volatile __data unsigned int  tlm_last_windex;
 extern volatile __data unsigned int  tlm_last_wlength;
 
 /* VECINT histogram (block 3), saturating at 255 */
-extern volatile __data unsigned char tlm_vec_setup;
-extern volatile __data unsigned char tlm_vec_iep0;
-extern volatile __data unsigned char tlm_vec_oep0;
-extern volatile __data unsigned char tlm_vec_rstr;
-extern volatile __data unsigned char tlm_vec_none;
-extern volatile __data unsigned char tlm_vec_other;
-extern volatile __data unsigned char tlm_vec_susr;
-extern volatile __data unsigned char tlm_vec_resr;
 
 /* Playback frame-alignment resyncs performed by streaming_sof(). Non-zero
  * means the playback DMA buffer was found holding a partial sample frame and
  * the path was torn down and restarted -- Rev 22's watchdog firing. A steadily
  * climbing count means something upstream keeps misaligning the stream. */
-extern volatile __data unsigned char tlm_playback_resyncs;
 
 /* Completed suspend cycles — incremented in do_suspend() just before PCON
  * idle, so reading a non-zero value proves the device both entered and left
  * idle (a read is only possible once it is answering EP0 again). */
-extern volatile __data unsigned char tlm_suspends;
 
 
 /* Host mux-set request outcomes (block 9). Two counters rather than one, so a

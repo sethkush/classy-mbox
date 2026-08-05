@@ -1097,13 +1097,7 @@ void usb_service(void)
     unsigned char vec = VECINT;
 
     switch (vec) {
-        case VEC_NONE:  TLM_INC8(tlm_vec_none);  break;
-        default:        break;
-    }
-
-    switch (vec) {
         case VEC_SETUP:
-            TLM_INC8(tlm_vec_setup);
             TLM_INC16(tlm_setup_count);
             handle_setup();
             /* Firmware-initiated ACK of the SETUP by clearing VECINT. */
@@ -1141,7 +1135,6 @@ void usb_service(void)
              * engEp0TxDone(), so the vector is acknowledged before the
              * next packet is armed. */
             VECINT = 0;
-            TLM_INC8(tlm_vec_iep0);
             TLM_INC16(tlm_iep0_count);
             if (g_pending_address != 0xFF) {
                 /* 16 = deferred address actually applied. */
@@ -1171,7 +1164,6 @@ void usb_service(void)
             break;
 
         case VEC_OEP0:
-            TLM_INC8(tlm_vec_oep0);
             /* Host sent data (or status stage). TI UsbEng.c engEx0():
              * `case OEP0_INT: VECINT=0; engEp0RxDone();` — vector cleared
              * first, same as IEP0 above. */
@@ -1268,7 +1260,6 @@ void usb_service(void)
             break;
 
         case VEC_RSTR:
-            TLM_INC8(tlm_vec_rstr);
             TLM_INC16(tlm_rstr_count);
             /* USB bus reset. Per TAS1020B datasheet §6.5.1.4, bus reset
              * CLEARS FEN — the UBM then ignores all USB transactions
@@ -1356,7 +1347,6 @@ void usb_service(void)
              * 0x0CA9. Doing the work here instead would block the ISR, and
              * PCON idle inside an ISR cannot be woken by the interrupt that
              * would resume it. */
-            TLM_INC8(tlm_vec_susr);
             g_work_code = WORK_SUSPEND;
             VECINT = 0;
             break;
@@ -1368,7 +1358,6 @@ void usb_service(void)
              * whatever interrupt wakes the CPU out of PCON idle, after which
              * do_suspend() falls through to its own re-init tail. Counted here
              * only so a host can see the pair balance. */
-            TLM_INC8(tlm_vec_resr);
             VECINT = 0;
             break;
 

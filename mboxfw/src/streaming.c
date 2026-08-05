@@ -393,23 +393,17 @@ void streaming_set_rate(unsigned long hz)
      * still not NAMED -- that needs the scope test -- but "not a rate selector"
      * is established from the bytes.
      *
-     * #171 EXPERIMENT SWITCH, 2026-08-04. `make MBOX_NO_MUTE_PAIR=1` omits
-     * this one line and nothing else, producing build 0x001E. That is the only
-     * way to vary the pair: SET_CUR is indivisible from the host, raising the
-     * pair AND programming the ACG in one request, so a host-side arm with the
-     * pair low has no clock and captures zero bytes — which is a dead stream,
-     * not a muted one. Measured and recorded in FINDING_bringup_waveform.md.
-     *
-     * With the line gone, the clock still comes up and only the pair differs:
-     *   audio works -> the pair is NOT an output mute, and the reading in the
-     *                  paragraph above is wrong
-     *   audio dies  -> the pair is required; port stock's bring-up ordering
-     * Remove the switch once it is settled, as MBOX_PLAYBACK_BYOR was. */
+     * #171 SETTLED 2026-08-04: the pair gates BOTH directions, measured
+     * across two units -- 71 dB on the output side, 0 of 95232 non-zero
+     * samples on the input side (FINDING_bringup_waveform.md). The
+     * MBOX_NO_MUTE_PAIR switch that isolated it is gone, exactly as
+     * MBOX_PLAYBACK_BYOR went once a loopback settled #161. What replaces it
+     * for the still-open per-direction question is CODEC23_MUTE_PAIR. */
     /* #46: the mask is a build-time constant, so a one-bit variant costs
      * nothing at runtime. See MBOX_MUTE_PAIR_MASK in the Makefile — the open
      * question is whether these are one gate or two, which is exactly what
      * decides whether a UAC Feature Unit can carry an honest Mute. */
-#if !defined(MBOX_NO_MUTE_PAIR) && (CODEC23_MUTE_PAIR != 0)
+#if CODEC23_MUTE_PAIR != 0
     g_codec_state_23 |= (unsigned char)CODEC23_MUTE_PAIR;
 #endif
     /* ACGCTL bits 6-7, NOT a DMA arm. The old comment here claimed this
@@ -721,7 +715,6 @@ void streaming_sof(void)
         }
     }
 
-    tlm_playback_resyncs++;
 
     DMACTL0 &= (unsigned char)~DMA_EN;  /* Rev 22 fcn.0x0D58 @ 0x0D80 */
     OEPDCNTX2 = 0;                      /* Rev 22 fcn.0x0D58 @ 0x0D87 */
