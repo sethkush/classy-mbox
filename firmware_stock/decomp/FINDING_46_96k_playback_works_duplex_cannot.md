@@ -108,3 +108,31 @@ saturating counter could not have distinguished from a thrash.
 
 DMABCNT0 still jitters at 96 kHz (156 -> 162) and is still steady at 48 kHz
 (174). That was never the defect -- the defect was ACTING on the jitter.
+
+## 88.2 kHz is also simplex-only AS BUILT, but for a different reason
+
+Measured on 0x002C, unit B alone, counting "not enough bandwidth" in dmesg:
+
+| | duplex | simplex |
+|---|---|---|
+| 88.2 kHz | denied | OK |
+| 96 kHz | denied | OK |
+
+96 kHz is denied because it genuinely needs 576 B/frame per direction. 88.2 kHz
+is denied because it SHARES ALT 2 with 96 kHz and the host reserves bandwidth
+from wMaxPacketSize, which is 582 for that alt. 88.2 kHz needs only 89 samples
+x 6 = 534 B. It is paying 96 kHz's bill for bandwidth it never uses.
+
+Whether a dedicated alt at 534 B would clear the scheduler is NOT established.
+The binding constraint is EHCI split-transaction scheduling: a full-speed
+transfer behind a transaction translator is carved into ~188 B start-splits,
+one per microframe, from the 8 microframes in a frame.
+
+    294 B (48 kHz, alt 1)     2 start-splits    4 of 8 duplex   WORKS
+    534 B (88.2, hypothetical) 3 start-splits   6 of 8 duplex   UNTESTED
+    582 B (alt 2 today)        4 start-splits   8 of 8 + CS     DENIED
+
+88.2 duplex therefore sits on the boundary. The cheap way to settle it is a
+diagnostic image that sets alt 2's wMaxPacketSize to 534 and lists 88200 only
+-- one constant and one dropped rate entry, costing negative bytes -- rather
+than adding a third alt setting (~92 B of descriptors) on spec.
