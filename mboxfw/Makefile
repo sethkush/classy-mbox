@@ -16,6 +16,20 @@ ifeq ($(CANARY_LED),1)
 EXTRA_CFLAGS += -DCANARY_LED
 endif
 
+# #171 EXPERIMENT ONLY -- `make MBOX_NO_MUTE_PAIR=1` builds an image in which
+# streaming_set_rate() does everything it normally does EXCEPT raise the codec
+# word's 0x23.2/0x23.3 pair. That isolates the pair from the clock, which no
+# host request can do: SET_CUR raises the pair AND programs the ACG in one
+# indivisible request, so the host-side experiment measured nothing (see
+# FINDING_bringup_waveform.md). Reports itself as TLM_BUILD_ID 0x001E.
+#
+# NOT a shipping option. Delete this switch once #171 is settled, the same way
+# MBOX_PLAYBACK_BYOR was retired once a loopback settled #161.
+MBOX_NO_MUTE_PAIR ?= 0
+ifeq ($(MBOX_NO_MUTE_PAIR),1)
+EXTRA_CFLAGS += -DMBOX_NO_MUTE_PAIR -DTLM_BUILD_ID=0x001E
+endif
+
 CFLAGS  = $(if $(MBOX_PID),-DMBOX_PID=$(MBOX_PID)) -mmcs51 --model-small --std-c99 --opt-code-size $(INC)
 # --code-size REVERTED 0x1C00 -> 0x1780 (7168 -> 6016) on 2026-08-03, after an
 # image built against the raised value bricked Mbox A.

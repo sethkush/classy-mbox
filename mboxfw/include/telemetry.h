@@ -69,6 +69,13 @@
 
 /* Build identity. Bump when flashing a new image so a read of block 0
  * proves WHICH build is running rather than assuming. */
+/* The Makefile may pre-define this for a one-off diagnostic image (see
+ * MBOX_NO_MUTE_PAIR). Keep exactly ONE `#define TLM_BUILD_ID <literal>` line in
+ * this file: sim_telemetry_roundtrip.py parses it with a line regex and takes
+ * the last match, so a second literal here makes the gate compare the image
+ * against the wrong number. The guard, not a second #define, is what lets a
+ * diagnostic build carry its own id. */
+#ifndef TLM_BUILD_ID
 #define TLM_BUILD_ID     0x001D   /* 001D: CPTCNF3 restored to 0xAC (0x001C
                                    *       destroyed playback -- BYOR SET is
                                    *       uniquely correct there). CPTRXCNF3
@@ -108,6 +115,7 @@
                                    *       order fixed (#157/#166/#167), mono
                                    *       moved into the codec word.
                                    * 0013: 0012 + host mux control (block 9) */
+#endif
 
 /* Phase bitmap bits (block 0 byte 3) */
 #define TLM_PHASE_USB_INIT   0x01

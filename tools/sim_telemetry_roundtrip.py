@@ -56,6 +56,7 @@ import argparse
 import contextlib
 import importlib.util
 import io
+import os
 import re
 import sys
 from pathlib import Path
@@ -113,6 +114,19 @@ def main():
     tlm = load("mboxtlm", ROOT / "tools" / "mboxtlm.py")
     flash = load("mboxflash_linux", ROOT / "tools" / "mboxflash_linux.py")
     hdr = header_defines(ROOT / "mboxfw" / "include" / "telemetry.h")
+
+    # A diagnostic image may carry a build id the Makefile pre-defines rather
+    # than one written in the header (see MBOX_NO_MUTE_PAIR). Such a build must
+    # still be checked -- the endianness seam in step 5 is exactly as valuable
+    # there -- so the expectation is DECLARED rather than the check skipped.
+    # Set MBOX_EXPECT_BUILD_ID to the id that build was compiled with; the gate
+    # then holds the image to that number instead of the header's.
+    expect = os.environ.get("MBOX_EXPECT_BUILD_ID")
+    if expect:
+        hdr["TLM_BUILD_ID"] = int(expect, 0)
+        print(f"NOTE: build id expectation overridden to "
+              f"0x{hdr['TLM_BUILD_ID']:04X} via MBOX_EXPECT_BUILD_ID "
+              f"(diagnostic build).\n")
 
     fails = []
 

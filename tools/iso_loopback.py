@@ -214,7 +214,61 @@ def report(label, word, c1, c2):
     return m2, r2
 
 
+def main_single():
+    """One arm: bring the clock up with SET_CUR, then stream and measure
+    whatever the pair happens to be.
+
+    This is the mode that compares BUILDS rather than requests. On 0x001D
+    SET_CUR raises the pair; on 0x001E (MBOX_NO_MUTE_PAIR) the same request
+    does everything except raise it. Identical code path, identical tone,
+    one variable: the image. Which is the only way to vary the pair at all,
+    since no host request separates it from the clock.
+    """
+    with usb1.USBContext() as ctx:
+        handle = ctx.openByVendorIDAndProductID(VID, PID)
+        if handle is None:
+            sys.exit("no 0dba:2000 found")
+        try:
+            handle.setAutoDetachKernelDriver(True)
+        except Exception:
+            pass
+
+        bid = handle.controlRead(0xC0, TLM_READ, 0, 0, 8, timeout=1000)
+        build = bid[0] | (bid[1] << 8)
+        word, _, pair = pair_state(handle)
+        print(f"build id 0x{build:04X}   codec word 0x{word:04X}   "
+              f"pair {'HIGH' if pair else 'LOW'}")
+
+        set_mux_line(handle)
+        for iface in (1, 2):
+            handle.claimInterface(iface)
+            handle.setInterfaceAltSetting(iface, 1)
+
+        print("sending SET_CUR(48000) to bring the clock up")
+        set_cur_rate(handle, RATE)
+        time.sleep(0.2)
+        word, _, pair = pair_state(handle)
+        print(f"after SET_CUR: codec word 0x{word:04X}   "
+              f"pair {'HIGH' if pair else 'LOW'}")
+
+        c1, c2 = run_arm(ctx, handle, "single")
+        report(f"build 0x{build:04X}", word, c1, c2)
+
+        for iface in (1, 2):
+            try:
+                handle.setInterfaceAltSetting(iface, 0)
+                handle.releaseInterface(iface)
+            except Exception:
+                pass
+
+        m2 = goertzel(c2, TONE_HZ, RATE)
+        print(f"\n  RESULT  build 0x{build:04X}  pair "
+              f"{'HIGH' if pair else 'LOW'}  ch2 1 kHz {dbfs(m2):.2f} dBFS")
+
+
 def main():
+    if "--single" in sys.argv:
+        return main_single()
     with usb1.USBContext() as ctx:
         handle = ctx.openByVendorIDAndProductID(VID, PID)
         if handle is None:
