@@ -169,7 +169,6 @@ static void reply_stall(void)
      * safety_net carried the identical bug and fixed it; porting that
      * fix here. Reference: TI hwMacro.h:9-10, STALLInEp0/STALLOutEp0,
      * both `|= 0x08`. */
-    TLM_INC8(tlm.stalls);
     IEPCNF0 |= 0x08;
     OEPCNF0 |= 0x08;
 }

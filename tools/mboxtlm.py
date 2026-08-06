@@ -96,6 +96,11 @@ BLOCK_FIRST_BUILD = {
 # BLOCK_FIRST_BUILD exists to prevent, and it cannot express "index 8 used to
 # mean something else". A retired block reads as the all-0xFF sentinel.
 BLOCK_RETIRED = {
+    4:  (0x0037, "stalls + live P1/P3 -- retired to make room, and it cost no "
+                 "capability twice over: P3 is already reported by block 9 "
+                 "byte 4, and the stall counter's ONLY reader was this block, "
+                 "so keeping the counter would have left it write-only. "
+                 "Restoring it for #192 is one struct byte plus one TLM_INC8"),
     6:  (0x002F, "DMA + C-port live state -- answered why isochronous IN returned "
                  "zero-length packets (0xFFE1 is ACGCTL, not a DMA enable, so "
                  "DMACTL0/DMACTL1 had never been armed). Fixed and since measured "

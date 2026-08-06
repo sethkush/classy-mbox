@@ -93,24 +93,23 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
      * rates gone the geometry is stock's again and the watchdog never
      * evaluates at 44.1/48, so there is nothing left for it to discriminate.
      * Block 6 still carries the live DMA state. */
-    case 4:
-        /* Stalls, and the LIVE port reads.
-         *
-         * Bytes 0-2 used to be tlm_eeprom_ok / tlm_cs8427_status /
-         * tlm_codec_status. All three were initialised to 0xFF ("not run") and
-         * NEVER WRITTEN BY ANYTHING -- eeprom_ok lost its only writer when the
-         * boot-button smoke test went, and the other two never had one. They
-         * reported a plausible-looking sentinel forever, which is precisely
-         * the failure this telemetry exists to avoid: an instrument that reads
-         * like a measurement while measuring nothing. Removed 2026-08-05.
-         *
-         * P1/P3 are sampled at the moment the host asks. Hold a front-panel
-         * button while reading this block to see which bit moves. */
-        out[0] = tlm.stalls;
-        out[1] = P1;
-        out[2] = P3;
-        return 1;
-
+    /* case 4 (stalls + live P1/P3) RETIRED 2026-08-06, build 0x0037, to make
+     * room. It was the cheapest 32 bytes on the part that cost no capability
+     * twice over: P3 is already reported by block 9 byte 4, and the stall
+     * counter had exactly ONE reader -- this block -- so retiring the block
+     * would have left a counter nobody could read. A write-only counter is
+     * strictly worse than no counter: it costs the increment at every stall
+     * site and reports nothing, which is the same defect as the three
+     * never-written fields removed from this block on 2026-08-05, in mirror
+     * image. So tlm.stalls went with it.
+     *
+     * WHAT THIS COSTS: #192 (USB20CV) deliberately issues unsupported
+     * requests, and the stall counter was the device-side confirmation that we
+     * STALLED rather than ACKed -- #188's whole subject. Restoring it is one
+     * struct byte plus one TLM_INC8, so it can come back with #192 if the host
+     * side turns out not to say enough on its own.
+     *
+     * The index is NOT reused. */
     case 5:
         /* Isochronous streaming state. Bytes 4-7 are LIVE register reads,
          * so a host can watch the endpoint config and byte counts change

@@ -225,13 +225,20 @@ Feature Units declared, ALSA carries it as a mixer switch that works *with* the
 driver bound, which is the bench case. And with no driver bound there is no
 streaming, so `g_path_enabled` is 0 and the pair is down anyway.
 
-    default build   5972 / 6016     44 free
-    MBOX_UNIT=A     6014 / 6016      2 free
-    MBOX_UNIT=B     6012 / 6016      4 free
+Telemetry block 4 was then retired (build 0x0037) for another **43 bytes** --
+stalls plus the live P1/P3 reads. It cost no capability twice over: P3 is
+already reported by block 9 byte 4, and the stall counter's only reader was
+that block, so keeping it would have left a write-only counter. Index 4 is not
+reused.
 
-**#191 does not fit.** Its ~50 bytes exceed the 2 free in a per-unit image, so
-it needs something else removed first -- and #192 was always meant to say
-whether it is needed at all.
+    default build   5929 / 6016     87 free
+    MBOX_UNIT=A     5971 / 6016     45 free
+    MBOX_UNIT=B     5969 / 6016     47 free
+
+**#191 now fits** -- its ~50 bytes are within the 45 free in a per-unit image,
+just. #192 is still what should decide whether it is needed at all, and the
+stall counter that #192 would have wanted is what block 4's retirement spent;
+restoring it is one struct byte plus one TLM_INC8.
 
 ### Budget (original estimate)
 

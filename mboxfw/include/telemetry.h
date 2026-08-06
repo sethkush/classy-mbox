@@ -132,7 +132,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0036   /* 0036: #190 -- two UAC1 Feature Units, one
+#define TLM_BUILD_ID     0x0037   /* 0037: retires telemetry block 4 (stalls +
+                                   *       live P1/P3) and the tlm.stalls
+                                   *       counter with it -- 43 bytes. P3 is
+                                   *       already on block 9 byte 4, and the
+                                   *       counter had exactly one reader, so
+                                   *       keeping it would have left it
+                                   *       write-only. Index 4 is NOT reused.
+                                   *
+                                   *       0036: #190 -- two UAC1 Feature Units, one
                                    *       per path, each with a master Mute.
                                    *       0x23.3 is the playback gate and
                                    *       0x23.2 the capture gate, per #189.
@@ -446,7 +454,6 @@ struct tlm_ctrs {
     unsigned int  drains;
     unsigned int  rstr_count;
     unsigned int  sof_count;
-    unsigned char stalls;
     unsigned char vec_iep1;
     unsigned char vec_oep2;
     unsigned char alt_seen;
