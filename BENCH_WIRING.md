@@ -165,10 +165,21 @@ absolute dBFS against each other.
 
 **The serial is the identity. The PID is not.**
 
-| unit | serial | sysfs | notes |
+| unit | serial | sysfs (STALE — see below) | notes |
 |---|---|---|---|
 | **A** | **`RK10874600Q`** | `2-1.3` | carries the self-loops |
 | **B** | **`RK1672500M`** | `2-1.4` | crossed pair only |
+
+> **The sysfs column above is already wrong**, and is left in place as the
+> demonstration. On 2026-08-05 the units answered at `2-1.4` (A) and `2-1.2`
+> (B) — neither matches the table, and A now sits on the path the table
+> assigns to B. Anything that had keyed off the path would have silently
+> swapped the two units and produced a clean, wrong A/B.
+>
+> Do not repair this column. It cannot be kept correct: the path is a property
+> of which socket a cable is in, and every replug is a chance to change it.
+> Resolve serial → sysfs → ALSA card at use time instead, as
+> `tools/test_mute_pair.sh` does.
 
 > Build 0x0020 briefly served NO serial on B — it was built with
 > `MBOX_PID=0x2000` but without `MBOX_UNIT=B`, so `--serial RK1672500M` matched

@@ -28,6 +28,17 @@ def main():
                     help="0..1 of full scale; 0.5 leaves headroom so a hot "
                          "input stage cannot clip the tone into harmonics "
                          "that would confuse a pitch reading")
+    # Which channel carries the tone. The default is both, which is what a
+    # "does anything come out at all" test wants -- but every DISCRIMINATING
+    # measurement on this bench needs the other channel silent, because the
+    # unfed channel IS the control: BENCH_WIRING.md quotes ~66 dB between a fed
+    # and an unfed channel, and a claim that a path is silent means nothing
+    # without it. Feeding both channels also lights A's out2 -> src2 self-loop,
+    # which puts one unit's DAC and ADC back in series with each other.
+    ap.add_argument("--channels", choices=("both", "left", "right"),
+                    default="both",
+                    help="which channel carries the tone; the other is written "
+                         "as digital silence and serves as the control")
     ap.add_argument("-o", "--out", required=True)
     a = ap.parse_args()
 
@@ -43,12 +54,14 @@ def main():
     for i in range(n):
         v = int(amp * math.sin(two_pi_f_over_sr * i))
         b = struct.pack("<i", v)[:3]      # little-endian, drop the high byte
-        frames += b                        # left
-        frames += b                        # right — both channels, always
+        z = b"\x00\x00\x00"
+        frames += b if a.channels in ("both", "left") else z
+        frames += b if a.channels in ("both", "right") else z
     w.writeframes(bytes(frames))
     w.close()
-    print("wrote %s: %.1f s of %.0f Hz, %d Hz stereo 24-bit, amplitude %.2f"
-          % (a.out, a.seconds, a.hz, a.rate, a.amplitude))
+    print("wrote %s: %.1f s of %.0f Hz, %d Hz stereo 24-bit, amplitude %.2f,"
+          " channels=%s"
+          % (a.out, a.seconds, a.hz, a.rate, a.amplitude, a.channels))
 
 
 if __name__ == "__main__":
