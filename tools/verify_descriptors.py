@@ -53,8 +53,11 @@ def slice_mem(mem, base, length):
 
 def load_symbols(path):
     """Return dict {name: address} for symbols we care about."""
+    # _AppStringSerial is OPTIONAL -- it exists only in a per-unit build
+    # (MBOX_UNIT=A/B). Its presence is itself checked against iSerialNumber in
+    # check_device(), so it must be looked up rather than assumed either way.
     wanted = {'_AppDevDesc', '_AppConfigDesc', '_AppStringLang',
-              '_AppStringMfr', '_AppStringProduct'}
+              '_AppStringMfr', '_AppStringProduct', '_AppStringSerial'}
     syms = {}
     with open(path) as f:
         for line in f:
@@ -108,7 +111,7 @@ class Report:
 
 # ---- Descriptor walkers -------------------------------------------------
 
-def check_device(desc, r):
+def check_device(desc, r, has_serial_string=False):
     if len(desc) != 18:      r.err(f"device desc length {len(desc)} != 18")
     if desc[0] != 18:        r.err(f"bLength = {desc[0]}, expected 18")
     if desc[1] != DT_DEVICE: r.err(f"bDescriptorType = 0x{desc[1]:02X}, expected 0x01")
@@ -146,6 +149,37 @@ def check_device(desc, r):
         r.err(f"bMaxPacketSize0 = {desc[7]}, must be 8/16/32/64")
     if desc[17] != 1:
         r.warn(f"bNumConfigurations = {desc[17]}")
+
+    # iSerialNumber <-> the serial STRING must agree. #193.
+    #
+    # Nothing checked this field at all until 2026-08-06, and the two ways it
+    # can be wrong fail differently and badly:
+    #
+    #   index set, string absent -> the host asks for string 3 and gets a
+    #       STALL during enumeration. Some hosts tolerate it, some abandon the
+    #       device; either way it is a descriptor that points at nothing.
+    #   index 0, string present -> dead bytes on a part with none to spare,
+    #       and a build that LOOKS per-unit while serving no serial. That is
+    #       build 0x0020 exactly: MBOX_PID=0x2000 without MBOX_UNIT=B, so
+    #       `--serial` matched nothing and read as "unit absent" 1 km away.
+    #
+    # Zero is the correct DEFAULT and matches both stock images (Rev 20
+    # @0x0596 and Rev 22 @0x057D both carry iSerialNumber = 0). A serial is
+    # served only by an explicit per-unit bench build, because one image goes
+    # to many devices and a baked-in constant would give every unit the SAME
+    # serial -- worse than none, since hosts key device identity on it.
+    iser = desc[16]
+    r.note(f"iSerialNumber = {iser}"
+           + ("  (per-unit bench build)" if iser else "  (default build, as stock)"))
+    if iser and not has_serial_string:
+        r.err(f"iSerialNumber = {iser} but no serial string descriptor is "
+              f"linked; the host would get a STALL asking for string {iser}")
+    if iser and iser != 3:
+        r.err(f"iSerialNumber = {iser}, expected 3 (usb.h APP_ISERIAL)")
+    if not iser and has_serial_string:
+        r.err("a serial string descriptor is linked but iSerialNumber = 0, "
+              "so no host can ever read it -- the build looks per-unit and is "
+              "not (this is the build 0x0020 failure)")
 
 
 def check_string(desc, name, r):
@@ -499,7 +533,8 @@ def main():
     # from hard-coded 18 for device, from wTotalLength for config.
     print(f"\n== AppDevDesc @ 0x{syms['_AppDevDesc']:04X} ==")
     dev = slice_mem(mem, syms['_AppDevDesc'], 18)
-    r = Report(); check_device(dev, r); r.dump()
+    has_serial = '_AppStringSerial' in syms
+    r = Report(); check_device(dev, r, has_serial); r.dump()
     all_errors = list(r.errors)
 
     print(f"\n== AppConfigDesc @ 0x{syms['_AppConfigDesc']:04X} ==")
@@ -509,7 +544,10 @@ def main():
     r = Report(); check_config_bundle(cfg, r); r.dump()
     all_errors += r.errors
 
-    for label in ('AppStringLang', 'AppStringMfr', 'AppStringProduct'):
+    string_labels = ['AppStringLang', 'AppStringMfr', 'AppStringProduct']
+    if has_serial:
+        string_labels.append('AppStringSerial')
+    for label in string_labels:
         addr = syms['_' + label]
         first = mem[addr]
         blob = slice_mem(mem, addr, first)

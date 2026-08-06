@@ -188,8 +188,8 @@ experiment.
 |---|---|---|
 | **192** | USB-IF Command Verifier (USB20CV) on a Windows host | — |
 | **191** | GET_MIN/MAX/RES on the sampling-frequency control | 192 |
-| **193** | decide the default-build iSerialNumber story | — |
-| **194** | gate every declared terminal against a measured hardware path | 187, 190 |
+| ~~193~~ | decide the default-build iSerialNumber story | **DONE** — stays 0, as both stock images. `FINDING_193_the_serial_number_story.md` |
+| ~~194~~ | gate every declared terminal against a measured hardware path | **DONE** — `check_terminal_evidence.py` + `terminal_evidence.md` |
 
 **Everything above this line is our own reading of the spec.** USB20CV is the
 authority, exercises Chapter 9 exhaustively, and will find what this inventory

@@ -701,6 +701,7 @@ def find_device():
                                  idProduct=pid):
             found.append((dev, pid))
 
+    attached = list(found)      # before filtering, for the error message
     if TARGET_SERIAL is not None:
         found = [(d, p) for d, p in found if _serial_of(d) == TARGET_SERIAL]
     if TARGET_ADDR is not None:
@@ -713,9 +714,29 @@ def find_device():
             what.append("serial %s" % TARGET_SERIAL)
         if TARGET_ADDR is not None:
             what.append("addr %d:%d" % TARGET_ADDR)
-        sys.exit("no audio-mode Mbox found (looked for %04x:%s%s)"
-                 % (MBOX_VID, "/".join("%04x" % p for p in AUDIO_PIDS),
-                    (", " + " and ".join(what)) if what else ""))
+        msg = ["no audio-mode Mbox found (looked for %04x:%s%s)"
+               % (MBOX_VID, "/".join("%04x" % p for p in AUDIO_PIDS),
+                  (", " + " and ".join(what)) if what else "")]
+        # SAY WHAT IS ACTUALLY ATTACHED. "not found" is the same message for
+        # "nothing is plugged in" and "the unit is right there but its image
+        # serves no serial", and those need opposite responses -- go and plug
+        # it in, versus rebuild with MBOX_UNIT=. Build 0x0020 was exactly the
+        # second: built with MBOX_PID=0x2000 but WITHOUT MBOX_UNIT=B, so
+        # --serial matched nothing and read as "unit absent" 1 km away.
+        if attached:
+            msg.append("but %d audio-mode Mbox(es) ARE attached:" % len(attached))
+            for d, p in attached:
+                sn = _serial_of(d)
+                msg.append("    %04x:%04x  bus %d addr %d  serial %s"
+                           % (MBOX_VID, p, d.bus, d.address, sn if sn else
+                              "(NONE -- image built without MBOX_UNIT=)"))
+            if TARGET_SERIAL is not None and not any(_serial_of(d)
+                                                     for d, _ in attached):
+                msg.append("No attached unit serves ANY serial, so --serial "
+                           "cannot match. That is a BUILD problem, not a "
+                           "missing device: rebuild with MBOX_UNIT=A or =B, "
+                           "or select with --addr bus:addr meanwhile.")
+        sys.exit("\n".join(msg))
 
     if len(found) > 1:
         lines = []
