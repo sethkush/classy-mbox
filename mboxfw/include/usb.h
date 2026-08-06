@@ -47,6 +47,11 @@
 #define UAC_EP_SYNC_ASYNC      0x04
 #define UAC_EP_SYNC_ADAPTIVE   0x08
 #define UAC_EP_SYNC_SYNC       0x0C
+/* bmAttributes bits 5:4, usage type (USB 2.0 Table 9-13). A feedback endpoint
+ * is usage type 01 with sync type 00 -- it is not itself synchronised to
+ * anything, it is what the other endpoint is synchronised BY. */
+#define UAC_EP_USAGE_DATA      0x00
+#define UAC_EP_USAGE_FEEDBACK  0x10
 
 /* Config descriptor attribute bits */
 #define USB_CFG_BUS_POWERED    0x80
@@ -76,6 +81,19 @@
 /* Endpoint addresses */
 #define EP_AUDIO_IN            0x81    /* EP1 IN  = capture  (device → host) */
 #define EP_AUDIO_OUT           0x02    /* EP2 OUT = playback (host → device) */
+/* #186 stage 2. EP2 IN = the playback feedback endpoint. Same endpoint number
+ * as the OUT it serves, which is the usual pairing and is TI's choice too --
+ * SoftPll.c writes INEP2_X and arms IEPDCNTX2. Its register block (IEPCNF2 =
+ * 0xFF58) was free, and 0x81 was already taken by capture. */
+#define EP_AUDIO_FEEDBACK      0x82
+/* 3 bytes, 10.14, samples per frame. Full-speed feedback is 3 bytes; the
+ * format is confirmed twice over -- TI's SoftPll.c builds (nInt << 14) |
+ * (nFrac << 4), and the Linux driver states "full speed devices report
+ * feedback values in 10.14 format as samples per frame". Linux RANGE-CHECKS
+ * the value and silently falls back to nominal when it is out of band, so a
+ * mis-scaled value presents as "the endpoint does nothing" rather than as an
+ * error. */
+#define AUDIO_FEEDBACK_LEN     3
 
 /* Terminal IDs — arbitrary within one AC interface, must be unique */
 #define TERM_USB_OUT_STREAM    0x01   /* host → device audio (playback data)  */
@@ -193,12 +211,20 @@
  * together. */
 #define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 8 + 9 + 9 + 9)
 
-/* Per streaming interface: alt 0 (9) + alt 1 (9+7+14+9+7) + alt 2 (9+7+14+9+7).
- * #46 added the alt-2 row on each; a wTotalLength that does not grow with it
- * truncates the parse at exactly the point the new alt begins. */
-#define AS_IFACE_LEN        (9 + (9 + 7 + 14 + 9 + 7))
+/* Per streaming interface: alt 0 (9) + alt 1 (9 + 7 + 14 + 9 + 7).
+ *
+ * THE TWO ARE NO LONGER THE SAME LENGTH. #186 stage 2 gives the PLAYBACK
+ * interface a second endpoint -- the 9-byte feedback endpoint descriptor --
+ * so it runs 9 bytes longer than capture. They shared one constant until
+ * 2026-08-05, and a single constant would now understate wTotalLength by 9:
+ * the host would stop parsing 9 bytes early, which lands inside the capture
+ * interface and presents as "the capture endpoint does not exist" rather than
+ * as a descriptor error. Keep the two separate for exactly that reason. */
+#define AS_IFACE_CAPTURE_LEN   (9 + (9 + 7 + 14 + 9 + 7))
+#define AS_IFACE_PLAYBACK_LEN  (AS_IFACE_CAPTURE_LEN + 9)
 
-#define APP_CFG_TOTAL_LEN   (9 + 9 + AC_BLOCK_LEN + AS_IFACE_LEN + AS_IFACE_LEN)
+#define APP_CFG_TOTAL_LEN   (9 + 9 + AC_BLOCK_LEN \
+                             + AS_IFACE_PLAYBACK_LEN + AS_IFACE_CAPTURE_LEN)
 
 /* Set by the Digi enter-DFU class request handler, consumed by main().
  * See handle_digi_enter_dfu() in usb.c for why the work is deferred. */

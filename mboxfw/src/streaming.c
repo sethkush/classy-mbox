@@ -41,6 +41,90 @@ static __data unsigned long stream_rate = 48000UL;
  * the boot-default note in streaming_set_rate(). */
 __data unsigned char g_clock_mode = 3;
 
+/*
+ * #186 stage 1 — measure this device's own clock against the host's frame
+ * clock, and report it. MEASUREMENT ONLY: nothing here changes the clock, the
+ * descriptors, or any endpoint. It exists to prove the capture counter works
+ * on our silicon before a feedback endpoint is built on top of it.
+ *
+ * WHY THE SUM IS EXACT. ACGCAP is a free-running 16-bit counter latched at
+ * every SOF. Each per-frame difference is taken modulo 65536, which is the
+ * true count for that frame as long as one frame's worth stays under 65536 --
+ * at 48 kHz the MCLKO count per frame is ~24576, so a frame's delta fits with
+ * room for two consecutive missed frames. Accumulating those differences
+ * telescopes: the running sum equals the total elapsed MCLK count over the
+ * window, with NO per-frame quantisation error building up. The only
+ * quantisation is +/-1 count at each end of the window, i.e. ~0.04 ppm over
+ * 1024 frames. That is far finer than the 4.3 ppm effect being chased.
+ *
+ * Missing three consecutive SOFs would break it (the delta would exceed 65536
+ * and silently lose a wrap). SOF is serviced from isr_int0, not the main loop
+ * (see main.c), so servicing is prompt; tlm.sof_count against the window count
+ * is what would expose it if it ever were not.
+ *
+ * TI reads the same register for the same purpose in SoftPll.c, averaging four
+ * frames because it needs a fresh value every 4 ms to feed the endpoint. This
+ * is not that loop -- it wants precision over a long window rather than
+ * freshness -- so it accumulates instead of averaging.
+ *
+ * NOVEL — reason: stock never reads ACGCAP. Neither image contains a DPTR load
+ * of 0xFFE3 or 0xFFE4; Rev 22 kept only the DMA-realignment tail of TI's
+ * softPll(). There is no stock address to cite because stock does not do this.
+ */
+#define ACG_WINDOW_FRAMES  1024u
+
+/* #186 stage 2 — the feedback value, and why it needs no arithmetic.
+ *
+ * A UAC1 full-speed feedback value is samples-per-frame in 10.14, i.e. the
+ * true rate times 16384. MCLKO on this board runs at 256 fs -- MEASURED, not
+ * assumed: block 11 read 12287.97 counts per frame against 48000 x 256 =
+ * 12288 (2026-08-05, both units). So
+ *
+ *     samples/frame = mclk_per_frame / 256
+ *     10.14 value   = mclk_per_frame / 256 * 16384 = mclk_per_frame * 64
+ *
+ * and a sum of 64 consecutive per-frame counts IS the 10.14 value exactly.
+ * No multiply, no divide, no rounding step. 48 kHz gives 0x0C0000 and 44.1
+ * gives 0x0B0666, which are the values computed independently from the spec.
+ *
+ * Resolution is one count in 786432, i.e. 1.27 ppm -- fine enough to express
+ * the 4.3 ppm unit-to-unit spread #181 measured, which is the whole point.
+ *
+ * TI averages only four frames (SoftPll.c, fbCount 3..0) and needs a divide
+ * plus a fractional fixup to do it. Sixty-four frames removes the arithmetic
+ * AND is 16x finer; the cost is that the value is 64 ms old rather than 4 ms,
+ * which for a crystal offset that does not move is no cost at all.
+ *
+ * NOVEL — reason: stock ships no feedback endpoint. Rev 22 kept only the
+ * DMA-realignment tail of TI's softPll() and dropped the measurement, so
+ * there is no stock address to cite for any of this. */
+#define FB_WINDOW_FRAMES   64u
+#define FB_ARM_EVERY       4u    /* matches bRefresh = 2 in the descriptor */
+
+static __idata unsigned long fb_value;        /* 10.14, ready to publish    */
+static __idata unsigned long fb_sum;          /* current 64-frame window    */
+static __idata unsigned char fb_frames;
+static __idata unsigned char fb_arm;
+
+/* Publish the standing value and hand the packet to the UBM. TI arms both the
+ * X and Y counts (SoftPll.c: `IEPDCNTX2 = 3; IEPDCNTY2 = 3;`) and this does
+ * the same. */
+static void feedback_arm(void)
+{
+    __xdata unsigned char *fb = (__xdata unsigned char *)EP_FEEDBACK_BUF_ADDR;
+    fb[0] = (unsigned char)(fb_value & 0xFF);
+    fb[1] = (unsigned char)((fb_value >> 8) & 0xFF);
+    fb[2] = (unsigned char)((fb_value >> 16) & 0xFF);
+    IEPDCNTX2 = AUDIO_FEEDBACK_LEN;   /* TI SoftPll.c::softPll */
+    IEPDCNTY2 = AUDIO_FEEDBACK_LEN;   /* TI SoftPll.c::softPll */
+}
+
+static __idata unsigned int  acg_prev;        /* last raw capture           */
+static __idata unsigned int  acg_frames;      /* frames into the window     */
+static __idata unsigned long acg_sum;         /* MCLK counts, this window   */
+static __bit               acg_primed;       /* first sample has no delta  */
+
+
 
 /*
  * The two 24-bit constants Rev 20 loads (0x0F_A861 at fcn.0x0DEC/0x0DFE,
@@ -58,6 +142,27 @@ __data unsigned char g_clock_mode = 3;
 void streaming_set_rate(unsigned long hz)
 {
     stream_rate = hz;
+
+    /* #186 stage 2 — seed the published feedback value at the nominal for this
+     * rate, so the host's first poll after a rate change gets a sane number
+     * rather than one left over from the previous rate. The measurement
+     * replaces it within 64 frames.
+     *
+     * These are the 10.14 nominals: rate/1000 samples per frame times 16384.
+     *   48000 -> 48.0   samples/frame -> 786432 = 0x0C0000
+     *   44100 -> 44.1   samples/frame -> 722534 = 0x0B0666
+     * Spelled out rather than computed because hz * 16384 / 1000 would link
+     * SDCC's 32-bit divide for two constants, and this file already branches
+     * on the same two rates everywhere else.
+     *
+     * Rate 0 is clock mode 1 (slaved to incoming S/PDIF) and keeps whatever
+     * was standing: the device is then following an external clock, and the
+     * measurement is the only honest source for what that rate actually is. */
+    if (hz == 48000UL) {
+        fb_value = 786432UL;
+    } else if (hz == 44100UL) {
+        fb_value = 722534UL;
+    }
 
     /* Prelude — seed both adaptive-clock-generator digital control
      * registers with 0x10, exactly as Rev 20 does.
@@ -451,9 +556,35 @@ void streaming_playback_enable(unsigned char on)
          * DMA channel, all other DMA channel configuration bits must be
          * set to the desired value." */
         DMACTL0 |= DMA_EN;
+        /* #186 stage 2 — bring up the feedback endpoint with the stream it
+         * serves. Unlike the audio endpoints this one IS declared here rather
+         * than in usb_ep0_setup(): it has no stock counterpart to mirror, and
+         * it carries no DMA, so there are no hardware pointers into the buffer
+         * that a re-base could desynchronise.
+         *
+         * 0xC2 = IEPEN | ISO | BPS field 2, i.e. 3 bytes per sample
+         * (datasheet §6.4.4.6.2 gives 00h = 1 byte, so 02h = 3). Compare
+         * OEPCNF2 = 0xC5 above: BPS 5 = 6 bytes = stereo 24-bit.
+         *
+         * NOVEL — reason: stock ships no feedback endpoint, so there is no
+         * address to mirror. Rev 22 ported only the DMA-realignment tail of
+         * TI's softPll() and dropped the endpoint half. TI's SoftPll.c uses
+         * this same EP2 IN block for this same purpose. */
+        IEPBBAX2 = EP_BBAX(EP_FEEDBACK_BUF_ADDR);
+        /* NOVEL — reason: buffer base for an endpoint stock does not declare. */
+        IEPBSIZ2 = EP_BSIZE(EP_FEEDBACK_BUF_SIZE);
+        /* NOVEL — reason: enables an endpoint stock does not declare. */
+        IEPCNF2  = 0xC2;
+        fb_arm   = 0;
+        /* Arm immediately with the value standing from the last window, so the
+         * host's very first poll gets a number rather than an empty packet.
+         * fb_value is seeded at the nominal for the current rate by
+         * streaming_set_rate(). */
+        feedback_arm();
     } else {
         DMACTL0 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x1013 @ 0x1001 */
         OEPCNF2  = 0;
+        IEPCNF2  = 0;                       /* feedback endpoint off with it */
     }
 }
 
@@ -541,43 +672,6 @@ void streaming_capture_enable(unsigned char on)
  * host never asked for. Rev 22 gets away with it because the count goes to
  * zero and stops changing, but "gets away with it" is not a reason to copy it.
  */
-/*
- * #186 stage 1 — measure this device's own clock against the host's frame
- * clock, and report it. MEASUREMENT ONLY: nothing here changes the clock, the
- * descriptors, or any endpoint. It exists to prove the capture counter works
- * on our silicon before a feedback endpoint is built on top of it.
- *
- * WHY THE SUM IS EXACT. ACGCAP is a free-running 16-bit counter latched at
- * every SOF. Each per-frame difference is taken modulo 65536, which is the
- * true count for that frame as long as one frame's worth stays under 65536 --
- * at 48 kHz the MCLKO count per frame is ~24576, so a frame's delta fits with
- * room for two consecutive missed frames. Accumulating those differences
- * telescopes: the running sum equals the total elapsed MCLK count over the
- * window, with NO per-frame quantisation error building up. The only
- * quantisation is +/-1 count at each end of the window, i.e. ~0.04 ppm over
- * 1024 frames. That is far finer than the 4.3 ppm effect being chased.
- *
- * Missing three consecutive SOFs would break it (the delta would exceed 65536
- * and silently lose a wrap). SOF is serviced from isr_int0, not the main loop
- * (see main.c), so servicing is prompt; tlm.sof_count against the window count
- * is what would expose it if it ever were not.
- *
- * TI reads the same register for the same purpose in SoftPll.c, averaging four
- * frames because it needs a fresh value every 4 ms to feed the endpoint. This
- * is not that loop -- it wants precision over a long window rather than
- * freshness -- so it accumulates instead of averaging.
- *
- * NOVEL — reason: stock never reads ACGCAP. Neither image contains a DPTR load
- * of 0xFFE3 or 0xFFE4; Rev 22 kept only the DMA-realignment tail of TI's
- * softPll(). There is no stock address to cite because stock does not do this.
- */
-#define ACG_WINDOW_FRAMES  1024u
-
-static __data unsigned int  acg_prev;        /* last raw capture           */
-static __data unsigned int  acg_frames;      /* frames into the window     */
-static __data unsigned long acg_sum;         /* MCLK counts, this window   */
-static __bit               acg_primed;       /* first sample has no delta  */
-
 void streaming_acg_sample(void)
 {
     unsigned int cap;
@@ -598,6 +692,22 @@ void streaming_acg_sample(void)
     acg_prev = cap;
     acg_sum += delta;
     acg_frames++;
+
+    /* #186 stage 2. Same deltas, a shorter window: 64 of them summed is the
+     * 10.14 feedback value with no scaling (see FB_WINDOW_FRAMES above). */
+    fb_sum += delta;
+    if (++fb_frames >= FB_WINDOW_FRAMES) {
+        fb_value  = fb_sum;
+        fb_sum    = 0UL;
+        fb_frames = 0;
+    }
+    /* Re-arm on the cadence the descriptor advertises. Only while playback is
+     * up: an endpoint the host is not polling should not be left holding a
+     * packet, and arming one that is not enabled writes a disabled block. */
+    if (playback_running && ++fb_arm >= FB_ARM_EVERY) {
+        fb_arm = 0;
+        feedback_arm();
+    }
 
     if (acg_frames >= ACG_WINDOW_FRAMES) {
         /* Latch a whole window for the host and start the next one. Latching

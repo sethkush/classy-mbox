@@ -112,7 +112,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0032   /* 0032: #186 stage 1 -- ACGCAP clock measurement
+#define TLM_BUILD_ID     0x0033   /* 0033: #185 + #186 stage 2. The iso endpoints
+                                   *       declare ASYNCHRONOUS (they were
+                                   *       ADAPTIVE, which the 2026-08-05
+                                   *       measurements showed to be false), and
+                                   *       playback now publishes a real UAC
+                                   *       feedback endpoint on EP2 IN carrying
+                                   *       samples-per-frame in 10.14, measured
+                                   *       from ACGCAP.
+                                   * 0032: #186 stage 1 -- ACGCAP clock measurement
                                    *       on block 11, plus #187's S/PDIF output
                                    *       terminal and #188's feature-request
                                    *       stalls. MEASUREMENT ONLY on the clock:
@@ -413,9 +421,9 @@ extern volatile __data unsigned int  tlm_last_wlength;
  * tlm_acg_count proves the measurement is live and lets a host confirm two
  * reads span different windows. Saturates at 255 rather than wrapping, so a
  * long run cannot make it look freshly started. */
-extern volatile __data unsigned long tlm_acg_window;
-extern volatile __data unsigned int  tlm_acg_last;
-extern volatile __data unsigned char tlm_acg_count;
+extern volatile __idata unsigned long tlm_acg_window;
+extern volatile __idata unsigned int  tlm_acg_last;
+extern volatile __idata unsigned char tlm_acg_count;
 
 /* VECINT histogram (block 3), saturating at 255 */
 

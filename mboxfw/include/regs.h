@@ -172,6 +172,30 @@
 #define OEPDCNTX2    XDATA(0xFF9B)
 #define OEPDCNTY2    XDATA(0xFF9F)   /* Y buffer count — OEPCNFn + 7 */
 
+/* #186 stage 2 — the playback FEEDBACK endpoint, EP2 IN.
+ *
+ * Same layout rule as the others: IEPCNFn = 0xFF68 - n*8, so n=2 gives 0xFF58.
+ * The block was unused; capture holds EP1 IN and playback EP2 OUT.
+ *
+ * TI uses this same endpoint for this same purpose -- SoftPll.c writes INEP2_X
+ * and arms IEPDCNTX2/IEPDCNTY2.
+ *
+ * BUFFER: the 8 free bytes at 0xFF20-0xFF27, the tail of the endpoint data
+ * region (which ends at 0xFF27; capture runs to 0xFF1F). Eight is the BSIZ
+ * granularity and therefore the minimum, and it is enough because an
+ * ISOCHRONOUS endpoint gets ONE circular buffer -- the datasheet is explicit
+ * that this differs from the X/Y pair a control/interrupt/bulk endpoint gets
+ * in double-buffer mode (§6.4.4.4). So the 640/640 audio geometry, and the
+ * byte-identical stock write block #162 matched, are untouched. */
+#define IEPCNF2     XDATA(0xFF58)   /* playback feedback (device → host) */
+#define IEPBBAX2    XDATA(0xFF59)
+#define IEPBSIZ2    XDATA(0xFF5A)
+#define IEPDCNTX2   XDATA(0xFF5B)
+#define IEPDCNTY2   XDATA(0xFF5F)   /* Y buffer count — IEPCNFn + 7 */
+
+#define EP_FEEDBACK_BUF_ADDR  0xFF20   /* 8 B, the free tail of the region */
+#define EP_FEEDBACK_BUF_SIZE  8
+
 /* USB setup-packet block (SETPACK, 8 bytes at 0xFF28-0xFF2F) */
 #define SETPACK_BMREQ  XDATA(0xFF28)
 #define SETPACK_BREQ   XDATA(0xFF29)

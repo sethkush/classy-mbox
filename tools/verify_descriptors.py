@@ -167,6 +167,7 @@ def check_config_bundle(desc, r):
     ac_iface_refs = []         # baInterfaceNr from AC header
     seen_interfaces = set()    # (bInterfaceNumber, bAlternateSetting)
     as_endpoints = []          # (iface, alt, ep_addr, attr, maxpkt, interval)
+    as_synch = []              # (iface, alt, ep_addr, attr, bSynchAddress)
     as_terminal_links = []     # (iface, alt, bTerminalLink)
     ac_wtotal_declared = None
     ac_block_actual = 0
@@ -361,6 +362,9 @@ def check_config_bundle(desc, r):
             if current_iface_subclass == 0x02:
                 as_endpoints.append((current_iface, current_alt, ep_addr, attr, maxpkt, interval))
             r.note(f"  EP 0x{ep_addr:02X} attr=0x{attr:02X} maxpkt={maxpkt} bInterval={interval}")
+            # bSynchAddress lives in the 9-byte UAC1 endpoint form only.
+            if bLen == 9 and current_iface_subclass == 0x02:
+                as_synch.append((current_iface, current_alt, ep_addr, attr, blob[8]))
             # sanity: audio streaming EP should be ISO (bits 0-1 == 01)
             if current_iface_subclass == 0x02 and (attr & 0x03) != 0x01:
                 r.err(f"AS EP 0x{ep_addr:02X}: attr low2 = 0x{attr&3:X}, expected 0x1 (ISO)")
@@ -386,6 +390,51 @@ def check_config_bundle(desc, r):
     for iface, alt, tlink in as_terminal_links:
         if tlink not in terminal_ids:
             r.err(f"AS iface {iface} alt {alt}: bTerminalLink={tlink} references nothing")
+
+    # ---- Synchronisation cross-checks (#185/#186) ----
+    #
+    # An ASYNCHRONOUS OUT endpoint is obliged to name a feedback endpoint, and
+    # that endpoint has to exist. Nothing checked this before: a bSynchAddress
+    # pointing at an endpoint that was never declared parses cleanly and then
+    # fails on hardware as "the host ignores our feedback", which is
+    # indistinguishable from a wrong feedback VALUE. Two very different bugs
+    # share one symptom, and separating them structurally is what keeps a
+    # hardware session from chasing the wrong one.
+    SYNC_MASK, SYNC_ASYNC, SYNC_ADAPTIVE = 0x0C, 0x04, 0x08
+    USAGE_MASK, USAGE_FEEDBACK = 0x30, 0x10
+    declared = {ep for (_i, _a, ep, _t, _s) in as_synch}
+    for iface, alt, ep, attr, synch in as_synch:
+        is_out = (ep & 0x80) == 0
+        if (attr & USAGE_MASK) == USAGE_FEEDBACK:
+            if synch != 0:
+                r.err(f"feedback EP 0x{ep:02X} sets bSynchAddress=0x{synch:02X}; "
+                      f"a feedback endpoint synchronises nothing and must be 0")
+            if (attr & SYNC_MASK) != 0:
+                r.err(f"feedback EP 0x{ep:02X} declares sync type "
+                      f"0x{attr & SYNC_MASK:02X}; must be 0 (None)")
+            continue
+        if is_out and (attr & SYNC_MASK) == SYNC_ASYNC:
+            if synch == 0:
+                r.err(f"async OUT EP 0x{ep:02X} names no feedback endpoint "
+                      f"(bSynchAddress=0). USB 2.0 5.12.4.2 requires one")
+            elif synch not in declared:
+                r.err(f"async OUT EP 0x{ep:02X} bSynchAddress=0x{synch:02X} "
+                      f"names an endpoint that is not declared anywhere")
+            else:
+                fb = [t for t in as_synch if t[2] == synch][0]
+                if (fb[3] & USAGE_MASK) != USAGE_FEEDBACK:
+                    r.err(f"EP 0x{ep:02X} points bSynchAddress at 0x{synch:02X}, "
+                          f"which is not usage-type feedback "
+                          f"(attr=0x{fb[3]:02X})")
+                if fb[0] != iface or fb[1] != alt:
+                    r.err(f"EP 0x{ep:02X} (iface {iface} alt {alt}) points at "
+                          f"feedback EP 0x{synch:02X} on iface {fb[0]} alt "
+                          f"{fb[1]}; the host only has it when THIS alt is set")
+                r.note(f"  async OUT 0x{ep:02X} -> feedback 0x{synch:02X} OK")
+        if (attr & SYNC_MASK) == SYNC_ADAPTIVE:
+            r.err(f"EP 0x{ep:02X} declares SYNC_ADAPTIVE. Measured 2026-08-05: "
+                  f"the ACG free-runs (#181/#182, +4.26 +/- 0.99 ppm between "
+                  f"two units on one SOF), so adaptive is a false claim")
 
     # Endpoint expectations from code (usb.h defines EP_AUDIO_IN=0x81 OUT=0x02)
     found_out = any(ep == EP_AUDIO_OUT for (_, _, ep, *_) in as_endpoints)

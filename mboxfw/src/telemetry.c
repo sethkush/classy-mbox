@@ -14,9 +14,9 @@ volatile __data struct tlm_ctrs tlm;
 
 /* #186 stage 1 — ACG clock measurement. Written only by
  * streaming_acg_sample() from the SOF interrupt. */
-volatile __data unsigned long tlm_acg_window = 0UL;
-volatile __data unsigned int  tlm_acg_last   = 0;
-volatile __data unsigned char tlm_acg_count  = 0;
+volatile __idata unsigned long tlm_acg_window = 0UL;
+volatile __idata unsigned int  tlm_acg_last   = 0;
+volatile __idata unsigned char tlm_acg_count  = 0;
 volatile __data unsigned int  tlm_loop_count  = 0;
 volatile __data unsigned char tlm_mux_sets    = 0;
 volatile __data unsigned char tlm_mux_rejects = 0;

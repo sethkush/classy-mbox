@@ -220,7 +220,7 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
 
     /* Alt 1: active (9 bytes) */
     9, USB_DT_INTERFACE,
-    1, 1, 1,               /* one endpoint (EP2 OUT) */
+    1, 1, 2,               /* TWO endpoints: EP2 OUT data + EP2 IN feedback */
     0x01, UAC_SUBCLASS_STREAM, 0x00, 0,
 
     /* Class-specific AS General descriptor (7 bytes) */
@@ -239,20 +239,57 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0x44, 0xAC, 0x00,      /* 44100 Hz */
     0x80, 0xBB, 0x00,      /* 48000 Hz */
 
-    /* Standard AS isochronous endpoint (9 bytes — UAC1 form, +2 over vanilla) */
+    /* Standard AS isochronous endpoint (9 bytes — UAC1 form, +2 over vanilla)
+     *
+     * #185: ASYNCHRONOUS, not adaptive, and this is measured rather than
+     * assumed. Adaptive claims the endpoint slaves its converter to the host.
+     * Ours does not: the ACG free-runs from the crystal, proved twice over on
+     * 2026-08-05 -- host-side by timestamped capture (#181/#182, the two units
+     * differing by +4.263 +/- 0.989 ppm, which identical firmware on a shared
+     * SOF cannot do) and device-side by ACGCAP (+4.53 ppm, agreeing to
+     * 0.27 ppm). Under SOF-locking the two units would read identically.
+     *
+     * Asynchronous OUT obliges an explicit feedback endpoint, named here by
+     * bSynchAddress. That is the honest arrangement and it is also TI's: the
+     * "soft-PLL" the datasheet describes IS this endpoint, not a clock servo.
+     * See FINDING_186_ti_softpll_is_the_feedback_endpoint.md. */
     9, USB_DT_ENDPOINT,
     EP_AUDIO_OUT,
-    UAC_EP_ISO | UAC_EP_SYNC_ADAPTIVE,
+    UAC_EP_ISO | UAC_EP_SYNC_ASYNC | UAC_EP_USAGE_DATA,
     AUDIO_MAX_PACKET_LEN & 0xFF, (AUDIO_MAX_PACKET_LEN >> 8) & 0xFF,
     1,                     /* bInterval = 1 ms */
-    0,                     /* bRefresh */
-    0,                     /* bSynchAddress = none (adaptive) */
+    0,                     /* bRefresh — 0 on the DATA endpoint */
+    EP_AUDIO_FEEDBACK,     /* bSynchAddress = the feedback endpoint below */
 
     /* Class-specific iso audio EP descriptor (7 bytes) */
     7, USB_DT_CS_ENDPOINT, UAC_AS_GENERAL,
     0x01,                  /* bmAttributes: sampling-freq control supported */
     0x00,                  /* bLockDelayUnits */
     0x00, 0x00,            /* wLockDelay */
+
+    /* ---- Feedback endpoint, EP2 IN (9 bytes) ---- #186 stage 2
+     *
+     * Reports how fast this device is ACTUALLY consuming, so the host can size
+     * its packets to match. It carries no audio and gets no class-specific
+     * endpoint descriptor -- only the data endpoint does.
+     *
+     * Usage type FEEDBACK with sync type NONE (bmAttributes bits 5:4 = 01,
+     * bits 3:2 = 00): a feedback endpoint is not itself synchronised to
+     * anything, it is what the data endpoint is synchronised BY.
+     *
+     * 3 bytes, 10.14, samples per frame -- see AUDIO_FEEDBACK_LEN in usb.h for
+     * the two independent confirmations of that format.
+     *
+     * bRefresh = 2, i.e. the host reads this every 2^2 = 4 frames. That is
+     * TI's cadence: SoftPll.c averages four frames (fbCount 3,2,1,0) and arms
+     * the endpoint once per group. */
+    9, USB_DT_ENDPOINT,
+    EP_AUDIO_FEEDBACK,
+    UAC_EP_ISO | UAC_EP_USAGE_FEEDBACK,
+    AUDIO_FEEDBACK_LEN & 0xFF, (AUDIO_FEEDBACK_LEN >> 8) & 0xFF,
+    1,                     /* bInterval = 1 ms */
+    2,                     /* bRefresh = 2 -> polled every 4 frames */
+    0,                     /* bSynchAddress = none, this IS the feedback */
 
 
     /* ==================================================================
@@ -285,10 +322,19 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0x44, 0xAC, 0x00,
     0x80, 0xBB, 0x00,
 
-    /* Standard AS iso endpoint (9 bytes) */
+    /* Standard AS iso endpoint (9 bytes)
+     *
+     * #185: ASYNCHRONOUS, for the same measured reason as playback -- and
+     * unlike playback it needs NO feedback endpoint. An async IN endpoint
+     * simply delivers what it has and the host absorbs the variation. The
+     * datasheet agrees this is the only option: there is one capture counter
+     * and it always follows MCLKO's selection, so "MCLKO2 cannot be
+     * synchronized to the incoming USB data stream", and synchronisation for
+     * record "is handled by the handshaking protocol established between the
+     * assigned DMA channel and the USB buffer manager" (§2.2.6). */
     9, USB_DT_ENDPOINT,
     EP_AUDIO_IN,
-    UAC_EP_ISO | UAC_EP_SYNC_ADAPTIVE,
+    UAC_EP_ISO | UAC_EP_SYNC_ASYNC | UAC_EP_USAGE_DATA,
     AUDIO_MAX_PACKET_LEN & 0xFF, (AUDIO_MAX_PACKET_LEN >> 8) & 0xFF,
     1,
     0,
