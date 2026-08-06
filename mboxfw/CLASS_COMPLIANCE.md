@@ -167,7 +167,7 @@ Ship 185, 187 and 188 in one image.
 |---|---|---|---|
 | **186** | decide the playback feedback endpoint | 0-200 bytes | 181 |
 | ~~189~~ | does the mute pair separate playback from capture | **DONE** — they separate: 0x23.2 = capture, 0x23.3 = playback. `FINDING_189_the_mute_pair_separates.md` |
-| **190** | declare Feature Units with Mute | ~70 bytes | **UNBLOCKED** — and must stop `streaming_set_rate()` re-raising a host-set mute on every stream open |
+| ~~190~~ | declare Feature Units with Mute | **DONE, unflashed** — FU 8 (playback) + FU 9 (capture), master Mute each. Cost 175 bytes; the image is now **6016 of 6016** |
 
 186 only exists if #181 finds the ACG free-running. It is a design decision
 before it is a coding task: an asynchronous OUT endpoint obliges a feedback IN
@@ -205,7 +205,23 @@ that does not separate). Cite each terminal to the FINDING that measured it and
 fail on an uncited entry, exactly as `check_citation_targets.py` does for SFR
 writes.
 
-### Budget
+### Budget — the image is FULL
+
+**6016 of 6016 bytes as of build 0x0036.** #190 cost 175 bytes (20 descriptor,
+155 code) against the 175 that were free, which is not a coincidence so much as
+the ceiling arriving. Nothing further fits without removing something.
+
+The cheapest honest removal is `TLM_REQ_SET_MUTE` (~40 bytes). Its stated
+justification was that the class control is interface-recipient and unreachable
+once `snd-usb-audio` binds -- but with the Feature Units declared, ALSA exposes
+the mute as an ordinary mixer control, which is reachable from the bench with
+the driver bound. For mute specifically the fallback argument no longer holds
+either: with no driver bound there is no streaming, `g_path_enabled` is 0, and
+the pair is down regardless. It is kept for now only because it is the proven
+instrument #189 used and removing it before the class control is confirmed on
+hardware would leave no way to test the thing that replaced it.
+
+### Budget (original estimate)
 
 Worst case with every conditional taken — 9 + 30 + 200 + 70 + 50 — is ~360
 bytes against 835 free. Compliance is not what this image is short of.

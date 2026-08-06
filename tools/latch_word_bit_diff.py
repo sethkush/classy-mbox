@@ -137,8 +137,21 @@ MACROS = bit_macros()
 
 
 def _expand(rhs):
+    """Substitute the codec-word bit macros for their values.
+
+    WORD-BOUNDARY matching, and it matters. A plain str.replace() rewrites
+    prefixes: with CODEC23_MUTE_PAIR defined, CODEC23_MUTE_PAIR_ALL became
+    `0x0c_ALL`, which is not a literal, so the store was credited with all
+    eight bits and the documented 0x23.0/0x23.1 gaps read as stale. The gate
+    failed for a reason that had nothing to do with the firmware, and the
+    failure pointed at the wrong file. Found 2026-08-06 adding #190.
+
+    This is strictly more correct than the old behaviour, not more permissive:
+    every name that resolved before still resolves, and names that merely
+    START with another name now resolve instead of silently corrupting.
+    """
     for name, val in MACROS.items():
-        rhs = rhs.replace(name, hex(val))
+        rhs = re.sub(r"\b" + re.escape(name) + r"\b", hex(val), rhs)
     return rhs
 
 

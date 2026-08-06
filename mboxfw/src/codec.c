@@ -136,6 +136,41 @@ void codec_write_word(void)
     P1 &= (unsigned char)~P1_CODEC_LATCH_MASK; /* anl 0x90, #0xfd */
 }
 
+/* #190. Bits the host has muted, in CODEC23_ positions. Zero = nothing muted,
+ * which is the boot state and the behaviour every build before 0x0036 had. */
+__data unsigned char g_host_mute = 0;
+__data unsigned char g_path_enabled = 0;
+
+void codec_apply_mute(void)
+{
+    /* The pair is a pure function of two pieces of state, and this is the ONLY
+     * writer of those two bits. Splitting "is the path up" from "has the host
+     * muted it" is what keeps the two independent: the alternative -- reading
+     * the current pair back and guessing -- cannot tell a path that is down
+     * from one that is muted, so unmute would either fail to restore or would
+     * switch on a path no stream had opened.
+     *
+     * NOVEL — reason: stock has no host-settable mute, so there is no stock
+     * sequence to cite. The published VALUES are stock's own: the pair is
+     * exactly the field Rev 20 fcn.0x0728 clears at 0x072F/0x0731 and sets at
+     * 0x07EE (Rev 22 fcn.0x0763 @ 0x076A/0x076C and 0x082A), and the publish
+     * path is codec_write_word(), which is stock's LCALL 0x0E62. */
+    /* Raise both, then mask down. One `|=` with a LITERAL operand and two
+     * `&=`, which is both the cheapest form and the one the bit-coverage gate
+     * can read: latch_word_bit_diff.py resolves the settable mask from the C
+     * source and must over-estimate rather than under, so an RHS mentioning
+     * any identifier is credited with all eight bits -- silently turning
+     * 0x23.0/0x23.1 from documented gaps into apparently-driven ones. A `&=`
+     * cannot set a bit, so the gate skips it and the literal `|=` is the whole
+     * truth about what this can raise. The gate caught the byte-wide version
+     * twice in two days, here and in the #189 bench handler. */
+    g_codec_state_23 |= (unsigned char)CODEC23_MUTE_PAIR_ALL;
+    g_codec_state_23 &= (unsigned char)~g_host_mute;
+    g_codec_state_23 &= (unsigned char)(g_path_enabled
+                                        | (unsigned char)~CODEC23_MUTE_PAIR_ALL);
+    codec_write_word();
+}
+
 void codec_init(void)
 {
     /* Rev 20 fcn.0x08CB @ 0x0967-0x096C, Rev 22 fcn.0x07EC @ 0x0888-0x088D:
@@ -150,5 +185,8 @@ void codec_init(void)
      * mboxfw was silently skipping it. */
     g_codec_state_23 = 0;
     g_codec_state_25 = 0;
+    /* The audio path is down until a stream opens; g_host_mute deliberately
+     * SURVIVES, so a host that muted before a re-enumeration stays muted. */
+    g_path_enabled = 0;
     codec_write_word();
 }

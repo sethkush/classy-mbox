@@ -136,7 +136,17 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0035   /* 0035: #189 -- TLM_REQ_SET_MUTE, runtime
+#define TLM_BUILD_ID     0x0036   /* 0036: #190 -- two UAC1 Feature Units, one
+                                   *       per path, each with a master Mute.
+                                   *       0x23.3 is the playback gate and
+                                   *       0x23.2 the capture gate, per #189.
+                                   *       streaming_set_rate() no longer
+                                   *       re-raises a host-set mute on every
+                                   *       stream open, which was a real defect
+                                   *       and not just the test artifact #189
+                                   *       met it as. 6016 of 6016 bytes.
+                                   *
+                                   *       0035: #189 -- TLM_REQ_SET_MUTE, runtime
                                    *       control of the 0x23.2/0x23.3 pair.
                                    *       Replaces the MBOX_MUTE_PAIR_MASK
                                    *       compile-time variants: all four mask

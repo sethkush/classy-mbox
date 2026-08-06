@@ -104,7 +104,13 @@ void codec_init(void);
  * runtime control writes this field, and it must stay the full pair even in a
  * variant build -- otherwise the request could not restore a bit the boot mask
  * left low, which is the one thing it exists to do. */
-#define CODEC23_MUTE_PAIR_ALL  (CODEC23_MODE5_A | CODEC23_MODE5_B)
+/* Spelled as a LITERAL, not as `CODEC23_MODE5_A | CODEC23_MODE5_B`, for the
+ * same reason the note above gives for CODEC23_MUTE_PAIR: latch_word_bit_diff.py
+ * resolves the CODEC23_ defines out of this file and cannot expand one whose
+ * value is itself an expression over other macros. A compound definition here
+ * makes every store using it read as "can set all eight bits", which turns the
+ * documented 0x23.0/0x23.1 gaps into apparent drivers and fails the gate. */
+#define CODEC23_MUTE_PAIR_ALL  0x0Cu  /* = CODEC23_MODE5_A | CODEC23_MODE5_B */
 #define CODEC23_RESET_N      0x10u  /* 0x23.4 — external-chip RESET, ACTIVE LOW.
                                      * Rev 20 SETB 0x1c @0x0840 (Rev 22 @0x09E5,
                                      * @0x0BB5) releases it once at boot. */
@@ -137,6 +143,33 @@ void codec_init(void);
  * this is handed a compile-time constant, so the constant sites use ON/OFF. */
 #define MONO_SET(v)   do { if (v) { MONO_ON(); } else { MONO_OFF(); } } while (0)
 #define MONO_IS_SET() ((g_codec_state_23 & CODEC23_MONO) != 0)
+
+/* #190. Which paths the HOST has muted, in CODEC23_ bit positions -- so
+ * CODEC23_MUTE_CAPTURE set here means capture is muted.
+ *
+ * This exists because the pair cannot be used as its own state. Every stream
+ * open runs streaming_set_rate(), which raises the pair and publishes; a host
+ * that muted a stream and then reopened it -- SET_INTERFACE plus the
+ * sampling-frequency SET_CUR, entirely ordinary -- would find the mute
+ * silently cleared. #189 hit exactly this as a test artifact before it was a
+ * bug: the first working run of test_mute_pair.sh set the mask and then
+ * started the streams, which undid it before a sample was captured.
+ *
+ * So set_rate raises `CODEC23_MUTE_PAIR & ~g_host_mute` rather than the whole
+ * mask, and this variable is the one place the answer lives. */
+extern __data unsigned char g_host_mute;
+
+/* Which paths streaming_set_rate() has ENABLED, in the same bit positions.
+ * Separate from g_host_mute because the pair alone cannot distinguish a path
+ * that is down from one that is muted, and unmute needs to know the
+ * difference. */
+extern __data unsigned char g_path_enabled;
+
+/* Recompute the pair from g_path_enabled and g_host_mute, and publish. This is
+ * the ONLY writer of those two bits outside streaming_set_rate(), which sets
+ * g_path_enabled and folds the same expression in-line so that it can publish
+ * at stock's point in the sequence rather than early. */
+void codec_apply_mute(void);
 
 /* Codec control-word bytes — externally visible so control handlers can poke
  * individual bits and then call codec_write_word(). */

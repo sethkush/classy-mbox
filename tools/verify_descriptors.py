@@ -273,7 +273,29 @@ def check_config_bundle(desc, r):
                     terminal_ids.add(tid)
                     src = blob[4]
                     source_refs.append((tid, src))
-                    r.note(f"  FU id={tid} src={src}")
+                    # UAC1 §4.3.2.5: bLength = 7 + (bNrChannels + 1) *
+                    # bControlSize. The channel count is not in the descriptor
+                    # -- it comes from whatever feeds bSourceID -- so what can
+                    # be checked here is that the bmaControls array divides
+                    # evenly and holds at least the master entry. A FU whose
+                    # length disagrees with its bControlSize makes the host
+                    # resume parsing mid-array, which corrupts every unit AFTER
+                    # it rather than reporting an error on this one; #190 added
+                    # two of these, so the arithmetic is now worth gating.
+                    csize = blob[5] if bLen > 5 else 0
+                    if csize == 0:
+                        r.err(f"FU id={tid} has bControlSize 0")
+                    elif (bLen - 7) % csize:
+                        r.err(f"FU id={tid} bLength {bLen} is not 7 + k*"
+                              f"{csize} — bmaControls does not divide evenly")
+                    elif (bLen - 7) // csize < 1:
+                        r.err(f"FU id={tid} has no bmaControls(0) master entry")
+                    else:
+                        nctl = (bLen - 7) // csize
+                        ctls = int.from_bytes(blob[6:6 + csize], "little")
+                        r.note(f"  FU id={tid} src={src} "
+                               f"{nctl} control entr{'y' if nctl == 1 else 'ies'}"
+                               f" of {csize}B, master=0x{ctls:02X}")
                     ac_block_actual += bLen
                 elif subtype == AC_SELECTOR_UNIT:
                     # UAC1 §4.3.2.4: bLength = 6 + bNrInPins.

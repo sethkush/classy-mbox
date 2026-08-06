@@ -130,6 +130,22 @@
  * produce. The silent control returned exact zeros rather than a noise floor.
  * See FINDING_187_spdif_output_is_real.md. */
 #define TERM_SPDIF_OUT         0x07   /* AES3 transmitter as a playback sink  */
+/* #190. One Feature Unit per path, each carrying a single Mute control on the
+ * master channel. Two units and not one because #189 measured the hardware to
+ * BE two: 0x23.3 gates playback and 0x23.2 gates capture, each killing exactly
+ * one direction. A single Feature Unit over one global gate would have been a
+ * control that lies about the other stream, which is why #46 refused to
+ * declare one until the measurement existed. */
+#define UNIT_FU_PLAYBACK       0x08   /* Mute on the playback path (0x23.3)   */
+#define UNIT_FU_CAPTURE        0x09   /* Mute on the capture path  (0x23.2)   */
+
+/* UAC1 §4.3.2.5 bmaControls bit 0. Master channel only -- see descriptors.c. */
+#define UAC_FU_CTRL_MUTE       0x01
+#define UAC_FU_MUTE_CONTROL    0x01   /* control selector on wValueH          */
+
+/* bLength = 7 + (bNrChannels + 1) * bControlSize, i.e. 7 + 3*1 for a stereo
+ * unit with a master entry and one byte of controls per channel. */
+#define FU_DESC_LEN            10
 
 /* Audio format */
 #define AUDIO_NUM_CHANNELS     2
@@ -209,7 +225,8 @@
  * presents as "the selector does not exist" rather than as a descriptor error
  * — so this and the array below are the same fact twice and have to move
  * together. */
-#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 8 + 9 + 9 + 9)
+#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 8 + 9 + 9 + 9 \
+                             + FU_DESC_LEN + FU_DESC_LEN)
 
 /* Per streaming interface: alt 0 (9) + alt 1 (9 + 7 + 14 + 9 + 7).
  *

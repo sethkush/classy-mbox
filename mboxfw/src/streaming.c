@@ -396,8 +396,35 @@ void streaming_set_rate(unsigned long hz)
      * nothing at runtime. See MBOX_MUTE_PAIR_MASK in the Makefile — the open
      * question is whether these are one gate or two, which is exactly what
      * decides whether a UAC Feature Unit can carry an honest Mute. */
+    /* #190: raise only what the HOST has not muted.
+     *
+     * This line used to raise the whole pair, and that is a real defect rather
+     * than a nicety: every stream open runs through here, so a host that muted
+     * a stream and then reopened it -- SET_INTERFACE plus the
+     * sampling-frequency SET_CUR, entirely ordinary -- got its mute silently
+     * cleared. #189 met it first as a test artifact, when setting the mask and
+     * then starting arecord produced a full table in which nothing was ever
+     * muted.
+     *
+     * g_host_mute is zero unless a host has asked for a mute, so this is
+     * byte-identical to the old behaviour on every path that does not use the
+     * Feature Units.
+     *
+     * Deliberately NOT a call to codec_apply_mute() here, though it computes
+     * the same value: that function publishes, and stock's publish for this
+     * routine is the LCALL 0x0E62 at Rev 20 0x07F2 further down. Publishing
+     * early would add a codec_write_word() at a point neither stock image has
+     * one, and the ordering of this sequence -- pair cleared before the clock
+     * is disturbed, raised again only once the clock is stable and the
+     * endpoints are re-armed, then committed -- is the whole reason the pair
+     * was read as an audio-path enable in the first place. */
 #if CODEC23_MUTE_PAIR != 0
+    g_path_enabled |= (unsigned char)CODEC23_MUTE_PAIR;
+    /* Raise the pair exactly as before, then drop whatever the host has muted.
+     * The `&=` cannot set a bit, so this leaves the literal `|=` above as the
+     * whole truth for latch_word_bit_diff.py -- see codec_apply_mute(). */
     g_codec_state_23 |= (unsigned char)CODEC23_MUTE_PAIR;
+    g_codec_state_23 &= (unsigned char)~g_host_mute;
 #endif
     /* ACGCTL bits 6-7, NOT a DMA arm. The old comment here claimed this
      * armed DMA channels 0+1; 0xFFE1 is the adaptive clock generator

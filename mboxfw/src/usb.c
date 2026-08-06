@@ -79,7 +79,12 @@ volatile __data unsigned char g_dfu_request_pending = 0;
 #define EP0_OUT_NONE            0
 #define EP0_OUT_SET_SAMPLE_FREQ 1
 #define EP0_OUT_SET_SOURCE      2
+#define EP0_OUT_SET_MUTE        3   /* #190 */
 static __data unsigned char g_ep0_out_pending = EP0_OUT_NONE;
+/* #190. Which gate the pending SET_CUR names. Captured at SETUP time because
+ * wIndexH belongs to a SETUP that has already been overwritten by the time the
+ * data stage lands. */
+static __data unsigned char g_ep0_mute_bit = 0;
 
 /* Current USB device state — updated by SET_CONFIGURATION / SET_INTERFACE. */
 static __data unsigned char g_configured = 0;
@@ -470,25 +475,17 @@ static void handle_set_mute(void)
         return;
     }
 
-    /* Per-bit rather than a byte-wide read-modify-write, and NOT for style:
-     * latch_word_bit_diff.py resolves which bits a store can set from the C
-     * source, and it must over-estimate rather than under. A whole-byte
-     * assignment whose RHS mentions any identifier is unresolvable, so the
-     * gate credits the store with all eight bits -- and 0x23.0/0x23.1, which
-     * this handler can only ever carry through unchanged, stopped reading as
-     * gaps. The gate caught that on the first build. Two `|=` with literal
-     * operands are exactly as reachable and leave the bit map honest. */
-    if (mask & CODEC23_MODE5_A) {
-        g_codec_state_23 |= CODEC23_MODE5_A;
-    } else {
-        g_codec_state_23 &= (unsigned char)~CODEC23_MODE5_A;
-    }
-    if (mask & CODEC23_MODE5_B) {
-        g_codec_state_23 |= CODEC23_MODE5_B;
-    } else {
-        g_codec_state_23 &= (unsigned char)~CODEC23_MODE5_B;
-    }
-    codec_write_word();
+    /* Goes through the SAME state the class Feature Units use (#190), rather
+     * than poking the pair directly. Two reasons, and the second is the one
+     * that bit: a direct poke is undone by the next streaming_set_rate(), so
+     * the bench request would silently stop meaning anything the moment a
+     * stream reopened -- which is exactly the trap #189 spent a run on. And
+     * two independent writers of one hardware field is how they drift.
+     *
+     * `mask` is the set to LEAVE STANDING, so the muted set is its complement
+     * within the pair. */
+    g_host_mute = (unsigned char)(CODEC23_MUTE_PAIR_ALL & ~mask);
+    codec_apply_mute();
 
     reply_zero_length();
 }
@@ -692,6 +689,53 @@ static void handle_selector_unit_request(void)
 }
 
 
+/* Feature Unit Mute, #190. wIndexH selects which unit, and therefore which
+ * of the two gates #189 measured:
+ *
+ *   UNIT_FU_PLAYBACK -> 0x23.3   UNIT_FU_CAPTURE -> 0x23.2
+ *
+ * Master channel only (CN 0). Per-channel mute is refused rather than aliased
+ * onto the master, because the hardware gate is one bit per path: accepting
+ * CN 1 and CN 2 would offer two controls that silently move each other, and a
+ * host that sets one and reads back the other would be told a lie it had no
+ * way to detect. UAC1 §5.2.1 makes a STALL the correct answer for a control
+ * that does not exist on the addressed channel.
+ */
+static void handle_feature_unit_request(void)
+{
+    /* The dispatcher has already established that wIndexH is one of the two
+     * unit IDs, so this is a choice between them and not a lookup that can
+     * fail -- a third arm here would be unreachable code, which the
+     * reachability gate would then have to be told to ignore. */
+    unsigned char bit = (wIndexH == UNIT_FU_PLAYBACK)
+                            ? CODEC23_MUTE_PLAYBACK : CODEC23_MUTE_CAPTURE;
+
+    /* CS on wValueH, CN on wValueL — UAC1 §5.2.1. */
+    if (wValueH != UAC_FU_MUTE_CONTROL || wValueL != 0) {
+        reply_stall();
+        return;
+    }
+
+    if (bReq == UAC_SET_CUR) {
+        /* One-byte data stage still in flight; the work happens in VEC_OEP0,
+         * the same deferral the selector and sampling-frequency controls use.
+         * The BIT is stashed rather than re-derived there: wIndexH belongs to
+         * the SETUP that is already finished by the time the data arrives. */
+        g_ep0_mute_bit = bit;
+        g_ep0_out_pending = EP0_OUT_SET_MUTE;
+    } else if (bReq == UAC_GET_CUR) {
+        /* 1 = muted. Report from g_host_mute, NOT from the codec word: the
+         * pair also reads low before any stream has opened, and answering
+         * "muted" for a path that is merely idle would make an unmuted device
+         * report itself muted at every boot. */
+        unsigned char v = (g_host_mute & bit) ? 1 : 0;
+        stage_immediate(&v, 1);
+    } else {
+        reply_stall();
+    }
+}
+
+
 /* --- UAC1 class request dispatcher --- */
 
 static void handle_class_endpoint_request(void)
@@ -876,8 +920,10 @@ static void handle_setup(void)
                 handle_digi_enter_dfu();
             } else if (wIndexH == UAC_SELECTOR_UNIT_ID) {
                 handle_selector_unit_request();   /* #177 */
+            } else if (wIndexH == UNIT_FU_PLAYBACK
+                       || wIndexH == UNIT_FU_CAPTURE) {
+                handle_feature_unit_request();    /* #190 */
             } else {
-                /* TODO: feature-unit volume/mute if we add them */
                 reply_stall();
             }
         } else {
@@ -1358,6 +1404,26 @@ void usb_service(void)
                 } else {
                     reply_stall();
                 }
+            } else if (g_ep0_out_pending == EP0_OUT_SET_MUTE) {
+                /* #190. One byte, boolean per UAC1 §5.2.2.4.3.1: non-zero
+                 * mutes. Any non-zero is accepted rather than requiring
+                 * exactly 1 -- the spec's type is BOOLEAN, and hosts do send
+                 * 0xFF for true. */
+                __xdata unsigned char *src =
+                    (__xdata unsigned char *)EP0_OUT_BUF_ADDR;
+                unsigned char on = src[0];
+                unsigned char bit = g_ep0_mute_bit;
+                g_ep0_out_pending = EP0_OUT_NONE;
+                if (on) {
+                    g_host_mute |= bit;
+                } else {
+                    g_host_mute &= (unsigned char)~bit;
+                }
+                /* codec_apply_mute() recomputes the pair from g_path_enabled
+                 * and g_host_mute and publishes, so unmute restores the bit
+                 * without this having to know whether the path was up. */
+                codec_apply_mute();
+                reply_zero_length();
             }
             break;
 

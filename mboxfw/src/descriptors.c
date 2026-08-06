@@ -160,12 +160,41 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     TERM_SPDIF_IN,          /* baSourceID(2) — position 2 = S/PDIF */
     0,                      /* iSelector */
 
+    /* ---- Feature Unit: playback Mute (10 bytes) ---- #190
+     *
+     * Sits between the USB-out stream and the two output terminals, so a host
+     * walking back from either one finds it. bSourceID chains from the stream;
+     * both Output Terminals below now source from THIS unit rather than from
+     * the stream directly. A Feature Unit nothing routes through is a Feature
+     * Unit the host never finds, however correct its own descriptor is --
+     * exactly the trap #160 recorded for the Selector Unit.
+     *
+     * MASTER CHANNEL ONLY. bmaControls(0) carries Mute; the two per-channel
+     * entries are zero. That is not a simplification, it is the hardware:
+     * 0x23.3 is one bit gating the whole playback path, so a per-channel mute
+     * would be two controls moving one gate -- each silently changing the
+     * other, which is worse than not offering them.
+     *
+     * NO VOLUME. The codec has no gain field anywhere in its 16-bit word
+     * (FINDING_codec_word_bits_resolved.md), the front-panel gain is analog
+     * pots, and the samples never pass through the 8051 -- the DMA moves them
+     * between the endpoint buffer and the codec port with no CPU involvement.
+     * Volume is absent, not omitted. */
+    FU_DESC_LEN, USB_DT_CS_INTERFACE, UAC_AC_FEATURE_UNIT,
+    UNIT_FU_PLAYBACK,
+    TERM_USB_OUT_STREAM,   /* bSourceID = the playback stream */
+    1,                     /* bControlSize */
+    UAC_FU_CTRL_MUTE,      /* bmaControls(0) master — Mute */
+    0,                     /* bmaControls(1) ch1 */
+    0,                     /* bmaControls(2) ch2 */
+    0,                     /* iFeature */
+
     /* ---- Output Terminal: analog line-out (9 bytes) ---- */
     9, USB_DT_CS_INTERFACE, UAC_AC_OUTPUT_TERMINAL,
     TERM_LINE_OUT,
     UAC_TT_LINE_OUT & 0xFF, (UAC_TT_LINE_OUT >> 8) & 0xFF,
     0,
-    TERM_USB_OUT_STREAM,   /* bSourceID = playback stream */
+    UNIT_FU_PLAYBACK,      /* #190 bSourceID = playback Feature Unit */
     0,
 
     /* ---- Output Terminal: S/PDIF transmitter (9 bytes) ---- #187
@@ -193,8 +222,30 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     TERM_SPDIF_OUT,
     UAC_TT_SPDIF & 0xFF, (UAC_TT_SPDIF >> 8) & 0xFF,
     0,                     /* bAssocTerminal */
-    TERM_USB_OUT_STREAM,   /* bSourceID = the same playback stream */
+    UNIT_FU_PLAYBACK,      /* #190 bSourceID = the same Feature Unit, so the
+                            * mute covers BOTH physical outputs -- which is
+                            * what the hardware does: 0x23.3 gates the C-port
+                            * playback side that feeds the DAC and the AES3
+                            * transmitter alike. */
     0,                     /* iTerminal */
+
+    /* ---- Feature Unit: capture Mute (10 bytes) ---- #190
+     *
+     * After the Selector Unit and before the USB-in terminal, so it mutes
+     * whichever source the selector has chosen -- analog or S/PDIF. Putting it
+     * ahead of the selector would have needed one per input to mean the same
+     * thing, and 0x23.2 is a single gate downstream of the mux in any case.
+     *
+     * Master channel only, and no Volume, for the same reasons as the playback
+     * unit above. */
+    FU_DESC_LEN, USB_DT_CS_INTERFACE, UAC_AC_FEATURE_UNIT,
+    UNIT_FU_CAPTURE,
+    UNIT_SELECTOR,         /* bSourceID = the analog/S-PDIF selector */
+    1,                     /* bControlSize */
+    UAC_FU_CTRL_MUTE,      /* bmaControls(0) master — Mute */
+    0,                     /* bmaControls(1) ch1 */
+    0,                     /* bmaControls(2) ch2 */
+    0,                     /* iFeature */
 
     /* ---- Output Terminal: host USB-in stream (9 bytes) ---- */
     9, USB_DT_CS_INTERFACE, UAC_AC_OUTPUT_TERMINAL,
@@ -206,7 +257,8 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
      * to the output terminal — and a host walks the topology backwards from
      * the output terminal, so a selector that nothing routes through is a
      * selector the host never finds, however correct its own descriptor is. */
-    UNIT_SELECTOR,         /* bSourceID = the analog/S-PDIF selector */
+    UNIT_FU_CAPTURE,       /* #190 bSourceID = the capture Feature Unit,
+                            * which is itself fed by the selector. */
     0,
 
     /* ==================================================================
