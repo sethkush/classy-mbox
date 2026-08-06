@@ -109,7 +109,20 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0030   /* 0030: boot-button DFU trigger REMOVED, and
+#define TLM_BUILD_ID     0x0031   /* 0031: first image flashed since the dead-field
+                                   *       removal (tlm_cs8427_status /
+                                   *       tlm_codec_status, block 4 rewritten
+                                   *       to stalls/P1/P3). Bumped rather than
+                                   *       reusing 0030 because 0030 was
+                                   *       assigned one commit BEFORE that
+                                   *       change, so it names two different
+                                   *       source states. Neither was ever
+                                   *       flashed -- the units ran 002C -- so
+                                   *       nothing on-device is ambiguous, but
+                                   *       a build id that maps to two trees is
+                                   *       exactly the thing block 0 exists to
+                                   *       prevent. Carries #181's drift test.
+                                   * 0030: boot-button DFU trigger REMOVED, and
                                    *       with it eeprom_read_byte /
                                    *       eeprom_smoke_test (its only caller)
                                    *       and the #172 P3/GLOBCTL hoist.
