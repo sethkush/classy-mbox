@@ -96,6 +96,7 @@ else
     check "code size within budget"             python3 tools/check_code_size.py
     check "sim_smoke (main loop + CONN + canaries)" bash tools/sim_smoke.sh
     check "verify_descriptors"        python3 tools/verify_descriptors.py
+    check "terminals cite a measurement"      python3 tools/check_terminal_evidence.py
     check "verify_usb_init"           python3 tools/verify_usb_init.py
     check "verify_cs8427"             python3 tools/verify_cs8427.py
     # verify_cs8427 checks the ten register VALUES. This runs the image and

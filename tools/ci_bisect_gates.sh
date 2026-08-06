@@ -84,6 +84,11 @@ for sha in $commits; do
         [[ -d safety_net ]] && (cd safety_net && make -s) >> /tmp/ci_build.log 2>&1
         bash tools/sim_smoke.sh              > /tmp/ci_gate.log 2>&1 || exit 21
         python3 tools/verify_descriptors.py >> /tmp/ci_gate.log 2>&1 || exit 22
+        # #194. Runs next to verify_descriptors on purpose: that one proves the
+        # bundle is self-consistent, this one proves each declared terminal
+        # names hardware somebody measured. A bisect over "when did we start
+        # claiming a path we cannot back" needs both.
+        python3 tools/check_terminal_evidence.py >> /tmp/ci_gate.log 2>&1 || exit 29
         python3 tools/verify_usb_init.py    >> /tmp/ci_gate.log 2>&1 || exit 23
         python3 tools/verify_cs8427.py      >> /tmp/ci_gate.log 2>&1 || exit 24
         python3 tools/verify_setup_paths.py >> /tmp/ci_gate.log 2>&1 || exit 25
@@ -135,6 +140,7 @@ for sha in $commits; do
             20) reason="build failure — see /tmp/ci_build.log" ;;
             21) reason="sim_smoke failure — see /tmp/ci_gate.log" ;;
             22) reason="verify_descriptors failure" ;;
+            29) reason="a declared terminal has no measured evidence (#194)" ;;
             23) reason="verify_usb_init failure" ;;
             24) reason="verify_cs8427 failure" ;;
             25) reason="verify_setup_paths failure" ;;
