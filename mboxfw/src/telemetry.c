@@ -17,6 +17,7 @@ volatile __data struct tlm_ctrs tlm;
 volatile __idata unsigned long tlm_acg_window = 0UL;
 volatile __idata unsigned int  tlm_acg_last   = 0;
 volatile __idata unsigned char tlm_acg_count  = 0;
+volatile __idata unsigned char tlm_fb_rejects = 0;
 volatile __data unsigned int  tlm_loop_count  = 0;
 volatile __data unsigned char tlm_mux_sets    = 0;
 volatile __data unsigned char tlm_mux_rejects = 0;
@@ -222,7 +223,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[3] = (unsigned char)((tlm_acg_window >> 24) & 0xFF);
         put16(&out[4], tlm_acg_last);
         out[6] = tlm_acg_count;
-        out[7] = (unsigned char)(tlm.sof_count & 0xFF);
+        out[7] = tlm_fb_rejects;
         break;
 
     /* case 10 (CS8427 read-back probe, #165) RETIRED 2026-08-03. It answered

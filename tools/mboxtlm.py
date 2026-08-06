@@ -589,12 +589,12 @@ def block11(b):
     window = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)
     last = b[4] | (b[5] << 8)
     windows = b[6]
-    sof_lo = b[7]
+    rejects = b[7]
     out = ["block 11 -- ACG clock measurement (#186 stage 1)"]
     if windows == 0:
         out.append("  no completed window yet (1024 frames ~ 1.02 s)")
         out.append("  last frame delta: %d MCLK" % last)
-        out.append("  completed windows: 0   sof_count low byte: %d" % sof_lo)
+        out.append("  completed windows: 0   rejected windows: %d" % rejects)
         if last == 0:
             out.append("  DELTA IS ZERO: either the ACG is idle (no stream has"
                        " started, so MCLKO is not running) or ACGCAP does not"
@@ -605,8 +605,13 @@ def block11(b):
     out.append("  window total: %d MCLK over 1024 frames" % window)
     out.append("  per frame:    %.4f MCLK   (last single frame: %d)"
                % (per_frame, last))
-    out.append("  completed windows: %d   sof_count low byte: %d"
-               % (windows, sof_lo))
+    out.append("  completed windows: %d   rejected windows: %d"
+               % (windows, rejects))
+    if rejects:
+        out.append("  %d window(s) were implausible and DISCARDED. One per rate"
+                   " change is the stream-start window being dropped on"
+                   " purpose; a climbing count means the clock is moving under"
+                   " the accumulator and the published rate is stale." % rejects)
     # A USB frame is 1 ms, so per-frame count IS the MCLK frequency in kHz.
     out.append("  implied MCLKO: %.4f kHz" % per_frame)
     best = None

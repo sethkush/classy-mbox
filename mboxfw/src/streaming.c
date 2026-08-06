@@ -102,6 +102,7 @@ __data unsigned char g_clock_mode = 3;
 #define FB_ARM_EVERY       4u    /* matches bRefresh = 2 in the descriptor */
 
 static __idata unsigned long fb_value;        /* 10.14, ready to publish    */
+static __idata unsigned long fb_nominal;      /* 10.14 nominal for the rate */
 static __idata unsigned long fb_sum;          /* current 64-frame window    */
 static __idata unsigned char fb_frames;
 static __idata unsigned char fb_arm;
@@ -159,10 +160,25 @@ void streaming_set_rate(unsigned long hz)
      * was standing: the device is then following an external clock, and the
      * measurement is the only honest source for what that rate actually is. */
     if (hz == 48000UL) {
-        fb_value = 786432UL;
+        fb_value = fb_nominal = 786432UL;
     } else if (hz == 44100UL) {
-        fb_value = 722534UL;
+        fb_value = fb_nominal = 722534UL;
     }
+    /* DISCARD THE WINDOW IN PROGRESS. Measured on hardware 2026-08-05: the
+     * first 64-frame window after a stream start straddles the ACG being
+     * reprogrammed a few lines below, so it sums a mixture of the old clock
+     * and the new and reported 52.5 samples/frame -- +9.4%. Linux's acceptance
+     * band is wide enough to take that (roughly freqn-12% .. freqn+50%), so
+     * the host adopted it and asked for 9% more samples for 64 ms at every
+     * single stream start. usbmon caught it as 16 consecutive polls of
+     * 0x0D1FFD, one window's worth of arming.
+     *
+     * Re-priming acg_prev matters as much as zeroing the sum: MCLKO stops
+     * while the generator is idle, so the first difference taken across a
+     * restart is against a capture from before the gap and means nothing. */
+    fb_sum     = 0UL;
+    fb_frames  = 0;
+    acg_primed = 0;
 
     /* Prelude — seed both adaptive-clock-generator digital control
      * registers with 0x10, exactly as Rev 20 does.
@@ -697,7 +713,26 @@ void streaming_acg_sample(void)
      * 10.14 feedback value with no scaling (see FB_WINDOW_FRAMES above). */
     fb_sum += delta;
     if (++fb_frames >= FB_WINDOW_FRAMES) {
-        fb_value  = fb_sum;
+        /* Publish only a PLAUSIBLE window. A real crystal sits tens of ppm
+         * from nominal; anything past 1/256 (~3900 ppm) is the clock having
+         * moved under the accumulator, not a rate to report. Rejecting keeps
+         * the previous value, which is the honest fallback -- the device is
+         * still running at whatever it last measured.
+         *
+         * This is the second line of defence. streaming_set_rate() already
+         * discards the window across a deliberate rate change; this catches
+         * the ones nothing announced, including a missed-SOF wrap (three
+         * consecutive misses would silently lose 65536 counts).
+         *
+         * TI reached for the same idea and settled for `MclkPerMs = 11290;`
+         * hardcoded past the counter -- see SoftPll.c. */
+        unsigned long lo = fb_nominal - (fb_nominal >> 8);
+        unsigned long hi = fb_nominal + (fb_nominal >> 8);
+        if (fb_sum >= lo && fb_sum <= hi) {
+            fb_value = fb_sum;
+        } else if (tlm_fb_rejects < 0xFF) {
+            tlm_fb_rejects++;
+        }
         fb_sum    = 0UL;
         fb_frames = 0;
     }

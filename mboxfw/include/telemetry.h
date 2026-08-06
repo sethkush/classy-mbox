@@ -112,7 +112,19 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0033   /* 0033: #185 + #186 stage 2. The iso endpoints
+#define TLM_BUILD_ID     0x0034   /* 0034: fixes the feedback value published
+                                   *       across a stream start. usbmon on
+                                   *       0x0033 caught the first 64-frame
+                                   *       window straddling the ACG being
+                                   *       reprogrammed and reporting 52.5
+                                   *       samples/frame (+9.4%) for 16
+                                   *       consecutive polls -- inside Linux's
+                                   *       acceptance band, so the host took it.
+                                   *       The window is now discarded on any
+                                   *       rate change and any window more than
+                                   *       ~3900 ppm from nominal is rejected,
+                                   *       counted on block 11 byte 7.
+                                   * 0033: #185 + #186 stage 2. The iso endpoints
                                    *       declare ASYNCHRONOUS (they were
                                    *       ADAPTIVE, which the 2026-08-05
                                    *       measurements showed to be false), and
@@ -424,6 +436,11 @@ extern volatile __data unsigned int  tlm_last_wlength;
 extern volatile __idata unsigned long tlm_acg_window;
 extern volatile __idata unsigned int  tlm_acg_last;
 extern volatile __idata unsigned char tlm_acg_count;
+/* #186 stage 2 — feedback windows REJECTED as implausible. Non-zero after a
+ * stream start is expected exactly once per rate change if the reset ever
+ * regresses; steadily climbing means the clock is moving under the
+ * accumulator and the reported rate is stale. */
+extern volatile __idata unsigned char tlm_fb_rejects;
 
 /* VECINT histogram (block 3), saturating at 255 */
 
