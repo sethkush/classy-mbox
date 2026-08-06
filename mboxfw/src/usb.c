@@ -290,6 +290,16 @@ static void handle_get_descriptor(void)
              * anywhere near this size, so the deep continuation path has
              * never actually been exercised on hardware. */
             STAGE(17);
+            /* #195. §9.4.3: "If the descriptor index is greater than or equal
+             * to bNumConfigurations, the device responds with a Request
+             * Error." We declare ONE configuration, so any index but 0 names
+             * a configuration that does not exist. Returning config 0 for
+             * index 5 -- which is what this did -- tells a host that a second
+             * configuration exists and is identical to the first. */
+            if (index != 0) {
+                reply_stall();
+                break;
+            }
             stage_reply(AppConfigDesc, APP_CFG_TOTAL_LEN);
             break;
         case USB_DT_STRING:
@@ -315,6 +325,16 @@ static void handle_get_descriptor(void)
 
 static void handle_set_configuration(void)
 {
+    /* #195. §9.4.7: wValue must be zero (-> Address state) or match a
+     * bConfigurationValue we declare, which is 1. Anything else is a Request
+     * Error. This accepted any value at all and latched it into g_configured,
+     * so a host could leave the device believing it was in configuration 9 --
+     * a state no descriptor describes and GET_CONFIGURATION would then
+     * report. */
+    if (wValueL > 1) {
+        reply_stall();
+        return;
+    }
     STAGE(20);   /* enumeration essentially complete */
     g_configured = wValueL;
     reply_zero_length();
@@ -324,6 +344,30 @@ static void handle_set_interface(void)
 {
     unsigned char iface = wIndexL;
     unsigned char alt   = wValueL;
+
+    /* #195. §9.4.10: a Request Error is required when the interface or the
+     * alternate setting does not exist. This is the one with teeth -- alt
+     * drives streaming_playback_enable()/streaming_capture_enable(), so an
+     * undeclared alt used to run the alt-selection path with a value no
+     * descriptor declares, and an unknown INTERFACE fell past both arms and
+     * still answered with a zero-length ACK.
+     *
+     * What we declare: iface 0 (AudioControl) has alt 0 only; ifaces 1 and 2
+     * each have alt 0 (zero-bandwidth) and alt 1 (active). */
+    if (iface == 0) {
+        if (alt != 0) {
+            reply_stall();
+            return;
+        }
+    } else if (iface == 1 || iface == 2) {
+        if (alt > 1) {
+            reply_stall();
+            return;
+        }
+    } else {
+        reply_stall();
+        return;
+    }
 
     /* Latched for telemetry. A live read cannot answer "was capture ever
      * enabled?" because arecord dies within milliseconds of the failed

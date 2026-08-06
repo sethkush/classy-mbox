@@ -35,12 +35,32 @@ value no descriptor declares.
 USB20CV tests all three. Finding them here means it will not be reporting
 defects we could have found ourselves.
 
+## The three are fixed (#195, build 0x0038, unflashed)
+
+`GET_DESCRIPTOR` now stalls a config index other than 0, `SET_CONFIGURATION`
+stalls anything above 1, and `SET_INTERFACE` validates the alt against what each
+interface declares — alt 0 only on interface 0, alt 0 or 1 on interfaces 1 and 2
+— and stalls an interface number nothing declares, which previously fell past
+both arms and still answered with a zero-length ACK.
+
+43 bytes, which is what was free. All 37 gates pass.
+
 ## The fourth, minor
 
 `GET_DESCRIPTOR(config)` with `wLength = 0` **stalls**. USB 2.0 §9.3.5: a zero
 `wLength` means there is simply no data phase, and the request should complete.
 No real host asks for a descriptor this way, so the impact is close to nil — but
 it is a divergence and USB20CV exercises it.
+
+**Deliberately NOT fixed yet, and the reason is worth stating.** For a
+device-to-host request the status stage runs in the opposite direction, so a
+`wLength = 0` GET_DESCRIPTOR needs the host's status **OUT** acknowledged, while
+`reply_zero_length()` arms an IN — which is right for the host-to-device case it
+was written for. Getting it right means touching the EP0 state machine, the most
+delicate code in the image and the source of the desync that
+`g_ep0_reply_remaining = 0` exists to prevent. Two bytes of headroom is not the
+budget for that, and no host issues the request. It waits for real headroom or
+for USB20CV to say it matters.
 
 ## One result that is NOT a result
 
