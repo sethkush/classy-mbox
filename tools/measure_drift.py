@@ -172,7 +172,55 @@ def main():
     ap.add_argument("--label", default="")
     ap.add_argument("--out", default=None)
     ap.add_argument("--compare", nargs=2, metavar="JSON")
+    ap.add_argument("--combine", nargs="+", metavar="JSON",
+                    help="A,B pairs from two or more runs (4, 6, ... files): "
+                         "inverse-variance combine the differentials")
     args = ap.parse_args()
+
+    if args.combine:
+        if len(args.combine) % 2 or len(args.combine) < 4:
+            raise SystemExit("--combine takes A B A B ... — an even number of "
+                             "files, at least 4 (two runs)")
+        diffs = []
+        for i in range(0, len(args.combine), 2):
+            a = json.load(open(args.combine[i]))
+            b = json.load(open(args.combine[i + 1]))
+            d = a["ppm"] - b["ppm"]
+            e = (a["ppm_se"] ** 2 + b["ppm_se"] ** 2) ** 0.5
+            diffs.append((d, e, a["nominal"]))
+            print("  %6d Hz   %+.3f +/- %.3f ppm" % (a["nominal"], d, e))
+        # Inverse-variance weighting: each run contributes in proportion to
+        # how well it was measured, which is the whole reason for computing
+        # the standard error rather than asserting one.
+        wts = [1.0 / (e * e) for _, e, _ in diffs]
+        mean = sum(d * w for (d, _, _), w in zip(diffs, wts)) / sum(wts)
+        se = (1.0 / sum(wts)) ** 0.5
+        print()
+        print("  combined     %+.3f +/- %.3f ppm  -> %.1f sigma"
+              % (mean, se, abs(mean) / se if se else 0.0))
+        # Consistency check FIRST. Combining runs that disagree with each other
+        # averages away the disagreement and reports a confident wrong number,
+        # so the spread has to be reported before the mean is believed.
+        if len(diffs) == 2:
+            sp = diffs[0][0] - diffs[1][0]
+            spe = (diffs[0][1] ** 2 + diffs[1][1] ** 2) ** 0.5
+            print("  run-to-run   %+.3f +/- %.3f ppm  -> %.1f sigma"
+                  % (sp, spe, abs(sp) / spe if spe else 0.0))
+            print()
+            if spe and abs(sp) / spe > 3.0:
+                print("  The runs DISAGREE with each other. A crystal offset is")
+                print("  rate-independent, so this points at a systematic, not")
+                print("  at the clocks. Do not combine these.")
+                return 0
+            print("  The runs agree, as a rate-independent crystal offset must.")
+        if se and abs(mean) / se > 3.0:
+            print("  VERDICT  the units run on INDEPENDENT clocks -> the ACG")
+            print("           free-runs; it is not locked to the USB SOF.")
+            print("           SYNC_ADAPTIVE is wrong. See #185 and #186.")
+        else:
+            print("  VERDICT  no established difference; consistent with both")
+            print("           slaved to the shared SOF.")
+        return 0
 
     if args.compare:
         a = json.load(open(args.compare[0]))
@@ -184,23 +232,45 @@ def main():
                      r["ppm_se"], r["samples"], r["fit_span_s"], r["overruns"]))
         d = a["ppm"] - b["ppm"]
         # Errors add in quadrature; this is the uncertainty ON THE DIFFERENCE,
-        # which is what the verdict must be judged against.
+        # which is what any verdict must be judged against.
         de = (a["ppm_se"] ** 2 + b["ppm_se"] ** 2) ** 0.5
         print("  differential %+.3f +/- %.3f ppm" % (d, de))
-        print()
         if de == 0:
-            print("  VERDICT  no uncertainty estimate — cannot adjudicate.")
+            print("  no uncertainty estimate — cannot adjudicate.")
             return 0
         sigma = abs(d) / de
         print("  separation   %.1f sigma" % sigma)
-        if sigma < 3.0:
-            print("  VERDICT  the two units agree within the measurement's own")
-            print("           error -> consistent with both slaved to the")
-            print("           shared SOF. SYNC_ADAPTIVE is defensible.")
+        print()
+        # NO BINARY VERDICT FROM ONE RUN, and this is a correction rather than
+        # caution. The first version printed "free-running" above 3 sigma and
+        # "SOF-locked, defensible" below it. On 2026-08-05 that produced two
+        # OPPOSITE conclusions from two runs whose differentials agree with
+        # each other to 0.3 sigma:
+        #
+        #     48 kHz    +4.623 +/- 1.446 ppm   3.2 sigma -> "free-running"
+        #     44.1 kHz  +3.946 +/- 1.355 ppm   2.9 sigma -> "SOF-locked"
+        #
+        # Nothing physical differed between them. A threshold simply fell
+        # between two consistent measurements, and either line read alone was
+        # enough to draw the wrong conclusion about what to do to the
+        # descriptors. A cliff-edge label on a continuous quantity invents a
+        # distinction the data does not contain.
+        #
+        # So report the number and its weight, and let the combination across
+        # runs decide. --combine does that arithmetic.
+        if sigma < 2.0:
+            band = ("no significant difference in THIS run; consistent with a "
+                    "shared clock, but a single run cannot establish that")
+        elif sigma < 3.0:
+            band = "suggestive of a real difference, short of conclusive"
         else:
-            print("  VERDICT  the units differ by %.1f sigma -> independent" % sigma)
-            print("           clocks, i.e. free-running. SYNC_ADAPTIVE is")
-            print("           wrong; see tasks #185 and #186.")
+            band = "a real difference in this run"
+        print("  READING  %s." % band)
+        print("           One run does not settle it. The differential is")
+        print("           rate-INDEPENDENT if it comes from crystals, so")
+        print("           combine runs at different rates:")
+        print("             measure_drift.py --combine r1A.json r1B.json "
+              "r2A.json r2B.json")
         return 0
 
     if args.card is None:

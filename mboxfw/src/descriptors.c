@@ -168,6 +168,34 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     TERM_USB_OUT_STREAM,   /* bSourceID = playback stream */
     0,
 
+    /* ---- Output Terminal: S/PDIF transmitter (9 bytes) ---- #187
+     *
+     * The AES3 transmitter has been running since the first build and no host
+     * could see it. It is fed from the same place the line out is — the
+     * playback side of the C-port — so both terminals take bSourceID =
+     * TERM_USB_OUT_STREAM. That is two Output Terminals on one source, which
+     * is exactly what UAC1 §3.2 describes for a signal split to two physical
+     * outputs, and it is what the hardware does: cs8427.c writes DATAFLOW =
+     * 0x0C, TXD = 01 (transmitter fed from the serial audio input port) with
+     * TXOFF clear.
+     *
+     * DECLARED ONLY AFTER MEASURING IT (#184). The tempting test — play a tone
+     * and look for it on the other unit — cannot answer this, because A also
+     * reaches B through the analog cross-cable, so a dead transmitter yields
+     * an identical positive. The measurement that does answer it put B on its
+     * S/PDIF receiver AND slaved B's clock to A's carrier: the CS8427 has no
+     * sample-rate converter, so without a carrier B has no master clock and
+     * cannot produce a coherent capture at all. The tone returned with peak
+     * exactly 0.5000, bit-identical to the source, which no analog round trip
+     * can do; the silent control returned exact zeros rather than a noise
+     * floor. See FINDING_187_spdif_output_is_real.md. */
+    9, USB_DT_CS_INTERFACE, UAC_AC_OUTPUT_TERMINAL,
+    TERM_SPDIF_OUT,
+    UAC_TT_SPDIF & 0xFF, (UAC_TT_SPDIF >> 8) & 0xFF,
+    0,                     /* bAssocTerminal */
+    TERM_USB_OUT_STREAM,   /* bSourceID = the same playback stream */
+    0,                     /* iTerminal */
+
     /* ---- Output Terminal: host USB-in stream (9 bytes) ---- */
     9, USB_DT_CS_INTERFACE, UAC_AC_OUTPUT_TERMINAL,
     TERM_USB_IN_STREAM,

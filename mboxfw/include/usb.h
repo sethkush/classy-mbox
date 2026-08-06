@@ -98,6 +98,20 @@
  * advertised topology true and the control discoverable with no quirk. */
 #define TERM_SPDIF_IN          0x06   /* S/PDIF receiver as a capture source  */
 #define UNIT_SELECTOR          0x05   /* analog-vs-S/PDIF Selector Unit       */
+/* #187. The AES3 TRANSMITTER, which has been running since the first build and
+ * which no host could see. cs8427.c sets DATAFLOW = 0x0C — TXD = 01
+ * (CS8427_TXDSERIAL, transmitter fed from the serial audio input port) with
+ * TXOFF clear — so the RCA digital output carries the playback side of the
+ * C-port, in parallel with the analog line out.
+ *
+ * MEASURED before being declared (#184, 2026-08-05), because a declared
+ * terminal that turns out to be silent is worse than no terminal at all: unit
+ * A played a 1 kHz tone, unit B captured it through its S/PDIF receiver while
+ * slaved to A's carrier, and the tone came back with peak EXACTLY 0.5000 —
+ * bit-identical to the source amplitude, which an analog round trip cannot
+ * produce. The silent control returned exact zeros rather than a noise floor.
+ * See FINDING_187_spdif_output_is_real.md. */
+#define TERM_SPDIF_OUT         0x07   /* AES3 transmitter as a playback sink  */
 
 /* Audio format */
 #define AUDIO_NUM_CHANNELS     2
@@ -170,12 +184,14 @@
 /* Total configuration-bundle length. Sum of every descriptor in
  * descriptors.c, in host-parse order. Edit both together. */
 /*            header  IT-usb  IT-analog  IT-spdif  SU  OT-lineout  OT-usbin
+ *            OT-spdifout
  * #160 added the S/PDIF input terminal (12) and the Selector Unit (6 + 2
- * source pins = 8). A host that reads a short wTotalLength silently ignores
- * every unit past it, which presents as "the selector does not exist" rather
- * than as a descriptor error — so this and the array below are the same fact
- * twice and have to move together. */
-#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 8 + 9 + 9)
+ * source pins = 8). #187 added the S/PDIF OUTPUT terminal (9). A host that
+ * reads a short wTotalLength silently ignores every unit past it, which
+ * presents as "the selector does not exist" rather than as a descriptor error
+ * — so this and the array below are the same fact twice and have to move
+ * together. */
+#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 8 + 9 + 9 + 9)
 
 /* Per streaming interface: alt 0 (9) + alt 1 (9+7+14+9+7) + alt 2 (9+7+14+9+7).
  * #46 added the alt-2 row on each; a wTotalLength that does not grow with it
