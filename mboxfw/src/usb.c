@@ -1357,6 +1357,11 @@ void usb_service(void)
 
         case VEC_SOF:
             TLM_INC16(tlm.sof_count);
+            /* #186 stage 1. BEFORE streaming_sof(), which returns early when
+             * no playback stream is running -- the clock is worth measuring
+             * whether or not anything is streaming, and the accumulator needs
+             * every frame to stay exact. */
+            streaming_acg_sample();
             streaming_sof();
             VECINT = 0;
             break;

@@ -11,6 +11,12 @@
 #include "streaming.h"   /* g_clock_mode, reported in block 9 */
 
 volatile __data struct tlm_ctrs tlm;
+
+/* #186 stage 1 — ACG clock measurement. Written only by
+ * streaming_acg_sample() from the SOF interrupt. */
+volatile __data unsigned long tlm_acg_window = 0UL;
+volatile __data unsigned int  tlm_acg_last   = 0;
+volatile __data unsigned char tlm_acg_count  = 0;
 volatile __data unsigned int  tlm_loop_count  = 0;
 volatile __data unsigned char tlm_mux_sets    = 0;
 volatile __data unsigned char tlm_mux_rejects = 0;
@@ -179,6 +185,45 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
          * the pair that has to agree for S/PDIF input to work at all. */
         out[7] = g_clock_mode;
         return 1;
+
+    case 11:
+        /* ACG clock measurement — #186 stage 1.
+         *
+         * INDEX 11, NOT the retired index 3, and NUM_BLOCKS grows to 12.
+         * Retired indices are never reused: BLOCK_FIRST_BUILD maps an index
+         * to the build that began serving it and cannot express "this index
+         * used to mean something else", so a host reading an older device
+         * would decode the old block with the new meaning and never know.
+         * Reusing 3 was the first thing tried here and the retired-block
+         * table is what caught it.
+         *
+         * Bytes 0-3: total MCLKO count over the last COMPLETED 1024-frame
+         * window, little-endian. MCLK-per-frame is that over 1024, and the
+         * device clock's error against the host frame clock follows. The sum
+         * of per-frame deltas telescopes exactly, so the only quantisation is
+         * +/-1 count at each end -- about 0.04 ppm over the window, against a
+         * 4.3 ppm effect.
+         *
+         * Byte 4-5: the most recent single-frame delta, as a sanity check that
+         * the counter is running at a plausible rate at all.
+         *
+         * Byte 6: completed-window count, saturating. Proves the measurement
+         * is live and lets a host confirm two reads span different windows.
+         * TI's own SoftPll.c carries `MclkPerMs = 11290;` hardcoded under the
+         * comment "debug test for capture counter malfunction", so this block
+         * exists to establish that ACGCAP works on our silicon BEFORE a
+         * feedback endpoint is built on it.
+         *
+         * Byte 7: low byte of tlm.sof_count, so a host can tell a stalled
+         * measurement (no SOFs) from a broken one (SOFs but no windows). */
+        out[0] = (unsigned char)(tlm_acg_window & 0xFF);
+        out[1] = (unsigned char)((tlm_acg_window >> 8) & 0xFF);
+        out[2] = (unsigned char)((tlm_acg_window >> 16) & 0xFF);
+        out[3] = (unsigned char)((tlm_acg_window >> 24) & 0xFF);
+        put16(&out[4], tlm_acg_last);
+        out[6] = tlm_acg_count;
+        out[7] = (unsigned char)(tlm.sof_count & 0xFF);
+        break;
 
     /* case 10 (CS8427 read-back probe, #165) RETIRED 2026-08-03. It answered
      * its question -- no P3 pin ever varied across the eight read clocks, so

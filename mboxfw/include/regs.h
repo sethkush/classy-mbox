@@ -302,6 +302,30 @@
  * The 24-bit values written to ACG1FRQ/ACG2FRQ (0x204B6A, 0x0FA861) are
  * clock-generator frequency words, not DMA source addresses. */
 #define ACGCTL      XDATA(0xFFE1)   /* TI Reg_stc1.h; datasheet §6.5.3.11 */
+
+/* ACG MCLK capture register — the hardware that makes #186 possible.
+ *
+ * A 16-bit FREE-RUNNING counter clocked at the MCLKO frequency. At every USB
+ * SOF (or PSOF) the counter value is latched into this register and stays
+ * valid for the whole frame (datasheet §2.2.6, "Adaptive Clock Generator MCLK
+ * Capture Register", ACGCAPH at FFE3h / ACGCAPL at FFE4h; TI Reg_stc1.h lines
+ * 63-64 names them identically).
+ *
+ * Differencing successive captures gives MCLK cycles per USB frame — the
+ * device's own clock measured against the host's frame clock, on-chip, with no
+ * timer arithmetic. That is the error signal a feedback endpoint reports, and
+ * it is exactly what TI's SoftPll.c reads.
+ *
+ * NOT USED BY STOCK. Neither Rev 20 nor Rev 22 contains a DPTR load of 0xFFE3
+ * or 0xFFE4 — Rev 22 ported the tail of TI's softPll() (the DMA realignment
+ * that became fcn.0x0D58) and dropped the measurement half. See
+ * FINDING_186_ti_softpll_is_the_feedback_endpoint.md.
+ *
+ * Read HIGH then LOW is NOT required here the way it is for DMABCNT0: the
+ * latch is frame-stable by construction, so the pair cannot tear within a
+ * frame. Order is chosen to match TI's (LOW then HIGH, SoftPll.c). */
+#define ACGCAPH     XDATA(0xFFE3)   /* TI Reg_stc1.h:63; datasheet §2.2.6 */
+#define ACGCAPL     XDATA(0xFFE4)   /* TI Reg_stc1.h:64; datasheet §2.2.6 */
 #define ACG1FRQ2    XDATA(0xFFE5)   /* TI Reg_stc1.h; datasheet §6.5.3.3 */
 #define ACG1FRQ1    XDATA(0xFFE6)   /* TI Reg_stc1.h; datasheet §6.5.3.2 */
 #define ACG1FRQ0    XDATA(0xFFE7)   /* TI Reg_stc1.h; datasheet §6.5.3.1 */

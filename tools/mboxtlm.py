@@ -69,7 +69,7 @@ REQ_IN = 0xC0              # vendor | device-to-host | device
 REQ_OUT = 0x40             # vendor | host-to-device | device
 
 BLOCK_SIZE = 8
-NUM_BLOCKS = 11
+NUM_BLOCKS = 12
 
 # The build in which each block FIRST EXISTED, read off the TLM_NUM_BLOCKS
 # bumps in telemetry.h's history. A device running an older build answers a
@@ -84,6 +84,7 @@ BLOCK_FIRST_BUILD = {
     8: 0x0010,   # NUM_BLOCKS 8 -> 9
     9: 0x0013,   # NUM_BLOCKS 9 -> 10
     10: 0x0015,  # NUM_BLOCKS 10 -> 11
+    11: 0x0032,  # NUM_BLOCKS 11 -> 12, #186 stage 1 ACG clock
 }
 
 # Blocks whose question is ANSWERED and whose fill code was removed from the
@@ -564,9 +565,76 @@ def block10(b):
     return out
 
 
+def block11(b):
+    """ACG clock measurement — #186 stage 1.
+
+    The device counts its own MCLKO against the host's SOF, on-chip: ACGCAP is
+    a free-running 16-bit counter latched at every frame, and the firmware
+    accumulates per-frame differences over a 1024-frame window. Those
+    differences telescope, so the window total is exact to +/-1 count at each
+    end -- about 0.04 ppm, against the 4.3 ppm effect #181 measured from the
+    host side by completely different means.
+
+    This block exists to prove the counter works BEFORE a feedback endpoint is
+    built on it. TI's own SoftPll.c contains `MclkPerMs = 11290;` hardcoded,
+    live, under the comment "debug test for capture counter malfunction".
+
+    Nominal MCLK-per-frame is not asserted here: it depends on which ACG
+    frequency word and C-port divider are loaded, and guessing it is how a
+    reading gets talked into agreeing with an expectation. The raw count is
+    printed and the ppm is quoted against whichever standard multiple of the
+    sample rate it is nearest -- with the multiple named, so a wrong guess is
+    visible rather than silent.
+    """
+    window = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)
+    last = b[4] | (b[5] << 8)
+    windows = b[6]
+    sof_lo = b[7]
+    out = ["block 3 -- ACG clock measurement (#186 stage 1)"]
+    if windows == 0:
+        out.append("  no completed window yet (1024 frames ~ 1.02 s)")
+        out.append("  last frame delta: %d MCLK" % last)
+        out.append("  completed windows: 0   sof_count low byte: %d" % sof_lo)
+        if last == 0:
+            out.append("  DELTA IS ZERO: either the ACG is idle (no stream has"
+                       " started, so MCLKO is not running) or ACGCAP does not"
+                       " count on this part. Start a stream and re-read before"
+                       " concluding anything.")
+        return out
+    per_frame = window / 1024.0
+    out.append("  window total: %d MCLK over 1024 frames" % window)
+    out.append("  per frame:    %.4f MCLK   (last single frame: %d)"
+               % (per_frame, last))
+    out.append("  completed windows: %d   sof_count low byte: %d"
+               % (windows, sof_lo))
+    # A USB frame is 1 ms, so per-frame count IS the MCLK frequency in kHz.
+    out.append("  implied MCLKO: %.4f kHz" % per_frame)
+    best = None
+    for rate in (44100, 48000):
+        for mult, name in ((256, "256 fs"), (384, "384 fs"), (512, "512 fs")):
+            nominal = rate * mult / 1000.0      # counts per 1 ms frame
+            if nominal < 1000 or nominal > 65000:
+                continue
+            ppm = (per_frame - nominal) / nominal * 1e6
+            if best is None or abs(ppm) < abs(best[0]):
+                best = (ppm, rate, name, nominal)
+    if best:
+        ppm, rate, name, nominal = best
+        out.append("  nearest standard: %d Hz x %s = %.1f counts/frame"
+                   % (rate, name, nominal))
+        out.append("  error vs that:    %+.2f ppm" % ppm)
+        if abs(ppm) > 1000:
+            out.append("  NOTE: more than 1000 ppm from every standard"
+                       " multiple. Treat the nearest-match line as a guess,"
+                       " not a reading -- the loaded divider is then outside"
+                       " the set this tool enumerates.")
+    return out
+
+
 DECODERS = {0: block0, 1: block1, 2: block2, 3: block3,
+            
             4: block4, 5: block5, 6: block6, 7: block7,
-            8: block8, 9: block9, 10: block10}
+            8: block8, 9: block9, 10: block10, 11: block11}
 
 TITLES = {
     0: "identity and liveness",

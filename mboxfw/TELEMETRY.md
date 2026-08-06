@@ -310,6 +310,48 @@ rather than assuming, and it has already caught one stale-build mismatch (the
 0x0002-vs-0x0003 case that led to the wildcard header dependency in the
 Makefile).
 
+## Block 11 — ACG clock measurement (#186 stage 1)
+
+Answers "does this device's clock track the host's frame clock, and can we
+measure that on-chip?" — the question #181 answered from the host side, asked
+again from the device side by completely different means.
+
+`ACGCAP` (ACGCAPH 0xFFE3 / ACGCAPL 0xFFE4) is a free-running 16-bit counter
+clocked at MCLKO, latched by hardware at every USB SOF. The firmware differences
+successive captures and accumulates over a 1024-frame window.
+
+| byte | field |
+|---|---|
+| 0-3 | total MCLKO count over the last COMPLETED 1024-frame window, LE |
+| 4-5 | most recent single-frame delta (sanity check on the counter) |
+| 6 | completed-window count, saturating at 255 |
+| 7 | low byte of `sof_count` |
+
+**Why the total is exact.** Each per-frame difference is taken modulo 65536,
+which is the true count for that frame as long as one frame stays under 65536 —
+at 48 kHz MCLKO gives ~24576 per frame, leaving room for two consecutive missed
+frames. Accumulating differences telescopes, so no per-frame quantisation error
+builds up: the only error is ±1 count at each end of the window, about
+**0.04 ppm**, against the 4.3 ppm effect being chased.
+
+Missing three consecutive SOFs would break it silently (the delta would exceed
+65536 and lose a wrap). SOF is serviced from `isr_int0`, not the main loop, so
+servicing is prompt; byte 7 against byte 6 is what would expose it.
+
+**Why this block exists before the feedback endpoint does.** TI's own
+`SoftPll.c` — the reference implementation of exactly this measurement — carries
+
+    //debug test for capture counter malfunction
+    MclkPerMs = 11290;
+
+live, overriding the captured value with a constant. Whatever that was, `ACGCAP`
+gets proved on our silicon before a feedback endpoint is built on it. Stage 1
+changes no clock, no endpoint and no descriptor; it only measures.
+
+A zero delta with no completed window means MCLKO is not running — the ACG is
+idled until a stream starts — rather than that the counter is broken. Start a
+stream before concluding anything.
+
 ## Block 10 — CS8427 readback probe (#165)
 
 > **RETIRED in build 0x001A.** Answered #165: no P3 pin varied across the

@@ -26,7 +26,10 @@
 #define MBOXFW_TELEMETRY_H
 
 #define TLM_BLOCK_SIZE   8
-#define TLM_NUM_BLOCKS   11
+/* 12 since build 0x0032: #186 stage 1 added the ACG clock block at index
+ * 11. Retired indices (3, 6, 7, 8, 10) are never reused -- see the
+ * BLOCK_RETIRED note in tools/mboxtlm.py for why. */
+#define TLM_NUM_BLOCKS   12
 
 /* Vendor requests. DEVICE recipient, NOT interface: snd-usb-audio claims
  * the audio interfaces, and an interface-recipient request then fails with
@@ -109,7 +112,19 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0031   /* 0031: first image flashed since the dead-field
+#define TLM_BUILD_ID     0x0032   /* 0032: #186 stage 1 -- ACGCAP clock measurement
+                                   *       on block 11, plus #187's S/PDIF output
+                                   *       terminal and #188's feature-request
+                                   *       stalls. MEASUREMENT ONLY on the clock:
+                                   *       nothing here changes the ACG, the
+                                   *       endpoints or the sync declarations.
+                                   *       Block 11 must show a plausible
+                                   *       MCLK-per-frame before a feedback
+                                   *       endpoint is built on ACGCAP -- TI's own
+                                   *       SoftPll.c hardcodes past that counter
+                                   *       under the comment "debug test for
+                                   *       capture counter malfunction".
+                                   * 0031: first image flashed since the dead-field
                                    *       removal (tlm_cs8427_status /
                                    *       tlm_codec_status, block 4 rewritten
                                    *       to stalls/P1/P3). Bumped rather than
@@ -387,6 +402,20 @@ extern volatile __data unsigned char tlm_last_breq;
 extern volatile __data unsigned int  tlm_last_wvalue;
 extern volatile __data unsigned int  tlm_last_windex;
 extern volatile __data unsigned int  tlm_last_wlength;
+
+/* ACG clock measurement (block 3) — #186 stage 1.
+ *
+ * tlm_acg_window is the total MCLKO count over the last COMPLETED 1024-frame
+ * window, so MCLK-per-frame is window/1024 and the device's clock error
+ * against the host frame clock follows directly. Latched whole: a read cannot
+ * catch a partial window and mistake it for a full one.
+ *
+ * tlm_acg_count proves the measurement is live and lets a host confirm two
+ * reads span different windows. Saturates at 255 rather than wrapping, so a
+ * long run cannot make it look freshly started. */
+extern volatile __data unsigned long tlm_acg_window;
+extern volatile __data unsigned int  tlm_acg_last;
+extern volatile __data unsigned char tlm_acg_count;
 
 /* VECINT histogram (block 3), saturating at 255 */
 

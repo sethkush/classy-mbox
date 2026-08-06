@@ -541,6 +541,76 @@ void streaming_capture_enable(unsigned char on)
  * host never asked for. Rev 22 gets away with it because the count goes to
  * zero and stops changing, but "gets away with it" is not a reason to copy it.
  */
+/*
+ * #186 stage 1 — measure this device's own clock against the host's frame
+ * clock, and report it. MEASUREMENT ONLY: nothing here changes the clock, the
+ * descriptors, or any endpoint. It exists to prove the capture counter works
+ * on our silicon before a feedback endpoint is built on top of it.
+ *
+ * WHY THE SUM IS EXACT. ACGCAP is a free-running 16-bit counter latched at
+ * every SOF. Each per-frame difference is taken modulo 65536, which is the
+ * true count for that frame as long as one frame's worth stays under 65536 --
+ * at 48 kHz the MCLKO count per frame is ~24576, so a frame's delta fits with
+ * room for two consecutive missed frames. Accumulating those differences
+ * telescopes: the running sum equals the total elapsed MCLK count over the
+ * window, with NO per-frame quantisation error building up. The only
+ * quantisation is +/-1 count at each end of the window, i.e. ~0.04 ppm over
+ * 1024 frames. That is far finer than the 4.3 ppm effect being chased.
+ *
+ * Missing three consecutive SOFs would break it (the delta would exceed 65536
+ * and silently lose a wrap). SOF is serviced from isr_int0, not the main loop
+ * (see main.c), so servicing is prompt; tlm.sof_count against the window count
+ * is what would expose it if it ever were not.
+ *
+ * TI reads the same register for the same purpose in SoftPll.c, averaging four
+ * frames because it needs a fresh value every 4 ms to feed the endpoint. This
+ * is not that loop -- it wants precision over a long window rather than
+ * freshness -- so it accumulates instead of averaging.
+ *
+ * NOVEL — reason: stock never reads ACGCAP. Neither image contains a DPTR load
+ * of 0xFFE3 or 0xFFE4; Rev 22 kept only the DMA-realignment tail of TI's
+ * softPll(). There is no stock address to cite because stock does not do this.
+ */
+#define ACG_WINDOW_FRAMES  1024u
+
+static __data unsigned int  acg_prev;        /* last raw capture           */
+static __data unsigned int  acg_frames;      /* frames into the window     */
+static __data unsigned long acg_sum;         /* MCLK counts, this window   */
+static __bit               acg_primed;       /* first sample has no delta  */
+
+void streaming_acg_sample(void)
+{
+    unsigned int cap;
+    unsigned int delta;
+
+    /* LOW then HIGH, matching TI SoftPll.c. The latch is frame-stable by
+     * construction so there is no tearing window either way. */
+    cap  = (unsigned int)ACGCAPL;            /* TI SoftPll.c::softPll */
+    cap |= ((unsigned int)ACGCAPH) << 8;     /* TI SoftPll.c::softPll */
+
+    if (!acg_primed) {
+        acg_prev   = cap;
+        acg_primed = 1;
+        return;                              /* no previous sample to subtract */
+    }
+
+    delta    = cap - acg_prev;               /* unsigned wrap is the point */
+    acg_prev = cap;
+    acg_sum += delta;
+    acg_frames++;
+
+    if (acg_frames >= ACG_WINDOW_FRAMES) {
+        /* Latch a whole window for the host and start the next one. Latching
+         * rather than exposing the live accumulator means a read can never
+         * catch a partial window and read it as a complete one. */
+        tlm_acg_window = acg_sum;
+        tlm_acg_last   = delta;
+        if (tlm_acg_count < 0xFF) tlm_acg_count++;
+        acg_sum    = 0UL;
+        acg_frames = 0;
+    }
+}
+
 void streaming_sof(void)
 {
     unsigned char hi, lo;

@@ -16,5 +16,8 @@ void streaming_set_rate(unsigned long hz);
 void streaming_playback_enable(unsigned char on);
 void streaming_capture_enable(unsigned char on);
 void streaming_sof(void);
+/* #186 stage 1: sample ACGCAP. Called on EVERY SOF, before the
+ * playback-only watchdog, so the clock is measured even with no stream. */
+void streaming_acg_sample(void);
 
 #endif
