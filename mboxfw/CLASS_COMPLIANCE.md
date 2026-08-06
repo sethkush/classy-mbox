@@ -121,16 +121,87 @@ None of these is a defect. Each is a documented trade with a reason.
 
 ---
 
-## 6. What to do, ranked
+## 6. The route to maximum compliance
 
-1. **Measure the drift (§2).** Costs a ten-minute stream and no flash, and it
-   is the only item here that could be an actual bug rather than a missing
-   feature. Everything else in this document is optional; this one decides
-   whether two bytes in the descriptor are true.
-2. **Verify the S/PDIF transmitter at the jack, then declare it (§3).**
-   9 bytes for a whole output the device already produces.
-3. **Flash the mute-pair diagnostic** and settle whether a Feature Unit can be
-   declared honestly. ~70 bytes if it can.
-4. **Leave the rest.** GET_MIN/MAX/RES, the feature-request ACK, and the
-   permissive DFU match are all sound as they stand, and 835 free bytes is
-   better spent on §2 and §3 than on satisfying a host we do not own.
+Ordered so that every measurement lands before the code it could invalidate,
+and so that flash-requiring work batches onto as few power cycles as possible.
+One power cycle buys one image and costs a 2 km round trip.
+
+### Stage 1 — measure. No flash, no risk.
+
+Nothing here changes the device. Each one decides a declaration we currently
+make without evidence, and #181 is the only item in this whole document that
+could be an outright bug rather than a missing feature.
+
+| # | task | decides |
+|---|---|---|
+| **181** | iso clock drift at 48 kHz, 10-15 min | is `SYNC_ADAPTIVE` true |
+| **182** | the same at 44.1 kHz | ditto, at the other ACG frequency word |
+| **183** | capture packet sizes at 44.1 kHz via usbmon | whether the DMA tracks the declared rate or runs fixed-288 |
+| **184** | S/PDIF transmitter at the jack, A→B | whether §3's output is real |
+
+Two traps this bench has already sprung: `dmesg_restrict` is set on 1.76, so an
+unprivileged xrun count reads clean whatever happened; and the units are
+cross-wired, so read `BENCH_WIRING.md` before designing #184.
+
+### Stage 2 — the cheap, certain corrections.
+
+| # | task | cost | blocked by |
+|---|---|---|---|
+| **185** | set the endpoint sync types to what was measured | 0 bytes | 181, 182 |
+| **187** | declare the S/PDIF Output Terminal | 9 bytes | 184 |
+| **188** | stall unsupported SET_FEATURE / CLEAR_FEATURE selectors | ~30 bytes | — |
+
+**188 is the clearest outright violation left.** USB 2.0 §9.4.9 requires a
+STALL for a feature that cannot be set or does not exist, and §9.4.1 the same
+for ClearFeature; we ACK both unconditionally. The current comment justifies it
+by a real symptom — hosts abandoning the device on a stall — but the fix
+over-corrected. Re-enumerate on both host OSes after changing it, because that
+symptom is the entire point of the test.
+
+Ship 185, 187 and 188 in one image.
+
+### Stage 3 — the two open capabilities.
+
+| # | task | cost | blocked by |
+|---|---|---|---|
+| **186** | decide the playback feedback endpoint | 0-200 bytes | 181 |
+| **189** | does the mute pair separate playback from capture | 2 flashes | — |
+| **190** | declare Feature Units with Mute | ~70 bytes | 189 |
+
+186 only exists if #181 finds the ACG free-running. It is a design decision
+before it is a coding task: an asynchronous OUT endpoint obliges a feedback IN
+endpoint reporting consumption in 10.14 format every frame, and the honest
+alternatives are to declare async without one (non-compliant, but no worse than
+today) or to keep adaptive and document the drift.
+
+189's diagnostic builds are already written and unflashed. Batch them with
+Stage 2's image if the schedule allows — that is 2 flashes saved.
+
+### Stage 4 — evidence, not belief.
+
+| # | task | blocked by |
+|---|---|---|
+| **192** | USB-IF Command Verifier (USB20CV) on a Windows host | — |
+| **191** | GET_MIN/MAX/RES on the sampling-frequency control | 192 |
+| **193** | decide the default-build iSerialNumber story | — |
+| **194** | gate every declared terminal against a measured hardware path | 187, 190 |
+
+**Everything above this line is our own reading of the spec.** USB20CV is the
+authority, exercises Chapter 9 exhaustively, and will find what this inventory
+missed — including whatever 188 and 191 are guessing at. It needs a Windows
+host, and a VM with USB passthrough is enough. Do not spend 191's ~50 bytes on
+speculation about a host we do not own; let 192 say whether they are needed.
+
+194 is the discipline this inventory exposed the need for. The gate proves the
+descriptor set is internally consistent but cannot tell that a declared
+terminal corresponds to hardware carrying audio. §3 is the inverse failure
+(real hardware, no descriptor) and 190 is the forward risk (a declared mute
+that does not separate). Cite each terminal to the FINDING that measured it and
+fail on an uncited entry, exactly as `check_citation_targets.py` does for SFR
+writes.
+
+### Budget
+
+Worst case with every conditional taken — 9 + 30 + 200 + 70 + 50 — is ~360
+bytes against 835 free. Compliance is not what this image is short of.
