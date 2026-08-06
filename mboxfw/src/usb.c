@@ -164,7 +164,7 @@ static void reply_stall(void)
      * safety_net carried the identical bug and fixed it; porting that
      * fix here. Reference: TI hwMacro.h:9-10, STALLInEp0/STALLOutEp0,
      * both `|= 0x08`. */
-    TLM_INC8(tlm_stalls);
+    TLM_INC8(tlm.stalls);
     IEPCNF0 |= 0x08;
     OEPCNF0 |= 0x08;
 }
@@ -227,8 +227,8 @@ static void push_reply_chunk(void)
     }
     g_ep0_reply_src       += n;
     g_ep0_reply_remaining -= n;
-    TLM_INC16(tlm_chunks);
-    if (g_ep0_reply_remaining == 0) { STAGE(19); TLM_INC16(tlm_drains); }
+    TLM_INC16(tlm.chunks);
+    if (g_ep0_reply_remaining == 0) { STAGE(19); TLM_INC16(tlm.drains); }
     IEPDCNTX0 = n;   /* hand the packet to the hardware */
 }
 
@@ -331,11 +331,11 @@ static void handle_set_interface(void)
     if (iface == 1) {
         g_alt_playback = alt;
         streaming_playback_enable(alt != 0);
-        if (alt) tlm_alt_seen |= TLM_ALT_PLAYBACK_ON;
+        if (alt) tlm.alt_seen |= TLM_ALT_PLAYBACK_ON;
     } else if (iface == 2) {
         g_alt_capture = alt;
         streaming_capture_enable(alt != 0);
-        if (alt) tlm_alt_seen |= TLM_ALT_CAPTURE_ON;
+        if (alt) tlm.alt_seen |= TLM_ALT_CAPTURE_ON;
     }
 
     /* #175. Re-arm the external-chip bring-up if it has been lost.
@@ -1018,7 +1018,7 @@ void usb_init(void)
      * 0xF5 = RSTR|SUSR|RESR|SOF|SETUP|STPOW.
      *
      * This was 0xE5, which is the same set WITHOUT SOF (bit 4), and
-     * telemetry block 5 measured tlm_sof_count == 0 on hardware for
+     * telemetry block 5 measured tlm.sof_count == 0 on hardware for
      * exactly that reason — we had masked the frame clock off.
      *
      * Rev 20 uses 0x9F (RSTR|SOF|PSOF|SETUP|STPOW) at Rev 20 fcn.0x0970 @
@@ -1094,7 +1094,7 @@ void usb_service(void)
 
     switch (vec) {
         case VEC_SETUP:
-            TLM_INC16(tlm_setup_count);
+            TLM_INC16(tlm.setup_count);
             handle_setup();
             /* Firmware-initiated ACK of the SETUP by clearing VECINT. */
             VECINT = 0;
@@ -1131,7 +1131,7 @@ void usb_service(void)
              * engEp0TxDone(), so the vector is acknowledged before the
              * next packet is armed. */
             VECINT = 0;
-            TLM_INC16(tlm_iep0_count);
+            TLM_INC16(tlm.iep0_count);
             if (g_pending_address != 0xFF) {
                 /* 16 = deferred address actually applied. */
                 STAGE(16);
@@ -1256,7 +1256,7 @@ void usb_service(void)
             break;
 
         case VEC_RSTR:
-            TLM_INC16(tlm_rstr_count);
+            TLM_INC16(tlm.rstr_count);
             /* USB bus reset. Per TAS1020B datasheet §6.5.1.4, bus reset
              * CLEARS FEN — the UBM then ignores all USB transactions
              * until FEN is set again. Re-arm EP0 config (also cleared
@@ -1303,7 +1303,7 @@ void usb_service(void)
             break;
 
         case VEC_SOF:
-            TLM_INC16(tlm_sof_count);
+            TLM_INC16(tlm.sof_count);
             streaming_sof();
             VECINT = 0;
             break;
@@ -1317,7 +1317,7 @@ void usb_service(void)
              * not transacting at all. The default case was already
              * clearing VECINT for these vectors, so splitting them out
              * changes nothing but the counting. */
-            TLM_INC8(tlm_vec_iep1);
+            TLM_INC8(tlm.vec_iep1);
             /* TI UsbEng.c usbIntrHandler — every vector case writes
              * VECINT = 0 before returning, or the source stays asserted
              * and the ISR re-fires immediately (datasheet §6.5.7.3). */
@@ -1326,7 +1326,7 @@ void usb_service(void)
 
         case VEC_OEP2:
             /* Playback (EP2 OUT) transaction complete. Same reasoning. */
-            TLM_INC8(tlm_vec_oep2);
+            TLM_INC8(tlm.vec_oep2);
             /* TI UsbEng.c usbIntrHandler — clears VECINT in every case. */
             VECINT = 0;
             break;

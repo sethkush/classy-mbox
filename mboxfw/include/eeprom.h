@@ -23,20 +23,6 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
                                 unsigned char addr_lo,
                                 unsigned char data);
 
-/* Return the read byte if ok. *ok = 1 on success, 0 on failure. */
-unsigned char eeprom_read_byte(unsigned char addr_hi,
-                               unsigned char addr_lo,
-                               unsigned char __data *ok);
-
-/*
- * Smoke-test the I²C driver by writing 0xA5 then 0x5A to the last byte
- * of EEPROM (offset 0x1FFF — past our firmware image) and reading each
- * back. Returns 1 iff both round-trips match. Restores the byte to
- * 0xFF on completion. Caller uses this to decide whether it's safe to
- * touch the header signature.
- */
-unsigned char eeprom_smoke_test(void);
-
 /*
  * Invalidate the EEPROM header signature bytes at offset 0x0002-0x0003
  * (the 0x12 0x34 marker the boot ROM checks). Writes 0x00 to each.

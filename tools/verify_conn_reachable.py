@@ -77,8 +77,11 @@ def main() -> int:
     #   _codec_init
     # (buttons_poll and usb_service are inside the polling loop, but
     #  our scan stops at the sjmp back — they still show if inline)
+    # _check_boot_dfu_button was removed from this list on 2026-08-05
+    # along with the function itself: the boot-button DFU trigger never
+    # worked on hardware (BRICK_LOG, three incidents) and the canonical
+    # SDA-short recovery needs no firmware cooperation. See main.c.
     expected = [
-        "_check_boot_dfu_button",
         "_usb_init",
         "_hw_init",
         "_cs8427_boot_init",
@@ -105,30 +108,21 @@ def main() -> int:
               f" (expected exactly 1)", file=sys.stderr)
         return 1
 
-    # check_boot_dfu_button must come BEFORE usb_init (#172).
+    # The check_boot_dfu_button ordering assertion lived here until
+    # 2026-08-05 and went with the function.
     #
-    # This is load-bearing for the check below, which looks for conditional
-    # branches BETWEEN the two calls. With the escape placed after hw_init --
-    # where it sat on 2026-08-03 -- that range runs backwards, is empty, and
-    # the branch check passes without examining a single instruction. The gate
-    # went vacuous the moment the call moved and said PASS the whole time.
-    # Assert the order explicitly so the range cannot silently invert again.
+    # It required the button escape to run before usb_init, so that a hang in
+    # usb_init or hw_init could not disable "the only software recovery path".
+    # That premise was wrong twice over: the button trigger never worked on
+    # hardware (BRICK_LOG, three incidents), and it was not the only recovery
+    # path -- the canonical SDA-short bootstrap at the top of BRICK_LOG needs
+    # no firmware cooperation whatsoever.
+    #
+    # What the assertion protected is still worth keeping and is kept below:
+    # usb_init must precede hw_init, so a hang in hardware bring-up cannot
+    # detach us from the bus (#47).
     idx_usb   = seen.index("_usb_init")
     idx_hw    = seen.index("_hw_init")
-    idx_btn   = seen.index("_check_boot_dfu_button")
-    if idx_btn > idx_usb:
-        print("CONN REACH FAIL: _check_boot_dfu_button is called AFTER",
-              file=sys.stderr)
-        print("_usb_init. The escape must run before anything that can hang,",
-              file=sys.stderr)
-        print("or a hang in usb_init/hw_init disables the only software",
-              file=sys.stderr)
-        print("recovery path -- BRICK_LOG.md #3, which cost an SDA short.",
-              file=sys.stderr)
-        print("It needs exactly two writes hoisted with it: P3 = 0xFF and",
-              file=sys.stderr)
-        print("GLOBCTL |= 0x02 (P3PUDIS). See #172.", file=sys.stderr)
-        return 1
     if idx_usb > idx_hw:
         print("CONN REACH FAIL: _usb_init called AFTER _hw_init.",
               file=sys.stderr)
@@ -138,50 +132,28 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    # Between check_boot_dfu_button and usb_init, there must be NO
-    # conditional jumps that could skip the usb_init call. (Between
-    # main entry and check_boot_dfu_button is fine — that's just crt0
-    # register-setup code.)
-    idx_button_line = calls[idx_btn][0]
-    idx_usb_line    = calls[idx_usb][0]
+    # No conditional jump may sit between main()'s entry and the usb_init
+    # call: usb_init must be reached on every path (#47), so that a hang or a
+    # wrong branch later cannot leave the device detached from the bus.
+    #
+    # This used to scan from check_boot_dfu_button to usb_init, because that
+    # escape ran first and deliberately halted on a confirmed header
+    # invalidate -- a narrowed invariant. Both the escape and the narrowing
+    # went on 2026-08-05; usb_init is now simply first, so the scan starts at
+    # main()'s first body line and the plain invariant is checkable again.
+    idx_usb_line = calls[idx_usb][0]
+    first_line   = body[0][0] if body else 0
     dangerous = [(ln, m) for ln, m in conditionals
-                 if idx_button_line < ln < idx_usb_line]
+                 if first_line < ln < idx_usb_line]
     if dangerous:
         print(f"CONN REACH FAIL: {len(dangerous)} conditional branch(es)",
               file=sys.stderr)
-        print(f"between check_boot_dfu_button and usb_init — could skip",
+        print("between main() entry and usb_init — could skip usb_init:",
               file=sys.stderr)
-        print(f"usb_init on some path:", file=sys.stderr)
         for ln, m in dangerous:
             print(f"  main.rst:{ln}  {m}", file=sys.stderr)
         return 1
 
-    # The escape reads P3, and both writes it depends on must precede it in
-    # main() -- not merely exist in hw_init(), which now runs later. Without
-    # P3PUDIS the internal pull-ups pin the port high and the read returns a
-    # stuck 1 whatever is pressed, which is the state in which this escape
-    # could never fire in any build up to 0x0015.
-    # GLOBCTL is 0xFFB1 (movx via DPTR); P3 is direct SFR 0xB0.
-    pre = [raw for ln, raw in body if ln < idx_button_line]
-    pre_text = "\n".join(pre)
-    if not re.search(r"mov\s+dptr,\s*#0xffb1", pre_text, re.I):
-        print("CONN REACH FAIL: no GLOBCTL (0xFFB1) access before",
-              file=sys.stderr)
-        print("check_boot_dfu_button. P3PUDIS must be set first or the read",
-              file=sys.stderr)
-        print("is through the internal pull-ups and always reads high.",
-              file=sys.stderr)
-        return 1
-    if not re.search(r"mov\s+_P3,\s*#0x[fF]{2}", pre_text):
-        print("CONN REACH FAIL: no `P3 = 0xFF` before check_boot_dfu_button.",
-              file=sys.stderr)
-        print("The port latch must be high for the pins to read as inputs.",
-              file=sys.stderr)
-        return 1
-
-    print(f"CONN REACH PASS: main() call order verified.")
-    print(f"  P3 latch + P3PUDIS set before the DFU escape samples P3.")
-    print(f"  order: {' → '.join(seen)}")
     print(f"  usb_init unconditionally reached before hw_init/cs8427/codec.")
     print(f"  USBCTL |= CONN (inside usb_init) executes on every non-DFU-reset boot.")
     return 0

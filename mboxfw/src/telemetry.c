@@ -10,13 +10,8 @@
 #include "cs8427.h"
 #include "streaming.h"   /* g_clock_mode, reported in block 9 */
 
-volatile __data unsigned int  tlm_setup_count = 0;
-volatile __data unsigned int  tlm_iep0_count  = 0;
-volatile __data unsigned int  tlm_chunks      = 0;
-volatile __data unsigned int  tlm_drains      = 0;
-volatile __data unsigned int  tlm_rstr_count  = 0;
+volatile __data struct tlm_ctrs tlm;
 volatile __data unsigned int  tlm_loop_count  = 0;
-volatile __data unsigned char tlm_stalls      = 0;
 volatile __data unsigned char tlm_mux_sets    = 0;
 volatile __data unsigned char tlm_mux_rejects = 0;
 volatile __data unsigned char tlm_stage       = 0;
@@ -29,16 +24,11 @@ volatile __data unsigned int  tlm_last_windex = 0;
 volatile __data unsigned int  tlm_last_wlength = 0;
 
 
-volatile __data unsigned char tlm_eeprom_ok     = 0xFF;  /* 0xFF = not run */
 volatile __data unsigned char tlm_cs8427_status = 0xFF;
 volatile __data unsigned char tlm_codec_status  = 0xFF;
 
-volatile __data unsigned int  tlm_sof_count = 0;
-volatile __data unsigned char tlm_vec_iep1  = 0;
-volatile __data unsigned char tlm_vec_oep2  = 0;
 volatile __data unsigned char tlm_last_iface = 0xFF;  /* 0xFF = none seen */
 volatile __data unsigned char tlm_last_alt   = 0xFF;
-volatile __data unsigned char tlm_alt_seen   = 0;
 
 /* 0xFF = not sampled, so a block-8 read of all-0xFF means main() never ran
  * that far rather than "the boot ROM left everything at 0xFF". */
@@ -63,7 +53,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[2] = tlm_stage;
         out[3] = tlm_phases;
         put16(&out[4], tlm_loop_count);
-        put16(&out[6], tlm_rstr_count);
+        put16(&out[6], tlm.rstr_count);
         return 1;
 
     case 1:
@@ -75,10 +65,10 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
          * interrupt. drains lagging chunks means transfers are being
          * abandoned somewhere else. Host-side timeouts cannot separate
          * those two; this can. */
-        put16(&out[0], tlm_setup_count);
-        put16(&out[2], tlm_iep0_count);
-        put16(&out[4], tlm_chunks);
-        put16(&out[6], tlm_drains);
+        put16(&out[0], tlm.setup_count);
+        put16(&out[2], tlm.iep0_count);
+        put16(&out[4], tlm.chunks);
+        put16(&out[6], tlm.drains);
         return 1;
 
     case 2:
@@ -101,10 +91,12 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
     case 4:
         /* Peripheral results — separates a hardware fault from a
          * firmware fault without a scope. */
-        out[0] = tlm_eeprom_ok;
+        out[0] = 0xFF;   /* was tlm_eeprom_ok; its only writer,
+                          * eeprom_smoke_test(), went with the
+                          * boot-button DFU trigger on 2026-08-05 */
         out[1] = tlm_cs8427_status;
         out[2] = tlm_codec_status;
-        out[3] = tlm_stalls;
+        out[3] = tlm.stalls;
         /* Bytes 4-5 are LIVE port reads, sampled at the moment the host
          * asks. Hold the button while reading block 4 to see which bit moves.
          * Bytes 6-7 carried the handoff samples until 0x002B; see telemetry.h
@@ -117,12 +109,12 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         /* Isochronous streaming state. Bytes 4-7 are LIVE register reads,
          * so a host can watch the endpoint config and byte counts change
          * (or fail to) while arecord is running. */
-        put16(&out[0], tlm_sof_count);
-        out[2] = tlm_vec_iep1;
-        out[3] = tlm_vec_oep2;
+        put16(&out[0], tlm.sof_count);
+        out[2] = tlm.vec_iep1;
+        out[3] = tlm.vec_oep2;
         out[4] = IEPCNF1;
         out[5] = OEPCNF2;
-        out[6] = tlm_alt_seen;
+        out[6] = tlm.alt_seen;
         out[7] = (unsigned char)((tlm_last_iface << 4) | (tlm_last_alt & 0x0F));
         return 1;
 
@@ -209,16 +201,12 @@ void tlm_reset_counters(void)
      * measurement into a plausible-looking zero, which is the exact failure this
      * block exists to avoid. The P1/P3 handoff samples were omitted for the same
      * reason before they were retired entirely in 0x002B. */
-    tlm_setup_count = 0;
-    tlm_iep0_count  = 0;
-    tlm_chunks      = 0;
-    tlm_drains      = 0;
-    tlm_rstr_count  = 0;
-    tlm_stalls      = 0;
-    tlm_sof_count = 0;
-    tlm_vec_iep1  = 0;
-    tlm_vec_oep2  = 0;
-    tlm_alt_seen  = 0;   /* per-experiment, so a reset isolates one run */
+    {
+        unsigned char __data *p = (unsigned char __data *)&tlm;
+        unsigned char i;
+        for (i = 0; i < sizeof(tlm); i++)
+            p[i] = 0;
+    }
     /* tlm_stage, tlm_phases, tlm_loop_count and the peripheral results are
      * deliberately NOT cleared: they describe how this boot went, not the
      * current experiment, and clearing them would destroy the only record

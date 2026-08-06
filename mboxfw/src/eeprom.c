@@ -76,7 +76,12 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
     I2C_TX = addr_lo;
     if (!wait_bit(I2C_XMIT_DATA_EMPTY)) return 0;
 
-    /* This is the LAST data byte — set STOP_WRITE before pushing it so
+    /* eeprom_read_byte() and eeprom_smoke_test() were REMOVED 2026-08-05 along
+ * with the boot-button DFU trigger, their only caller -- see main.c. The WRITE
+ * side stays: TLM_REQ_ENTER_DFU invalidates the header checksum through
+ * eeprom_write_byte(), and that is the DFU trigger in daily use. */
+
+/* This is the LAST data byte — set STOP_WRITE before pushing it so
      * the peripheral generates the I²C STOP condition after transmit. */
     I2C_STA |= I2C_STOP_WRITE;
     I2C_TX = data;
@@ -84,59 +89,6 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
 
     I2C_STA &= I2C_CLEAR_ALL;
     eeprom_write_hold();
-    return 1;
-}
-
-/* Read one byte from EEPROM offset (addr_hi << 8 | addr_lo). Returns
- * the byte on success (with *ok=1), 0xFF on failure (with *ok=0).
- * Sequence: word-address write phase to position the internal pointer,
- * then repeated-START into read phase with DUMMY 0xFF trigger + STOP_READ.
- * Matches TI's I2CAccess for I2C_START | I2C_READ | I2C_STOP | WORD_ADDR
- * with nLen=1 (the `nLen == 1` fast path at I2c.c:99). */
-unsigned char eeprom_read_byte(unsigned char addr_hi,
-                               unsigned char addr_lo,
-                               unsigned char __data *ok)
-{
-    /* --- write phase: position the internal address pointer --- */
-    I2C_STA   &= I2C_CLEAR_ALL;
-    I2C_SADDR  = EEPROM_ADDR_WRITE;
-    I2C_TX = addr_hi;
-    if (!wait_bit(I2C_XMIT_DATA_EMPTY)) { if (ok) *ok = 0; return 0xFF; }
-    I2C_TX = addr_lo;
-    if (!wait_bit(I2C_XMIT_DATA_EMPTY)) { if (ok) *ok = 0; return 0xFF; }
-    I2C_STA &= I2C_CLEAR_ALL;
-
-    /* --- read phase: repeated START with R/W=1, dummy trigger --- */
-    I2C_SADDR = EEPROM_ADDR_READ;
-    /* nLen==1 case: set STOP_READ up front, dummy-trigger the transfer,
-     * wait for the byte, done. TI I2c.c:99-108 verbatim. */
-    I2C_STA  |= I2C_STOP_READ;
-    I2C_TX    = 0xFF;              /* dummy — "kicks" the read */
-    if (!wait_bit(I2C_RCV_DATA_FULL)) { if (ok) *ok = 0; return 0xFF; }
-    {
-        unsigned char v = I2C_RX;
-        I2C_STA &= I2C_CLEAR_ALL;
-        if (ok) *ok = 1;
-        return v;
-    }
-}
-
-unsigned char eeprom_smoke_test(void)
-{
-    static const unsigned char SCRATCH_HI = 0x1F;
-    static const unsigned char SCRATCH_LO = 0xFF;   /* last byte of 8 KB */
-    unsigned char ok;
-    unsigned char v;
-
-    if (!eeprom_write_byte(SCRATCH_HI, SCRATCH_LO, 0xA5)) return 0;
-    v = eeprom_read_byte(SCRATCH_HI, SCRATCH_LO, &ok);
-    if (!ok || v != 0xA5) return 0;
-
-    if (!eeprom_write_byte(SCRATCH_HI, SCRATCH_LO, 0x5A)) return 0;
-    v = eeprom_read_byte(SCRATCH_HI, SCRATCH_LO, &ok);
-    if (!ok || v != 0x5A) return 0;
-
-    (void)eeprom_write_byte(SCRATCH_HI, SCRATCH_LO, 0xFF);
     return 1;
 }
 

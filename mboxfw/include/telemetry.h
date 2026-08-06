@@ -109,7 +109,23 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x002F   /* 002F: telemetry block 6 retired -- its
+#define TLM_BUILD_ID     0x0030   /* 0030: boot-button DFU trigger REMOVED, and
+                                   *       with it eeprom_read_byte /
+                                   *       eeprom_smoke_test (its only caller)
+                                   *       and the #172 P3/GLOBCTL hoist.
+                                   *       It never worked -- BRICK_LOG has it
+                                   *       failing on three separate incidents
+                                   *       -- and it was not the last resort it
+                                   *       was taken for: the canonical
+                                   *       SDA-short bootstrap needs no
+                                   *       firmware cooperation at all. The
+                                   *       WRITE path stays; TLM_REQ_ENTER_DFU
+                                   *       is the trigger in daily use.
+                                   *       Also: the per-experiment counters
+                                   *       moved into one struct so the reset
+                                   *       is a loop, and tlm_eeprom_ok went
+                                   *       (its only writer was the smoke test).
+                                   * 002F: telemetry block 6 retired -- its
                                    *       question (isoc IN returning
                                    *       zero-length) is answered and fixed.
                                    *       eeprom_smoke_test was considered and
@@ -322,13 +338,33 @@
 /* Counters. Written from ISR context, read from the SETUP handler (also
  * ISR context), so no cross-context tearing — but keep them volatile so
  * SDCC cannot cache them across the increments. */
-extern volatile __data unsigned int  tlm_setup_count;
-extern volatile __data unsigned int  tlm_iep0_count;
-extern volatile __data unsigned int  tlm_chunks;
-extern volatile __data unsigned int  tlm_drains;
-extern volatile __data unsigned int  tlm_rstr_count;
+/* The per-experiment counters, gathered into one struct so tlm_reset_counters()
+ * can clear them with a single loop.
+ *
+ * Not cosmetic: these live in __data above 0x7F, where direct addressing
+ * collides with SFR space, so SDCC reaches each one with `MOV R0,#addr;
+ * MOV @R0,#0` -- four bytes and a reloaded pointer per store. Ten separate
+ * assignments cost 111 bytes; one loop over a contiguous struct costs ~20.
+ *
+ * Only the per-EXPERIMENT counters belong here. tlm_stage, tlm_phases and
+ * tlm_loop_count describe how this boot went rather than the current
+ * experiment and are deliberately never cleared, so they stay separate --
+ * being outside the struct is what makes that impossible to get wrong. */
+struct tlm_ctrs {
+    unsigned int  setup_count;
+    unsigned int  iep0_count;
+    unsigned int  chunks;
+    unsigned int  drains;
+    unsigned int  rstr_count;
+    unsigned int  sof_count;
+    unsigned char stalls;
+    unsigned char vec_iep1;
+    unsigned char vec_oep2;
+    unsigned char alt_seen;
+};
+extern volatile __data struct tlm_ctrs tlm;
+
 extern volatile __data unsigned int  tlm_loop_count;
-extern volatile __data unsigned char tlm_stalls;
 extern volatile __data unsigned char tlm_stage;
 extern volatile __data unsigned char tlm_phases;
 
@@ -359,7 +395,6 @@ extern volatile __data unsigned char tlm_mux_sets;
 extern volatile __data unsigned char tlm_mux_rejects;
 
 /* Peripheral init results (block 4) */
-extern volatile __data unsigned char tlm_eeprom_ok;
 extern volatile __data unsigned char tlm_cs8427_status;
 extern volatile __data unsigned char tlm_codec_status;
 
@@ -392,9 +427,6 @@ extern volatile __data unsigned char tlm_codec_status;
  * endpoint is not armed; IEP1 firing means the endpoint IS transacting and
  * the problem is upstream in the I2S/codec path. No reference firmware
  * records this, so there is nothing to copy. */
-extern volatile __data unsigned int  tlm_sof_count;
-extern volatile __data unsigned char tlm_vec_iep1;
-extern volatile __data unsigned char tlm_vec_oep2;
 
 /* SET_INTERFACE forensics. Sticky, because a host-side read always races
  * arecord's teardown back to alt 0. */
@@ -402,7 +434,6 @@ extern volatile __data unsigned char tlm_vec_oep2;
 #define TLM_ALT_CAPTURE_ON  0x02
 extern volatile __data unsigned char tlm_last_iface;
 extern volatile __data unsigned char tlm_last_alt;
-extern volatile __data unsigned char tlm_alt_seen;
 
 /* Saturating increments — a counter that wraps mid-experiment reads as a
  * smaller number than reality and would silently corrupt a measurement. */

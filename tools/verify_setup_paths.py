@@ -311,10 +311,19 @@ def main() -> int:
          lambda: check_reply_zero_length_present(image),
          "SET_CONFIGURATION / SET_INTERFACE / SET_ADDRESS status stages "
          "never send zero-length IN → host times out enumeration"),
-        ("boot-time DFU button check wired into main()",
-         lambda: check_boot_dfu_button_wired(ihx_path.parent),
-         "Second software recovery path missing — a broken USB stack "
-         "would leave physical EEPROM SDA short as the only option"),
+        # REMOVED 2026-08-05 with the boot-button DFU trigger itself.
+        #
+        # This check asserted that a second software recovery path existed.
+        # It never did: BRICK_LOG records the button trigger being tried on
+        # three separate incidents and producing nothing every time, while
+        # every actual recovery was the SDA short. The consequence text was
+        # also wrong to treat "physical EEPROM SDA short" as a bad outcome --
+        # that is the canonical, hardware-proven recovery (BRICK_LOG top:
+        # short -> ffff:fffe -> safety_net_bootstrap -> app-DFU -> image),
+        # and it needs no firmware cooperation at all.
+        #
+        # A gate that requires a feature which never worked is not protecting
+        # anything; it just makes removing dead code look like a regression.
     ]
 
     fails = []

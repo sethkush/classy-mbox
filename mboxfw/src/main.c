@@ -24,95 +24,25 @@ extern void usb_init(void);
 extern void usb_attach(void);
 extern void usb_service(void);
 
-/* The last software route back into DFU.
+/* The boot-time button-hold DFU trigger was REMOVED 2026-08-05.
  *
- * WHY IT MOVED. On 2026-08-03 an oversized image hung somewhere before
- * usb_attach(), so USB never came up and the enter-DFU class request could not
- * be delivered. This escape hatch was the fallback, and it did not fire: it
- * was called only after hw_init(), so any hang inside hw_init() disables it.
- * Recovery cost an SDA short with the unit's I/O unhooked. BRICK_LOG.md #3.
+ * It never worked. BRICK_LOG records it being tried on three separate
+ * incidents -- "Button-hold DFU produced nothing either. No software route
+ * back in." (2026-08-03), "Button hold on replug had no visible effect.",
+ * "button-hold DFU did nothing" -> I2C driver silent failure. Every actual
+ * recovery this project has ever performed was the SDA short.
  *
- * AND WHY IT MOVED BACK, 2026-08-03. The early call was justified with "P3
- * pull-ups are already enabled at handoff ... the P3 handoff sample
- * (retired in 0x002B) was taken before
- * hw_init() and reads 0xFB, P3.3 high." Two errors:
+ * It also was not the last resort it was assumed to be. The canonical
+ * recovery needs no firmware cooperation at all: SDA short -> ffff:fffe
+ * bulletproof-DFU -> flash safety_net_bootstrap.bin (dataType 0x03) -> replug
+ * -> 0dba:1001 app-DFU -> flash the real image. That sequence is at the top of
+ * BRICK_LOG.md, is hardware-proven, and has recovered a completely dead unit.
  *
- *   - 0xFB was byte 5 of the telemetry block, the LIVE P3 read. The boot
- *     sample is byte 7 and read 0xFF. The placement argument rested on the
- *     wrong byte of a hex dump.
- *   - Pull-ups being enabled is precisely the state in which this read does
- *     not work. The buttons are active HIGH against the board's pull-downs;
- *     the internal pull-ups override them and pin P3.3 at 1 regardless. The
- *     read needs P3PUDIS SET, which only hw_init() does.
- *
- * So it now runs immediately after hw_init(). A hang inside hw_init() disables
- * it, which is the exact failure this comment was written to fix; that failure
- * is covered instead by the restored --code-size limit and check_code_size.py,
- * which reject the oversized image before it can be flashed.
- *
- * It is called ONCE, here. A second call after hw_init() was written and then
- * dropped: it fires only after the hang it is meant to survive, so it adds no
- * coverage, costs 8 bytes, and doubles the windows in which a floating P3.3
- * could spuriously invalidate the header. Verified by execution: with P3.3
- * held low the EEPROM path is reached with canary 0xFA01 = 0xA2 (usb_init
- * done) and 0xFA02 still 0x00 (hw_init NOT run).
- *
- * NOTE the halt condition. This used to halt whenever the button was held,
- * even if the EEPROM write had failed or been skipped — leaving the device
- * with neither DFU nor USB, which is strictly the worst outcome and is a
- * recorded compounding failure (BRICK_LOG "button-hold DFU did nothing" ->
- * I2C driver silent failure). It now halts only on a CONFIRMED invalidate;
- * otherwise it returns and lets the boot continue, because a device that
- * enumerates can still be recovered over the wire.
- */
-static void check_boot_dfu_button(void)
-{
-    unsigned int i;
-    unsigned char p3;
-    unsigned char held = 1;
-
-    /* POLARITY. The buttons are ACTIVE HIGH -- held means the pin reads 1.
-     * This loop tested for LOW until 2026-08-03, which is the active-low
-     * premise, and it was wrong in both directions at once:
-     *
-     *   P3PUDIS clear  pin stuck at 1  -> `held` never true, escape unreachable
-     *   P3PUDIS set    idle pin is 0   -> `held` always true with nothing
-     *                                     pressed: invalidate the header and
-     *                                     spin. That is build 0x0010's
-     *                                     "silent on USB". #169.
-     *
-     * See FINDING_buttons_are_active_high.md for the proof that the pins idle
-     * low (Keil zeroes the previous-sample shadow at IRAM 0x20, so an idle-high
-     * pin would fire all three stock handlers on the first scan of every boot,
-     * and the hardware boots to MIC instead).
-     *
-     * SANITY GUARD, NOVEL -- reason: no stock behaviour to copy, because stock
-     * has no boot-time DFU escape at all. If all three button pins read high
-     * together, that is not three simultaneous presses, it is P3PUDIS not
-     * having taken -- the internal pull-ups holding the whole port up. That is
-     * the exact state that bricked the unit on 2026-08-03, and the cost of
-     * getting it wrong is an SDA short with the unit opened up. One button is a
-     * press; three is a misconfigured port, so refuse. */
-    for (i = 0; i < 0x5000; i++) {
-        p3 = P3;
-        if (!(p3 & P3_BTN_CH1_MASK)) { held = 0; break; }
-        if ((p3 & (P3_BTN_CH1_MASK | P3_BTN_CH2_MASK | P3_BTN_MONO_MASK))
-              == (P3_BTN_CH1_MASK | P3_BTN_CH2_MASK | P3_BTN_MONO_MASK)) {
-            held = 0;               /* whole port high -> pull-ups still on */
-            break;
-        }
-    }
-    if (!held)
-        return;
-
-    /* Break the header checksum so the NEXT power cycle lands in DFU. */
-    if (eeprom_smoke_test() && eeprom_invalidate_signature()) {
-        /* Confirmed. Never attach; wait for the user to replug. */
-        for (;;) { }
-    }
-    /* The write did not take. Fall through and boot: USB coming up is itself
-     * a recovery path, and halting here would leave none. */
-}
+ * So this path duplicated TLM_REQ_ENTER_DFU when USB works, and was redundant
+ * with the SDA bootstrap when it does not -- while never once succeeding.
+ * eeprom_smoke_test() and eeprom_read_byte() went with it; they had no other
+ * caller. eeprom_write_byte() and eeprom_invalidate_signature() STAY: they are
+ * what TLM_REQ_ENTER_DFU uses, and that is the trigger in daily use. */
 
 /*
  * ISR forward declarations. SDCC's vector-table emitter runs in the
@@ -302,61 +232,20 @@ void main(void)
     CANARY(0, CANARY_MAIN);
     STAGE(1);
 
-    /* -------- Minimum pin setup for the DFU escape (#172) --------
+    /* The #172 pin-setup hoist and the DFU escape that needed it were both
+     * REMOVED 2026-08-05, with the boot-button trigger itself.
      *
-     * These two writes are the ENTIRETY of what check_boot_dfu_button() needs
-     * from hardware init. Hoisting them here lets the escape run before
-     * usb_init(), so it survives a hang anywhere in the boot path rather than
-     * only after hw_init().
+     * P3 = 0xFF and GLOBCTL |= 0x02 were duplicated here, ahead of usb_init(),
+     * for one reason: so check_boot_dfu_button() could read the port before
+     * anything that might hang. hw_init() writes both in stock's own position
+     * (P3 at hw_init.c:53, GLOBCTL at :129) and always did -- these copies
+     * were idempotent by design. With no escape to serve, they are dead.
      *
-     * Both are repeated verbatim inside hw_init(), in stock's position and
-     * order, and both are idempotent: P3 = 0xFF is an assignment to the same
-     * value and GLOBCTL |= 0x02 is a read-modify-write of a bit already set.
-     * hw_init() remains the authority on the boot sequence; this is a subset
-     * pulled forward, not a relocation. Do not delete the copies there.
-     *
-     * WHY BOTH ARE NEEDED. P3 = 0xFF sets the port latch, which is what makes
-     * the pins inputs. GLOBCTL bit 1 (P3PUDIS) releases the internal pull-ups,
-     * without which they hold P3 high and the read returns a stuck 1 whatever
-     * is pressed -- the state in which this escape could never fire, in any
-     * build up to 0x0015. See FINDING_buttons_are_active_high.md.
-     *
-     * P3's latch is believed high at handoff (the handoff sample, retired in 0x002B, measured 0xFF on
-     * this part), but that is one measurement of one boot ROM on one unit, and
-     * a stuck-low latch would silently disable the escape. Writing it costs
-     * two bytes and removes the assumption.
-     *
-     * SAFETY OF RUNNING A HALTING PATH BEFORE usb_init(). check_boot_dfu_button
-     * only halts after a CONFIRMED header invalidate, which is precisely the
-     * condition that makes the next power cycle land in DFU. If the EEPROM
-     * write fails it returns and usb_init() runs as normal. Both outcomes are
-     * recoverable over the wire, so the "usb_init is always reached" invariant
-     * is narrowed, not broken -- verify_conn_reachable.py encodes the narrowed
-     * form.
-     *
-     * This is NOT a live-USB-engine hazard (the #47 concern): USBCTL was
-     * zeroed above, usb_init() has not run, and P3PUDIS has nothing to do with
-     * the USB engine -- that theory was retracted, see hw_init.c. */
-    P3       = 0xFF;   /* Rev 20 fcn.0x08CB @ 0x08E9, Rev 22 fcn.0x07EC @ 0x080A */
-    GLOBCTL |= 0x02;   /* Rev 20 fcn.0x08CB @ 0x08FE, Rev 22 fcn.0x07EC @ 0x081F */
-
-    /* DFU ESCAPE, before anything that can hang.
-     *
-     * Position history, because it has moved twice on bad reasoning. It ran
-     * after hw_init() until 2026-08-03, so a hang in hw_init() disabled it --
-     * which is exactly what the oversized image in BRICK_LOG.md #3 did, and
-     * recovery cost an SDA short. It was then moved ahead of hw_init() on the
-     * claim that "P3 pull-ups are already enabled at handoff", which had the
-     * dependency backwards (the pull-ups defeat this read, they do not enable
-     * it) and misread byte 5 of a telemetry block for byte 7. It went back
-     * after hw_init() when that was found, and now moves here with the two
-     * writes it actually depends on hoisted alongside it -- which is what the
-     * first move was reaching for and got wrong.
-     *
-     * Proven on hardware 2026-08-03 in its post-hw_init position: source-1
-     * held through a power cycle produced no enumeration at all, and the
-     * following power cycle came up ffff:fffe and flashed clean. */
-    check_boot_dfu_button();
+     * That also restores the plain form of the #47 invariant: usb_init() is
+     * now unconditionally the first thing main() calls, with nothing between
+     * entry and it that can halt or branch past it. The narrowed form that
+     * verify_conn_reachable.py encoded -- "usb_init is always reached EXCEPT
+     * after a confirmed header invalidate" -- is no longer needed. */
 
     /* usb_init() configures endpoints and buffers but does NOT attach.
      * Ordering below mirrors both stock firmwares exactly. */

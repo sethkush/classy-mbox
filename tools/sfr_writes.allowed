@@ -47,17 +47,13 @@
 0xffaf  runtime   -       # usb
 0xffb0  or        0x01    # hw_init
 0xffb1  or        0x01    # hw_init
-0xffb1  or        0x02    # main
 0xffb1  runtime   -       # hw_init
 0xffb2  assign    0x00    # usb
 0xffb2  runtime   -       # usb
 0xffc0  and_not   0x54    # eeprom
 0xffc0  or        0x01    # eeprom
-0xffc0  or        0x02    # eeprom
-0xffc1  assign    0xff    # eeprom
 0xffc1  runtime   -       # eeprom
 0xffc3  assign    0xa0    # eeprom
-0xffc3  assign    0xa1    # eeprom
 0xffd4  assign    0x03    # hw_init
 0xffd5  assign    0xac    # hw_init
 0xffd6  assign    0x25    # hw_init
