@@ -26,6 +26,16 @@ endif
 # Costs nothing at runtime -- it is a compile-time constant folded into the one
 # `orl` -- so the answer needs a flash, not a code change. Reports itself as
 # TLM_BUILD_ID 0x0025 (0x04, playback candidate) or 0x0026 (0x08).
+#
+# SUPERSEDED for #189 by TLM_REQ_SET_MUTE (telemetry.h), which moves the same
+# two bits at RUNTIME. Prefer it: two images cost two power cycles and two 2 km
+# round trips to produce one A/B, and give each mask value exactly one attempt
+# with a reflash between the halves of the comparison. The request reaches all
+# four states on one power cycle, on one unit, repeatably.
+#
+# This switch is kept because it sets the mask the device BOOTS with, which the
+# request cannot -- if the question ever becomes what state the audio path comes
+# up in, rather than what the bits gate, this is the instrument for it.
 MBOX_MUTE_PAIR_MASK ?=
 ifneq ($(MBOX_MUTE_PAIR_MASK),)
 EXTRA_CFLAGS += -DCODEC23_MUTE_PAIR=$(MBOX_MUTE_PAIR_MASK)

@@ -443,6 +443,57 @@ static void handle_digi_enter_dfu(void)
 }
 
 
+/* Set the mute pair from the host — see TLM_REQ_SET_MUTE in telemetry.h (#189).
+ *
+ * NOVEL — reason: no stock request does this. Stock raises 0x23.2 and 0x23.3
+ * together in its init path (Rev 20 fcn.0x0728 @ 0x07C6, Rev 22 fcn.0x0763 @
+ * 0x0801) and never moves them again; there is no stock trigger to cite because
+ * stock has no reason to lower them. The mask VALUES are not novel — 0x0C is
+ * the state stock rests in and 0x00 the state it boots through — only the
+ * ability to reach them on request.
+ *
+ * The publish path is codec_write_word() alone: unlike the mux request these
+ * bits live only in the codec chain, so neither codec_source_changed() nor
+ * mux_write() has anything to contribute. */
+static void handle_set_mute(void)
+{
+    unsigned char mask = wValueL;
+
+    /* Only the two pair bits may be named. A request carrying any other bit is
+     * asking for something this control does not do — 0x23.4 is the external
+     * RESET_N and lowering it would drop the CS8427 out of reset, which is not
+     * a mute and is not recoverable by re-sending the request. Stall rather
+     * than mask-and-proceed, so a malformed request is visible on the host
+     * instead of silently doing three-quarters of what was asked. */
+    if (mask & (unsigned char)~CODEC23_MUTE_PAIR_ALL) {
+        reply_stall();
+        return;
+    }
+
+    /* Per-bit rather than a byte-wide read-modify-write, and NOT for style:
+     * latch_word_bit_diff.py resolves which bits a store can set from the C
+     * source, and it must over-estimate rather than under. A whole-byte
+     * assignment whose RHS mentions any identifier is unresolvable, so the
+     * gate credits the store with all eight bits -- and 0x23.0/0x23.1, which
+     * this handler can only ever carry through unchanged, stopped reading as
+     * gaps. The gate caught that on the first build. Two `|=` with literal
+     * operands are exactly as reachable and leave the bit map honest. */
+    if (mask & CODEC23_MODE5_A) {
+        g_codec_state_23 |= CODEC23_MODE5_A;
+    } else {
+        g_codec_state_23 &= (unsigned char)~CODEC23_MODE5_A;
+    }
+    if (mask & CODEC23_MODE5_B) {
+        g_codec_state_23 |= CODEC23_MODE5_B;
+    } else {
+        g_codec_state_23 &= (unsigned char)~CODEC23_MODE5_B;
+    }
+    codec_write_word();
+
+    reply_zero_length();
+}
+
+
 /* Set the source mux from the host — see TLM_REQ_SET_MUX in telemetry.h for
  * why this exists. Reaches the same states the front-panel buttons reach, by
  * the same publish path, without depending on the buttons.
@@ -765,6 +816,8 @@ static void handle_setup(void)
             handle_set_mux();
         } else if (bReq == TLM_REQ_SET_CLOCK && !(bmReq & 0x80)) {
             handle_set_clock();   /* #177 */
+        } else if (bReq == TLM_REQ_SET_MUTE && !(bmReq & 0x80)) {
+            handle_set_mute();    /* #189 */
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             /* Same latch as the Digi class request; see
              * handle_digi_enter_dfu(). This alias exists because the class

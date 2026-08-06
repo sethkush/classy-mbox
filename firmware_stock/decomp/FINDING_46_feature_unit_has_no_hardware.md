@@ -66,11 +66,24 @@ with a Mute control each are exactly honest, and the second half of #46 becomes
 a descriptor change. If both bits gate both directions, the answer above stands
 and #46's Feature Unit closes as not-implementable on this hardware.
 
-`make MBOX_MUTE_PAIR_MASK=0x04` and `=0x08` build images that raise one bit
-only. The mask is a compile-time constant folded into the single `orl`, so the
-variants are the same size as the shipping image and cost nothing at runtime —
-this is a flash, not a code change. They report themselves as TLM_BUILD_ID
-0x0025 and 0x0026 so block 0 proves which one is running.
+**2026-08-05: this no longer costs two flashes.** The plan above was
+`make MBOX_MUTE_PAIR_MASK=0x04` and `=0x08` — two images, hence two power
+cycles and two 2 km round trips, to produce a single A/B in which each mask
+value got exactly one attempt with a reflash between the halves of the
+comparison. Build 0x0035 replaces them with `TLM_REQ_SET_MUTE` (vendor request
+0x15, DEVICE recipient), which moves the same two bits at runtime.
+
+That is cheaper and it is also a better experiment: all four mask states land on
+one power cycle, on one unit, with no reflash between them, and every cell can
+be repeated and re-repeated in either order. A one-shot-per-image design cannot
+distinguish "this bit gates capture" from "that particular boot came up wrong".
+
+Nothing about it can wedge the device — `none` mutes the audio path and `both`
+restores it, over the same EP0 that issued the mute. The applied state is read
+back from block 9 byte 2 rather than inferred from the absence of a stall.
+
+The compile-time switch is kept for the one thing the request cannot do: set the
+mask the device *boots* with.
 
 The bench arm is the one #171 already validated, run twice:
 

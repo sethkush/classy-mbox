@@ -97,6 +97,30 @@
  * assumed from the absence of a stall. */
 #define TLM_REQ_SET_CLOCK 0x14
 
+/* Mute pair (0x23.2 / 0x23.3), DEVICE recipient — #189.
+ *
+ *   bmRequestType 0x40
+ *   wValue low   the mask to leave standing: 0x00, 0x04, 0x08 or 0x0C.
+ *                Anything else stalls.
+ *
+ * #171 settled that the PAIR gates both directions, but it only ever moved the
+ * two bits together. Whether they are one gate or two — playback on one bit and
+ * capture on the other — is the entire question for a UAC1 Feature Unit, since
+ * a Mute control is honest only if muting one direction leaves the other alone.
+ *
+ * This replaces the MBOX_MUTE_PAIR_MASK compile-time variants. Those were two
+ * images, hence two power cycles and two 2 km round trips, for one A/B; and
+ * each mask value got exactly one attempt, with the two halves of the
+ * comparison separated by a reflash. Runtime control puts all four states on
+ * one power cycle, on one unit, repeatable in either direction, which is a
+ * stronger experiment as well as a cheaper one.
+ *
+ * Nothing here can wedge the device: 0x00 mutes the audio path and 0x0C
+ * restores it, over the same EP0 that issued the mute. Read block 9 byte 2
+ * back to confirm the applied state rather than inferring it from the absence
+ * of a stall. */
+#define TLM_REQ_SET_MUTE 0x15
+
 /* The three legal source patterns, one-cold, from the stock cycle handlers
  * (Rev 20 fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). */
 #define MUX_PAT_MIC      0x06   /* boot state */
@@ -112,7 +136,18 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0034   /* 0034: fixes the feedback value published
+#define TLM_BUILD_ID     0x0035   /* 0035: #189 -- TLM_REQ_SET_MUTE, runtime
+                                   *       control of the 0x23.2/0x23.3 pair.
+                                   *       Replaces the MBOX_MUTE_PAIR_MASK
+                                   *       compile-time variants: all four mask
+                                   *       states on ONE power cycle, on one
+                                   *       unit, repeatable in either
+                                   *       direction, instead of two images and
+                                   *       two round trips for a single
+                                   *       one-shot A/B. Read block 9 byte 2
+                                   *       back to confirm. Previously
+                                   *
+                                   *       0034: fixes the feedback value published
                                    *       across a stream start. usbmon on
                                    *       0x0033 caught the first 64-frame
                                    *       window straddling the ACG being

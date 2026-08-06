@@ -88,6 +88,11 @@ void codec_init(void);
 #ifndef CODEC23_MUTE_PAIR
 #define CODEC23_MUTE_PAIR    0x0Cu  /* CODEC23_MODE5_A | CODEC23_MODE5_B */
 #endif
+/* Both pair bits regardless of what the boot mask above was built as. #189's
+ * runtime control writes this field, and it must stay the full pair even in a
+ * variant build -- otherwise the request could not restore a bit the boot mask
+ * left low, which is the one thing it exists to do. */
+#define CODEC23_MUTE_PAIR_ALL  (CODEC23_MODE5_A | CODEC23_MODE5_B)
 #define CODEC23_RESET_N      0x10u  /* 0x23.4 — external-chip RESET, ACTIVE LOW.
                                      * Rev 20 SETB 0x1c @0x0840 (Rev 22 @0x09E5,
                                      * @0x0BB5) releases it once at boot. */

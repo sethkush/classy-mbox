@@ -137,7 +137,7 @@ could be an outright bug rather than a missing feature.
 |---|---|---|
 | **181** | iso clock drift at 48 kHz, 10-15 min | is `SYNC_ADAPTIVE` true |
 | **182** | the same at 44.1 kHz | ditto, at the other ACG frequency word |
-| **183** | capture packet sizes at 44.1 kHz via usbmon | whether the DMA tracks the declared rate or runs fixed-288 |
+| ~~183~~ | capture packet sizes at 44.1 kHz via usbmon | **DONE** — they track it: 264/270 mixed 9:1, -9.0 ppm. `FINDING_183_packet_sizes_track_the_rate.md` |
 | **184** | S/PDIF transmitter at the jack, A→B | whether §3's output is real |
 
 Two traps this bench has already sprung: `dmesg_restrict` is set on 1.76, so an
@@ -166,7 +166,7 @@ Ship 185, 187 and 188 in one image.
 | # | task | cost | blocked by |
 |---|---|---|---|
 | **186** | decide the playback feedback endpoint | 0-200 bytes | 181 |
-| **189** | does the mute pair separate playback from capture | 2 flashes | — |
+| **189** | does the mute pair separate playback from capture | **1 flash** (was 2) | — |
 | **190** | declare Feature Units with Mute | ~70 bytes | 189 |
 
 186 only exists if #181 finds the ACG free-running. It is a design decision
@@ -175,8 +175,12 @@ endpoint reporting consumption in 10.14 format every frame, and the honest
 alternatives are to declare async without one (non-compliant, but no worse than
 today) or to keep adaptive and document the drift.
 
-189's diagnostic builds are already written and unflashed. Batch them with
-Stage 2's image if the schedule allows — that is 2 flashes saved.
+189 no longer costs two flashes. The `MBOX_MUTE_PAIR_MASK` compile-time
+variants are superseded by `TLM_REQ_SET_MUTE` (build 0x0035), which moves the
+same two bits at runtime: all four mask states on ONE power cycle, on one unit,
+repeatable in either direction, instead of two images giving one one-shot A/B
+with a reflash between the halves of the comparison. Cheaper AND a stronger
+experiment.
 
 ### Stage 4 — evidence, not belief.
 
