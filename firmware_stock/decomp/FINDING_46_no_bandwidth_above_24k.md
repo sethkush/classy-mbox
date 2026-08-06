@@ -107,3 +107,26 @@ at 96 kHz measures equal to 48 kHz on a 1 kHz tone. What they do not do is
 carry more audio bandwidth. Combined with the duplex limit -- 96 kHz cannot run
 both directions on any host tested -- the honest description is "the device
 accepts and correctly handles 88.2/96 kHz, simplex, with no bandwidth benefit."
+
+## Appendix: the full-speed budget, bracketed at 48 kHz (2026-08-05)
+
+Both units on one EHCI controller, 48 kHz throughout, counting bandwidth
+denials in dmesg:
+
+     588 B   A plays + B captures (the loopback rig)   OK
+     588 B   A duplex                                  OK
+     882 B   A duplex + B captures                     OK
+    1068 B   88.2 duplex, one unit                     DENIED
+    1176 B   A duplex + B duplex                       DENIED
+
+So one host controller's full-speed periodic budget lies between **882 and
+1068 bytes per frame**, and the same bracket held on the xHCI box. Everything
+the bench actually does at 44.1/48 fits comfortably; only both units in full
+duplex at once does not.
+
+METHOD WARNING, learned three times in one day: `dmesg | grep -c` returns 0
+when dmesg ITSELF fails, which is indistinguishable from a clean run. On a host
+with dmesg_restrict set, an unprivileged read fails and every configuration
+reports as passing. The detector must be verified before it is trusted -- and
+the grep must be case-insensitive, because EHCI logs "not enough bandwidth"
+while xHCI logs "Not enough bandwidth for altsetting 2".
