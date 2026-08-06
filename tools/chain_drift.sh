@@ -1,23 +1,20 @@
 #!/bin/sh
-# Wait out the in-flight 48 kHz drift pair, then run the 44.1 kHz pair — #181/#182.
+# Run the 48 kHz drift pair, then the 44.1 kHz pair — #181/#182.
 #
-#   nohup chain_drift.sh <seconds> &
+#   setsid nohup chain_drift.sh <seconds> &
 #
-# Runs ON the unit host and detached, so neither run depends on an ssh session
-# staying up.
+# Runs ON the unit host and detached, so neither pair depends on an ssh session.
+#
+# This script owns BOTH pairs rather than waiting for one someone else started.
+# The earlier version waited for /tmp/d48*.json to appear and then ran 44.1 --
+# which races the launcher that deletes those same files at startup, and on a
+# re-run would see the PREVIOUS run's results already sitting there and skip
+# straight to 44.1 with stale numbers.
 #
 # 44.1 kHz is a separate measurement, not a formality. It drives the OTHER ACG
 # frequency word (mode 2, 0x204B6A, against mode 3's 0x0FA861). A generator
 # locked to the USB SOF is locked at both rates; a free-running one can sit at a
-# different ppm at each, and that difference is itself a discriminator. So the
-# 48 kHz result does not transfer, and assuming it did would be assuming the
-# answer.
-#
-# Card indices are re-derived from the serial here rather than passed through
-# from the 48 kHz run: they are reassigned on every replug and they already
-# flipped once across the 0x0031 reflash. If a unit is replugged mid-chain the
-# pair is void anyway, but a stale index would produce a plausible number from
-# the wrong device, which is worse than an error.
+# different ppm at each. The 48 kHz answer does not transfer.
 set -u
 
 SECS=${1:-1800}
@@ -39,26 +36,30 @@ card_for_serial() {
     return 1
 }
 
-echo "waiting for the 48 kHz pair to land..."
-while [ ! -f /tmp/d48A.json ] || [ ! -f /tmp/d48B.json ]; do
-    sleep 20
-done
-echo "48 kHz pair complete."
-python3 /tmp/measure_drift.py --compare /tmp/d48A.json /tmp/d48B.json \
-    > /tmp/result48.txt 2>&1
-cat /tmp/result48.txt
+run_pair() {
+    rate=$1
+    tag=$2
+    # Card indices are re-derived per pair, never carried forward: they are
+    # reassigned on every replug and they already flipped between A and B
+    # across the 0x0031 reflash. A stale index produces a plausible number
+    # from the wrong device, which is worse than an error.
+    ca=$(card_for_serial "$SER_A") || { echo "FAIL: no card for $SER_A"; return 1; }
+    cb=$(card_for_serial "$SER_B") || { echo "FAIL: no card for $SER_B"; return 1; }
+    echo "=== ${rate} Hz: A=card${ca} B=card${cb}, ${SECS}s ==="
+    /tmp/run_drift_pair.sh "$rate" "$SECS" "$ca" "$cb" "$tag" || return 1
+    while [ ! -f "/tmp/d${tag}A.json" ] || [ ! -f "/tmp/d${tag}B.json" ]; do
+        sleep 20
+    done
+    python3 /tmp/measure_drift.py --compare "/tmp/d${tag}A.json" \
+        "/tmp/d${tag}B.json" > "/tmp/result${tag}.txt" 2>&1
+    cat "/tmp/result${tag}.txt"
+}
 
-CARD_A=$(card_for_serial "$SER_A") || { echo "FAIL: no card for $SER_A"; exit 1; }
-CARD_B=$(card_for_serial "$SER_B") || { echo "FAIL: no card for $SER_B"; exit 1; }
-echo "44.1 kHz: A=card${CARD_A} B=card${CARD_B}"
+rm -f /tmp/chain_done /tmp/result48.txt /tmp/result441.txt
+rm -f /tmp/d48A.json /tmp/d48B.json /tmp/d441A.json /tmp/d441B.json
 
-/tmp/run_drift_pair.sh 44100 "$SECS" "$CARD_A" "$CARD_B" 441
+run_pair 48000 48   || { echo "48 kHz pair failed"; exit 1; }
+run_pair 44100 441  || { echo "44.1 kHz pair failed"; exit 1; }
 
-while [ ! -f /tmp/d441A.json ] || [ ! -f /tmp/d441B.json ]; do
-    sleep 20
-done
-echo "44.1 kHz pair complete."
-python3 /tmp/measure_drift.py --compare /tmp/d441A.json /tmp/d441B.json \
-    > /tmp/result441.txt 2>&1
-cat /tmp/result441.txt
 touch /tmp/chain_done
+echo "chain complete"

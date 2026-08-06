@@ -4,49 +4,58 @@
 THE QUESTION. Both iso endpoints declare SYNC_ADAPTIVE. Adaptive means the
 endpoint slaves its converter to the other end of the link. Ours are clocked by
 the TAS1020B Adaptive Clock Generator from a fixed 24-bit frequency word, and
-nothing in this project has ever established whether that generator locks to the
-USB SOF or free-runs from the crystal. If it free-runs, the declaration is wrong
-and the symptom is drift over minutes — invisible to every measurement taken so
-far, all of which were seconds long.
+nothing in this project has established whether that generator locks to the USB
+SOF or free-runs from the crystal. If it free-runs, the declaration is wrong and
+the symptom is drift over minutes — invisible to every measurement taken so far,
+all of which were seconds long.
 
-WHY NOT THE OBVIOUS VERSION. The tempting test is `arecord -d 1800`, then
-frames/1800. That does not work: the count runs from process start to process
-kill, and arecord's startup costs an unknown ~50-200 ms. Over 1800 s a 100 ms
-skew is 55 ppm of error, and the effect we are trying to see — a crystal
-mismatch — is itself tens of ppm. The measurement would be pure noise wearing a
-number's clothes.
+TWO REJECTED DESIGNS, because each produced a confident wrong answer first.
 
-So timestamp the SAMPLE STREAM, not the process. arecord writes raw frames to a
-pipe; we take a monotonic timestamp after the first chunk and after the last,
-and count only the frames BETWEEN those two instants. Both endpoints are then
-the same event ("a chunk just finished arriving"), so the pipe latency that
-biases t0 biases t1 equally and cancels. Residual error is about one chunk at
-each end — 14 ms at 48 kHz with the default chunk — which over 1800 s is under
-0.02 ppm. The clock, not the harness, becomes the limit.
+  1. `arecord -d T`, then frames/T. The count runs from process start to kill,
+     and arecord's startup costs an unknown ~50-200 ms. Over 1800 s a 100 ms
+     skew is 55 ppm, and the effect sought is tens of ppm. Pure noise.
 
-TWO READINGS, AND THE SECOND IS THE DECISIVE ONE.
+  2. Timestamp the stream at its first and last chunk and divide. Better, and
+     still not enough — it was the first version of this file. Two failures,
+     both measured:
 
-  ABSOLUTE — each unit's rate against the host's monotonic clock. Tells you the
-  ppm error, but "the host clock" and "the USB SOF" are not guaranteed to be the
-  same oscillator, so a small reading here is suggestive rather than conclusive.
+     A FIXED STARTUP DEFICIT. The same pair of units read -196 ppm over 60 s
+     and -10 to -15 ppm over 1800 s. One artifact explains both: roughly 600
+     frames missing at the head of every capture, which is -196 ppm when spread
+     over 60 s and -7 ppm over 1800 s. The endpoint method cannot see it,
+     because it has no interior points to notice the head is anomalous.
 
-  DIFFERENTIAL — unit A against unit B, run simultaneously on the same host
-  controller (both units MUST be on one controller; they share its SOF). This is
-  the one that answers the question. Two independent crystals differ by tens of
-  ppm and cannot agree by accident. Two generators both locked to the same SOF
-  agree exactly. So:
+     A NOISE FLOOR THAT WAS GUESSED. The docstring claimed ~0.02 ppm from chunk
+     quantisation. That is the quantisation term only; the real limit is
+     scheduling jitter on when the reader wakes after read() returns. A few ms
+     at t1 is a few ppm over 1800 s — the same size as the 4.47 ppm
+     differential the tool then declared decisive. A measurement whose error
+     bar is invented cannot adjudicate anything.
 
-      |rate_A - rate_B| ~ 0 ppm    -> SOF-locked. SYNC_ADAPTIVE is honest.
-      |rate_A - rate_B| ~ 10s ppm  -> free-running. The declaration is wrong.
+WHAT THIS DOES INSTEAD. Sample (time, cumulative frames) about once a second
+and fit a straight line. The slope is the rate.
 
-  The differential also cancels any error in the host's own timebase, which the
-  absolute reading cannot.
+  * Jitter at any single sample is averaged over hundreds of samples rather
+    than being the whole measurement, falling as 1/sqrt(N).
+  * A warm-up is DISCARDED before the fit starts, so the startup deficit lands
+    outside the fitted region instead of tilting it.
+  * The fit yields the STANDARD ERROR OF THE SLOPE. That is the honest error
+    bar: it is computed from the residuals actually observed, not asserted.
+    Every verdict below is a comparison against it rather than against a
+    threshold picked by hand.
+
+THE DECISIVE READING IS DIFFERENTIAL. Both units sit on one host controller and
+therefore one SOF. Two independent crystals differ by tens of ppm and cannot
+agree by accident; two generators locked to the same SOF agree exactly. The
+differential also cancels error in the host's own timebase, which the absolute
+reading cannot — and the absolute reading is further suspect because "the host
+clock" and "the USB SOF" need not be the same oscillator.
 
 Pure stdlib on purpose — the void box venv has no numpy, and this runs there.
 
-Usage (on the host holding the units):
-    measure_drift.py --card 2 --rate 48000 --seconds 1800 --label A
-Run one instance per unit, concurrently, then compare with --compare.
+Usage:
+    measure_drift.py --card 2 --rate 48000 --seconds 1800 --label A --out A.json
+    measure_drift.py --compare A.json B.json
 """
 import argparse
 import json
@@ -57,39 +66,76 @@ import time
 
 BYTES_PER_FRAME = 6          # 2ch x 24-bit packed (S24_3LE)
 CHUNK = 4096
+SAMPLE_EVERY_S = 1.0
+DEFAULT_WARMUP_S = 60.0
 
 
-def measure(card, rate, seconds, chunk=CHUNK):
-    """Run arecord on hw:<card>,0 and time the sample stream itself."""
+def linfit(xs, ys):
+    """Least-squares slope, intercept, and standard error of the slope.
+
+    Written out rather than imported: the void box has no numpy, and the
+    standard error is the entire point of doing this at all.
+    """
+    n = len(xs)
+    if n < 3:
+        raise SystemExit("need at least 3 samples to fit a line, got %d" % n)
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    if sxx == 0:
+        raise SystemExit("all samples share one timestamp — cannot fit")
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    slope = sxy / sxx
+    intercept = my - slope * mx
+    # Residual standard deviation, then the slope's standard error.
+    resid = [y - (intercept + slope * x) for x, y in zip(xs, ys)]
+    if n > 2:
+        s2 = sum(r * r for r in resid) / (n - 2)
+    else:
+        s2 = 0.0
+    se_slope = (s2 / sxx) ** 0.5 if sxx > 0 else 0.0
+    return slope, intercept, se_slope
+
+
+def measure(card, rate, seconds, warmup=DEFAULT_WARMUP_S, chunk=CHUNK):
+    # hw: NOT plughw: -- plughw would silently insert a rate converter and hand
+    # back exactly the nominal rate no matter what the device did, which is the
+    # one result that would make this whole measurement meaningless.
     cmd = ["arecord", "-D", "hw:%d,0" % card,
-           "-f", "S24_3LE", "-c", "2", "-r", str(rate),
-           "-t", "raw"]
-    # hw: NOT plughw: -- plughw would silently insert a rate converter and
-    # hand back exactly the nominal rate no matter what the device did, which
-    # is the one result that would make this whole measurement meaningless.
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE)
+           "-f", "S24_3LE", "-c", "2", "-r", str(rate), "-t", "raw"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    t0 = None
-    t1 = None
+    t_start = None
+    fit_t0 = None
+    frames_at_fit_start = None
     frames = 0
-    deadline = None
+    xs, ys = [], []
+    next_sample = None
+
     try:
         while True:
             b = proc.stdout.read(chunk)
             if not b:
                 break
             now = time.monotonic()
-            if t0 is None:
-                # First chunk: start the clock here and count nothing yet, so
-                # t0 and t1 are both "a chunk just finished arriving" and their
-                # pipe latency cancels.
-                t0 = now
-                deadline = t0 + seconds
-                continue
             frames += len(b) / float(BYTES_PER_FRAME)
-            t1 = now
-            if now >= deadline:
+            if t_start is None:
+                t_start = now
+                continue
+            # Everything before the warm-up expires is thrown away: the
+            # startup deficit lives in there, and including it tilts the fit.
+            if now - t_start < warmup:
+                continue
+            if fit_t0 is None:
+                fit_t0 = now
+                frames_at_fit_start = frames
+                next_sample = now + SAMPLE_EVERY_S
+                continue
+            if now >= next_sample:
+                xs.append(now - fit_t0)
+                ys.append(frames - frames_at_fit_start)
+                next_sample = now + SAMPLE_EVERY_S
+            if now - t_start >= seconds:
                 break
     finally:
         proc.terminate()
@@ -99,21 +145,21 @@ def measure(card, rate, seconds, chunk=CHUNK):
             err = ""
         proc.wait()
 
-    if t0 is None or t1 is None or t1 <= t0:
-        raise SystemExit("card %d: no samples arrived — is the device streaming?"
-                         % card)
+    if len(xs) < 3:
+        raise SystemExit("card %d: only %d fit samples — did the stream start?"
+                         % (card, len(xs)))
 
-    elapsed = t1 - t0
-    measured = frames / elapsed
-    ppm = (measured - rate) / float(rate) * 1e6
-    # arecord announces every overrun on stderr. A drifting clock against a
-    # fixed-size host buffer produces these at a steady interval, so the count
-    # is a second, independent signature of the same defect.
+    slope, _icept, se = linfit(xs, ys)
+    ppm = (slope - rate) / float(rate) * 1e6
+    ppm_se = se / float(rate) * 1e6
     overruns = err.lower().count("overrun")
     return {
-        "card": card, "nominal": rate, "elapsed_s": elapsed,
-        "frames": frames, "measured_hz": measured, "ppm": ppm,
-        "overruns": overruns, "stderr_tail": err[-400:],
+        "card": card, "nominal": rate,
+        "fit_span_s": xs[-1], "samples": len(xs),
+        "measured_hz": slope, "se_hz": se,
+        "ppm": ppm, "ppm_se": ppm_se,
+        "overruns": overruns, "warmup_s": warmup,
+        "stderr_tail": err[-400:],
     }
 
 
@@ -122,42 +168,48 @@ def main():
     ap.add_argument("--card", type=int)
     ap.add_argument("--rate", type=int, default=48000)
     ap.add_argument("--seconds", type=float, default=1800.0)
+    ap.add_argument("--warmup", type=float, default=DEFAULT_WARMUP_S)
     ap.add_argument("--label", default="")
-    ap.add_argument("--out", default=None, help="write the reading as JSON")
-    ap.add_argument("--compare", nargs=2, metavar="JSON",
-                    help="two --out files: report the differential")
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--compare", nargs=2, metavar="JSON")
     args = ap.parse_args()
 
     if args.compare:
         a = json.load(open(args.compare[0]))
         b = json.load(open(args.compare[1]))
-        d = a["measured_hz"] - b["measured_hz"]
-        dppm = d / float(a["nominal"]) * 1e6
-        print("  %-10s %12.4f Hz  %+8.2f ppm  overruns %d"
-              % (a.get("label", "A"), a["measured_hz"], a["ppm"], a["overruns"]))
-        print("  %-10s %12.4f Hz  %+8.2f ppm  overruns %d"
-              % (b.get("label", "B"), b["measured_hz"], b["ppm"], b["overruns"]))
-        print("  differential %+.2f ppm" % dppm)
+        for r in (a, b):
+            print("  %-6s %12.4f Hz  %+8.3f +/- %.3f ppm  %d samples over "
+                  "%.0f s  overruns %d"
+                  % (r.get("label", "?"), r["measured_hz"], r["ppm"],
+                     r["ppm_se"], r["samples"], r["fit_span_s"], r["overruns"]))
+        d = a["ppm"] - b["ppm"]
+        # Errors add in quadrature; this is the uncertainty ON THE DIFFERENCE,
+        # which is what the verdict must be judged against.
+        de = (a["ppm_se"] ** 2 + b["ppm_se"] ** 2) ** 0.5
+        print("  differential %+.3f +/- %.3f ppm" % (d, de))
         print()
-        # 2 ppm is comfortably above this harness's ~0.02 ppm floor and far
-        # below any real crystal mismatch, so it separates the two hypotheses
-        # without sitting near either.
-        if abs(dppm) < 2.0:
-            print("  VERDICT  the two units agree -> both slaved to the shared")
-            print("           SOF. SYNC_ADAPTIVE is an honest declaration.")
+        if de == 0:
+            print("  VERDICT  no uncertainty estimate — cannot adjudicate.")
+            return 0
+        sigma = abs(d) / de
+        print("  separation   %.1f sigma" % sigma)
+        if sigma < 3.0:
+            print("  VERDICT  the two units agree within the measurement's own")
+            print("           error -> consistent with both slaved to the")
+            print("           shared SOF. SYNC_ADAPTIVE is defensible.")
         else:
-            print("  VERDICT  the units disagree by more than two independent")
-            print("           crystals could agree by accident -> free-running.")
-            print("           SYNC_ADAPTIVE is wrong; see task #185.")
+            print("  VERDICT  the units differ by %.1f sigma -> independent" % sigma)
+            print("           clocks, i.e. free-running. SYNC_ADAPTIVE is")
+            print("           wrong; see tasks #185 and #186.")
         return 0
 
     if args.card is None:
         raise SystemExit("--card is required unless --compare is given")
-    r = measure(args.card, args.rate, args.seconds)
+    r = measure(args.card, args.rate, args.seconds, args.warmup)
     r["label"] = args.label
-    print("  %s card %d: %.4f Hz (%+.2f ppm), %.1f s, %d overruns"
+    print("  %s card %d: %.4f Hz (%+.3f +/- %.3f ppm), %d samples, %d overruns"
           % (args.label or "?", r["card"], r["measured_hz"], r["ppm"],
-             r["elapsed_s"], r["overruns"]))
+             r["ppm_se"], r["samples"], r["overruns"]))
     if args.out:
         json.dump(r, open(args.out, "w"), indent=1)
     return 0
