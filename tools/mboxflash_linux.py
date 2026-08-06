@@ -521,29 +521,54 @@ def cmd_info(args):
 
 
 
-def _hub_port_for(dev):
+def _hub_port_for(dev, root="/sys/bus/usb/devices"):
     """
     Map a pyusb device to its (hub-location, port) for uhubctl, via sysfs.
-    Returns (None, None) if it cannot be determined.
+    Returns (None, None) if it cannot be determined UNAMBIGUOUSLY.
+
+    MATCHES ON bus:devnum, NOT ON VID:PID. This used to match idVendor and
+    idProduct and take the first hit, which is wrong for the only situation it
+    is ever used in: in DFU BOTH units enumerate as ffff:fffe and carry no
+    serial, so VID:PID identifies the PRODUCT and never the UNIT -- the same
+    reason dfu_vendor.py and this script both target by --addr.
+
+    Observed 2026-08-06: flashing unit A on port 2-1.4 and unit B on 2-1.2 both
+    printed `uhubctl -l 2-1 -p 2`, because 2-1.2 came first out of glob(). The
+    bus reset that switched A into app mode was delivered to B's port. It
+    happened to work -- a hub-level cycle disturbs the bus either way and A
+    re-enumerated -- which is precisely why nothing caught it for so long.
+
+    bus/devnum is what the caller already used to pick the target, so keying on
+    it makes the reset provably land on the device that was just written.
+    Ambiguity returns (None, None) and the caller prints manual instructions,
+    rather than cycling a port on a guess.
     """
     try:
         import glob, os
-        for p in glob.glob("/sys/bus/usb/devices/*"):
+        want_bus, want_dev = int(dev.bus), int(dev.address)
+        hits = []
+        for p in glob.glob(os.path.join(root, "*")):
             try:
-                v = open(os.path.join(p, "idVendor")).read().strip()
-                d = open(os.path.join(p, "idProduct")).read().strip()
-            except OSError:
+                b = int(open(os.path.join(p, "busnum")).read().strip())
+                d = int(open(os.path.join(p, "devnum")).read().strip())
+            except (OSError, ValueError):
                 continue
-            if int(v, 16) != dev.idVendor or int(d, 16) != dev.idProduct:
+            if (b, d) != (want_bus, want_dev):
                 continue
-            name = os.path.basename(p)          # e.g. "2-1.2"
+            name = os.path.basename(p)          # e.g. "2-1.4"
             if "-" not in name or "." not in name:
+                # A device on a root-hub port ("2-1") has no parent hub to
+                # address; uhubctl needs <hub>-<port>, so decline rather than
+                # invent one.
                 continue
-            hub, port = name.rsplit(".", 1)     # ("2-1", "2")
-            return hub, int(port)
+            hub, port = name.rsplit(".", 1)     # ("2-1", "4")
+            hits.append((hub, int(port)))
+        if len(hits) == 1:
+            return hits[0]
     except Exception:
         pass
     return None, None
+
 
 def _open_idle_for_read():
     """Open the DFU device and insist on dfuIDLE before any UPLOAD.
@@ -908,13 +933,53 @@ def _selftest():
         chk("a flipped payload byte in the real image is still caught",
             rd6 != re6)
 
+    # --- _hub_port_for: the post-manifest bus reset must land on the TARGET ---
+    #
+    # In DFU both units are ffff:fffe with no serial, so the old VID:PID match
+    # returned whichever sysfs entry glob() yielded first. On 2026-08-06 that
+    # sent `uhubctl -l 2-1 -p 2` for BOTH flashes, including the one targeting
+    # 2-1.4. It worked by luck -- a hub cycle disturbs the bus either way -- so
+    # only reading the log caught it. This builds a fake sysfs and checks the
+    # lookup discriminates.
+    import tempfile, os as _os
+
+    class _FakeDev:
+        def __init__(self, bus, address):
+            self.bus, self.address = bus, address
+            self.idVendor, self.idProduct = 0xFFFF, 0xFFFE
+
+    with tempfile.TemporaryDirectory() as td:
+        def mk(name, bus, dev):
+            d = _os.path.join(td, name)
+            _os.makedirs(d)
+            open(_os.path.join(d, "busnum"), "w").write("%d\n" % bus)
+            open(_os.path.join(d, "devnum"), "w").write("%d\n" % dev)
+            open(_os.path.join(d, "idVendor"), "w").write("ffff\n")
+            open(_os.path.join(d, "idProduct"), "w").write("fffe\n")
+        # Two identical-looking DFU devices on different ports, plus the hub.
+        mk("2-1.2", 2, 33)
+        mk("2-1.4", 2, 32)
+        mk("2-1",   2, 12)
+
+        chk("hub/port resolves the unit on 2-1.4 by devnum, not by VID:PID",
+            _hub_port_for(_FakeDev(2, 32), root=td) == ("2-1", 4))
+        chk("hub/port resolves the OTHER unit to its own port",
+            _hub_port_for(_FakeDev(2, 33), root=td) == ("2-1", 2))
+        # An unknown device must not fall back to "whatever was first".
+        chk("an unmatched device yields no port rather than a guess",
+            _hub_port_for(_FakeDev(2, 99), root=td) == (None, None))
+        # A device directly on a root-hub port has no <hub>.<port> to address.
+        chk("a root-hub device declines rather than inventing a hub",
+            _hub_port_for(_FakeDev(2, 12), root=td) == (None, None))
+
     for f in fails:
         print("SELFTEST FAIL: %s" % f)
     if fails:
         return 1
     print("SELFTEST PASS: read-back compare handles the masked header checksum, "
-          "still catches header and payload corruption, and agrees with a real "
-          "device readback")
+          "still catches header and payload corruption, agrees with a real "
+          "device readback, and the post-manifest bus reset targets the unit "
+          "that was written")
     return 0
 
 
