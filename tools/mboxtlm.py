@@ -590,7 +590,7 @@ def block11(b):
     last = b[4] | (b[5] << 8)
     windows = b[6]
     sof_lo = b[7]
-    out = ["block 3 -- ACG clock measurement (#186 stage 1)"]
+    out = ["block 11 -- ACG clock measurement (#186 stage 1)"]
     if windows == 0:
         out.append("  no completed window yet (1024 frames ~ 1.02 s)")
         out.append("  last frame delta: %d MCLK" % last)
@@ -648,6 +648,7 @@ TITLES = {
     8: "boot-ROM handoff snapshot",
     9: "panel state (selected source)",
     10: "CS8427 readback probe (#165) -- which pin answered",
+    11: "ACG clock measurement (#186 stage 1)",
 }
 
 
