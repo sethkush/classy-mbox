@@ -167,7 +167,7 @@ Ship 185, 187 and 188 in one image.
 |---|---|---|---|
 | **186** | decide the playback feedback endpoint | 0-200 bytes | 181 |
 | ~~189~~ | does the mute pair separate playback from capture | **DONE** — they separate: 0x23.2 = capture, 0x23.3 = playback. `FINDING_189_the_mute_pair_separates.md` |
-| ~~190~~ | declare Feature Units with Mute | **DONE, unflashed** — FU 8 (playback) + FU 9 (capture), master Mute each. Cost 175 bytes; the image is now **6016 of 6016** |
+| ~~190~~ | declare Feature Units with Mute | **DONE and CONFIRMED ON HARDWARE** — snd-usb-audio parses both; each switch drives its own gate; the mute survives a stream reopen. `FINDING_190_feature_units_on_hardware.md` |
 
 186 only exists if #181 finds the ACG free-running. It is a design decision
 before it is a coding task: an asynchronous OUT endpoint obliges a feedback IN

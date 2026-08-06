@@ -112,6 +112,43 @@ restore() {
 }
 trap restore EXIT INT TERM
 
+# The two switches, addressed by ELEMENT NAME rather than by simple-mixer name.
+#
+# snd-usb-audio merges both Feature Units into ONE simple control ("PCM", with
+# pswitch and cswitch), so `amixer set PCM ...` cannot name the capture side --
+# `set PCM capture mute` is rejected outright. Worse, a scontrols-based search
+# for something matching /capture/ finds "PCM Capture Source", the Selector
+# Unit, which is a different control entirely. Element names are unambiguous:
+#
+#   PCM Playback Switch -> FU 8 -> codec bit 0x23.3
+#   PCM Capture Switch  -> FU 9 -> codec bit 0x23.2
+PB_ELEM="PCM Playback Switch"
+CAP_ELEM="PCM Capture Switch"
+
+mute_ctls() {
+    amixer -c "$1" controls 2>/dev/null | sed -n "s/.*name='\(.*\)'/\1/p"
+}
+
+# Apply one mask value through the class control. `a` leaves 0x23.2 up (capture
+# audible, playback muted); `b` leaves 0x23.3 up (playback audible, capture
+# muted) -- #189's naming, preserved so the two runs are comparable.
+apply_mask() {
+    _card=$1; _m=$2
+    case "$_m" in
+        both) _pb=on;  _cap=on  ;;
+        none) _pb=off; _cap=off ;;
+        a)    _pb=off; _cap=on  ;;
+        b)    _pb=on;  _cap=off ;;
+        *)    echo "FATAL: unknown mask $_m"; return 1 ;;
+    esac
+    amixer -c "$_card" -q cset name="$PB_ELEM" $_pb >/dev/null 2>&1 || {
+        echo "FATAL: cset '$PB_ELEM' $_pb on card $_card failed"; return 1; }
+    amixer -c "$_card" -q cset name="$CAP_ELEM" $_cap >/dev/null 2>&1 || {
+        echo "FATAL: cset '$CAP_ELEM' $_cap on card $_card failed"; return 1; }
+    return 0
+}
+
+
 # LEFT ONLY. ch2 is the control and must stay unfed -- and a tone on both
 # channels would also drive A's out2 -> src2 self-loop, putting A's own DAC and
 # ADC back in series with each other, which is the very thing the crossed
@@ -130,44 +167,15 @@ done
 # which is exactly the failure mode the first run of this script had.
 echo "--- mixer controls on card $CARD_A:"
 mute_ctls "$CARD_A" | sed 's/^/    /'
-PB_CTL=$(mute_ctls "$CARD_A" | grep -iE "playback|pcm|speaker|line out" | head -1)
-CAP_CTL=$(mute_ctls "$CARD_A" | grep -iE "capture|mic|line in" | head -1)
-if [ -z "$PB_CTL" ] || [ -z "$CAP_CTL" ]; then
-    echo "FATAL: could not find both mute switches (playback='$PB_CTL'"
-    echo "       capture='$CAP_CTL'). The host did not parse the Feature Units,"
-    echo "       or names them differently -- read the list above and set"
-    echo "       PB_CTL/CAP_CTL by hand rather than letting the sweep run."
-    exit 1
-fi
-echo "    -> playback switch: '$PB_CTL'   capture switch: '$CAP_CTL'"
-
-# Resolve the playback and capture mute switches for a card, by asking ALSA.
-mute_ctls() {
-    amixer -c "$1" scontrols 2>/dev/null | sed "s/^Simple mixer control '//;s/',0$//"
-}
-
-# Apply one mask value through the class control. `a` leaves 0x23.2 up (capture
-# audible, playback muted); `b` leaves 0x23.3 up (playback audible, capture
-# muted) -- #189's naming, preserved so the two runs are comparable.
-apply_mask() {
-    _card=$1; _m=$2
-    case "$_m" in
-        both) _pb=unmute; _cap=unmute ;;
-        none) _pb=mute;   _cap=mute   ;;
-        a)    _pb=mute;   _cap=unmute ;;
-        b)    _pb=unmute; _cap=mute   ;;
-        *)    echo "FATAL: unknown mask $_m"; return 1 ;;
-    esac
-    for _c in $PB_CTL; do
-        amixer -c "$_card" -q set "$_c" $_pb 2>/dev/null || {
-            echo "FATAL: amixer -c $_card set '$_c' $_pb failed"; return 1; }
-    done
-    for _c in $CAP_CTL; do
-        amixer -c "$_card" -q set "$_c" $_cap 2>/dev/null || {
-            echo "FATAL: amixer -c $_card set '$_c' $_cap failed"; return 1; }
-    done
-    return 0
-}
+for _e in "$PB_ELEM" "$CAP_ELEM"; do
+    mute_ctls "$CARD_A" | grep -qxF "$_e" || {
+        echo "FATAL: card $CARD_A has no element '$_e'. The host did not parse"
+        echo "       the Feature Units -- read the list above. Do NOT let the"
+        echo "       sweep run: with no mute reaching the device every row is"
+        echo "       the same condition measured ten times."
+        exit 1; }
+done
+echo "    -> '$PB_ELEM' and '$CAP_ELEM' both present"
 
 # One cell: UUT at $mask, measured in one direction.
 #   arm=out -> play on UUT, record on REF
