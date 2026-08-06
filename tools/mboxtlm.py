@@ -590,7 +590,7 @@ def block11(b):
     last = b[4] | (b[5] << 8)
     windows = b[6]
     rejects = b[7]
-    out = ["block 11 -- ACG clock measurement (#186 stage 1)"]
+    out = []
     if windows == 0:
         out.append("  no completed window yet (1024 frames ~ 1.02 s)")
         out.append("  last frame delta: %d MCLK" % last)
