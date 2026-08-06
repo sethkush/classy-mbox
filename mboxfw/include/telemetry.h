@@ -395,8 +395,6 @@ extern volatile __data unsigned char tlm_mux_sets;
 extern volatile __data unsigned char tlm_mux_rejects;
 
 /* Peripheral init results (block 4) */
-extern volatile __data unsigned char tlm_cs8427_status;
-extern volatile __data unsigned char tlm_codec_status;
 
 /* Port state sampled in main() before hw_init() touches the pins.
  *

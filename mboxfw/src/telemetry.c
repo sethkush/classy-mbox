@@ -24,8 +24,6 @@ volatile __data unsigned int  tlm_last_windex = 0;
 volatile __data unsigned int  tlm_last_wlength = 0;
 
 
-volatile __data unsigned char tlm_cs8427_status = 0xFF;
-volatile __data unsigned char tlm_codec_status  = 0xFF;
 
 volatile __data unsigned char tlm_last_iface = 0xFF;  /* 0xFF = none seen */
 volatile __data unsigned char tlm_last_alt   = 0xFF;
@@ -89,20 +87,21 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
      * evaluates at 44.1/48, so there is nothing left for it to discriminate.
      * Block 6 still carries the live DMA state. */
     case 4:
-        /* Peripheral results — separates a hardware fault from a
-         * firmware fault without a scope. */
-        out[0] = 0xFF;   /* was tlm_eeprom_ok; its only writer,
-                          * eeprom_smoke_test(), went with the
-                          * boot-button DFU trigger on 2026-08-05 */
-        out[1] = tlm_cs8427_status;
-        out[2] = tlm_codec_status;
-        out[3] = tlm.stalls;
-        /* Bytes 4-5 are LIVE port reads, sampled at the moment the host
-         * asks. Hold the button while reading block 4 to see which bit moves.
-         * Bytes 6-7 carried the handoff samples until 0x002B; see telemetry.h
-         * for why they went and what replaced them. They now read 0. */
-        out[4] = P1;
-        out[5] = P3;
+        /* Stalls, and the LIVE port reads.
+         *
+         * Bytes 0-2 used to be tlm_eeprom_ok / tlm_cs8427_status /
+         * tlm_codec_status. All three were initialised to 0xFF ("not run") and
+         * NEVER WRITTEN BY ANYTHING -- eeprom_ok lost its only writer when the
+         * boot-button smoke test went, and the other two never had one. They
+         * reported a plausible-looking sentinel forever, which is precisely
+         * the failure this telemetry exists to avoid: an instrument that reads
+         * like a measurement while measuring nothing. Removed 2026-08-05.
+         *
+         * P1/P3 are sampled at the moment the host asks. Hold a front-panel
+         * button while reading this block to see which bit moves. */
+        out[0] = tlm.stalls;
+        out[1] = P1;
+        out[2] = P3;
         return 1;
 
     case 5:

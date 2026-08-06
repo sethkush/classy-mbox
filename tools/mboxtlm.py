@@ -306,18 +306,16 @@ def block3(b):
 
 
 def block4(b):
-    def res(v):
-        return "not run" if v == 0xFF else "0x%02X" % v
+    """Stalls and the live port reads.
+
+    Bytes 0-2 carried eeprom_ok / cs8427_status / codec_status until build
+    0x0030. All three werealways 0xFF: initialised to "not run" and never written
+    by anything. They were removed rather than wired up, because nothing in the
+    firmware had a status to report there.
+    """
     return [
-        "eeprom_ok:       %s" % res(b[0]),
-        "cs8427_status:   %s" % res(b[1]),
-        "codec_status:    %s" % res(b[2]),
-        "stalls:          %d" % b[3],
-        # Bytes 6-7 carried the handoff samples until build 0x002B, which
-        # retired them: the question they answered (which port bit does a
-        # front-panel control move?) is closed, and the bytes bought back
-        # iSerialNumber alongside the 96 kHz playback instrumentation.
-        "P1 live=0x%02X   P3 live=0x%02X" % (b[4], b[5]),
+        "stalls:          %d" % b[0],
+        "P1 live=0x%02X   P3 live=0x%02X" % (b[1], b[2]),
     ]
 
 
