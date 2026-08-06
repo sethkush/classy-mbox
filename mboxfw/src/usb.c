@@ -778,67 +778,23 @@ static void handle_setup(void)
         return;
     }
 
-    if (reqtype == 0x00) {
-        /* Standard request */
-        switch (bReq) {
-            case REQ_GET_DESCRIPTOR:   handle_get_descriptor();   break;
-            case REQ_SET_CONFIG:       handle_set_configuration(); break;
-            case REQ_SET_INTERFACE:    handle_set_interface();     break;
-            case REQ_GET_INTERFACE:    handle_get_interface();     break;
-            case REQ_SET_ADDRESS:
-                /* USB 2.0 §9.4.6: the new address takes effect only after
-                 * the STATUS stage (zero-length IN packet) completes. Stage
-                 * that reply here and defer the USBFADR write to the
-                 * VEC_IEP0 completion in usb_service() below. */
-                STAGE(15);
-                g_pending_address = wValueL;
-                reply_zero_length();
-                break;
-            case REQ_GET_STATUS: {
-                /* USB 2.0 §9.4.5: 2 bytes for every recipient. Bus-powered,
-                 * no remote wakeup, no halt support => both bytes zero.
-                 * macOS IOUSBFamily issues this during enumeration, so it
-                 * MUST be answered. */
-                unsigned char st[2];
-                st[0] = 0; st[1] = 0;
-                stage_immediate(st, 2);
-                break;
-            }
-            case REQ_CLEAR_FEATURE:
-            case REQ_SET_FEATURE:
-                /* No features are supported (no remote wakeup, and the iso
-                 * streaming endpoints cannot halt per USB 2.0 §5.6.4).
-                 * Acknowledge rather than stall — a stall here makes some
-                 * hosts abandon the device. */
-                reply_zero_length();
-                break;
-            case REQ_GET_CONFIG:
-                stage_immediate(&g_configured, 1);
-                break;
-            default:
-                /* Everything else (SET_DESCRIPTOR, SYNCH_FRAME, reserved
-                 * codes) is optional: STALL is the spec-correct response.
-                 *
-                 * DO NOT reintroduce `lcall #0x2f00` here. That was present
-                 * until 2026-07-26, justified by a comment claiming "Rev 20
-                 * relies on the same fallback (its 0x0118 shim ends in ljmp
-                 * 0x2f00)". That claim was fabricated. The bytes 02 2F 00 at
-                 * Rev 20 0x011F are not an instruction at all — they are the
-                 * first entry of its standard-request dispatch table
-                 * (BE16 handler 0x022F, bRequest 0x00 = GET_STATUS), which
-                 * runs to 0x0140 and covers all 11 standard requests
-                 * in-firmware. Rev 20 never delegates to the boot ROM.
-                 * Verified by decoding firmware_stock/rev20_firmware_code.bin
-                 * directly; see firmware_stock/disasm/rev20_ANNOTATED.md.
-                 *
-                 * On mboxfw the call was fatal: our image ends at 0x0C7D, so
-                 * 0x2F00 is ~8.8 KB past it. Any standard request that fell
-                 * through to the default case executed unmapped memory and
-                 * killed the CPU mid-enumeration. */
-                reply_stall();
-                break;
-        }
-    } else if (reqtype == 0x20) {
+    /* CLASS BEFORE STANDARD, deliberately — #188.
+     *
+     * These two branches test mutually exclusive values of reqtype, so the
+     * order is free to choose. It is chosen for the DFU trigger: the Digi
+     * enter-DFU class request is the ONLY remote escape from a soft-brick,
+     * and with the standard switch first it was reached only after falling
+     * past every standard case.
+     *
+     * That cost was invisible until #188 added 24 bytes to the standard
+     * branch and dfu_timing_profile.sh went from 3840 to 4080 cycles,
+     * through a 4000-cycle budget. The budget is a self-imposed guard rail
+     * with ~150x margin over any real host timeout, so raising it to fit
+     * would have been easy and wrong: the gate was reporting that the most
+     * safety-critical request on the device sits at the END of the
+     * dispatcher. Reordering answers what the gate actually said.
+     */
+    if (reqtype == 0x20) {
         /* Class request — recipient determines handler */
         if (recip == 0x02) {          /* endpoint recipient */
             handle_class_endpoint_request();
@@ -873,6 +829,103 @@ static void handle_setup(void)
             }
         } else {
             reply_stall();
+        }
+    } else if (reqtype == 0x00) {
+        /* Standard request */
+        switch (bReq) {
+            case REQ_GET_DESCRIPTOR:   handle_get_descriptor();   break;
+            case REQ_SET_CONFIG:       handle_set_configuration(); break;
+            case REQ_SET_INTERFACE:    handle_set_interface();     break;
+            case REQ_GET_INTERFACE:    handle_get_interface();     break;
+            case REQ_SET_ADDRESS:
+                /* USB 2.0 §9.4.6: the new address takes effect only after
+                 * the STATUS stage (zero-length IN packet) completes. Stage
+                 * that reply here and defer the USBFADR write to the
+                 * VEC_IEP0 completion in usb_service() below. */
+                STAGE(15);
+                g_pending_address = wValueL;
+                reply_zero_length();
+                break;
+            case REQ_GET_STATUS: {
+                /* USB 2.0 §9.4.5: 2 bytes for every recipient. Bus-powered,
+                 * no remote wakeup, no halt support => both bytes zero.
+                 * macOS IOUSBFamily issues this during enumeration, so it
+                 * MUST be answered. */
+                unsigned char st[2];
+                st[0] = 0; st[1] = 0;
+                stage_immediate(st, 2);
+                break;
+            }
+            case REQ_CLEAR_FEATURE:
+                /* #188. USB 2.0 §9.4.1: a ClearFeature() naming a feature
+                 * selector that does not exist "causes the device to respond
+                 * with a Request Error" — i.e. a STALL.
+                 *
+                 * Until 2026-08-05 both this and SetFeature ACKed everything
+                 * unconditionally, which is the clearest outright Chapter 9
+                 * violation this firmware had. The comment justifying it
+                 * ("a stall here makes some hosts abandon the device") records
+                 * a real symptom, but the fix over-corrected: the answer to
+                 * "one particular stall broke enumeration" is not "never
+                 * stall anything".
+                 *
+                 * ENDPOINT_HALT (selector 0) is the exception and is still
+                 * ACKed. It is how a host clears a stalled endpoint
+                 * (usb_clear_halt on Linux), so refusing it would take away
+                 * the host's recovery path — and on this device it is a
+                 * genuine no-op: the iso streaming endpoints have no halt
+                 * feature to clear (§5.6.4), and EP0's stall is already
+                 * cleared at the top of handle_setup by the TI
+                 * STALLClrInEp0/STALLClrOutEp0 prologue.
+                 *
+                 * DEVICE_REMOTE_WAKEUP is NOT ACKed: we do not advertise it
+                 * in bmAttributes, so clearing it is a request to change a
+                 * feature that does not exist here. */
+                if (wValueH == 0x00 && wValueL == 0x00 && recip == 0x02) {
+                    reply_zero_length();
+                } else {
+                    reply_stall();
+                }
+                break;
+            case REQ_SET_FEATURE:
+                /* #188. USB 2.0 §9.4.9: same Request Error rule, and this
+                 * device has no settable feature at all —
+                 *   DEVICE_REMOTE_WAKEUP: not advertised in bmAttributes;
+                 *   ENDPOINT_HALT:        the streaming endpoints are
+                 *                         isochronous and have no halt (§5.6.4);
+                 *   TEST_MODE:            high-speed only, and this is a
+                 *                         full-speed device.
+                 * So every SetFeature() is a Request Error. Unlike the
+                 * ClearFeature case there is no host-recovery path to
+                 * preserve: a host that cannot set a feature simply does not
+                 * set it. */
+                reply_stall();
+                break;
+            case REQ_GET_CONFIG:
+                stage_immediate(&g_configured, 1);
+                break;
+            default:
+                /* Everything else (SET_DESCRIPTOR, SYNCH_FRAME, reserved
+                 * codes) is optional: STALL is the spec-correct response.
+                 *
+                 * DO NOT reintroduce `lcall #0x2f00` here. That was present
+                 * until 2026-07-26, justified by a comment claiming "Rev 20
+                 * relies on the same fallback (its 0x0118 shim ends in ljmp
+                 * 0x2f00)". That claim was fabricated. The bytes 02 2F 00 at
+                 * Rev 20 0x011F are not an instruction at all — they are the
+                 * first entry of its standard-request dispatch table
+                 * (BE16 handler 0x022F, bRequest 0x00 = GET_STATUS), which
+                 * runs to 0x0140 and covers all 11 standard requests
+                 * in-firmware. Rev 20 never delegates to the boot ROM.
+                 * Verified by decoding firmware_stock/rev20_firmware_code.bin
+                 * directly; see firmware_stock/disasm/rev20_ANNOTATED.md.
+                 *
+                 * On mboxfw the call was fatal: our image ends at 0x0C7D, so
+                 * 0x2F00 is ~8.8 KB past it. Any standard request that fell
+                 * through to the default case executed unmapped memory and
+                 * killed the CPU mid-enumeration. */
+                reply_stall();
+                break;
         }
     } else {
         reply_stall();

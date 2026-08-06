@@ -92,6 +92,34 @@ REQUESTS = [
     # code with no stock address to cite, so it gets executed before it is
     # ever flashed rather than after.
     ("telemetry read block 10", setup(0xC0, 0x10, 10,     0,  8), ARMED),
+
+    # ---- #188: the feature requests ----------------------------------
+    #
+    # Until 2026-08-05 both of these ACKed unconditionally, which USB 2.0
+    # §9.4.1 and §9.4.9 both forbid: a feature selector that does not exist
+    # "causes the device to respond with a Request Error". The change is
+    # behavioural and had no coverage, so it gets stimulus here rather than
+    # waiting for a host to disagree with it on the bench.
+    #
+    # SetFeature: this device has no settable feature at all.
+    # DEVICE_REMOTE_WAKEUP (1) is not advertised in bmAttributes, TEST_MODE
+    # (2) is high-speed only, and ENDPOINT_HALT (0) does not exist on an
+    # isochronous endpoint (§5.6.4). All three stall.
+    ("SET_FEATURE remote-wakeup",
+     setup(0x00, 0x03, 0x0001, 0,      0), STALL),
+    ("SET_FEATURE halt on iso EP",
+     setup(0x02, 0x03, 0x0000, 0x0081, 0), STALL),
+
+    # ClearFeature(ENDPOINT_HALT) is the ONE that must still be ACKed: it is
+    # how a host clears a stalled endpoint (usb_clear_halt on Linux), so
+    # stalling it would remove the host's recovery path. On this device it is
+    # a genuine no-op, which is why acknowledging it is honest rather than
+    # merely convenient.
+    ("CLEAR_FEATURE halt on EP",
+     setup(0x02, 0x01, 0x0000, 0x0081, 0), ARMED),
+    # ...but clearing a feature we never advertised is still a Request Error.
+    ("CLEAR_FEATURE remote-wakeup",
+     setup(0x00, 0x01, 0x0001, 0,      0), STALL),
 ]
 
 
