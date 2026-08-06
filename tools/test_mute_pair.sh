@@ -60,7 +60,7 @@ PY=${PY:-$HOME/mbox-venv/bin/python}
 TLM="sudo $PY $HOME/mboxtlm_cur.py"
 LEVEL="$PY $HOME/ch_level.py"
 RATE=48000
-SECS=6
+SECS=8
 TONE=/tmp/mute_tone.wav
 OUT=${OUT:-/tmp/mute189}
 
@@ -119,8 +119,21 @@ done
 # One cell: UUT at $mask, measured in one direction.
 #   arm=out -> play on UUT, record on REF
 #   arm=in  -> play on REF, record on UUT
+# THE MASK IS APPLIED MID-STREAM, AND THAT IS THE WHOLE DESIGN.
+#
+# streaming_set_rate() ends with `g_codec_state_23 |= CODEC23_MUTE_PAIR` and
+# publishes -- so EVERY stream open re-raises the pair. The first working
+# version of this script set the mask and then started aplay/arecord, which
+# undid it before a single sample was captured, and produced a complete table
+# in which nothing was ever muted. The tell was `none` reading identical to
+# `both` while #171 had measured 71 dB between them.
+#
+# So: bring both streams up first, let them settle, THEN apply the mask, and
+# analyse only the window after it landed. The pair is read back at the END of
+# the capture as well -- if something re-raised it mid-capture the row is
+# marked rather than reported as a level.
 cell() {
-    _uut_card=$1; _ref_card=$2; _arm=$3; _tag=$4
+    _uut_card=$1; _ref_card=$2; _arm=$3; _tag=$4; _uut_ser=$5; _mask=$6
     if [ "$_arm" = out ]; then
         _play=$_uut_card; _rec=$_ref_card
     else
@@ -128,12 +141,24 @@ cell() {
     fi
     aplay -D hw:$_play -q $TONE >/dev/null 2>&1 &
     _ap=$!
-    sleep 1
     arecord -D hw:$_rec -f S24_3LE -c2 -r$RATE -d $SECS "$OUT/$_tag.wav" \
-        >/dev/null 2>&1
-    wait $_ap 2>/dev/null
+        >/dev/null 2>&1 &
+    _ar=$!
+    sleep 2                     # both streams live and past their set_rate
+    _got=$($TLM mute $_mask --serial $_uut_ser 2>&1)
+    case "$_got" in
+        *"as requested"*) : ;;
+        *) echo "FATAL: mute mask=$_mask on $_uut_ser not confirmed:"
+           echo "$_got" | sed 's/^/    /'; kill $_ap $_ar 2>/dev/null; exit 1 ;;
+    esac
+    wait $_ar 2>/dev/null
+    _after=$($TLM read 9 --serial $_uut_ser 2>&1 | sed -n 's/.*codec word=0x\(..\).*/\1/p')
+    kill $_ap 2>/dev/null; wait $_ap 2>/dev/null
     printf '  %-22s ' "$_tag"
-    $LEVEL --skip=1.0 "$OUT/$_tag.wav" | sed -n 's/^  ch/ch/p' | tr '\n' '|'
+    # --skip=3 so the analysed window starts a full second after the mask
+    # landed at t=2, with the stream already running before that.
+    $LEVEL --skip=3.0 "$OUT/$_tag.wav" | sed -n 's/^  ch/ch/p' | tr '\n' '|'
+    printf ' 0x23=0x%s' "$_after"
     echo
 }
 
@@ -141,10 +166,15 @@ sweep() {
     _uut_name=$1; _uut_ser=$2; _uut_card=$3; _ref_card=$4
     echo
     echo "================ UUT = unit $_uut_name  (REF = the other) ================"
+    # The mask is applied inside cell(), mid-stream. ABORTING when the device
+    # does not confirm it is cell()'s job for the same reason: the first
+    # version of this script grep'd for the success text and printed nothing
+    # when the request failed outright, turning a hard failure into ten clean
+    # identical rows. Never let the confirmation step be the thing that can be
+    # silent.
     for mask in both none a b both; do
-        $TLM mute $mask --serial $_uut_ser 2>&1 | grep -E "as requested|did not take"
-        cell $_uut_card $_ref_card out "${_uut_name}_${mask}_out"
-        cell $_uut_card $_ref_card in  "${_uut_name}_${mask}_in"
+        cell $_uut_card $_ref_card out "${_uut_name}_${mask}_out" $_uut_ser $mask
+        cell $_uut_card $_ref_card in  "${_uut_name}_${mask}_in"  $_uut_ser $mask
     done
 }
 
@@ -159,3 +189,6 @@ echo "  ch0 is the FED channel (src1, the crossed TS leg). ch1 is unfed and is"
 echo "  the control -- BENCH_WIRING.md measures ~66 dB between them, so a row"
 echo "  claiming silence has to clear ch1's floor to mean anything."
 echo "  A Feature Unit is possible ONLY if 'a' and 'b' kill opposite arms."
+echo "  0x23= is the codec word high byte read back AFTER the capture. If its"
+echo "  low nibble is not the requested mask, something re-raised the pair"
+echo "  mid-capture and that row measures nothing."

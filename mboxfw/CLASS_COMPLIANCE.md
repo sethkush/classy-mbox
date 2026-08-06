@@ -166,8 +166,8 @@ Ship 185, 187 and 188 in one image.
 | # | task | cost | blocked by |
 |---|---|---|---|
 | **186** | decide the playback feedback endpoint | 0-200 bytes | 181 |
-| **189** | does the mute pair separate playback from capture | **1 flash** (was 2) | — |
-| **190** | declare Feature Units with Mute | ~70 bytes | 189 |
+| ~~189~~ | does the mute pair separate playback from capture | **DONE** — they separate: 0x23.2 = capture, 0x23.3 = playback. `FINDING_189_the_mute_pair_separates.md` |
+| **190** | declare Feature Units with Mute | ~70 bytes | **UNBLOCKED** — and must stop `streaming_set_rate()` re-raising a host-set mute on every stream open |
 
 186 only exists if #181 finds the ACG free-running. It is a design decision
 before it is a coding task: an asynchronous OUT endpoint obliges a feedback IN

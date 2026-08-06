@@ -78,8 +78,20 @@ void codec_init(void);
  * Bit assignments come from the setter sites in both stock images; the gate
  * pins each one and fails on an unexplained gap.
  */
-#define CODEC23_MODE5_A      0x04u  /* 0x23.2 — mute / audio-path enable pair, */
-#define CODEC23_MODE5_B      0x08u  /* 0x23.3   released together after settle */
+/* #189 SETTLED 2026-08-06: these are TWO gates, not one, and they separate the
+ * directions. 0x23.2 gates CAPTURE and 0x23.3 gates PLAYBACK -- each kills
+ * exactly one arm and leaves the other untouched, on both units, bracketed.
+ * Muting capture yields exact digital zeros (0 of 240000 samples); muting
+ * playback leaves the far unit's own -100 dBFS input floor, which a single
+ * global gate could not produce. FINDING_189_the_mute_pair_separates.md.
+ *
+ * #171 read them as ONE global enable because its build removed both bits at
+ * once -- the correct reading of that experiment, which could not tell one gate
+ * from two. */
+#define CODEC23_MODE5_A      0x04u  /* 0x23.2 — CAPTURE  path enable (#189) */
+#define CODEC23_MODE5_B      0x08u  /* 0x23.3 — PLAYBACK path enable (#189) */
+#define CODEC23_MUTE_CAPTURE   CODEC23_MODE5_A
+#define CODEC23_MUTE_PLAYBACK  CODEC23_MODE5_B
 /* #46. The pair as one mask, so the mute-split experiment
  * (MBOX_MUTE_PAIR_MASK in the Makefile) can vary it without putting an
  * unresolvable macro in front of latch_word_bit_diff.py -- that gate reads
