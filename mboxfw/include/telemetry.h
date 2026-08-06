@@ -97,29 +97,25 @@
  * assumed from the absence of a stall. */
 #define TLM_REQ_SET_CLOCK 0x14
 
-/* Mute pair (0x23.2 / 0x23.3), DEVICE recipient — #189.
+/* 0x15 was TLM_REQ_SET_MUTE, the #189 bench control for the 0x23.2/0x23.3
+ * pair. REMOVED in build 0x0036, when #190 declared the two UAC1 Feature Units
+ * that carry the same control as a class request.
  *
- *   bmRequestType 0x40
- *   wValue low   the mask to leave standing: 0x00, 0x04, 0x08 or 0x0C.
- *                Anything else stalls.
+ * It is not merely redundant, it has no remaining unique job. The reason the
+ * other vendor aliases exist is that their class equivalents are INTERFACE or
+ * ENDPOINT recipient and the host stack rejects those with EBUSY once
+ * snd-usb-audio binds. That argument does not hold for mute: with the Feature
+ * Units declared, ALSA surfaces mute as an ordinary mixer control that works
+ * WITH the driver bound, which is the bench case. And with no driver bound
+ * there is no streaming, so g_path_enabled is 0 and the pair is down anyway --
+ * there is nothing to mute in the state the alias was meant to survive.
  *
- * #171 settled that the PAIR gates both directions, but it only ever moved the
- * two bits together. Whether they are one gate or two — playback on one bit and
- * capture on the other — is the entire question for a UAC1 Feature Unit, since
- * a Mute control is honest only if muting one direction leaves the other alone.
- *
- * This replaces the MBOX_MUTE_PAIR_MASK compile-time variants. Those were two
- * images, hence two power cycles and two 2 km round trips, for one A/B; and
- * each mask value got exactly one attempt, with the two halves of the
- * comparison separated by a reflash. Runtime control puts all four states on
- * one power cycle, on one unit, repeatable in either direction, which is a
- * stronger experiment as well as a cheaper one.
- *
- * Nothing here can wedge the device: 0x00 mutes the audio path and 0x0C
- * restores it, over the same EP0 that issued the mute. Read block 9 byte 2
- * back to confirm the applied state rather than inferring it from the absence
- * of a stall. */
-#define TLM_REQ_SET_MUTE 0x15
+ * What it actually bought at the end was 42 bytes, which is what the
+ * per-unit serial descriptor costs. Without this removal #190 fits only in the
+ * serial-less build, and the bench cannot tell two units apart without serials
+ * (BENCH_WIRING.md, "Trust the serial"). The number is not reused: a request
+ * code that changes meaning between builds is the same trap BLOCK_RETIRED
+ * exists to prevent for telemetry indices. */
 
 /* The three legal source patterns, one-cold, from the stock cycle handlers
  * (Rev 20 fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). */

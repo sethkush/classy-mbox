@@ -65,7 +65,9 @@ TLM_REQ_READ = 0x10        # bmRequestType 0xC0, wValue = block index
 TLM_REQ_RESET = 0x11       # bmRequestType 0x40
 TLM_REQ_SET_MUX = 0x13     # bmRequestType 0x40, wValue = mux, wIndex = mono
 TLM_REQ_SET_CLOCK = 0x14   # bmRequestType 0x40, wValue = clock, wIndex = source
-TLM_REQ_SET_MUTE  = 0x15   # bmRequestType 0x40, wValue = 0x23.2/0x23.3 mask
+# 0x15 was TLM_REQ_SET_MUTE (#189). Removed in firmware 0x0036: #190's Feature
+# Units carry the same control as a class request, and ALSA exposes it as a
+# mixer switch that works with the driver bound. Use `amixer`, not this tool.
 REQ_IN = 0xC0              # vendor | device-to-host | device
 REQ_OUT = 0x40             # vendor | host-to-device | device
 
@@ -937,46 +939,6 @@ def cmd_clock(dev, args):
     show(9, read_block(dev, 9), getattr(args, "raw", False), device_build=device_build(dev))
 
 
-MUTE_ARG = {
-    # #189. The mask left standing in the 0x23.2/0x23.3 pair.
-    "both":  0x0C,   # the state the device rests in; audio path fully open
-    "a":     0x04,   # 0x23.2 only  -- CODEC23_MODE5_A
-    "b":     0x08,   # 0x23.3 only  -- CODEC23_MODE5_B
-    "none":  0x00,   # both low; #171 measured this as silent BOTH directions
-}
-
-
-def cmd_mute(dev, args):
-    """Set the mute pair (#189).
-
-    #171 established that the pair gates both directions -- 71 dB on the output
-    side, 0 of 95232 non-zero samples on the input side -- but it only ever
-    moved the two bits TOGETHER. Whether they are one gate or two is the whole
-    question for a UAC1 Feature Unit, because a Mute control is honest only if
-    muting one direction leaves the other alone.
-
-    Nothing here can wedge the device. `none` silences the audio path and
-    `both` restores it, over the same EP0 that issued the request; there is no
-    state reachable from here that the next request cannot leave.
-
-    The applied state is read back from block 9 byte 2 rather than inferred
-    from the absence of a stall -- a request that is accepted and does not take
-    looks identical to one that worked.
-    """
-    wvalue = MUTE_ARG[args.mask]
-    dev.ctrl_transfer(REQ_OUT, TLM_REQ_SET_MUTE, wvalue, 0, None, 2000)
-    print("requested mute mask=%s (wValue=0x%04X)" % (args.mask, wvalue))
-    print()
-    blk = read_block(dev, 9)
-    applied = blk[2] & 0x0C
-    if applied == wvalue:
-        print("  0x23 pair now 0x%02X -- as requested" % applied)
-    else:
-        print("  0x23 pair reads 0x%02X, REQUESTED 0x%02X -- did not take"
-              % (applied, wvalue))
-    show(9, blk, getattr(args, "raw", False), device_build=device_build(dev))
-
-
 def build_parser():
     # --raw is accepted on BOTH sides of the subcommand. It was top-level
     # only at first, so the natural `read 6 --raw` died with "unrecognized
@@ -1045,11 +1007,6 @@ def build_parser():
                     default="keep",
                     help="also move the Selector Unit; note that selecting "
                          "spdif forces the slaved clock, as stock does")
-    sp = sub.add_parser("mute", parents=[common],
-                        help="set the 0x23.2/0x23.3 mute pair (#189)")
-    sp.add_argument("mask", choices=sorted(MUTE_ARG),
-                    help="both = audio path open (rest state); "
-                         "a/b = one bit only; none = both low")
 
     return p
 
@@ -1108,8 +1065,7 @@ def main():
     {"all": cmd_all, "read": cmd_read, "raw": cmd_raw,
      "watch": cmd_watch, "reset": cmd_reset,
      "ep0test": cmd_ep0test,
-     "setmux": cmd_setmux, "clock": cmd_clock,
-     "mute": cmd_mute}[args.cmd](dev, args)
+     "setmux": cmd_setmux, "clock": cmd_clock}[args.cmd](dev, args)
 
 
 if __name__ == "__main__":

@@ -448,49 +448,6 @@ static void handle_digi_enter_dfu(void)
 }
 
 
-/* Set the mute pair from the host — see TLM_REQ_SET_MUTE in telemetry.h (#189).
- *
- * NOVEL — reason: no stock request does this. Stock raises 0x23.2 and 0x23.3
- * together in its init path (Rev 20 fcn.0x0728 @ 0x07C6, Rev 22 fcn.0x0763 @
- * 0x0801) and never moves them again; there is no stock trigger to cite because
- * stock has no reason to lower them. The mask VALUES are not novel — 0x0C is
- * the state stock rests in and 0x00 the state it boots through — only the
- * ability to reach them on request.
- *
- * The publish path is codec_write_word() alone: unlike the mux request these
- * bits live only in the codec chain, so neither codec_source_changed() nor
- * mux_write() has anything to contribute. */
-static void handle_set_mute(void)
-{
-    unsigned char mask = wValueL;
-
-    /* Only the two pair bits may be named. A request carrying any other bit is
-     * asking for something this control does not do — 0x23.4 is the external
-     * RESET_N and lowering it would drop the CS8427 out of reset, which is not
-     * a mute and is not recoverable by re-sending the request. Stall rather
-     * than mask-and-proceed, so a malformed request is visible on the host
-     * instead of silently doing three-quarters of what was asked. */
-    if (mask & (unsigned char)~CODEC23_MUTE_PAIR_ALL) {
-        reply_stall();
-        return;
-    }
-
-    /* Goes through the SAME state the class Feature Units use (#190), rather
-     * than poking the pair directly. Two reasons, and the second is the one
-     * that bit: a direct poke is undone by the next streaming_set_rate(), so
-     * the bench request would silently stop meaning anything the moment a
-     * stream reopened -- which is exactly the trap #189 spent a run on. And
-     * two independent writers of one hardware field is how they drift.
-     *
-     * `mask` is the set to LEAVE STANDING, so the muted set is its complement
-     * within the pair. */
-    g_host_mute = (unsigned char)(CODEC23_MUTE_PAIR_ALL & ~mask);
-    codec_apply_mute();
-
-    reply_zero_length();
-}
-
-
 /* Set the source mux from the host — see TLM_REQ_SET_MUX in telemetry.h for
  * why this exists. Reaches the same states the front-panel buttons reach, by
  * the same publish path, without depending on the buttons.
@@ -860,8 +817,6 @@ static void handle_setup(void)
             handle_set_mux();
         } else if (bReq == TLM_REQ_SET_CLOCK && !(bmReq & 0x80)) {
             handle_set_clock();   /* #177 */
-        } else if (bReq == TLM_REQ_SET_MUTE && !(bmReq & 0x80)) {
-            handle_set_mute();    /* #189 */
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             /* Same latch as the Digi class request; see
              * handle_digi_enter_dfu(). This alias exists because the class

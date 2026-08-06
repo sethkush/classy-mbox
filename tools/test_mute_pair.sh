@@ -58,6 +58,14 @@ SER_A=RK10874600Q
 SER_B=RK1672500M
 PY=${PY:-$HOME/mbox-venv/bin/python}
 TLM="sudo $PY $HOME/mboxtlm_cur.py"
+# #190. The mute now lives in the two UAC1 Feature Units, so ALSA carries it as
+# an ordinary mixer switch and `amixer` reaches it WITH the driver bound. That
+# is why TLM_REQ_SET_MUTE could go: the vendor alias existed only because there
+# was no class control to reach.
+#
+# The control NAMES are discovered rather than assumed -- snd-usb-audio derives
+# them from the terminal types, and guessing one that does not exist would make
+# every amixer call fail in a way this script would then have to notice.
 LEVEL="$PY $HOME/ch_level.py"
 RATE=48000
 SECS=8
@@ -99,8 +107,8 @@ echo "unit B ($SER_B) = card $CARD_B"
 restore() {
     echo
     echo "--- restoring both units to mask=both"
-    $TLM mute both --serial $SER_A >/dev/null 2>&1
-    $TLM mute both --serial $SER_B >/dev/null 2>&1
+    apply_mask "$CARD_A" both >/dev/null 2>&1
+    apply_mask "$CARD_B" both >/dev/null 2>&1
 }
 trap restore EXIT INT TERM
 
@@ -115,6 +123,51 @@ for ser in $SER_A $SER_B; do
     $TLM setmux line line --serial $ser >/dev/null || exit 1
     $TLM clock $RATE --source analog --serial $ser >/dev/null || exit 1
 done
+
+# Name the two switches once, from card A, and ABORT if either is missing --
+# #190 is not testable at all if the host did not parse the Feature Units, and
+# a script that quietly skipped the mute would produce ten identical rows,
+# which is exactly the failure mode the first run of this script had.
+echo "--- mixer controls on card $CARD_A:"
+mute_ctls "$CARD_A" | sed 's/^/    /'
+PB_CTL=$(mute_ctls "$CARD_A" | grep -iE "playback|pcm|speaker|line out" | head -1)
+CAP_CTL=$(mute_ctls "$CARD_A" | grep -iE "capture|mic|line in" | head -1)
+if [ -z "$PB_CTL" ] || [ -z "$CAP_CTL" ]; then
+    echo "FATAL: could not find both mute switches (playback='$PB_CTL'"
+    echo "       capture='$CAP_CTL'). The host did not parse the Feature Units,"
+    echo "       or names them differently -- read the list above and set"
+    echo "       PB_CTL/CAP_CTL by hand rather than letting the sweep run."
+    exit 1
+fi
+echo "    -> playback switch: '$PB_CTL'   capture switch: '$CAP_CTL'"
+
+# Resolve the playback and capture mute switches for a card, by asking ALSA.
+mute_ctls() {
+    amixer -c "$1" scontrols 2>/dev/null | sed "s/^Simple mixer control '//;s/',0$//"
+}
+
+# Apply one mask value through the class control. `a` leaves 0x23.2 up (capture
+# audible, playback muted); `b` leaves 0x23.3 up (playback audible, capture
+# muted) -- #189's naming, preserved so the two runs are comparable.
+apply_mask() {
+    _card=$1; _m=$2
+    case "$_m" in
+        both) _pb=unmute; _cap=unmute ;;
+        none) _pb=mute;   _cap=mute   ;;
+        a)    _pb=mute;   _cap=unmute ;;
+        b)    _pb=unmute; _cap=mute   ;;
+        *)    echo "FATAL: unknown mask $_m"; return 1 ;;
+    esac
+    for _c in $PB_CTL; do
+        amixer -c "$_card" -q set "$_c" $_pb 2>/dev/null || {
+            echo "FATAL: amixer -c $_card set '$_c' $_pb failed"; return 1; }
+    done
+    for _c in $CAP_CTL; do
+        amixer -c "$_card" -q set "$_c" $_cap 2>/dev/null || {
+            echo "FATAL: amixer -c $_card set '$_c' $_cap failed"; return 1; }
+    done
+    return 0
+}
 
 # One cell: UUT at $mask, measured in one direction.
 #   arm=out -> play on UUT, record on REF
@@ -145,12 +198,7 @@ cell() {
         >/dev/null 2>&1 &
     _ar=$!
     sleep 2                     # both streams live and past their set_rate
-    _got=$($TLM mute $_mask --serial $_uut_ser 2>&1)
-    case "$_got" in
-        *"as requested"*) : ;;
-        *) echo "FATAL: mute mask=$_mask on $_uut_ser not confirmed:"
-           echo "$_got" | sed 's/^/    /'; kill $_ap $_ar 2>/dev/null; exit 1 ;;
-    esac
+    apply_mask "$_uut_card" "$_mask" || { kill $_ap $_ar 2>/dev/null; exit 1; }
     wait $_ar 2>/dev/null
     _after=$($TLM read 9 --serial $_uut_ser 2>&1 | sed -n 's/.*codec word=0x\(..\).*/\1/p')
     kill $_ap 2>/dev/null; wait $_ap 2>/dev/null

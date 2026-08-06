@@ -211,15 +211,27 @@ writes.
 155 code) against the 175 that were free, which is not a coincidence so much as
 the ceiling arriving. Nothing further fits without removing something.
 
-The cheapest honest removal is `TLM_REQ_SET_MUTE` (~40 bytes). Its stated
-justification was that the class control is interface-recipient and unreachable
-once `snd-usb-audio` binds -- but with the Feature Units declared, ALSA exposes
-the mute as an ordinary mixer control, which is reachable from the bench with
-the driver bound. For mute specifically the fallback argument no longer holds
-either: with no driver bound there is no streaming, `g_path_enabled` is 0, and
-the pair is down regardless. It is kept for now only because it is the proven
-instrument #189 used and removing it before the class control is confirmed on
-hardware would leave no way to test the thing that replaced it.
+`TLM_REQ_SET_MUTE` was removed to pay for it, and the accounting is exact: the
+per-unit **serial** descriptor costs 42 bytes, and without the removal #190 fit
+only in the serial-less build -- which the bench cannot use, because two units
+at the same PID are told apart by serial and nothing else
+(`BENCH_WIRING.md`, "Trust the serial"). So the real trade was *the vendor mute
+alias for the ability to address a specific unit*, and that is not close.
+
+The alias also had no unique job left. The other vendor aliases exist because
+their class equivalents are INTERFACE or ENDPOINT recipient and the host stack
+rejects those with EBUSY once `snd-usb-audio` binds. Mute is different: with the
+Feature Units declared, ALSA carries it as a mixer switch that works *with* the
+driver bound, which is the bench case. And with no driver bound there is no
+streaming, so `g_path_enabled` is 0 and the pair is down anyway.
+
+    default build   5972 / 6016     44 free
+    MBOX_UNIT=A     6014 / 6016      2 free
+    MBOX_UNIT=B     6012 / 6016      4 free
+
+**#191 does not fit.** Its ~50 bytes exceed the 2 free in a per-unit image, so
+it needs something else removed first -- and #192 was always meant to say
+whether it is needed at all.
 
 ### Budget (original estimate)
 
