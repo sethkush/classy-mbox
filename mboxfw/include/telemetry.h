@@ -132,7 +132,16 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x003B   /* 003B: #197 v3 -- the pulse needs the codec's
+#define TLM_BUILD_ID     0x003C   /* 003C: #197 v4 -- the clocks must have been
+                                   *       running a WHILE, not merely be on.
+                                   *       0x003B pulsed microseconds after
+                                   *       ACGCTL and was inert; a host pulse
+                                   *       with clocks on and NO stream running
+                                   *       cleared the same unit. The pulse now
+                                   *       waits 2500 SOFs in the MAIN LOOP --
+                                   *       streaming_set_rate() runs in ISR
+                                   *       context and cannot spin.
+                                   * 003B: #197 v3 -- the pulse needs the codec's
                                    *       master clocks RUNNING, and mboxfw
                                    *       leaves ACGCTL alone until a stream
                                    *       opens, so at boot it was inert. It

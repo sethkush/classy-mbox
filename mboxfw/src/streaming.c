@@ -491,27 +491,26 @@ void streaming_set_rate(unsigned long hz)
             cs8427_write(0x24, 0x80);   /* Rev 20 fcn.0x0582 @ 0x0593 */
         }
     }
-    /* #197. The pulse that clears the ADC start-up transient, once per
-     * power-up. It lives HERE, and not at boot, because it needs the codec's
-     * master clocks running and this routine is what starts them -- the
-     * ACGCTL writes above. Two earlier builds put it in main() after
-     * cs8427_boot_init() and BOTH were measured inert on hardware: mboxfw
-     * leaves ACGCTL alone until a stream opens, so at boot the codec has no
-     * clock and a gate transition does nothing.
+    /* #197. Record WHEN the master clocks came up, and let the main loop do
+     * the pulse later. Two things forced this shape, both measured:
      *
-     * Proven rather than reasoned this time. On units re-armed by a power
-     * cycle, unit A captured straight afterwards still showed the transient at
-     * -36.2 dBFS, while unit B -- driven with PLAYBACK only, to raise the
-     * clocks without ever opening a capture stream, then pulsed -- came back
-     * at -104.6 dBFS on its first capture. Clocks running is the whole
-     * precondition; a capture need never have run. FINDING_197.
+     *   - the pulse needs the clocks RUNNING, so it cannot go at boot: mboxfw
+     *     leaves ACGCTL alone until this routine runs, and builds 0x0039 and
+     *     0x003A pulsed at boot into an unclocked codec and were inert.
+     *   - it needs them running for a WHILE, so it cannot go here either.
+     *     Build 0x003B pulsed at the end of this function, microseconds after
+     *     the ACGCTL writes above, and was also inert -- yet a host pulse with
+     *     the clocks merely on for a few seconds, and no stream running at
+     *     all, cleared the same unit from -33.0 to -101.1 dBFS.
      *
-     * After this function's own publish above, deliberately: stock's publish
-     * for this routine is the LCALL 0x0E62 at Rev 20 0x07F2, and the pulse
-     * must not sit inside that documented sequence. */
-    if (!g_adc_pulsed) {
-        g_adc_pulsed = 1;
-        codec_clear_adc_transient();
+     * And the delay cannot be spun here regardless: this routine is reached
+     * from the EP0 handlers, which run in ISR context (isr_int0 services USB),
+     * so a busy-wait would stall enumeration. The main loop is the only place
+     * that can afford to wait. SOF is the clock to wait on -- 1 ms a tick,
+     * already counted, and it only ticks while the bus is live. */
+    if (!g_adc_pulsed && !g_adc_clock_mark_set) {
+        g_adc_clock_mark_set = 1;
+        g_adc_clock_mark = tlm.sof_count;
     }
 
 }

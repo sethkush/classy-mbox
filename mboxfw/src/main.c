@@ -14,6 +14,7 @@
 #include "eeprom.h"
 #include "telemetry.h"
 #include "usb.h"        /* g_dfu_request_pending */
+#include "streaming.h"  /* streaming_set_rate() -- #197 boot clock bring-up */
 #include "power.h"      /* g_work_code, work_dispatch() */
 
 /* Timer-0 tick pending flag, set by isr_timer0 (isr.c). */
@@ -314,6 +315,20 @@ void main(void)
 
     cs8427_boot_init();
     tlm_phases |= TLM_PHASE_CS8427;
+
+    /* #197. Bring the codec master clocks up HERE, at boot, which is what
+     * stock does -- its power-up sequence runs ACGCTL |= 0xC0 before the
+     * SETB 0x23.2 / SETB 0x23.3 unmute (Rev 20 0x080B-0x0852, Rev 22
+     * 0x09B6-0x09F5). mboxfw used to leave ACGCTL alone until the first
+     * stream, so the codec sat unclocked from boot until a host opened one.
+     *
+     * Two things follow. The gate pulse the main loop is about to schedule has
+     * clocks to work against, which at boot it previously did not. And the
+     * 2500-SOF wait now elapses during boot rather than 2.5 s into whatever
+     * the host records first, so no take ever contains the pulse.
+     *
+     * 48000 is the boot default that g_internal_rate also carries. */
+    streaming_set_rate(48000UL);
     CANARY(3, CANARY_CS8427);
     STAGE(8);
 
@@ -331,6 +346,28 @@ void main(void)
         /* Liveness: a changing counter distinguishes "running but silent"
          * from "wedged", which no static value can. */
         TLM_INC16(tlm_loop_count);
+
+        /* #197. Pulse the capture gate once, ADC_PULSE_DELAY_SOF after the
+         * master clocks came up, which clears the ADC start-up transient for
+         * the rest of the power-up.
+         *
+         * It lives in the main loop and nowhere else, and three measured
+         * failures are why. At boot (0x0039, 0x003A) the codec has no clock,
+         * because mboxfw only writes ACGCTL when a stream opens, so the pulse
+         * was inert. At the end of streaming_set_rate() (0x003B) the clocks
+         * had just been enabled and it was still inert -- the codec needs them
+         * running for a while, not merely on. And that wait cannot be spun in
+         * streaming_set_rate() anyway: it is reached from the EP0 handlers,
+         * which run in ISR context.
+         *
+         * Unsigned wraparound is intentional and correct: sof_count is 16-bit
+         * and free-running, so the subtraction stays right across its wrap. */
+        if (g_adc_clock_mark_set && !g_adc_pulsed &&
+            (unsigned int)(tlm.sof_count - g_adc_clock_mark)
+                >= ADC_PULSE_DELAY_SOF) {
+            g_adc_pulsed = 1;
+            codec_clear_adc_transient();
+        }
 
         /*
          * Two-rate loop, mirroring Rev 20 0x0AD3-0x0B0F (Rev 22

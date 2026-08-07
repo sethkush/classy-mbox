@@ -137,6 +137,51 @@ So the pulse belongs at the end of `streaming_set_rate()`, one-shot per
 power-up — after that routine's own publish, so it does not sit inside stock's
 documented `LCALL 0x0E62` sequence. That is build 0x003B.
 
+## Clocks must have been running a WHILE, not merely be on
+
+Build 0x003B put the pulse at the end of `streaming_set_rate()`, microseconds
+after that routine's `ACGCTL` writes. **Also inert** — unit A −32.9 dBFS, unit B
+−38.2, transient intact.
+
+The measurement that separated "on" from "on for a while": pulsing unit A with
+**no stream running at all**, its clocks merely having been on since some
+earlier captures, cleared it from **−33.0 to −101.1 dBFS**. So an active stream
+is not required and neither is a capture — elapsed time with the clocks up is.
+
+The shortest clocks-on time measured to work is about 2.5 s (the `aplay` lead-in
+of the earlier test). The failures sit at ~0 ms. Nothing narrows the gap, so the
+firmware waits **2500 SOFs = 2.5 s**, the measured-good value rather than a
+tuned one.
+
+The wait cannot be spun in `streaming_set_rate()`: that routine is reached from
+the EP0 handlers, which run in ISR context (`isr_int0` services USB), so a
+busy-wait there would stall enumeration. The main loop is the only place that
+can afford to wait, and SOF is the right clock to wait on — 1 ms a tick, already
+counted, and it only ticks while the bus is live.
+
+Build 0x003C therefore does two things:
+
+- **brings the master clocks up at boot**, which is what stock does and mboxfw
+  did not: stock runs `ACGCTL |= 0xC0` before its `SETB 0x23.2 ; SETB 0x23.3`
+  unmute, while mboxfw left ACGCTL alone until the first stream. This is a
+  divergence worth its own attention beyond #197.
+- **pulses from the main loop**, 2500 SOFs after that mark. The wait now elapses
+  during boot rather than 2.5 s into whatever the host records first, so no take
+  ever contains the pulse.
+
+## Three failed attempts, and what each cost
+
+| build | placement | result |
+|---|---|---|
+| 0x0039 | boot, hold HIGH ~860 ms, end LOW | inert — wrong polarity *and* no clock |
+| 0x003A | boot, hold LOW, end HIGH | inert — right polarity, still no clock |
+| 0x003B | end of `streaming_set_rate()` | inert — clocks on, but only just |
+
+Each was reasoned rather than measured. The pattern is the same one this repo
+keeps writing down: the hardware was available the whole time, and every
+correction came from measuring, not from thinking harder about the previous
+failure.
+
 ## Both open questions are now closed
 
 The two things this document originally listed as unverified — the minimum
