@@ -211,6 +211,11 @@ cause is still open. This section is the map, so nobody repeats the search.
 | first 100 ms of a capture | **-32.9 dBFS** | **-62 dBFS** |
 | DC step | +0.134 | +0.0046 |
 
+(The −62 dBFS figure is a first-100 ms level measured after streams had already
+run in that boot. A cold first capture on the same build reads about −52 dBFS —
+see the 2026-08-07 section. Both are the same transient; the level depends on
+stream history, which was not controlled when −62 was taken.)
+
 Two changes earned it: the codec master clocks now come up **at boot**
 (`streaming_set_rate(48000)` in `main()`), which is what stock does and mboxfw
 did not, and a capture-gate pulse fires once per power-up from the main loop,
@@ -244,12 +249,104 @@ not what the shift register latched. Every build reported the correct codec word
 while the chip may have received something else. No host-visible signal
 distinguishes "wrote the word" from "the codec accepted the word".
 
-**The next step is not another build.** It is a probe on the P1 lines — data
-P1.0, clock P1.2, latch P1.1 — comparing the waveform of a host-driven publish
-against a firmware-driven one. Both units are on a bench with a person next to
-them; that is a ten-minute measurement and it would end this immediately.
-Without it, any further firmware change is another guess, and eight of those
-bought 29 dB and no mechanism.
+The obvious probe — a scope on P1, data P1.0, clock P1.2, latch P1.1 —
+**is not available on this bench**. Seth has a multimeter and nothing else.
+The section below replaces that recommendation with one that can actually be
+carried out.
+
+---
+
+# 2026-08-07: the residual is the SAME transient, 33 dB down — not a half-clear
+
+The framing above ("the pulse only half-works") is wrong, and one free
+measurement showed it. 2 s idle capture on each unit running 0x0040, sliced at
+50 ms, no flash and no pulse:
+
+| t (ms) | unit A, dBFS | unit B, dBFS | A, DC | B, DC |
+|---|---|---|---|---|
+| 0 | −50.7 | −48.3 | +0.00289 | +0.00384 |
+| 50 | −53.3 | −50.8 | +0.00216 | +0.00286 |
+| 100 | −55.8 | −53.4 | +0.00161 | +0.00214 |
+| 200 | −60.9 | −58.5 | +0.00090 | +0.00119 |
+| 400 | −71.0 | −68.7 | +0.00028 | +0.00037 |
+| 800 | −91.6 | −88.3 | +0.00003 | +0.00004 |
+
+**−2.5 dB per 50 ms bin = −50.6 dB/s = τ = 171 ms**, on both units, on both
+channels. That is the identical time constant `FINDING_196` measured by window
+stepping and `FINDING_147` measured by median-|x| slices.
+
+So the transient is not partly suppressed. It is **fully present, fully
+re-armed on every stream start, and its initial amplitude is 33 dB smaller**
+(DC +0.0029 against a 0x0038 baseline of +0.134). What 0x0040 bought is a
+smaller step into the same DC-blocking high-pass, not a shorter or absent one.
+
+That kills the premise that made a scope the next step. The question was
+"did the codec receive the word", because a digital gate either transitions or
+it does not, and −62 dBFS sat implausibly between the two. It no longer sits
+between anything: there is a clean exponential with the right τ, exactly what a
+smaller DC step produces. **A dropped or corrupted bit-bang does not produce a
+correctly-shaped decay at 1/33 amplitude.**
+
+## What the host pulse still does that the firmware pulse does not
+
+Re-run on 0x0040, `mutepulse <card> 3`, then capture:
+
+| | first 400 ms |
+|---|---|
+| unit A after host pulse | −103.8 −102.0 −102.9 −103.8 … **flat, no decay** |
+| unit B after host pulse | −100.9 −97.3 −98.5 −99.0 … **flat, no decay** |
+
+Flat, not decaying — so the host pulse removes the DC step itself rather than
+shrinking it, and the effect survives into the next capture. The two-tier state
+is real and reproducible on the current build. Two details recorded and not
+chased: the first ~150 ms of a post-pulse capture is exact digital zeros, and on
+the *second* capture exactly one channel per unit (A left, B right) re-arms a
+small decaying residual while the other stays flat. The per-channel asymmetry is
+new; the cross-wiring in `BENCH_WIRING.md` is a confound and it has not been
+controlled for.
+
+## The measurement to make next, with the instruments that exist
+
+**The device contains a 48 kHz ADC. That is the logic analyser.** The capture
+gate produces *exact digital zeros* when low (#189, and again in the zeros
+above), so a gate pulse during a live capture is directly visible in the
+recording with 20 µs resolution. The recorded gap is a witness of what the
+codec **accepted**, not of what the firmware mirror says it wrote — which is
+precisely the blind spot telemetry block 9 has.
+
+One build, one capture, three arms compared inside a single stream on a single
+boot:
+
+1. **host** — an ALSA `PCM Capture Switch` pulse (`tools/mutepulse.c`), the
+   known-good path.
+2. **firmware, ISR context** — a vendor request (DEVICE recipient) that pulses
+   the gate inside the EP0 handler, which is where the host path already runs.
+3. **firmware, main loop** — the same vendor request arms a flag; the pulse
+   fires from the main loop, which is where #197's pulse runs.
+
+Each commanded hold is a known number of milliseconds. Measure the width of
+each zeros gap in the recording. Outcomes:
+
+- all three gaps present and correctly sized → the bit-bang delivers fine from
+  every context, the delivery hypothesis is dead, and the remaining difference
+  is *when* the pulse happens relative to the ADC's own power-up, not *whether*
+  it happens.
+- main-loop gap missing or short → main-loop publishes really are unreliable,
+  which immediately implicates `buttons_poll` and every other main-loop codec
+  and mux publish, and is a far larger finding than the transient.
+
+This needs no instrument the bench lacks. It costs one flash and one power
+cycle per unit.
+
+## What the multimeter can and cannot do here
+
+Honestly: very little. It cannot see a 16-bit bit-bang. Its two legitimate uses
+are (a) confirming the idle DC levels on P1.0/P1.1/P1.2 against Vcc, which would
+catch a shorted or hard-loaded line, and (b) reading the *average* voltage on
+those pins under a diagnostic build that republishes the codec word in a tight
+loop, where the DMM reads duty cycle × Vcc and a gross difference between a
+main-loop and an ISR-driven loop would show up as a different average. Both are
+weak tests. Neither is a substitute for the ADC experiment above.
 
 ## Suspicion worth recording, unproven
 
