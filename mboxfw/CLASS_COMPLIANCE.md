@@ -187,15 +187,19 @@ experiment.
 | # | task | blocked by |
 |---|---|---|
 | **192** | USB-IF Command Verifier (USB20CV) on a Windows host | — |
-| **191** | GET_MIN/MAX/RES on the sampling-frequency control | 192 |
+| ~~191~~ | GET_MIN/MAX/RES on the sampling-frequency control | **CLOSED, not applicable** — our rates are discrete, so MIN/MAX/RES describe a range that does not exist. The device already stalls them, which is correct. `FINDING_191_min_max_res_do_not_apply.md` |
 | ~~193~~ | decide the default-build iSerialNumber story | **DONE** — stays 0, as both stock images. `FINDING_193_the_serial_number_story.md` |
 | ~~194~~ | gate every declared terminal against a measured hardware path | **DONE** — `check_terminal_evidence.py` + `terminal_evidence.md` |
 
 **Everything above this line is our own reading of the spec.** USB20CV is the
 authority, exercises Chapter 9 exhaustively, and will find what this inventory
-missed — including whatever 188 and 191 are guessing at. It needs a Windows
-host, and a VM with USB passthrough is enough. Do not spend 191's ~50 bytes on
-speculation about a host we do not own; let 192 say whether they are needed.
+missed — including whatever 188 was guessing at. It needs a Windows host.
+**"A VM with USB passthrough is enough" was asserted here and never verified**;
+USB-IF documents controller requirements and does not support virtualised
+passthrough, so treat it as unknown until someone runs it. 191 is closed on its
+own evidence rather than waiting for this (see the row above), and
+`tools/ch9_probe.py` now covers the mechanical part of Chapter 9 from Linux —
+which is how #195 was found.
 
 194 is the discipline this inventory exposed the need for. The gate proves the
 descriptor set is internally consistent but cannot tell that a declared
@@ -235,10 +239,21 @@ reused.
     MBOX_UNIT=A     5971 / 6016     45 free
     MBOX_UNIT=B     5969 / 6016     47 free
 
-**#191 now fits** -- its ~50 bytes are within the 45 free in a per-unit image,
-just. #192 is still what should decide whether it is needed at all, and the
-stall counter that #192 would have wanted is what block 4's retirement spent;
-restoring it is one struct byte plus one TLM_INC8.
+#195 then spent all 43 of those bytes stalling the requests that name what we
+do not declare, so the per-unit builds are back at the ceiling:
+
+    default build   5974 / 6016     42 free
+    MBOX_UNIT=A     6016 / 6016      0 free
+    MBOX_UNIT=B     6014 / 6016      2 free
+
+**#191 turned out not to need any of it.** It closed as not-applicable rather
+than unaffordable: our sampling frequencies are discrete, MIN/MAX/RES describe a
+continuous range, and the device already stalls all three -- which is the
+correct answer, not a gap. Measured on hardware, and corroborated by TI's own
+reference implementing none of them and neither stock image dispatching on them.
+
+So the remaining budget question is only about the stall counter block 4's
+retirement spent, which #192 may want back: one struct byte plus one TLM_INC8.
 
 ### Budget (original estimate)
 

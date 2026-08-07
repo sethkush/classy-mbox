@@ -230,6 +230,29 @@ def run(p):
     p.expect_stall("SYNCH_FRAME stalls", D2H_STD_EP, SYNCH_FRAME, 0, 0x81, 2)
     p.expect_stall("undefined bRequest 0x42 stalls", D2H_STD_DEV, 0x42, 0, 0, 2)
 
+    # --- UAC1 sampling-frequency attributes (#191) ------------------------
+    #
+    # NOT Chapter 9, but it belongs with it: the question "which attributes of
+    # this control exist" is the same shape, and the answer decided #191.
+    #
+    # Our rates are DISCRETE -- Type I format, bSamFreqType = 2, list
+    # [44100, 48000]. MIN/MAX/RES describe a CONTINUOUS range, so for a
+    # discrete list there is no step to report and the valid values already
+    # live in the format descriptor. Answering them would imply everything
+    # between 44100 and 48000 is selectable, which it is not. A stall is the
+    # correct answer, and the device gives it.
+    UAC_SAMPLING_FREQ = 0x01
+    for ep, nm in ((0x81, "capture EP 0x81"), (0x02, "playback EP 0x02")):
+        p.expect_ok(f"UAC GET_CUR sampling freq, {nm}", 0xA2, 0x81,
+                    UAC_SAMPLING_FREQ << 8, ep, 3,
+                    lambda b: None if len(b) == 3 and (b[0] | (b[1] << 8) |
+                                                       (b[2] << 16)) in
+                    (44100, 48000)
+                    else f"returned {list(b)}, not a declared rate")
+        for req, rn in ((0x82, "GET_MIN"), (0x83, "GET_MAX"), (0x84, "GET_RES")):
+            p.expect_stall(f"UAC {rn} sampling freq stalls, {nm}", 0xA2, req,
+                           UAC_SAMPLING_FREQ << 8, ep, 3)
+
     # --- the property every stall above depends on ------------------------
     # A device that stalls correctly and then stops answering is worse than one
     # that never stalled. This is the check the whole suite rests on.
