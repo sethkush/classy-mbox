@@ -221,36 +221,33 @@ void codec_clear_adc_transient(void)
      * 0x0395-0x03BD, Rev 22 0x0399-0x03C1) contains no mute and no long delay,
      * so the transient is original Mbox 1 behaviour and this is an improvement
      * over stock rather than a repair. FINDING_196 has the stock table. */
-    /* Up first. Literal operand, for the reason codec_apply_mute() spells out:
-     * a `|=` whose RHS mentions an identifier is credited with all eight bits
-     * by latch_word_bit_diff.py. */
-    g_codec_state_23 |= (unsigned char)CODEC23_MUTE_PAIR_ALL;
-    codec_write_word();
+    /* EXACTLY the host path, not an equivalent-looking one.
+     *
+     * Builds 0x003D and 0x003E hand-wrote the same nominal bit sequence --
+     * raise the pair, drop it, raise it, with codec_write_word() each time --
+     * and both only PARTIALLY cleared the transient: -61 to -62 dBFS against
+     * the -101 a host pulse reaches. The comparison that settles it was run on
+     * one unit in one boot: after the firmware pulse the first 100 ms read
+     * -60.9 dBFS, then a host pulse on the same unit read -101.2, and the codec
+     * word was 0x1CC0 before and after both. Same end state, same bits, three
+     * orders of magnitude apart in effect.
+     *
+     * Ruled out along the way: the delay is not elided (the generated asm keeps
+     * both `lcall _hw_short_delay`), and dropping the whole pair rather than
+     * just the capture gate changed nothing (0x003E vs 0x003D).
+     *
+     * So drive the mute the way a host does -- set g_host_mute, publish through
+     * codec_apply_mute(), clear it, publish again. That path is measured to
+     * work, repeatedly, on both units. Whatever it does that hand-written
+     * writes do not is not yet understood, and this comment is deliberately
+     * honest about that rather than inventing a mechanism. */
+    g_host_mute |= (unsigned char)CODEC23_MUTE_CAPTURE;
+    codec_apply_mute();
+
     hw_short_delay();
 
-    /* Then LOW -- the WHOLE PAIR, not just the capture gate.
-     *
-     * Build 0x003D dropped only CODEC23_MUTE_CAPTURE and was measured to work
-     * only PARTIALLY: the transient fell from -41.8 to -62.2 dBFS and the DC
-     * step from +0.048 to +0.0046, a 20 dB improvement that still left it 40 dB
-     * above the -101 dBFS floor a host pulse reaches.
-     *
-     * The host pulse drops both bits, and nothing in it intends to. It goes
-     * through codec_apply_mute(), which masks the pair by g_path_enabled -- and
-     * in every successful host test no stream had ever run, so g_path_enabled
-     * was 0 and BOTH bits went down. That accident is the difference, and it
-     * only became visible once the phase bit proved the firmware pulse was
-     * firing at all.
-     *
-     * A `&=` cannot set a bit, so the gate skips it and the literal `|=` above
-     * stays the whole truth about what this can raise. */
-    g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_PAIR_ALL;
-    codec_write_word();
-    hw_short_delay();
-
-    /* And back up. This edge is the fix. */
-    g_codec_state_23 |= (unsigned char)CODEC23_MUTE_PAIR_ALL;
-    codec_write_word();
+    g_host_mute &= (unsigned char)~CODEC23_MUTE_CAPTURE;
+    codec_apply_mute();
 }
 
 void codec_init(void)

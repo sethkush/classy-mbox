@@ -132,7 +132,14 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x003E   /* 003E: #197 v6 -- drop the WHOLE PAIR, not
+#define TLM_BUILD_ID     0x003F   /* 003F: #197 v7 -- drive the mute through
+                                   *       g_host_mute + codec_apply_mute(),
+                                   *       which is EXACTLY what a host SET_CUR
+                                   *       does. Hand-written writes with the
+                                   *       same bits only reached -61 dBFS
+                                   *       where the host path reaches -101, on
+                                   *       the same unit in the same boot.
+                                   * 003E: #197 v6 -- drop the WHOLE PAIR, not
                                    *       just the capture gate. 0x003D fired
                                    *       (phase bit proved it) and only got
                                    *       -41.8 -> -62.2 dBFS; every host
