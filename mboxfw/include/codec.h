@@ -181,7 +181,7 @@ extern __data unsigned int  g_adc_clock_mark;
 /* SOFs to wait after the clocks come up before pulsing. 2500 = 2.5 s, which
  * is the shortest clocks-on time actually measured to work; the failures at
  * ~0 ms bracket it from below and nothing narrows it further. */
-#define ADC_PULSE_DELAY_SOF  2500u
+#define ADC_PULSE_DELAY_SOF  8000u
 
 /* Codec control-word bytes — externally visible so control handlers can poke
  * individual bits and then call codec_write_word(). */

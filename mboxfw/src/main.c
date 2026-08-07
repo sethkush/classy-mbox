@@ -367,6 +367,10 @@ void main(void)
                 >= ADC_PULSE_DELAY_SOF) {
             g_adc_pulsed = 1;
             codec_clear_adc_transient();
+            /* Report it. Block 0 already prints tlm_phases, so a host can now
+             * tell "never fired" from "fired and did not work" -- the
+             * distinction four flashed builds could not make. */
+            tlm_phases |= TLM_PHASE_ADC_PULSE;
         }
 
         /*

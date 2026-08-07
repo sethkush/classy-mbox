@@ -156,7 +156,7 @@ CLOCK_ARG = {"slave": 0, "44100": 1, "48000": 2}
 SOURCE_NAMES = {v: k for k, v in SOURCES.items()}
 
 PHASE_BITS = [(0x01, "USB_INIT"), (0x02, "HW_INIT"), (0x04, "ATTACH"),
-              (0x08, "CS8427"), (0x10, "CODEC"), (0x20, "MAIN_LOOP")]
+              (0x08, "CS8427"), (0x10, "CODEC"), (0x20, "MAIN_LOOP"), (0x40, "ADC_PULSE")]
 
 # Stage is a high-water mark, so it names the furthest point reached, not the
 # current one. main.c 1-9, usb.c 14-20.

@@ -132,7 +132,12 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x003C   /* 003C: #197 v4 -- the clocks must have been
+#define TLM_BUILD_ID     0x003D   /* 003D: #197 v5 -- delay to 8 s, and REPORT it.
+                                   *       Four builds could not distinguish
+                                   *       "the pulse never fired" from "it
+                                   *       fired and did not work", so block 0
+                                   *       now carries TLM_PHASE_ADC_PULSE.
+                                   * 003C: #197 v4 -- the clocks must have been
                                    *       running a WHILE, not merely be on.
                                    *       0x003B pulsed microseconds after
                                    *       ACGCTL and was inert; a host pulse
@@ -473,6 +478,11 @@
 #define TLM_PHASE_CS8427     0x08
 #define TLM_PHASE_CODEC      0x10
 #define TLM_PHASE_MAIN_LOOP  0x20
+/* #197. Set when the capture-gate pulse has actually fired. Four builds were
+ * flashed without any way to tell "the pulse did not fire" from "it fired and
+ * did not work", and each cost a power cycle to learn nothing. One bit ends
+ * that. */
+#define TLM_PHASE_ADC_PULSE  0x40
 
 /* Counters. Written from ISR context, read from the SETUP handler (also
  * ISR context), so no cross-context tearing — but keep them volatile so
