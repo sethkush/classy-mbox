@@ -52,6 +52,12 @@ def read_wav24(path):
 
 
 def play_capture(card, tone, cap, play_s, cap_s, rate, settle):
+    """Capture LONG. The analysis window is taken well past the start, because
+    the capture stream has a settling transient that decays ~50 dB/s for its
+    first two seconds -- LF band at -25 dBFS in 0-1 s, -76 in 1-2 s, -118 from
+    2 s on. Analysing inside it puts 60+ dB of spurious energy under every
+    harmonic bin below a few hundred Hz, which is exactly how the first version
+    of this measurement reported 0.21% THD at 20 Hz."""
     ap = subprocess.Popen(["aplay", "-D", "hw:%d,0" % card, tone],
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(settle)
@@ -64,12 +70,12 @@ def play_capture(card, tone, cap, play_s, cap_s, rate, settle):
         ap.kill()
 
 
-def analyse(sig, rate, f0, nharm=10):
+def analyse(sig, rate, f0, nharm=10, anastart=4.0):
     """Coherent-window spectrum -> fundamental, THD, THD+N, noise floor."""
     n = rate                                   # 1 s -> 1 Hz bins
-    if len(sig) < n:
+    start = int(anastart * rate)               # PAST the settling transient
+    if len(sig) < start + n:
         return None
-    start = (len(sig) - n) // 2                # centre window, avoids edges
     x = sig[start:start + n]
     x = x - np.mean(x)                         # kill DC before anything else
     X = np.fft.rfft(x)
@@ -127,6 +133,9 @@ def main():
     ap.add_argument("--amp", type=float, default=0.5)
     ap.add_argument("--f0", type=float, default=1000.0)
     ap.add_argument("--settle", type=float, default=1.2)
+    ap.add_argument("--anastart", type=float, default=4.0,
+                    help="seconds into the capture to analyse from")
+    ap.add_argument("--capsecs", type=int, default=6)
     ap.add_argument("--out", default="/tmp/sweep.csv")
     a = ap.parse_args()
 
@@ -146,11 +155,12 @@ def main():
     rows = []
     print(cols.replace(",", "  "))
     for hz, amp in runs:
-        gen_tone("/tmp/_tone.wav", hz, a.rate, 4.0, amp, a.pch)
-        play_capture(a.card, "/tmp/_tone.wav", "/tmp/_cap.wav", 4.0, 2, a.rate,
-                     a.settle)
+        gen_tone("/tmp/_tone.wav", hz, a.rate, a.capsecs + a.settle + 3.0,
+                 amp, a.pch)
+        play_capture(a.card, "/tmp/_tone.wav", "/tmp/_cap.wav", 0, a.capsecs,
+                     a.rate, a.settle)
         x, rate = read_wav24("/tmp/_cap.wav")
-        r = analyse(x[:, a.ch], rate, hz)
+        r = analyse(x[:, a.ch], rate, hz, anastart=a.anastart)
         if r is None:
             print("%8.0f  %.4f  ANALYSIS FAILED" % (hz, amp)); continue
         rows.append((hz, amp, r))

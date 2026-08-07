@@ -132,15 +132,14 @@ thd_pts = [
     for r in freq
     if fnum(r["thd_db"]) is not None
 ]
-tlo, thi = -100, -45
-ty = [(v, "%d" % v) for v in (-50, -60, -70, -80, -90, -100)]
+tlo, thi = -105, -82
+ty = [(v, "%d" % v) for v in (-85, -90, -95, -100, -105)]
 c_thd = chart(
     [{"points": thd_pts, "cls": "t2"}],
     fx, ty,
     lambda v: xlog(v, FLO, FHI),
     lambda v: yv(v, tlo, thi),
     "THD, dB below fundamental", "Hz",
-    bands=[{"from": 18, "to": 200, "label": "LF skirt — not distortion"}],
 )
 
 # ---------------------------------------------------------------- THD v level
@@ -148,12 +147,12 @@ lv = [(fnum(r["fund_db"]), fnum(r["thd_db"])) for r in level]
 lv = sorted([p for p in lv if p[0] is not None], key=lambda p: p[0])
 llo, lhi = -85, -15
 lx = [(v, "%d" % v) for v in (-80, -70, -60, -50, -40, -30, -20)]
-ly = [(v, "%d" % v) for v in (-30, -45, -60, -75, -90)]
+ly = [(v, "%d" % v) for v in (-40, -55, -70, -85, -100)]
 c_lvl = chart(
     [{"points": lv, "cls": "t3"}],
     lx, ly,
     lambda v: xlin(v, llo, lhi),
-    lambda v: yv(v, -95, -25),
+    lambda v: yv(v, -100, -38),
     "THD, dB below fundamental", "capture level, dBFS",
 )
 
@@ -340,7 +339,7 @@ footer{
 
 <div class="wrap">
 <header>
-  <p class="eyebrow">Bench report · unit A · build 0x0038 · 2026-08-06</p>
+  <p class="eyebrow">Bench report · unit A · build 0x0038 · 2026-08-06 · rev 2</p>
   <h1>Mbox 1 loopback: latency, response and distortion at minimum gain</h1>
   <p class="sub">Round-trip measurements over the analog self-loop, with the
   front-panel gain dials at minimum. Every figure describes the whole loop —
@@ -353,9 +352,9 @@ footer{
   <div class="cell"><div class="k">Response 20–20k</div>
     <div class="v">±0.16<span class="u">dB</span></div></div>
   <div class="cell"><div class="k">THD @ 1 kHz</div>
-    <div class="v">0.0041<span class="u">%</span></div></div>
+    <div class="v">0.0016<span class="u">%</span></div></div>
   <div class="cell"><div class="k">Noise floor</div>
-    <div class="v">−107<span class="u">dBFS</span></div></div>
+    <div class="v">−142<span class="u">dBFS/bin</span></div></div>
   <div class="cell"><div class="k">Loop gain</div>
     <div class="v">−20.2<span class="u">dB</span></div></div>
 </div>
@@ -373,7 +372,8 @@ external generator or analyser, which this bench does not have.</p>
   <dt>source</dt><dd>LINE on both channels, set over EP0 rather than the panel</dd>
   <dt>gain</dt><dd>minimum, both channels, unchanged throughout</dd>
   <dt>format</dt><dd>48 kHz, 24-bit, S24_3LE, 2 ch</dd>
-  <dt>window</dt><dd>1.000 s coherent, rectangular, centred in a 2 s capture</dd>
+  <dt>window</dt><dd>1.000 s coherent, rectangular, starting <strong>4 s</strong>
+  into a 6 s capture — see the correction below</dd>
 </dl>
 
 <h2>Round-trip latency</h2>
@@ -413,41 +413,58 @@ slight analog HF lift appears to offset them.</p>
 <h2>Distortion against frequency</h2>
 <div class="figure">
 %CTHD%
-<figcaption>THD from harmonics 2–10. Above 12.5 kHz no harmonic fits below
-Nyquist, so THD is undefined and the trace ends.</figcaption>
+<figcaption>THD from harmonics 2–10, full vertical span 23 dB. Above 12.5 kHz
+no harmonic fits below Nyquist, so THD is undefined and the trace ends.</figcaption>
 </div>
-<p>From roughly 300 Hz up, THD falls steadily with frequency — <strong>0.0041%
-at 1 kHz, 0.0016% at 8 kHz</strong>. That is genuinely low for a 2002 bus-powered
-interface measured through both of its converters at once.</p>
+<p><strong>Flat at 0.0012–0.0032% across the entire band</strong>, with no
+structure worth naming — 0.0016% at 1 kHz, 0.0012% at 25 Hz, and the only
+mild outlier is 20 Hz at 0.0032%. That is genuinely low for a 2002 bus-powered
+interface measured through both of its converters at once, and it is flat where
+the first version of this page showed a dramatic low-frequency rise.</p>
 
 <div class="note">
-  <div class="t">The shaded region is not distortion</div>
-  <p>Below about 200 Hz the THD column rises to 0.21% at 20 Hz, scaling almost
-  exactly as 1/f. That is an artifact of the measurement, and the check that
-  settles it is this: a smooth 1/f skirt centred on DC exists in the capture
-  <em>with no signal playing at all</em>, at −79 dBFS.</p>
-  <p>For a 20 Hz tone the harmonic bins land directly on that skirt, to within
-  0.3 dB — 40 Hz predicted −83.3 and measured −83.34, 60 Hz predicted −86.9
-  and measured −86.65, 80 Hz predicted −89.4 and measured −89.37. Those bins
-  are the skirt, not harmonics of the tone.</p>
-  <p>It is not mains hum: there is no 50 or 60 Hz peak anywhere. And it is not
-  lost coherence, because with a 1 kHz tone the bins either side of the
-  fundamental sit at −130 to −140 dBFS. <strong>True LF distortion is below the
-  skirt and this method cannot reach it.</strong> The shaded figures are an
-  upper bound.</p>
+  <div class="t">Correction — the first version of this page was wrong here</div>
+  <p>It reported THD rising to 0.21% at 20 Hz and explained it as a 1/f skirt
+  centred on DC. The skirt was real in the data but it was not the device's
+  noise: it was the <strong>capture stream's start-up transient</strong>, and
+  the analysis window sat inside it.</p>
+  <p>Every capture begins with a DC step settling through the codec's
+  DC-blocking high-pass, re-armed on each stream start because alt&nbsp;0 tears
+  the input path down and alt&nbsp;1 re-enables it. Measured by stepping a 1 s
+  window through a 10 s idle capture:</p>
+  <table style="max-width:420px">
+  <thead><tr><th>window</th><th>LF 1–15 Hz</th><th>total RMS</th></tr></thead>
+  <tbody>
+  <tr><td>0–1 s</td><td>−25.5</td><td>−28.2</td></tr>
+  <tr><td>1–2 s</td><td>−76.4</td><td>−79.1</td></tr>
+  <tr><td>2–3 s</td><td>−119.9</td><td>−101.7</td></tr>
+  <tr><td>3–9 s</td><td>≈−118</td><td>−101.7</td></tr>
+  </tbody></table>
+  <p>That is −50.9 dB in the first second, which is a first-order decay with
+  &tau;&nbsp;=&nbsp;171 ms — independently the same time constant
+  <span class="mono">FINDING_147</span> measured by a completely different
+  method. Analysing at 0.5–1.5 s buried 60 dB of settling energy under every
+  harmonic bin below a few hundred Hz.</p>
+  <p>Moving the window to 4 s dropped the measured noise floor from −107 to
+  <strong>−142 dBFS/bin</strong> and flattened THD across the whole band. All
+  figures on this page are from the corrected sweeps.</p>
 </div>
 
 <h2>Distortion and linearity against level</h2>
 <div class="figure">
 %CLVL%
-<figcaption>THD at 1 kHz against capture level. The minimum sits near
-−26 dBFS; the rise to the right is the loop compressing near its ceiling.</figcaption>
+<figcaption>THD at 1 kHz against capture level. The floor runs from about
+−30 to −23 dBFS; the sharp rise at the right is the loop hitting its ceiling.</figcaption>
 </div>
-<p>THD is lowest at <strong>0.0041% around −26 dBFS</strong> capture. Below that
-it climbs as the harmonics sink toward a fixed noise floor. Above it, driving
-the loop to full-scale playback pushes THD to 0.0346% — a sevenfold rise in the
-last 6 dB, which is the analog path running out of headroom rather than
-anything digital.</p>
+<p>THD sits between <strong>0.0022% and 0.0043%</strong> from −30 to −23 dBFS
+capture. Below that it climbs as the harmonics sink toward a fixed noise floor.
+Above it, driving the loop to full-scale playback pushes THD to
+<strong>0.0349%</strong> — a fifteenfold rise in the last 3 dB, which is the
+analog path running out of headroom rather than anything digital, and the one
+result the settling-transient error did not affect.</p>
+<p>Best THD+N is <strong>0.0168% (−75.5 dB)</strong> at −23.2 dBFS. Integrating
+the −142 dBFS/bin floor across 20 kHz gives about −99 dBFS, which agrees with
+the −101.7 dBFS idle RMS measured directly.</p>
 <div class="figure">
 %CLIN%
 <figcaption>Capture level against playback level. A straight line of slope 1

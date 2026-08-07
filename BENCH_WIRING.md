@@ -208,6 +208,28 @@ Two consequences, both measured in `FINDING_196`:
   dial doing its job, not a fault, but it explains why the loopback figures
   cluster in the −26 to −30 dBFS region.
 
+### NEVER analyse the first 3 seconds of a capture
+
+Every capture starts with a DC step settling through the codec's DC-blocking
+high-pass — `FINDING_147`'s τ ≈ 171 ms transient, re-armed on every stream
+start because alt 0 tears the input path down and alt 1 re-enables it. Measured
+by stepping a 1 s window through a 10 s idle capture (`FINDING_196`):
+
+| window | LF 1–15 Hz | total RMS |
+|---|---|---|
+| 0–1 s | **−25.5 dBFS** | −28.2 |
+| 1–2 s | −76.4 | −79.1 |
+| 2–3 s | −119.9 | −101.7 |
+| 3–9 s | ≈ −118 | −101.7 |
+
+The first second is at **−28 dBFS RMS** — the level of a test tone. Analysing
+inside it inflated a THD measurement from 0.0032% to 0.208% and the noise floor
+from −142 to −107 dBFS/bin, and the wrong figure was published before the cause
+was found. `tools/sweep.py` now captures 6 s and analyses from 4 s.
+
+This is *not* a level-comparison caveat like the two above — it is 70 dB, and it
+lands on whichever measurement is unlucky enough to start early.
+
 ### Consequence for every level in this file
 
 **Absolute dBFS is only comparable within one session, with the dials
