@@ -108,19 +108,13 @@ check became "nonzero samples AND at the floor". The codec word settles it
 independently: 0x1CC0 has 0x23.2 set, so the gate was high and the zeros were a
 race with an in-flight unmute, not a stuck mute.
 
-## Two things not established
+## Both open questions are now closed
 
-- **Minimum pulse width.** The test held the gate low for 4 s. It may work in
-  milliseconds. Untested, because characterising it needs a unit that still has
-  the transient, and both are now cleared.
-- **Whether a pulse at `codec_init()` time works**, with the codec freshly up,
-  rather than later with everything running.
-
-Both need a power-cycled unit. That is not a blocker in practice: shipping the
-fix needs a flash, a flash needs a replug, and the replug re-arms the transient
-— so the verification comes free with the attempt. Verify by capturing
-immediately after the replug and checking the first 100 ms sits at the −101 to
-−105 dBFS floor rather than −39.
+The two things this document originally listed as unverified — the minimum
+pulse width, and whether a pulse works at boot rather than later — are answered
+above and by the 0x003A flash. Nothing about the mechanism is established: what
+the gate does inside the codec, and why one edge fixes it for the whole
+power-up, is still unknown. Only its behaviour is measured.
 
 ## Stock, for the record
 
