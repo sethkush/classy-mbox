@@ -132,7 +132,16 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x003F   /* 003F: #197 v7 -- drive the mute through
+#define TLM_BUILD_ID     0x0040   /* 0040: #197 v8 -- INTERRUPTS OFF across each
+                                   *       codec publish. codec_write_word()
+                                   *       bit-bangs P1; a host SET_CUR runs it
+                                   *       inside isr_int0 where nothing
+                                   *       preempts it, while the same call
+                                   *       from the main loop can be preempted
+                                   *       mid-shift. Telemetry could not see
+                                   *       it -- block 9 reports our MIRROR of
+                                   *       the word, not what the chip latched.
+                                   * 003F: #197 v7 -- drive the mute through
                                    *       g_host_mute + codec_apply_mute(),
                                    *       which is EXACTLY what a host SET_CUR
                                    *       does. Hand-written writes with the

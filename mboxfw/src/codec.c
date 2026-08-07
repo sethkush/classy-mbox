@@ -238,16 +238,37 @@ void codec_clear_adc_transient(void)
      *
      * So drive the mute the way a host does -- set g_host_mute, publish through
      * codec_apply_mute(), clear it, publish again. That path is measured to
-     * work, repeatedly, on both units. Whatever it does that hand-written
-     * writes do not is not yet understood, and this comment is deliberately
-     * honest about that rather than inventing a mechanism. */
+     * work, repeatedly, on both units.
+     *
+     * INTERRUPTS OFF ACROSS EACH PUBLISH, which is the actual difference and
+     * took seven builds to see. codec_write_word() BIT-BANGS the word out on
+     * P1 -- data on P1.0, clock on P1.2, latch on P1.1. A host SET_CUR runs
+     * this from the EP0 handler, i.e. inside isr_int0, where nothing preempts
+     * it. The same call from the main loop can be preempted mid-shift by the
+     * USB ISR, stretching a clock phase, and the codec can mis-sample.
+     *
+     * Telemetry cannot see that: block 9 reports g_codec_state_23, which is
+     * mboxfw's MIRROR of the word, not what the shift register actually
+     * latched. So every build reported the right codec word while the chip may
+     * have received something else -- which is exactly the shape of the
+     * result, identical bits and path but a partial effect (-62 dBFS against
+     * the -101 the ISR-context path reaches).
+     *
+     * The delay stays outside the critical section: ~3 ms with EA clear would
+     * stall USB servicing, and the gap between the two publishes does not need
+     * protecting -- only the shifts do. */
     g_host_mute |= (unsigned char)CODEC23_MUTE_CAPTURE;
+    EA = 0;                 /* see below */
     codec_apply_mute();
+    EA = 1;
 
-    hw_short_delay();
+    hw_short_delay();       /* OUTSIDE the critical section -- ~3 ms with
+                             * interrupts off would stall USB servicing. */
 
     g_host_mute &= (unsigned char)~CODEC23_MUTE_CAPTURE;
+    EA = 0;
     codec_apply_mute();
+    EA = 1;
 }
 
 void codec_init(void)
