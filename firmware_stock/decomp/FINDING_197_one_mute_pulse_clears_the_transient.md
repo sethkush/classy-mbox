@@ -64,6 +64,50 @@ per-stream state machine.
 Note the pulse worked with **no stream running** (mute/unmute happened between
 captures, not during one), so init is a plausible place for it.
 
+## Build 0x0039 got the polarity wrong, and hardware said so
+
+The first attempt raised the pair, held it **HIGH** for ~860 ms, then lowered
+it. After the cold boot that flash required, both units still showed the
+transient at full size — unit A **−33.4 dBFS** in the first 100 ms with DC
++0.127, unit B −36.8. The hold duration was never the problem. The direction
+was: the working sequence holds the gate **LOW** and ends **HIGH**.
+
+Ending high is also what makes it safe. `usb_init()` runs first, so a
+SET_INTERFACE can land during the hold; a sequence ending low switches the
+capture path off underneath a stream that just opened, which is what 0x0039
+risked. Ending high is right either way, and matches stock, which raises the
+pair at power-up and holds it.
+
+## The requirement is the EDGE, not a settling time
+
+Measured on units re-armed by a plain power cycle of the 0x0039 image — whose
+pulse leaves the transient intact, which makes it a free fixture, no flash
+needed.
+
+`tools/mutepulse.c` exists because two `amixer` invocations cannot resolve
+below tens of milliseconds: each is a process spawn plus a control transfer.
+One process holding the control handle open, with a single `usleep` between two
+element writes, resolves to about a millisecond.
+
+| unit | low-hold | first 100 ms |
+|---|---|---|
+| A | baseline | −38.7 dBFS |
+| A | **1 ms** | **−101.1** |
+| B | baseline | −37.2 dBFS |
+| B | **0 ms (no usleep)** | **−100.9** |
+
+So no settling time is needed at all. The floor actually *proven* is about
+**1 ms**, because even a zero-usleep host pulse is still two USB control
+transfers apart — two back-to-back `codec_write_word()` calls in firmware are
+quicker than anything measured here. One `hw_short_delay()` is kept for that
+margin, and it costs less code than the loop it replaced.
+
+**A detection trap, twice.** A muted capture reads −600 dBFS (exact zeros), and
+a pass test of `level < -90` counts that as success. It fired twice before the
+check became "nonzero samples AND at the floor". The codec word settles it
+independently: 0x1CC0 has 0x23.2 set, so the gate was high and the zeros were a
+race with an in-flight unmute, not a stuck mute.
+
 ## Two things not established
 
 - **Minimum pulse width.** The test held the gate low for 4 s. It may work in

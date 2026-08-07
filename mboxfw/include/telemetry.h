@@ -132,7 +132,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0039   /* 0039: #197 -- pulse the capture gate once at
+#define TLM_BUILD_ID     0x003A   /* 003A: #197 v2 -- the pulse polarity was
+                                   *       WRONG in 0x0039 and measured wrong
+                                   *       on hardware: it held the gate HIGH
+                                   *       and ended LOW. Hold it LOW (>=50 ms
+                                   *       measured) and end HIGH. Verify by
+                                   *       capturing right after the replug --
+                                   *       first 100 ms at the -101 dBFS floor,
+                                   *       not -33. FINDING_197.
+                                   * 0039: #197 -- pulse the capture gate once at
                                    *       boot, which clears the ADC start-up
                                    *       transient for the whole power-up.
                                    *       Verify by capturing immediately
