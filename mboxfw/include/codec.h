@@ -175,6 +175,7 @@ void codec_apply_mute(void);
  * transient for the rest of the power-up. Call once, after the codec and the
  * CS8427 are up. FINDING_197. */
 void codec_clear_adc_transient(void);
+extern __data unsigned char g_adc_pulsed;
 
 /* Codec control-word bytes — externally visible so control handlers can poke
  * individual bits and then call codec_write_word(). */

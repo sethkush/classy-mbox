@@ -145,6 +145,8 @@ void codec_write_word(void)
  * which is the boot state and the behaviour every build before 0x0036 had. */
 __data unsigned char g_host_mute = 0;
 __data unsigned char g_path_enabled = 0;
+/* #197 one-shot: the capture-gate pulse fires once per power-up. */
+__data unsigned char g_adc_pulsed = 0;
 
 void codec_apply_mute(void)
 {

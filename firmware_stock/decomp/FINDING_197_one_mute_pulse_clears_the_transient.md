@@ -108,6 +108,35 @@ check became "nonzero samples AND at the floor". The codec word settles it
 independently: 0x1CC0 has 0x23.2 set, so the gate was high and the zeros were a
 race with an in-flight unmute, not a stuck mute.
 
+## Why a boot pulse is inert: mboxfw has no codec clock at boot
+
+Builds 0x0039 and 0x003A both put the pulse in `main()` after
+`cs8427_boot_init()`, and both were measured inert. 0x003A even ended with the
+gate provably high (codec word 0x1CC0, 0x23.2 set) and the transient still came
+back at full size — unit A −32.6 dBFS, unit B −37.3.
+
+**`ACGCTL` is never written in `hw_init.c`.** mboxfw brings the codec master
+clocks up only in `streaming_set_rate()`, when a stream opens. So at boot the
+codec is unclocked and a gate transition does nothing.
+
+That is a divergence from stock in its own right: stock's power-up sequence
+does `ACGCTL |= 0xC0` — master clock outputs ON — *before* its
+`SETB 0x23.2 ; SETB 0x23.3` unmute (Rev 20 0x080B-0x0852, Rev 22
+0x09B6-0x09F5). Stock clocks and unmutes at power-up; mboxfw defers both to the
+first stream.
+
+**Clocks running is the whole precondition — a capture need never have run.**
+Measured on units re-armed by a plain power cycle:
+
+| | first 100 ms |
+|---|---|
+| unit A, control: capture straight after the power cycle, no pulse | **−36.2 dBFS**, present |
+| unit B: PLAYBACK only to raise the clocks, then pulse, then its first ever capture | **−104.6 dBFS**, cleared |
+
+So the pulse belongs at the end of `streaming_set_rate()`, one-shot per
+power-up — after that routine's own publish, so it does not sit inside stock's
+documented `LCALL 0x0E62` sequence. That is build 0x003B.
+
 ## Both open questions are now closed
 
 The two things this document originally listed as unverified — the minimum

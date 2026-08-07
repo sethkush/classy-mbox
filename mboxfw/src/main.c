@@ -317,12 +317,6 @@ void main(void)
     CANARY(3, CANARY_CS8427);
     STAGE(8);
 
-    /* #197. Must come AFTER both of the above: the measurement that found this
-     * pulsed the gate with the codec fully up and its clocks running, and
-     * nothing establishes that an earlier pulse works. Costs ~860 ms of boot,
-     * which is free -- the host is answered from the ISR throughout, and no
-     * stream can be carrying audio this early. */
-    codec_clear_adc_transient();
 
     STAGE(9);
 #ifdef CANARY_LED

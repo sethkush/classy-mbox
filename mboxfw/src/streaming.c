@@ -491,6 +491,29 @@ void streaming_set_rate(unsigned long hz)
             cs8427_write(0x24, 0x80);   /* Rev 20 fcn.0x0582 @ 0x0593 */
         }
     }
+    /* #197. The pulse that clears the ADC start-up transient, once per
+     * power-up. It lives HERE, and not at boot, because it needs the codec's
+     * master clocks running and this routine is what starts them -- the
+     * ACGCTL writes above. Two earlier builds put it in main() after
+     * cs8427_boot_init() and BOTH were measured inert on hardware: mboxfw
+     * leaves ACGCTL alone until a stream opens, so at boot the codec has no
+     * clock and a gate transition does nothing.
+     *
+     * Proven rather than reasoned this time. On units re-armed by a power
+     * cycle, unit A captured straight afterwards still showed the transient at
+     * -36.2 dBFS, while unit B -- driven with PLAYBACK only, to raise the
+     * clocks without ever opening a capture stream, then pulsed -- came back
+     * at -104.6 dBFS on its first capture. Clocks running is the whole
+     * precondition; a capture need never have run. FINDING_197.
+     *
+     * After this function's own publish above, deliberately: stock's publish
+     * for this routine is the LCALL 0x0E62 at Rev 20 0x07F2, and the pulse
+     * must not sit inside that documented sequence. */
+    if (!g_adc_pulsed) {
+        g_adc_pulsed = 1;
+        codec_clear_adc_transient();
+    }
+
 }
 
 /*

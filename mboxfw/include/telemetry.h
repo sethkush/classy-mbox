@@ -132,7 +132,17 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x003A   /* 003A: #197 v2 -- the pulse polarity was
+#define TLM_BUILD_ID     0x003B   /* 003B: #197 v3 -- the pulse needs the codec's
+                                   *       master clocks RUNNING, and mboxfw
+                                   *       leaves ACGCTL alone until a stream
+                                   *       opens, so at boot it was inert. It
+                                   *       now fires once from
+                                   *       streaming_set_rate(), which is what
+                                   *       starts the clocks. Measured, not
+                                   *       reasoned: playback alone raised the
+                                   *       clocks and the pulse then worked
+                                   *       with no capture ever opened.
+                                   * 003A: #197 v2 -- the pulse polarity was
                                    *       WRONG in 0x0039 and measured wrong
                                    *       on hardware: it held the gate HIGH
                                    *       and ended LOW. Hold it LOW (>=50 ms
