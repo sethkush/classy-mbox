@@ -195,3 +195,66 @@ power-up, is still unknown. Only its behaviour is measured.
 Neither Rev 20 nor Rev 22 does this — see `FINDING_196`. Stock raises the pair
 once at power-up and never pulses it. So a fix here is an improvement over
 stock, and the transient is original Mbox 1 behaviour.
+
+
+---
+
+# CLOSING STATE, 2026-08-07: 29 dB won, mechanism NOT understood
+
+Eight builds (0x0039 - 0x0040). The transient is much reduced and the root
+cause is still open. This section is the map, so nobody repeats the search.
+
+## What ships
+
+| | before (0x0038) | now (0x0040) |
+|---|---|---|
+| first 100 ms of a capture | **-32.9 dBFS** | **-62 dBFS** |
+| DC step | +0.134 | +0.0046 |
+
+Two changes earned it: the codec master clocks now come up **at boot**
+(`streaming_set_rate(48000)` in `main()`), which is what stock does and mboxfw
+did not, and a capture-gate pulse fires once per power-up from the main loop,
+8000 SOFs after that.
+
+## The wall
+
+A pulse driven **from the host** reaches **-101 dBFS**. The identical pulse
+driven **from firmware** stops at **-62 dBFS**. Same unit, same boot, same
+codec word before and after (0x1CC0).
+
+Everything below was tested and ELIMINATED. Do not re-test these.
+
+| hypothesis | how it was killed |
+|---|---|
+| wrong polarity | 0x003A held LOW and ended HIGH; still inert at the time |
+| codec unclocked at boot | 0x003C brought clocks up at boot; improved 9 dB, did not fix |
+| pulse never fired | `TLM_PHASE_ADC_PULSE` proves it fires |
+| hold too short | a **3 ms** host pulse on a freshly armed unit clears fully — the same hold the firmware uses |
+| needs repetition | one host pulse is enough |
+| wrong bits | dropping the whole pair (0x003E) changed nothing vs capture-only (0x003D) |
+| wrong code path | 0x003F sets `g_host_mute` and calls `codec_apply_mute()` — byte for byte what SET_CUR does |
+| delay elided by SDCC | generated asm keeps both `lcall _hw_short_delay` |
+| ISR preemption of the bit-bang | 0x0040 wraps each publish in `EA = 0` / `EA = 1`; no change |
+| timing (early vs late) | a host pulse at **7.5 s**, first of the boot, clears fully (-98.1 -> -101.7) |
+
+## Why the instruments could not settle it
+
+Telemetry block 9 reports `g_codec_state_23` — mboxfw's **mirror** of the word,
+not what the shift register latched. Every build reported the correct codec word
+while the chip may have received something else. No host-visible signal
+distinguishes "wrote the word" from "the codec accepted the word".
+
+**The next step is not another build.** It is a probe on the P1 lines — data
+P1.0, clock P1.2, latch P1.1 — comparing the waveform of a host-driven publish
+against a firmware-driven one. Both units are on a bench with a person next to
+them; that is a ten-minute measurement and it would end this immediately.
+Without it, any further firmware change is another guess, and eight of those
+bought 29 dB and no mechanism.
+
+## Suspicion worth recording, unproven
+
+If a main-loop publish really is less reliable than an ISR-context one, that is
+not confined to #197: `buttons_poll`, source changes and every other main-loop
+codec/mux publish share the exposure. `EA` masking did not change the transient
+result, but it was only ever measured against the transient, which is a coarse
+instrument for this question.
