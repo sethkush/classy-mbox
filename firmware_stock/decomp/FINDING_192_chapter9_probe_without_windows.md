@@ -35,7 +35,7 @@ value no descriptor declares.
 USB20CV tests all three. Finding them here means it will not be reporting
 defects we could have found ourselves.
 
-## The three are fixed (#195, build 0x0038, unflashed)
+## The three are fixed (#195, build 0x0038, confirmed on hardware)
 
 `GET_DESCRIPTOR` now stalls a config index other than 0, `SET_CONFIGURATION`
 stalls anything above 1, and `SET_INTERFACE` validates the alt against what each
@@ -44,6 +44,18 @@ interface declares — alt 0 only on interface 0, alt 0 or 1 on interfaces 1 and
 both arms and still answered with a zero-length ACK.
 
 43 bytes, which is what was free. All 37 gates pass.
+
+**Re-run against 0x0038 on hardware, 2026-08-06: 40 passed, 1 failed.** The
+three rows in the table above now stall as the spec requires, measured on the
+device rather than argued from the diff. The single remaining failure is the
+`wLength = 0` case below, which was deferred deliberately; the `GET_INTERFACE`
+row is still recorded as inconclusive, as it must be.
+
+The probe's own teardown also held this time — it reported
+`driver rebound on interface(s) [0, 1, 2]`, and both units captured a full
+3 s at 48 kHz afterwards (864044 B, the exact expected count) with both Feature
+Units still present. The first run's silent-audio-loss failure mode did not
+recur.
 
 ## The fourth, minor
 

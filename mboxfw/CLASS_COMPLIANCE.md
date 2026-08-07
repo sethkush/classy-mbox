@@ -190,6 +190,7 @@ experiment.
 | ~~191~~ | GET_MIN/MAX/RES on the sampling-frequency control | **CLOSED, not applicable** — our rates are discrete, so MIN/MAX/RES describe a range that does not exist. The device already stalls them, which is correct. `FINDING_191_min_max_res_do_not_apply.md` |
 | ~~193~~ | decide the default-build iSerialNumber story | **DONE** — stays 0, as both stock images. `FINDING_193_the_serial_number_story.md` |
 | ~~194~~ | gate every declared terminal against a measured hardware path | **DONE** — `check_terminal_evidence.py` + `terminal_evidence.md` |
+| ~~195~~ | validate `wValue`/`wIndex` against what the descriptors declare | **DONE, confirmed on hardware** (build 0x0038, both units) — `ch9_probe.py` reads 40/41, up from 37/41. The one remaining failure is the deferred `wLength = 0` case. `FINDING_192_chapter9_probe_without_windows.md` |
 
 **Everything above this line is our own reading of the spec.** USB20CV is the
 authority, exercises Chapter 9 exhaustively, and will find what this inventory
@@ -245,6 +246,10 @@ do not declare, so the per-unit builds are back at the ceiling:
     default build   5974 / 6016     42 free
     MBOX_UNIT=A     6016 / 6016      0 free
     MBOX_UNIT=B     6014 / 6016      2 free
+
+Build 0x0038 is **flashed to both bench units** (2026-08-06) and is what the
+bench now runs. Unit A is at the ceiling exactly; there is no room left for
+anything on unit A without removing something first.
 
 **#191 turned out not to need any of it.** It closed as not-applicable rather
 than unaffordable: our sampling frequencies are discrete, MIN/MAX/RES describe a
