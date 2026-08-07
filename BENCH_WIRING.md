@@ -188,6 +188,26 @@ therefore no telemetry block that can report gain, and no `mboxtlm.py` command
 that can normalise it — unlike the source mux, which #150 moved off the panel
 and onto the host precisely so no measurement would depend on a knob.
 
+### Where the dials have actually been — MINIMUM, throughout
+
+**Seth, 2026-08-06: both gain dials have been at minimum for the entire history
+of this bench, and have never been moved.** That is testimony rather than a
+readback — nothing can read the dial — but it is the only evidence that exists,
+and it is worth recording because it *rescues* the absolute levels below. If the
+dials have not moved, the dBFS figures taken on different dates are comparable
+after all, and the cross-date rule in the next section is a precaution against a
+future change rather than a retraction of past work.
+
+Two consequences, both measured in `FINDING_196`:
+
+- The loop is **perfectly linear** over the full 60 dB swept — every 3 dB in
+  gives 3 dB out — so nothing in the recorded levels is compressed.
+- Minimum gain costs **20.2 dB of converter range**: a full-scale playback
+  signal reaches the ADC at −20.2 dBFS. Every absolute level in this file
+  therefore sits ~20 dB below where the converter would like to be. That is the
+  dial doing its job, not a fault, but it explains why the loopback figures
+  cluster in the −26 to −30 dBFS region.
+
 ### Consequence for every level in this file
 
 **Absolute dBFS is only comparable within one session, with the dials
