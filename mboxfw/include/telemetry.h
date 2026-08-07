@@ -132,7 +132,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0037   /* 0037: retires telemetry block 4 (stalls +
+#define TLM_BUILD_ID     0x0038   /* 0038: #195 -- stall the standard requests
+                                   *       that name what we do not declare:
+                                   *       GET_DESCRIPTOR config index != 0,
+                                   *       SET_CONFIGURATION > 1, and
+                                   *       SET_INTERFACE with an undeclared
+                                   *       iface or alt. Found by ch9_probe.py,
+                                   *       which is also what verifies them.
+                                   *
+                                   *       0037: retires telemetry block 4 (stalls +
                                    *       live P1/P3) and the tlm.stalls
                                    *       counter with it -- 43 bytes. P3 is
                                    *       already on block 9 byte 4, and the
