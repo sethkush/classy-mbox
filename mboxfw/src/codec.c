@@ -228,9 +228,23 @@ void codec_clear_adc_transient(void)
     codec_write_word();
     hw_short_delay();
 
-    /* Then LOW. A `&=` cannot set a bit, so the gate skips it and the literal
-     * `|=` above stays the whole truth about what this can raise. */
-    g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_CAPTURE;
+    /* Then LOW -- the WHOLE PAIR, not just the capture gate.
+     *
+     * Build 0x003D dropped only CODEC23_MUTE_CAPTURE and was measured to work
+     * only PARTIALLY: the transient fell from -41.8 to -62.2 dBFS and the DC
+     * step from +0.048 to +0.0046, a 20 dB improvement that still left it 40 dB
+     * above the -101 dBFS floor a host pulse reaches.
+     *
+     * The host pulse drops both bits, and nothing in it intends to. It goes
+     * through codec_apply_mute(), which masks the pair by g_path_enabled -- and
+     * in every successful host test no stream had ever run, so g_path_enabled
+     * was 0 and BOTH bits went down. That accident is the difference, and it
+     * only became visible once the phase bit proved the firmware pulse was
+     * firing at all.
+     *
+     * A `&=` cannot set a bit, so the gate skips it and the literal `|=` above
+     * stays the whole truth about what this can raise. */
+    g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_PAIR_ALL;
     codec_write_word();
     hw_short_delay();
 

@@ -132,7 +132,15 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x003D   /* 003D: #197 v5 -- delay to 8 s, and REPORT it.
+#define TLM_BUILD_ID     0x003E   /* 003E: #197 v6 -- drop the WHOLE PAIR, not
+                                   *       just the capture gate. 0x003D fired
+                                   *       (phase bit proved it) and only got
+                                   *       -41.8 -> -62.2 dBFS; every host
+                                   *       pulse that reached -101 went through
+                                   *       codec_apply_mute() with
+                                   *       g_path_enabled == 0, which drops
+                                   *       both bits.
+                                   * 003D: #197 v5 -- delay to 8 s, and REPORT it.
                                    *       Four builds could not distinguish
                                    *       "the pulse never fired" from "it
                                    *       fired and did not work", so block 0
