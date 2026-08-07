@@ -161,6 +161,51 @@ in a balanced input shorts ring to sleeve — and is not a firmware finding. Any
 comparison across the two paths has to be relative-to-its-own-baseline, not
 absolute dBFS against each other.
 
+## The GAIN dials act on the LINE inputs, and firmware cannot see them
+
+**The per-channel Gain knob applies to all three source positions, LINE
+included.** From the *Mbox Basics Guide* 6.4 (`reference/mbox1/`), which gives
+the same instruction for each source in turn:
+
+| source | page | instruction |
+|---|---|---|
+| Mic (XLR) | 5 | "carefully turn the Gain control to the right to increase the input level of your microphone" |
+| Inst (DI) | 6 | "…to increase the input level of your guitar" |
+| **Line** | **7** | "…to increase the input level of your **keyboard**" — with the **Line LED lit** in the accompanying "Source selector and Gain control" figure |
+
+Page 9 says the same for recording generally, on an input the software labels
+**Mic/Line 1**: "Use the Gain controls on Mbox to maximize the signal going into
+Pro Tools while avoiding clipping."
+
+So LINE is not a fixed-gain bypass path on this unit. Every loopback level this
+document records was taken through a variable analog gain stage.
+
+**Nothing in firmware can read or set it.** There is no control ADC and no pot
+wiper anywhere in the design as reverse-engineered: mboxfw references "analog"
+only as descriptor terminal names, and neither Rev 20 nor Rev 22 reads a gain
+position. Every `ADC` in the RE notes is the *audio* converter. There is
+therefore no telemetry block that can report gain, and no `mboxtlm.py` command
+that can normalise it — unlike the source mux, which #150 moved off the panel
+and onto the host precisely so no measurement would depend on a knob.
+
+### Consequence for every level in this file
+
+**Absolute dBFS is only comparable within one session, with the dials
+untouched.** The mux hazard has a host-side fix; this one does not. A dial
+nudged between two runs reproduces exactly the failure mode the 2026-07-29
+measurement had — a clean table that means nothing — except that no readback
+exists to catch it.
+
+Rules that follow:
+
+- Bracket every level sweep with a repeat of its own first condition, and quote
+  the two. `test_mute_pair.sh` already does this (`both` first and last, agreeing
+  to 0.01 dB); that bracket is now also the dial-drift check.
+- Never compare a dBFS figure against one recorded on an earlier date. Compare
+  ratios within a run.
+- The ~66 dB fed-vs-unfed discrimination above is a *ratio* and survives dial
+  changes. The -26 / -29 dBFS absolutes do not.
+
 ## Identifying the units — SERIAL NUMBERS
 
 **The serial is the identity. The PID is not.**
