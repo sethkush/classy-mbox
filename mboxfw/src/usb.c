@@ -379,11 +379,9 @@ static void handle_set_interface(void)
     if (iface == 1) {
         g_alt_playback = alt;
         streaming_playback_enable(alt != 0);
-        if (alt) tlm.alt_seen |= TLM_ALT_PLAYBACK_ON;
     } else if (iface == 2) {
         g_alt_capture = alt;
         streaming_capture_enable(alt != 0);
-        if (alt) tlm.alt_seen |= TLM_ALT_CAPTURE_ON;
     }
 
     /* #175. Re-arm the external-chip bring-up if it has been lost.
@@ -1492,7 +1490,6 @@ void usb_service(void)
              * not transacting at all. The default case was already
              * clearing VECINT for these vectors, so splitting them out
              * changes nothing but the counting. */
-            TLM_INC8(tlm.vec_iep1);
             /* TI UsbEng.c usbIntrHandler — every vector case writes
              * VECINT = 0 before returning, or the source stays asserted
              * and the ISR re-fires immediately (datasheet §6.5.7.3). */
@@ -1501,7 +1498,6 @@ void usb_service(void)
 
         case VEC_OEP2:
             /* Playback (EP2 OUT) transaction complete. Same reasoning. */
-            TLM_INC8(tlm.vec_oep2);
             /* TI UsbEng.c usbIntrHandler — clears VECINT in every case. */
             VECINT = 0;
             break;

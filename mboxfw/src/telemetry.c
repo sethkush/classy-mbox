@@ -110,19 +110,26 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
      * side turns out not to say enough on its own.
      *
      * The index is NOT reused. */
-    case 5:
-        /* Isochronous streaming state. Bytes 4-7 are LIVE register reads,
-         * so a host can watch the endpoint config and byte counts change
-         * (or fail to) while arecord is running. */
-        put16(&out[0], tlm.sof_count);
-        out[2] = tlm.vec_iep1;
-        out[3] = tlm.vec_oep2;
-        out[4] = IEPCNF1;
-        out[5] = OEPCNF2;
-        out[6] = tlm.alt_seen;
-        out[7] = (unsigned char)((tlm_last_iface << 4) | (tlm_last_alt & 0x0F));
-        return 1;
-
+    /* case 5 (isochronous streaming state) RETIRED 2026-08-06, build 0x0039,
+     * to pay for #197's capture-gate pulse. It was built for the era when
+     * capture returned nothing: sof_count proved the SOF interrupt was masked
+     * off (USBIMSK bit 4), and the live IEPCNF1/OEPCNF2 reads proved the
+     * endpoints were configured while no packet came back. Both questions are
+     * closed -- audio streams at both rates on both units, measured end to end
+     * in FINDING_196 -- and block 2 still reports the last SETUP, which is what
+     * shows a SET_INTERFACE arriving and with which alt.
+     *
+     * tlm.sof_count SURVIVES: block 11 byte 7 reads its low byte, so it keeps
+     * a reader and does not become the write-only counter that block 4's
+     * retirement had to avoid.
+     *
+     * tlm.vec_iep1, tlm.vec_oep2 and tlm.alt_seen had this block as their ONLY
+     * reader, so they are removed with it, along with their increment sites in
+     * usb.c. Keeping them would have cost the increment at every interrupt and
+     * reported nothing -- exactly the defect that took tlm.stalls out with
+     * block 4.
+     *
+     * The index is NOT reused. */
     /* case 6 (DMA + C-port live state) RETIRED 2026-08-05. It was built for
      * one question -- SOF fires and the endpoints are enabled, so why does the
      * device never return a packet for an IN token? -- and it answered it: the

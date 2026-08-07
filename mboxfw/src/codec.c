@@ -23,6 +23,11 @@
 #include "mux.h"
 #include "codec.h"
 
+/* hw_init.c owns the ~4000-cycle settle spin; #197 borrows it rather than
+ * carrying a second copy. Declared here in the style main.c uses for hw_init()
+ * -- there is no hw_init.h. */
+extern void hw_short_delay(void);
+
 __data unsigned char g_codec_state_23 = 0;
 __data unsigned char g_codec_state_25 = 0;
 
@@ -169,6 +174,65 @@ void codec_apply_mute(void)
     g_codec_state_23 &= (unsigned char)(g_path_enabled
                                         | (unsigned char)~CODEC23_MUTE_PAIR_ALL);
     codec_write_word();
+}
+
+void codec_clear_adc_transient(void)
+{
+    /* #197. One pulse of the capture gate, at boot, removes the ADC start-up
+     * transient permanently -- measured on unit B, which went from -38.9 dBFS
+     * in the first 100 ms of a capture to -101.1, and stayed clear across
+     * repeated stream starts, a 44.1/48 rate change, 60 s idle and a USB bus
+     * reset. Only a power cycle re-arms it. FINDING_197.
+     *
+     * Why a stream start does not already do this: streaming_set_rate() does
+     * `|=` on a bit that is already set, so its publish writes an unchanged
+     * value and the bit never moves. The host mute path drives it 1->0->1 with
+     * a publish each way, and it is that transition, not the write, that
+     * clears the transient -- codec_apply_mute()'s own write was measured to
+     * produce no transient at all.
+     *
+     * NOVEL — reason: neither stock image does this. Stock raises the pair
+     * once at power-up (Rev 20 0x080B-0x0852, Rev 22 0x09B6-0x09F5,
+     * byte-identical bit order) and never pulses it, and its per-stream path
+     * (Rev 20 0x0395-0x03BD, Rev 22 0x0399-0x03C1) contains no mute and no
+     * long delay. So the transient is original Mbox 1 behaviour and this is an
+     * improvement over stock rather than a repair -- which is exactly why it
+     * gets a NOVEL tag and not a citation. FINDING_196 has the stock table.
+     *
+     * TWO THINGS UNVERIFIED, both needing a unit that still has the transient,
+     * and both units were cleared by the experiment that found this:
+     *   - the minimum hold; the measurement held the gate low for 4 s, and the
+     *     ~860 ms below is chosen as ~5 tau of the 171 ms settling constant
+     *     rather than because a shorter one was shown to fail
+     *   - whether boot is early enough, with the codec freshly up, rather than
+     *     later with everything running as in the measurement
+     * The replug that flashing requires re-arms the transient, so the check is
+     * free: capture immediately afterwards and the first 100 ms should sit at
+     * the -101 to -105 dBFS floor rather than -39. If it does not, move this
+     * call to the first stream open instead of boot. */
+    unsigned char n;
+
+    /* Literal operand, for the reason codec_apply_mute() spells out: a `|=`
+     * whose RHS mentions any identifier is credited with all eight bits by
+     * latch_word_bit_diff.py, which would turn 0x23.0/0x23.1 from documented
+     * gaps into apparently-driven ones. */
+    g_codec_state_23 |= (unsigned char)CODEC23_MUTE_PAIR_ALL;
+    codec_write_word();
+
+    /* hw_short_delay() rather than a local loop: it already carries the
+     * volatile counter that stops SDCC deleting the call site, and a second
+     * copy of the body cost 15 bytes in an image with none spare. */
+    for (n = 0; n < 48; n++) {
+        hw_short_delay();
+    }
+
+    /* NOT a blind clear. A SET_INTERFACE can land during the hold above --
+     * usb_init() runs first (task #47), so the host is enumerating throughout
+     * boot -- and clearing the pair unconditionally would switch the capture
+     * path off underneath a stream that had just opened. codec_apply_mute()
+     * recomputes the pair from g_path_enabled and g_host_mute, so it lands on
+     * the right value whether or not that happened. */
+    codec_apply_mute();
 }
 
 void codec_init(void)

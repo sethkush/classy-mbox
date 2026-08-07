@@ -101,6 +101,14 @@ BLOCK_RETIRED = {
                  "byte 4, and the stall counter's ONLY reader was this block, "
                  "so keeping the counter would have left it write-only. "
                  "Restoring it for #192 is one struct byte plus one TLM_INC8"),
+    5:  (0x0039, "isochronous streaming state -- retired to pay for #197's "
+                 "capture-gate pulse. Its questions are closed: sof_count "
+                 "proved SOF was masked off (USBIMSK bit 4) and the live "
+                 "IEPCNF1/OEPCNF2 reads proved the endpoints were configured "
+                 "while nothing came back, and audio now streams at both rates "
+                 "on both units (FINDING_196). Block 2 still shows the last "
+                 "SETUP, so a SET_INTERFACE and its alt remain visible. "
+                 "sof_count survives -- block 11 byte 7 reads it"),
     6:  (0x002F, "DMA + C-port live state -- answered why isochronous IN returned "
                  "zero-length packets (0xFFE1 is ACGCTL, not a DMA enable, so "
                  "DMACTL0/DMACTL1 had never been armed). Fixed and since measured "
@@ -112,6 +120,8 @@ BLOCK_RETIRED = {
                  "again and the watchdog never evaluates at 44.1/48"),
     # #46 headroom. Both answered questions that are closed, and the bytes
     # went to restoring iSerialNumber and toward the 88.2/96 kHz descriptors.
+    # Block 5 joined 4 and 6 in retirement at 0x0039; the note below is the
+    # historical reason they were kept at the time.
     # Blocks 4/5/6 were deliberately NOT retired: the descriptor work needs
     # them to verify a 576 B frame.
     7:  (0x0027, "EP0 buffer counts + suspend tally -- #148 settled the Y-count "

@@ -132,7 +132,14 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0038   /* 0038: #195 -- stall the standard requests
+#define TLM_BUILD_ID     0x0039   /* 0039: #197 -- pulse the capture gate once at
+                                   *       boot, which clears the ADC start-up
+                                   *       transient for the whole power-up.
+                                   *       Verify by capturing immediately
+                                   *       after the replug: the first 100 ms
+                                   *       must sit at the -101 dBFS floor,
+                                   *       not -39. FINDING_197.
+                                   * 0038: #195 -- stall the standard requests
                                    *       that name what we do not declare:
                                    *       GET_DESCRIPTOR config index != 0,
                                    *       SET_CONFIGURATION > 1, and
@@ -462,9 +469,6 @@ struct tlm_ctrs {
     unsigned int  drains;
     unsigned int  rstr_count;
     unsigned int  sof_count;
-    unsigned char vec_iep1;
-    unsigned char vec_oep2;
-    unsigned char alt_seen;
 };
 extern volatile __data struct tlm_ctrs tlm;
 
@@ -551,8 +555,6 @@ extern volatile __data unsigned char tlm_mux_rejects;
 
 /* SET_INTERFACE forensics. Sticky, because a host-side read always races
  * arecord's teardown back to alt 0. */
-#define TLM_ALT_PLAYBACK_ON 0x01
-#define TLM_ALT_CAPTURE_ON  0x02
 extern volatile __data unsigned char tlm_last_iface;
 extern volatile __data unsigned char tlm_last_alt;
 

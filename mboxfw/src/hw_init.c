@@ -11,7 +11,7 @@
 extern __data unsigned char g_mux_state;  /* mirror of Rev 20 RAM[0x22] */
 
 
-static void short_delay(void)
+void hw_short_delay(void)
 {
     /* Rev 20 spins RAM[0x2E] from 0 up to 0x0F00 (~4000 cycles).
      *
@@ -24,6 +24,9 @@ static void short_delay(void)
     volatile unsigned int i;
     for (i = 0; i < 0x0F00; i++) { }
 }
+
+/* #197 calls this too, rather than carrying a second copy of the loop --
+ * the duplicate cost 15 bytes in an image with none to spare. */
 
 void hw_init(void)
 {
@@ -373,7 +376,7 @@ void hw_init(void)
     MONO_ON();              /* Rev 20 @ 0x0941 SETB 0x1E */
     mux_write(g_mux_state);
 
-    short_delay();
+    hw_short_delay();
 
     g_mux_state = (unsigned char)(0xFF & ~0x01 & ~0x08);   /* = 0xF6, mic/mic */
     MONO_OFF();             /* Rev 20 @ 0x0962 CLR 0x1E */
