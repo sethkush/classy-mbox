@@ -125,6 +125,57 @@ dial is for — but it means every absolute level in `BENCH_WIRING.md` sits 20 d
 below where the converter would like to be. The loop is perfectly linear over
 the full 60 dB swept (every 3 dB in gives 3 dB out).
 
+## Neither stock image does anything about the transient
+
+Checked in both, as the rule requires.
+
+**The mute pair is raised ONCE at power-up**, not per stream — Rev 20
+0x080B–0x0852, Rev 22 0x09B6–0x09F5, byte-identical bit order
+(`IRAM23_IRAM25_ANNOTATION.md`): `SETB 0x23.2 ; SETB 0x23.3 ; publish`, wrapped
+in settling delays, then held.
+
+The per-stream path is instruction-for-instruction identical between the two
+images and contains **no mute and no long delay**:
+
+| | Rev 20 | Rev 22 |
+|---|---|---|
+| clear flags | 0x0395 `CLR 0x2d` | 0x0399 `CLR 0x2d` |
+| publish codec word | 0x03AF `LCALL 0x0E62` | 0x03B3 `LCALL 0x0E56` |
+| endpoint config 0xC5 | 0x03B2 → 0xFF60 | 0x03B6 → 0xFF60 |
+| set mode 3 (rate) | 0x03B8 `MOV R7,#3` / 0x03BA `LCALL 0x0728` | 0x03BC `MOV R7,#3` / 0x03BE `LCALL 0x070F` |
+| enable DMA | 0x03BD `ORL A,#0x80` → 0xFFEE | 0x03C1 `ORL A,#0x80` → 0xFFEE |
+
+`0x0728` / `0x070F` is **not** a delay — 0x2E holds a mode argument and the body
+switches on it. It is stock's `streaming_set_rate()`, and mode 3 is internal
+48 kHz, which is what block 9 reports. mboxfw calls the same thing.
+
+**So the capture start-up thump is original Mbox 1 behaviour, not an mboxfw
+regression.** Any mitigation would be an improvement over stock rather than a
+repair.
+
+Stated as an RE conclusion, with its limit: stock cannot be measured on this
+bench at all. It is vendor-class, `snd-usb-audio` will not bind, so there is no
+`arecord` path — confirming this on hardware would need a raw libusb
+isochronous capture under stock firmware. No contrary observation exists, but
+none has been sought.
+
+## The mute gate itself is clean
+
+Measured, because it decides whether muting through the transient is even
+possible. Toggling `PCM Capture Switch` mid-stream, 100 ms slices:
+
+- mute at 2.5 s → exact digital zeros (`nonzero = 0/4800`), confirming #189
+- **unmute at 4.7 s → straight to −101.35 dBFS with zero DC and no decay**
+
+So releasing the mute adds no step of its own, and a mute-through-the-transient
+would work. It also kills one hypothesis: `codec_apply_mute()` writes the codec
+word, and that write produces **no** transient — so republishing the word is not
+what re-arms it.
+
+What does re-arm it is stream start specifically, identically every time
+(−28.2 dBFS ± 0.06 over four back-to-back captures, and the same after 10 s and
+30 s idle), with a real DC offset of **+0.0276** in the first second.
+
 ## What this does not cover
 
 One dial position, one unit, one direction — see `#196`. And the start-up
