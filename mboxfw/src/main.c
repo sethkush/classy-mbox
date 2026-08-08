@@ -373,31 +373,6 @@ void main(void)
             tlm_phases |= TLM_PHASE_ADC_PULSE;
         }
 
-        /* #197 diagnostic. A capture-gate pulse driven from HERE -- the main
-         * loop -- so that a running capture records the gap and shows whether
-         * the codec accepted a main-loop publish. The ISR-context arm of the
-         * same experiment publishes from the EP0 handler instead; see
-         * codec_gate_probe(). FINDING_197, "2026-08-07".
-         *
-         * The hold is spun on SOF rather than a cycle count so that the gap in
-         * the recording has a known width to compare against: SOF is 1 ms and
-         * is the same clock the capture is timed by. Spinning here is safe for
-         * exactly the reason streaming_set_rate() cannot -- this is not ISR
-         * context, so a 20 ms wait stalls nothing that matters.
-         *
-         * Unsigned wraparound is intentional, as above. */
-        if (g_gate_probe) {
-            g_gate_probe = 0;
-            /* Not a lookalike of the boot pulse -- it IS the boot pulse, the
-             * same function called from the same loop, only on demand and
-             * while a capture is recording. So a gap in the recording is
-             * evidence about the shipped #197 pulse and not about a
-             * reconstruction of it. The hold is hw_short_delay()'s ~3 ms,
-             * which is 144 frames at 48 kHz: unmistakable as a run of exact
-             * zeros, and the same hold a host pulse is known to clear with. */
-            codec_clear_adc_transient();
-        }
-
         /*
          * Two-rate loop, mirroring Rev 20 0x0AD3-0x0B0F (Rev 22
          * 0x0A7D-0x0AB9):

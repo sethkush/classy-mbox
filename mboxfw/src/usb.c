@@ -858,12 +858,6 @@ static void handle_setup(void)
             handle_set_mux();
         } else if (bReq == TLM_REQ_SET_CLOCK && !(bmReq & 0x80)) {
             handle_set_clock();   /* #177 */
-        } else if (bReq == TLM_REQ_GATE_PROBE && !(bmReq & 0x80)) {
-            /* #197 diagnostic. Modes 0 and 1 publish from HERE, which is ISR
-             * context -- that is the point of them. Mode 2 only sets a flag;
-             * main() does the publishing and the timing. */
-            codec_gate_probe(wValueL);
-            reply_zero_length();
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             /* Same latch as the Digi class request; see
              * handle_digi_enter_dfu(). This alias exists because the class

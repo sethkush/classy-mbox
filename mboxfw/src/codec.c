@@ -181,21 +181,6 @@ void codec_apply_mute(void)
     codec_write_word();
 }
 
-/* #197 diagnostic — see codec.h for what this is for and how it is read. */
-__data unsigned char g_gate_probe = 0;
-
-void codec_gate_probe(unsigned char mode)
-{
-    if (mode >= 2) { g_gate_probe = 1; return; }
-
-    /* Deliberately the same two statements codec_apply_mute()'s class caller
-     * uses, so that an ISR-context probe and the ALSA control differ in
-     * nothing at all, and a main-loop probe differs only in context. */
-    if (mode) { g_host_mute |= (unsigned char)CODEC23_MUTE_CAPTURE; }
-    else      { g_host_mute &= (unsigned char)~CODEC23_MUTE_CAPTURE; }
-    codec_apply_mute();
-}
-
 void codec_clear_adc_transient(void)
 {
     /* #197. The capture gate must be driven HIGH, then held LOW, then raised
@@ -269,15 +254,20 @@ void codec_clear_adc_transient(void)
      * on 2026-08-07 the premise itself failed: the residual is the SAME
      * transient at 1/33 amplitude with tau = 171 ms intact, and a corrupted
      * word does not produce a correctly-shaped decay. The masking is dropped
-     * -- it bought nothing, and its 18 bytes are what the gate probe needs.
+     * -- it bought nothing, and dropping it is 18 of the 42 bytes that the
+     * per-unit serial descriptors cost.
      *
-     * The body is now codec_gate_probe() twice, which is deliberate rather
-     * than incidental: the diagnostic's main-loop arm then executes THIS
-     * sequence exactly, so a clean gap in a recording is evidence about the
-     * boot pulse itself and not about a lookalike. */
-    codec_gate_probe(1);
+     * The 0x0041 gate probe drove exactly these four statements from three
+     * different execution contexts and measured all three landing on the
+     * codec, so this sequence is not merely believed to publish, it is the one
+     * that was measured publishing. */
+    g_host_mute |= (unsigned char)CODEC23_MUTE_CAPTURE;
+    codec_apply_mute();
+
     hw_short_delay();
-    codec_gate_probe(0);
+
+    g_host_mute &= (unsigned char)~CODEC23_MUTE_CAPTURE;
+    codec_apply_mute();
 }
 
 void codec_init(void)

@@ -117,25 +117,28 @@
  * code that changes meaning between builds is the same trap BLOCK_RETIRED
  * exists to prevent for telemetry indices. */
 
-/* #197 diagnostic gate probe, DEVICE recipient, bmRequestType 0x40.
+/* 0x16 was TLM_REQ_GATE_PROBE, the #197 diagnostic that drove the capture gate
+ * from a chosen execution context so the device's own 48 kHz ADC could witness
+ * whether the codec ACCEPTED the word -- the question telemetry structurally
+ * cannot answer, since block 9 mirrors what firmware wrote and never what the
+ * shift register latched.
  *
- *   wValue low  0 = release the capture gate now, in ISR context
- *               1 = hold the capture gate now, in ISR context
- *               2 = arm a main-loop pulse, held GATE_PROBE_SOF ms by firmware
+ * It shipped in build 0x0041 only, and it went in labelled DIAGNOSTIC, NOT A
+ * FEATURE, to be removed once it had answered. It has: host, ISR-context and
+ * main-loop publishes all land, the main-loop arm repeatable to +/-0.2 ms
+ * across three runs and two units. See FINDING_197, "2026-08-07".
  *
- * 0x16, not 0x15: 0x15 was TLM_REQ_SET_MUTE and retired codes are never
- * reused, for the reason given above.
+ * Removed for two reasons. It is a trap -- it can mute capture from the host
+ * with no ALSA control to show for it, which is exactly the state someone
+ * debugging silence would waste a day on. And its 96 bytes are what the
+ * per-unit serial descriptors cost: 0x0041 fit only by dropping them, which
+ * left enter_dfu_serial.py unable to name a unit and BENCH_WIRING.md's "trust
+ * the serial" rule unenforceable. Instruments that disable the bench's own
+ * identification are not worth their measurement for longer than the
+ * measurement takes.
  *
- * Device recipient for the usual reason -- this has to work with
- * snd-usb-audio bound, because the whole measurement is a capture that is
- * running while the probe fires.
- *
- * DIAGNOSTIC, NOT A FEATURE. It exists to answer whether a main-loop codec
- * publish reaches the chip as reliably as an ISR-context one, using the
- * device's own ADC as the instrument (FINDING_197, "2026-08-07"). Remove it
- * once that is answered -- it can mute capture from the host with no ALSA
- * control to show for it, which is a trap for anyone debugging silence. */
-#define TLM_REQ_GATE_PROBE 0x16
+ * Not reused, per the rule above: a request code that changes meaning between
+ * builds is the trap BLOCK_RETIRED exists to prevent for telemetry indices. */
 
 /* The three legal source patterns, one-cold, from the stock cycle handlers
  * (Rev 20 fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). */
@@ -152,7 +155,8 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0041   /* 0041: #197 gate probe -- the ADC as the
+#define TLM_BUILD_ID     0x0042   /* 0042: gate probe removed, serials back.
+                                   * 0041: #197 gate probe -- the ADC as the
                                    *       instrument. 0040: #197 v8 -- INTERRUPTS OFF across each
                                    *       codec publish. codec_write_word()
                                    *       bit-bangs P1; a host SET_CUR runs it
