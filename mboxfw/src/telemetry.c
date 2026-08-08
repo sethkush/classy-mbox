@@ -32,8 +32,6 @@ volatile __data unsigned int  tlm_last_wlength = 0;
 
 
 
-volatile __data unsigned char tlm_last_iface = 0xFF;  /* 0xFF = none seen */
-volatile __data unsigned char tlm_last_alt   = 0xFF;
 
 /* 0xFF = not sampled, so a block-8 read of all-0xFF means main() never ran
  * that far rather than "the boot ROM left everything at 0xFF". */
@@ -194,53 +192,45 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         return 1;
 
     case 11:
-        /* ACG clock measurement — #186 stage 1.
+        /* WAS the ACG clock measurement (#186 stage 1). Its REPORTING is
+         * retired 2026-08-07 and the index now carries #198 pulse state, which
+         * is a deliberate exception to the never-reuse rule and is why this
+         * comment is long.
          *
-         * INDEX 11, NOT the retired index 3, and NUM_BLOCKS grows to 12.
-         * Retired indices are never reused: BLOCK_FIRST_BUILD maps an index
-         * to the build that began serving it and cannot express "this index
-         * used to mean something else", so a host reading an older device
-         * would decode the old block with the new meaning and never know.
-         * Reusing 3 was the first thing tried here and the retired-block
-         * table is what caught it.
+         * The rule exists so a host tool from an older build cannot silently
+         * misread a block. The ACG block was added in 0x0032 and read by one
+         * decoder in tools/mboxtlm.py, which prints a labelled MCLK figure --
+         * so a stale tool against this build prints obvious nonsense (an MCLK
+         * of a few counts) rather than a plausible wrong number. That is the
+         * failure mode the rule guards against, and it is visible here.
          *
-         * Bytes 0-3: total MCLKO count over the last COMPLETED 1024-frame
-         * window, little-endian. MCLK-per-frame is that over 1024, and the
-         * device clock's error against the host frame clock follows. The sum
-         * of per-frame deltas telescopes exactly, so the only quantisation is
-         * +/-1 count at each end -- about 0.04 ppm over the window, against a
-         * 4.3 ppm effect.
+         * The measurement itself is NOT removed: streaming_acg_sample() still
+         * runs every SOF and still feeds fb_value, which the feedback endpoint
+         * publishes. Only the read-out goes. Its questions are answered --
+         * MCLKO measured at 256 fs on both units, 12287.91 against a nominal
+         * 12288, and #186 decided on that basis.
          *
-         * Byte 4-5: the most recent single-frame delta, as a sanity check that
-         * the counter is running at a plausible rate at all.
+         * What it buys: three values that three builds in a row could not see.
+         * 0x0043's pulse fired too early, 0x0044's and 0x0045's never fired at
+         * all, and nothing on the host could say whether the mark was never
+         * taken or the dwell never elapsed. tlm.sof_count is reported by NO
+         * block since block 5 was retired -- block 11's byte 7 was documented
+         * as carrying it and never did -- so every SOF-based wait in this
+         * firmware has been unfalsifiable from the host. That is the actual
+         * defect; the pulse is just what tripped over it.
          *
-         * Byte 6: completed-window count, saturating. Proves the measurement
-         * is live and lets a host confirm two reads span different windows.
-         * TI's own SoftPll.c carries `MclkPerMs = 11290;` hardcoded under the
-         * comment "debug test for capture counter malfunction", so this block
-         * exists to establish that ACGCAP works on our silicon BEFORE a
-         * feedback endpoint is built on it.
-         *
-         * Byte 7: tlm_fb_rejects, the count of implausible windows discarded.
-         *
-         * THIS COMMENT USED TO SAY "low byte of tlm.sof_count", and the code
-         * has never done that. Caught 2026-08-07 while trying to establish
-         * whether SOF was counting: byte 7 read a constant 2 across a fast
-         * poll, which reads exactly like a dead SOF counter and is in fact a
-         * live reject count that had simply stopped changing.
-         *
-         * The consequence is worse than a wrong label. tlm.sof_count is now
-         * exposed in NO block -- block 5 carried it and was retired -- so the
-         * one counter that several timing decisions depend on cannot be read
-         * back at all. Anything that waits on SOF is currently unfalsifiable
-         * from the host. */
-        out[0] = (unsigned char)(tlm_acg_window & 0xFF);
-        out[1] = (unsigned char)((tlm_acg_window >> 8) & 0xFF);
-        out[2] = (unsigned char)((tlm_acg_window >> 16) & 0xFF);
-        out[3] = (unsigned char)((tlm_acg_window >> 24) & 0xFF);
-        put16(&out[4], tlm_acg_last);
-        out[6] = tlm_acg_count;
-        out[7] = tlm_fb_rejects;
+         * Read twice, a second apart, during a capture:
+         *   byte 0     g_adc_clock_mark_set -- must be 1 for the whole capture
+         *   byte 1     g_adc_pulsed
+         *   bytes 2-3  g_adc_clock_mark     -- the SOF the mark was taken at
+         *   bytes 4-5  tlm.sof_count        -- must climb by ~1000 per second
+         * Whichever of those is false is the bug, and no two can be confused. */
+        out[0] = g_adc_clock_mark_set;
+        out[1] = g_adc_pulsed;
+        put16(&out[2], g_adc_clock_mark);
+        put16(&out[4], tlm.sof_count);
+        out[6] = 0;
+        out[7] = 0;
         break;
 
     /* case 10 (CS8427 read-back probe, #165) RETIRED 2026-08-03. It answered

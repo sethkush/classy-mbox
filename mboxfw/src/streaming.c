@@ -714,6 +714,7 @@ void streaming_capture_enable(unsigned char on)
          * dwell requirement in the main loop, a blip cannot fire the pulse at
          * all. */
         g_adc_clock_mark_set = 0;
+
         DMACTL1 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x0330 @ 0x032D */
         IEPCNF1  = 0;
     }

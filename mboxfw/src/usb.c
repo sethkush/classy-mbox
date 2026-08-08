@@ -373,8 +373,10 @@ static void handle_set_interface(void)
      * enabled?" because arecord dies within milliseconds of the failed
      * read and ALSA sets the interface back to alt 0 on teardown, so any
      * sample taken from the host races the teardown. These are sticky. */
-    tlm_last_iface = iface;
-    tlm_last_alt   = alt;
+    /* tlm_last_iface / tlm_last_alt were recorded here and reported by NOTHING
+     * -- block 5 carried them and was retired in 0x0039. Dead stores to two
+     * volatile bytes. Removed 2026-08-07 to help pay for block 12, which
+     * reports state that is actually being used to make a decision. */
 
     if (iface == 1) {
         g_alt_playback = alt;
@@ -1471,7 +1473,28 @@ void usb_service(void)
             break;
 
         case VEC_SOF:
-            TLM_INC16(tlm.sof_count);
+            /* WRAPS, and must. TLM_INC16 SATURATES -- `if (c < 0xFFFF) c++`
+             * -- which is right for the forensic counters it was written for,
+             * where "stopped climbing" is the signal. It is wrong for a time
+             * base.
+             *
+             * Measured 2026-08-07, build 0x0046: sof_count read 65535 and
+             * stayed there, so every mark taken after the first ~65.5 seconds
+             * of uptime equalled 65535 and every elapsed-since-mark computed
+             * 0. Any SOF-based wait taken after the first minute of uptime
+             * could never elapse.
+             *
+             * That is exactly the #198 failure, and it also explains why the
+             * earlier builds looked inconsistent rather than broken: 0x0040's
+             * 8000-SOF boot wait and 0x0043's mark at bind both happened
+             * inside the first 65 seconds, so they fired; 0x0044 and 0x0045
+             * were tested minutes after boot, so they never could. Same code,
+             * opposite results, decided by uptime alone.
+             *
+             * Wrapping is what the subtraction in main.c already assumed, and
+             * that comment has claimed "free-running" since the wait was
+             * written. */
+            tlm.sof_count++;
             /* #186 stage 1. BEFORE streaming_sof(), which returns early when
              * no playback stream is running -- the clock is worth measuring
              * whether or not anything is streaming, and the accumulator needs
