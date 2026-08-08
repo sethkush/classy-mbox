@@ -448,3 +448,65 @@ not confined to #197: `buttons_poll`, source changes and every other main-loop
 codec/mux publish share the exposure. `EA` masking did not change the transient
 result, but it was only ever measured against the transient, which is a coarse
 instrument for this question.
+
+---
+
+# 2026-08-07, later: #198 works, and the bug was a saturating counter
+
+Build 0x0047, unit A. The pulse moved from boot to the first capture bring-up,
+and it clears the transient.
+
+| capture | zero runs | first 100 ms |
+|---|---|---|
+| 1st of the power-up | one, at t = 0.248 s, **266.69 ms wide** | — |
+| 2nd | none | **−96.6 / −87.6 dBFS**, DC −0.00001 |
+| 3rd | none | −86.3 / −95.2 |
+| 4th | none | −92.6 / −96.1 |
+
+Against a baseline of **−20.4 dBFS with DC +0.094** on the same unit two builds
+earlier, that is about 76 dB. The gap lands at the 250 ms dwell and measures
+266.69 ms against the 78.2 + 188.0 = 266.2 ms predicted from the hold and the
+gate-release recovery — the two independent measurements agree to half a
+millisecond.
+
+## The three failures were one defect, and it was not in the pulse
+
+`TLM_INC16` is `if (c < 0xFFFF) c++`. Saturating is correct for the forensic
+counters it was written for, where "stopped climbing" is the signal. It is
+wrong for a time base, and `tlm.sof_count` is a time base. Read on unit B
+during a live capture, build 0x0046:
+
+```
+mark_set=1 pulsed=0 mark=65535 sof=65535 elapsed=0    (x5, 0.6 s apart)
+```
+
+Pinned at 65535 after ~65.5 s of uptime, so every mark equalled 65535 and every
+elapsed-since-mark computed 0. **No SOF-based wait could elapse after the first
+minute of uptime.** The mark logic had been correct throughout.
+
+This is also why the builds looked incoherent rather than broken. 0x0040's
+8000-SOF boot wait and 0x0043's mark at bind both happened inside the first
+65 seconds, so they fired. 0x0044 and 0x0045 were tested minutes after boot, so
+they never could. Same code, opposite results, decided by uptime alone.
+
+## What actually went wrong in the process
+
+Three builds were spent theorising about alt settings and execution context
+against a system whose clock had stopped, with no way to see that it had. The
+state that settled it in one read — mark flag, one-shot flag, SOF counter — was
+reported by no block, and `tlm.sof_count` had been unreadable since block 5 was
+retired while block 11's byte 7 was *documented* as carrying it and never did.
+
+The rule this repo already had was enough: measure, do not reason. The
+amendment it needs is that **a timer nothing can read is not an instrument, and
+a wait on it is not a measurement.** Block 11 now reports the pulse state, at
+the cost of the ACG read-out, whose questions #186 closed.
+
+## Cost, as shipped
+
+One capture per power-up opens with 266 ms of exact digital zeros starting
+250 ms in: 250 ms of transient, then the gap, then clean for the rest of the
+power-up. Most of the gap is `hw_short_delay()`'s 78 ms against a proven ~1 ms
+requirement, so it could be cut to about 190 ms; the dwell is what keeps
+`snd-usb-audio`'s bind-time alt 1 from consuming the one-shot, and it is a
+margin rather than a measured minimum.
