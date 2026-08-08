@@ -491,27 +491,11 @@ void streaming_set_rate(unsigned long hz)
             cs8427_write(0x24, 0x80);   /* Rev 20 fcn.0x0582 @ 0x0593 */
         }
     }
-    /* #197. Record WHEN the master clocks came up, and let the main loop do
-     * the pulse later. Two things forced this shape, both measured:
-     *
-     *   - the pulse needs the clocks RUNNING, so it cannot go at boot: mboxfw
-     *     leaves ACGCTL alone until this routine runs, and builds 0x0039 and
-     *     0x003A pulsed at boot into an unclocked codec and were inert.
-     *   - it needs them running for a WHILE, so it cannot go here either.
-     *     Build 0x003B pulsed at the end of this function, microseconds after
-     *     the ACGCTL writes above, and was also inert -- yet a host pulse with
-     *     the clocks merely on for a few seconds, and no stream running at
-     *     all, cleared the same unit from -33.0 to -101.1 dBFS.
-     *
-     * And the delay cannot be spun here regardless: this routine is reached
-     * from the EP0 handlers, which run in ISR context (isr_int0 services USB),
-     * so a busy-wait would stall enumeration. The main loop is the only place
-     * that can afford to wait. SOF is the clock to wait on -- 1 ms a tick,
-     * already counted, and it only ticks while the bus is live. */
-    if (!g_adc_pulsed && !g_adc_clock_mark_set) {
-        g_adc_clock_mark_set = 1;
-        g_adc_clock_mark = tlm.sof_count;
-    }
+    /* #197/#198. The pulse used to be marked from HERE, on the theory that
+     * what it needed was the master clocks up and running for a while. It is
+     * marked from streaming_capture_enable() instead -- see the note there.
+     * The clocks still come up at boot, which is a separate fix and the one
+     * that actually won 33 dB. */
 
 }
 
@@ -671,7 +655,65 @@ void streaming_capture_enable(unsigned char on)
          * datasheet §6.4.4.6.2. Rev 20 fcn.0x0398 @ 0x03C4 */
         IEPCNF1  = 0xC5;
         DMACTL1 |= DMA_EN; /* Rev 20 fcn.0x0398 @ 0x03BD */
+
+        /* #198. Mark the FIRST capture bring-up of this power-up, so the main
+         * loop can pulse the capture gate a few SOFs later. One-shot:
+         * g_adc_pulsed keeps every later stream free of the cost.
+         *
+         * This is the placement the measurements of 2026-08-07 point at, and
+         * they overturned the reasoning that had put it at boot. A firmware
+         * main-loop pulse fired DURING a capture clears the start-up transient
+         * completely -- flat, -99 to -103 dBFS -- while byte-identical code at
+         * boot leaves it re-armed on every stream start at tau = 171 ms. The
+         * variable is when the pulse fires relative to the ADC being enabled,
+         * not the execution context and not the clock state: all three publish
+         * contexts were measured landing on the codec.
+         *
+         * HERE and not at the end of streaming_set_rate(), which is where
+         * build 0x003B put it and was measured inert. That routine runs on
+         * every SET_CUR of the sampling frequency, including with no capture
+         * open at all -- and this firmware calls it from main() at boot, so a
+         * mark there fires the pulse before any ADC has been enabled, which is
+         * precisely the failure. Capture bring-up is the event that arms the
+         * transient, so it is the event to hang the pulse on.
+         *
+         * The cost is known and paid once per power-up: hw_short_delay()'s
+         * 78.2 ms hold plus the fixed 188.0 ms +/- 0.2 that RELEASING the gate
+         * costs (measured across a 32x range of holds), so the first capture
+         * after a power cycle opens with ~0.27 s of exact digital zeros.
+         *
+         * Most of that is the hold, and the hold is 78 ms against a proven
+         * requirement of about 1 ms -- so this could be cut to ~0.19 s by not
+         * borrowing hw_init's delay. Not done here: a dedicated shorter delay
+         * costs bytes this image does not have spare, and the difference is
+         * 78 ms once per power cycle.
+         *
+         * Against that cost, the transient it removes is -50 dBFS of DC
+         * settling at the top of EVERY capture, and the mute-through-the-
+         * transient design this replaces would have cost 1.34 s on every take
+         * rather than 0.27 s on one. */
+        if (!g_adc_pulsed && !g_adc_clock_mark_set) {
+            g_adc_clock_mark_set = 1;
+            g_adc_clock_mark = tlm.sof_count;
+        }
     } else {
+        /* #198. Re-arm on teardown, so a capture that went down before the
+         * pulse fired does not consume the one-shot.
+         *
+         * BUILD 0x0043 HAD NO THIS AND WAS MEASURED FAILING. snd-usb-audio
+         * touches alt 1 when it BINDS, not only when a capture opens, so the
+         * mark was taken and the pulse fired seconds before arecord ran --
+         * TLM_PHASE_ADC_PULSE was already set with no capture having happened,
+         * and the first real capture showed the transient at full size,
+         * -16.3 dBFS with DC +0.152 and tau = 171 ms intact. SET_INTERFACE is
+         * too coarse an event to hang this on by itself.
+         *
+         * Re-arming is what makes that self-correcting: the probe's blip may
+         * still take the mark, but it releases it again on the way down, and
+         * the capture that follows takes a fresh one. Paired with the
+         * dwell requirement in the main loop, a blip cannot fire the pulse at
+         * all. */
+        g_adc_clock_mark_set = 0;
         DMACTL1 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x0330 @ 0x032D */
         IEPCNF1  = 0;
     }

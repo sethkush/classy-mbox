@@ -155,7 +155,11 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0042   /* 0042: gate probe removed, serials back.
+#define TLM_BUILD_ID     0x0044   /* 0044: #198 -- dwell + re-arm, after 0043's
+                                   *       one-shot was eaten by the bind-time alt.
+                                   * 0043: #198 -- pulse moved from boot to the
+                                   *       first capture bring-up.
+                                   * 0042: gate probe removed, serials back.
                                    * 0041: #197 gate probe -- the ADC as the
                                    *       instrument. 0040: #197 v8 -- INTERRUPTS OFF across each
                                    *       codec publish. codec_write_word()

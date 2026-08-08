@@ -221,8 +221,19 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
          * exists to establish that ACGCAP works on our silicon BEFORE a
          * feedback endpoint is built on it.
          *
-         * Byte 7: low byte of tlm.sof_count, so a host can tell a stalled
-         * measurement (no SOFs) from a broken one (SOFs but no windows). */
+         * Byte 7: tlm_fb_rejects, the count of implausible windows discarded.
+         *
+         * THIS COMMENT USED TO SAY "low byte of tlm.sof_count", and the code
+         * has never done that. Caught 2026-08-07 while trying to establish
+         * whether SOF was counting: byte 7 read a constant 2 across a fast
+         * poll, which reads exactly like a dead SOF counter and is in fact a
+         * live reject count that had simply stopped changing.
+         *
+         * The consequence is worse than a wrong label. tlm.sof_count is now
+         * exposed in NO block -- block 5 carried it and was retired -- so the
+         * one counter that several timing decisions depend on cannot be read
+         * back at all. Anything that waits on SOF is currently unfalsifiable
+         * from the host. */
         out[0] = (unsigned char)(tlm_acg_window & 0xFF);
         out[1] = (unsigned char)((tlm_acg_window >> 8) & 0xFF);
         out[2] = (unsigned char)((tlm_acg_window >> 16) & 0xFF);
