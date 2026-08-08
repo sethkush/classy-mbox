@@ -360,6 +360,19 @@ void main(void)
          *
          * Unsigned wraparound is intentional and correct: sof_count is 16-bit
          * and free-running, so the subtraction stays right across its wrap. */
+        /* #197/#198. Pulse the capture gate once, ADC_PULSE_DELAY_SOF after
+         * the FIRST capture bring-up, which clears the ADC start-up transient
+         * for the rest of the power-up.
+         *
+         * The mark is set in streaming_capture_enable(); see the long note
+         * there for why that event and not boot, and what it costs. It stays
+         * in the main loop for a reason that survived every revision of the
+         * theory: the mark is set from the EP0 handlers, which run in ISR
+         * context, so nothing there can wait even 10 ms without stalling
+         * enumeration. The main loop is the only place that can afford to.
+         *
+         * Unsigned wraparound is intentional and correct: sof_count is 16-bit
+         * and free-running, so the subtraction stays right across its wrap. */
         if (g_adc_clock_mark_set && !g_adc_pulsed &&
             (unsigned int)(tlm.sof_count - g_adc_clock_mark)
                 >= ADC_PULSE_DELAY_SOF) {

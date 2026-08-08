@@ -155,7 +155,11 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0047   /* 0047: sof_count WRAPS -- it was saturating
+#define TLM_BUILD_ID     0x0049   /* 0049: boot self-capture REVERTED, measured
+                                   *       not to work. Same behaviour as 0047.
+                                   * 0048: #198 stage 2 -- boot self-capture, for
+                                   *       a clean FIRST take.
+                                   * 0047: sof_count WRAPS -- it was saturating
                                    *       at 65535, so no SOF wait could elapse
                                    *       after 65 s of uptime.
                                    * 0046: block 11 now reports #198 pulse state.

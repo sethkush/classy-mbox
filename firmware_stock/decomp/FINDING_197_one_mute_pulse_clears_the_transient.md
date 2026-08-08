@@ -510,3 +510,52 @@ power-up. Most of the gap is `hw_short_delay()`'s 78 ms against a proven ~1 ms
 requirement, so it could be cut to about 190 ms; the dwell is what keeps
 `snd-usb-audio`'s bind-time alt 1 from consuming the one-shot, and it is a
 margin rather than a measured minimum.
+
+## A clean FIRST capture is not available. Boot self-capture, measured.
+
+Build 0x0048 asked the obvious follow-up: if what a working pulse needs is an
+ADC that is actually converting, the firmware can arrange that itself. It armed
+the capture path at boot with no host involved (`streaming_capture_enable(1)`),
+let it run 300 ms, pulsed the gate, disarmed, and set the one-shot so the
+stream-start pulse could never fire.
+
+It boots and enumerates cleanly, and the self-capture completes —
+`TLM_PHASE_ADC_PULSE` is set before any host activity. **It does not work.**
+Unit B, first capture of that power-up:
+
+| t (ms) | dBFS | DC |
+|---|---|---|
+| 0 | −22.2 / −22.7 | +0.0769 |
+| 100 | −27.2 / −27.8 | +0.0428 |
+| 300 | −37.4 / −38.0 | +0.0133 |
+| 500 | −47.6 / −48.1 | +0.0041 |
+
+Full transient, τ = 171 ms, and no zero run (correct — the pulse happened at
+boot). So arming the ADC without a host does not reproduce whatever a real
+stream start does, and **the transient is armed by the host's own alt 0 → alt 1
+and can only be cleared after it.** A clean first capture is not reachable this
+way. Reverted in 0x0049.
+
+The first version of that build also hung: it busy-waited on `sof_count` before
+entering the main loop, and `sim_smoke` plus three EP0 gates failed instantly.
+With no SOF the spin never ends and `main()` never reaches its loop — a device
+powered without an active host would never enumerate. The gates caught it
+before it reached hardware, which is the second time this week a wait on SOF
+has been the defect.
+
+## What is left to cut, if the first take matters
+
+The first capture costs 250 ms of transient then 266 ms of zeros. Both parts
+are reducible, and neither is a measured minimum:
+
+- the 250 ms dwell exists only to outlast `snd-usb-audio`'s bind-time alt 1,
+  whose duration has never been measured. Measure it with usbmon and the dwell
+  can be set just above it.
+- the 266 ms gap is 78 ms of `hw_short_delay()` plus the fixed 188 ms recovery.
+  The hold's proven requirement is about 1 ms, so a dedicated short delay takes
+  the gap to ~190 ms.
+
+Better than either: key the pulse off the first isochronous IN interrupt rather
+than off SET_INTERFACE. That is an event only a real capture produces, so the
+dwell disappears entirely and the pulse fires at the true stream start — the
+first take would open with the gap and nothing else.
