@@ -175,6 +175,26 @@ void codec_apply_mute(void);
  * transient for the rest of the power-up. Call once, after the codec and the
  * CS8427 are up. FINDING_197. */
 void codec_clear_adc_transient(void);
+
+/* #197 diagnostic. Drive the capture gate from a chosen execution context so
+ * that the device's own ADC can witness whether the codec ACCEPTED the word.
+ * The gate emits exact digital zeros when low, so a pulse during a live
+ * capture is a measurable gap in the recording -- unlike telemetry block 9,
+ * which only mirrors what firmware believes it wrote. FINDING_197,
+ * "2026-08-07".
+ *
+ *   mode 0 = release the gate now, in the caller's context (EP0 = ISR)
+ *   mode 1 = hold the gate now, in the caller's context
+ *   mode 2 = arm a MAIN-LOOP pulse -- main() then calls
+ *            codec_clear_adc_transient(), which is the shipped #197 pulse
+ *            itself, held hw_short_delay()'s ~3 ms = 144 frames at 48 kHz
+ *
+ * Modes 0 and 1 are the host path's own code, reached from a device-recipient
+ * vendor request rather than the class SET_CUR, so the pair differs from mode
+ * 2 in execution context and nothing else. */
+void codec_gate_probe(unsigned char mode);
+extern __data unsigned char g_gate_probe;
+
 extern __data unsigned char g_adc_pulsed;
 extern __data unsigned char g_adc_clock_mark_set;
 extern __data unsigned int  g_adc_clock_mark;

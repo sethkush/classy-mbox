@@ -181,6 +181,21 @@ void codec_apply_mute(void)
     codec_write_word();
 }
 
+/* #197 diagnostic — see codec.h for what this is for and how it is read. */
+__data unsigned char g_gate_probe = 0;
+
+void codec_gate_probe(unsigned char mode)
+{
+    if (mode >= 2) { g_gate_probe = 1; return; }
+
+    /* Deliberately the same two statements codec_apply_mute()'s class caller
+     * uses, so that an ISR-context probe and the ALSA control differ in
+     * nothing at all, and a main-loop probe differs only in context. */
+    if (mode) { g_host_mute |= (unsigned char)CODEC23_MUTE_CAPTURE; }
+    else      { g_host_mute &= (unsigned char)~CODEC23_MUTE_CAPTURE; }
+    codec_apply_mute();
+}
+
 void codec_clear_adc_transient(void)
 {
     /* #197. The capture gate must be driven HIGH, then held LOW, then raised
@@ -207,6 +222,12 @@ void codec_clear_adc_transient(void)
      * firmware would be far quicker than anything measured. One hw_short_delay()
      * is kept as the hold for that margin, and it costs less code than the
      * 8-iteration loop it replaces -- no counter, no loop.
+     *
+     * That hold is 78.2 ms, measured 2026-08-07, not the ~3 ms this comment
+     * used to claim. Generous against a 1 ms requirement, and irrelevant next
+     * to the 188.0 ms of digital zeros that RELEASING the gate costs -- also
+     * measured that day, and the reason a pulse can never be free during a
+     * live capture. FINDING_197.
      *
      * ENDS HIGH, deliberately, and that is also what makes it safe. usb_init()
      * runs first (task #47), so a SET_INTERFACE can land during the hold; a
@@ -240,35 +261,23 @@ void codec_clear_adc_transient(void)
      * codec_apply_mute(), clear it, publish again. That path is measured to
      * work, repeatedly, on both units.
      *
-     * INTERRUPTS OFF ACROSS EACH PUBLISH, which is the actual difference and
-     * took seven builds to see. codec_write_word() BIT-BANGS the word out on
-     * P1 -- data on P1.0, clock on P1.2, latch on P1.1. A host SET_CUR runs
-     * this from the EP0 handler, i.e. inside isr_int0, where nothing preempts
-     * it. The same call from the main loop can be preempted mid-shift by the
-     * USB ISR, stretching a clock phase, and the codec can mis-sample.
+     * BUILD 0x0040 MASKED INTERRUPTS ACROSS EACH PUBLISH, on the theory that
+     * codec_write_word()'s bit-bang on P1 could be preempted mid-shift by the
+     * USB ISR, stretching a clock phase, so that the codec mis-sampled a word
+     * telemetry would still report as correct (block 9 mirrors what firmware
+     * wrote, never what the shift register latched). It changed nothing, and
+     * on 2026-08-07 the premise itself failed: the residual is the SAME
+     * transient at 1/33 amplitude with tau = 171 ms intact, and a corrupted
+     * word does not produce a correctly-shaped decay. The masking is dropped
+     * -- it bought nothing, and its 18 bytes are what the gate probe needs.
      *
-     * Telemetry cannot see that: block 9 reports g_codec_state_23, which is
-     * mboxfw's MIRROR of the word, not what the shift register actually
-     * latched. So every build reported the right codec word while the chip may
-     * have received something else -- which is exactly the shape of the
-     * result, identical bits and path but a partial effect (-62 dBFS against
-     * the -101 the ISR-context path reaches).
-     *
-     * The delay stays outside the critical section: ~3 ms with EA clear would
-     * stall USB servicing, and the gap between the two publishes does not need
-     * protecting -- only the shifts do. */
-    g_host_mute |= (unsigned char)CODEC23_MUTE_CAPTURE;
-    EA = 0;                 /* see below */
-    codec_apply_mute();
-    EA = 1;
-
-    hw_short_delay();       /* OUTSIDE the critical section -- ~3 ms with
-                             * interrupts off would stall USB servicing. */
-
-    g_host_mute &= (unsigned char)~CODEC23_MUTE_CAPTURE;
-    EA = 0;
-    codec_apply_mute();
-    EA = 1;
+     * The body is now codec_gate_probe() twice, which is deliberate rather
+     * than incidental: the diagnostic's main-loop arm then executes THIS
+     * sequence exactly, so a clean gap in a recording is evidence about the
+     * boot pulse itself and not about a lookalike. */
+    codec_gate_probe(1);
+    hw_short_delay();
+    codec_gate_probe(0);
 }
 
 void codec_init(void)

@@ -117,6 +117,26 @@
  * code that changes meaning between builds is the same trap BLOCK_RETIRED
  * exists to prevent for telemetry indices. */
 
+/* #197 diagnostic gate probe, DEVICE recipient, bmRequestType 0x40.
+ *
+ *   wValue low  0 = release the capture gate now, in ISR context
+ *               1 = hold the capture gate now, in ISR context
+ *               2 = arm a main-loop pulse, held GATE_PROBE_SOF ms by firmware
+ *
+ * 0x16, not 0x15: 0x15 was TLM_REQ_SET_MUTE and retired codes are never
+ * reused, for the reason given above.
+ *
+ * Device recipient for the usual reason -- this has to work with
+ * snd-usb-audio bound, because the whole measurement is a capture that is
+ * running while the probe fires.
+ *
+ * DIAGNOSTIC, NOT A FEATURE. It exists to answer whether a main-loop codec
+ * publish reaches the chip as reliably as an ISR-context one, using the
+ * device's own ADC as the instrument (FINDING_197, "2026-08-07"). Remove it
+ * once that is answered -- it can mute capture from the host with no ALSA
+ * control to show for it, which is a trap for anyone debugging silence. */
+#define TLM_REQ_GATE_PROBE 0x16
+
 /* The three legal source patterns, one-cold, from the stock cycle handlers
  * (Rev 20 fcn.0x0E27 / fcn.0x0E9D, Rev 22 fcn.0x0E1B / fcn.0x0E8F). */
 #define MUX_PAT_MIC      0x06   /* boot state */
@@ -132,7 +152,8 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0040   /* 0040: #197 v8 -- INTERRUPTS OFF across each
+#define TLM_BUILD_ID     0x0041   /* 0041: #197 gate probe -- the ADC as the
+                                   *       instrument. 0040: #197 v8 -- INTERRUPTS OFF across each
                                    *       codec publish. codec_write_word()
                                    *       bit-bangs P1; a host SET_CUR runs it
                                    *       inside isr_int0 where nothing

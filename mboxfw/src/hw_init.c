@@ -15,6 +15,13 @@ void hw_short_delay(void)
 {
     /* Rev 20 spins RAM[0x2E] from 0 up to 0x0F00 (~4000 cycles).
      *
+     * MEASURED 2026-08-07: this takes 78.2 ms, not the "~3 ms" that four
+     * comments and FINDING_197 all asserted. Timed on hardware by holding the
+     * capture gate low for exactly one call of this and reading the width of
+     * the resulting run of digital zeros back out of a capture (266.17 ms
+     * total, less the fixed 188.0 ms gate-release recovery). Nothing was ever
+     * decided on the wrong figure, but it was stated as fact.
+     *
      * `i` MUST be volatile. Without it SDCC proves this function has no
      * observable effect and deletes the CALL SITE outright -- the body stays
      * in the image, unreferenced, so nothing looks wrong. Found 2026-07-29:

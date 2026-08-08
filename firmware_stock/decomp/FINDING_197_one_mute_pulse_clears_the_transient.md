@@ -264,12 +264,12 @@ measurement showed it. 2 s idle capture on each unit running 0x0040, sliced at
 
 | t (ms) | unit A, dBFS | unit B, dBFS | A, DC | B, DC |
 |---|---|---|---|---|
-| 0 | −50.7 | −48.3 | +0.00289 | +0.00384 |
-| 50 | −53.3 | −50.8 | +0.00216 | +0.00286 |
-| 100 | −55.8 | −53.4 | +0.00161 | +0.00214 |
-| 200 | −60.9 | −58.5 | +0.00090 | +0.00119 |
-| 400 | −71.0 | −68.7 | +0.00028 | +0.00037 |
-| 800 | −91.6 | −88.3 | +0.00003 | +0.00004 |
+| 0 | −48.3 | −50.7 | +0.00384 | +0.00289 |
+| 50 | −50.8 | −53.3 | +0.00286 | +0.00216 |
+| 100 | −53.4 | −55.8 | +0.00214 | +0.00161 |
+| 200 | −58.5 | −60.9 | +0.00119 | +0.00090 |
+| 400 | −68.7 | −71.0 | +0.00037 | +0.00028 |
+| 800 | −88.3 | −91.6 | +0.00004 | +0.00003 |
 
 **−2.5 dB per 50 ms bin = −50.6 dB/s = τ = 171 ms**, on both units, on both
 channels. That is the identical time constant `FINDING_196` measured by window
@@ -293,14 +293,14 @@ Re-run on 0x0040, `mutepulse <card> 3`, then capture:
 
 | | first 400 ms |
 |---|---|
-| unit A after host pulse | −103.8 −102.0 −102.9 −103.8 … **flat, no decay** |
-| unit B after host pulse | −100.9 −97.3 −98.5 −99.0 … **flat, no decay** |
+| unit B after host pulse | −103.8 −102.0 −102.9 −103.8 … **flat, no decay** |
+| unit A after host pulse | −100.9 −97.3 −98.5 −99.0 … **flat, no decay** |
 
 Flat, not decaying — so the host pulse removes the DC step itself rather than
 shrinking it, and the effect survives into the next capture. The two-tier state
 is real and reproducible on the current build. Two details recorded and not
 chased: the first ~150 ms of a post-pulse capture is exact digital zeros, and on
-the *second* capture exactly one channel per unit (A left, B right) re-arms a
+the *second* capture exactly one channel per unit (B left, A right) re-arms a
 small decaying residual while the other stays flat. The per-channel asymmetry is
 new; the cross-wiring in `BENCH_WIRING.md` is a confound and it has not been
 controlled for.
@@ -337,6 +337,99 @@ each zeros gap in the recording. Outcomes:
 
 This needs no instrument the bench lacks. It costs one flash and one power
 cycle per unit.
+
+## RESULT: main-loop publishes land perfectly. The delivery hypothesis is dead.
+
+Build 0x0041, both units, the experiment above. Three arms in one 6 s capture:
+an ALSA `PCM Capture Switch` pulse at 1 s, an ISR-context pulse at 2.5 s, a
+main-loop pulse at 4.5 s. Every arm produced a run of exact digital zeros.
+
+| arm | unit A | unit B |
+|---|---|---|
+| host, ALSA, 20 ms commanded | 207.67 ms | 207.62 ms |
+| firmware, ISR context, 40 ms commanded | 227.69 ms | 227.96 ms |
+| **firmware, main loop** | **266.17 ms** | **266.17 ms** |
+
+The main-loop arm is repeatable to ±0.2 ms over three runs (266.38, 266.15,
+266.17) and identical across two units. **A main-loop codec publish reaches the
+chip exactly as reliably as an ISR-context one**, for both the mute and the
+unmute. Seven builds of suspicion, closed by one measurement.
+
+That also retires the suspicion recorded at the end of the previous section:
+`buttons_poll` and the other main-loop codec and mux publishes are not exposed.
+
+## Releasing the capture gate costs a fixed 188.0 ms of digital zeros
+
+Sweeping the commanded hold on unit A, ISR arm:
+
+| hold | zeros width | width − hold |
+|---|---|---|
+| 5 ms | 192.79 ms | 187.8 |
+| 10 ms | 198.06 ms | 188.1 |
+| 20 ms | 207.90 ms | 187.9 |
+| 40 ms | 228.02 ms | 188.0 |
+| 80 ms | 267.94 ms | 187.9 |
+| 160 ms | 348.12 ms | 188.1 |
+
+**188.0 ms ± 0.2 over a 32× range of holds.** So the gate is not a simple mute:
+releasing it puts the codec through a fixed recovery during which it emits
+exact zeros, and only then does audio resume. 188 ms against the τ = 171 ms of
+the start-up transient is close enough to suggest the same physical settling —
+the codec zeroing its own output while the ADC re-settles, rather than passing
+the DC step through. That would explain *why* a gate pulse clears the transient
+at all, which nothing before this had a mechanism for. It is a suggestion, not
+a measurement: nothing here proves the two are the same process.
+
+## hw_short_delay() is 78 ms, not the ~3 ms the comments claimed
+
+The main-loop arm holds for `hw_short_delay()`, and 266.17 − 188.0 = **78.2 ms**.
+Every comment in `codec.c` and every "~3 ms" in this document was wrong by a
+factor of 25. Nothing was decided on that number — the measured floor for the
+hold is about 1 ms and any of these values clears it — but it was stated as
+fact in four places and is now measured.
+
+## So the pulse was never broken. Its PLACEMENT was.
+
+A firmware main-loop pulse fired while a capture was running clears the
+transient completely, exactly as a host pulse does. Plain captures taken
+straight afterwards, no pulse of any kind:
+
+| | first 250 ms |
+|---|---|
+| unit A | −99.0 −98.9 −98.5 −98.8 −99.4 −99.1, **flat** |
+| unit B | −102.6 −102.6 −102.9 −103.1 −103.7 −103.7, **flat** |
+
+Flat, not decaying, on the same firmware whose *boot* pulse leaves a
+τ = 171 ms transient re-armed on every stream start. Same code, same context,
+same unit, same power-up. **The variable is when the pulse fires relative to
+the ADC being enabled, and nothing else.**
+
+That also settles what the 33 dB in 0x0040 came from: clocks-at-boot (0x003C),
+not the pulse. The boot pulse contributes nothing, and eight builds of tuning
+its context and timing were tuning something that was never the problem.
+
+One thing does NOT fit this model and is recorded rather than smoothed over.
+The earlier section "Clocks running is the whole precondition" reports a host
+pulse clearing the transient with no capture stream running at all, and unit B
+cleared by a playback-only stream followed by a pulse. If an open capture were
+strictly required, neither should have worked. So the precondition is something
+weaker — plausibly that the host has bound and set an alt setting at least once
+— and it has not been isolated.
+
+## What to build next
+
+Move the pulse from boot to the first stream start, still one-shot per
+power-up. The cost is now known rather than feared: **188 ms of digital zeros
+at the top of the first capture only**, against the 1.34 s that the original
+mute-through-the-transient design would have cost on every take.
+
+Note this is the placement build 0x003B already tried and measured inert. The
+reason to expect a different answer is that 0x003B predated clocks-at-boot: its
+pulse ran microseconds after `streaming_set_rate()` first raised ACGCTL, and
+the codec needs the clocks up for a while, not merely on. From 0x003C the
+clocks are up from boot, so a stream-start pulse now lands on a codec that has
+been clocked for seconds. That is a real difference, and it is still a
+prediction — 0x003B is a reason for caution, not a reason not to try.
 
 ## What the multimeter can and cannot do here
 
