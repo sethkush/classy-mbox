@@ -180,6 +180,35 @@ void streaming_set_rate(unsigned long hz)
     fb_frames  = 0;
     acg_primed = 0;
 
+    /* HOLD THE PAIR LOW ACROSS THE CLOCK REPROGRAMMING, AND PUBLISH THAT.
+     *
+     * Rev 20 fcn.0x0728 @ 0x072F/0x0731 (CLR 0x1a / CLR 0x1b) then @ 0x0733
+     * (LCALL 0x0E62); Rev 22 fcn.0x070F @ 0x0710/0x0712 then @ 0x0714. The
+     * matching release is the SETB pair and publish further down.
+     *
+     * THIS LINE WAS MISSING FOR THE WHOLE LIFE OF THE PROJECT, and it is the
+     * cause of the ADC start-up transient (#197/#198). The comment further
+     * down has always described this bracket -- "pair cleared before the clock
+     * is disturbed, raised again only once the clock is stable" -- but only
+     * the raise was ever ported. With no clear there is no falling edge, so
+     * the SETB below writes a bit that was already set and no rising edge
+     * occurs either.
+     *
+     * 0x23.2 is the AK5383 ADC's RST (FINDING_the_parts_are_identified). Its
+     * datasheet: "When this pin returns to High, an offset calibration cycle
+     * starts. An offset calibration cycle should always be initiated upon
+     * powering up the device." Without the falling edge that cycle never runs,
+     * so the converter operates un-calibrated and its DC offset settles out
+     * through the digital high-pass at the top of every capture -- which is
+     * exactly the measured transient, tau = 171 ms against the part's 1.0 Hz
+     * HPF corner, and the 188.0 ms of digital zeros the manual pulse produced
+     * is tRTV = 8960/fs = 186.7 ms, the calibration itself.
+     *
+     * `&=` cannot set a bit, so latch_word_bit_diff.py still reads the literal
+     * `|=` below as the whole truth about what this routine can raise. */
+    g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_PAIR_ALL;
+    codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x0714 */
+
     /* Prelude — seed both adaptive-clock-generator digital control
      * registers with 0x10, exactly as Rev 20 does.
      *
@@ -491,11 +520,6 @@ void streaming_set_rate(unsigned long hz)
             cs8427_write(0x24, 0x80);   /* Rev 20 fcn.0x0582 @ 0x0593 */
         }
     }
-    /* #197/#198. The pulse used to be marked from HERE, on the theory that
-     * what it needed was the master clocks up and running for a while. It is
-     * marked from streaming_capture_enable() instead -- see the note there.
-     * The clocks still come up at boot, which is a separate fix and the one
-     * that actually won 33 dB. */
 
 }
 
@@ -656,64 +680,8 @@ void streaming_capture_enable(unsigned char on)
         IEPCNF1  = 0xC5;
         DMACTL1 |= DMA_EN; /* Rev 20 fcn.0x0398 @ 0x03BD */
 
-        /* #198. Mark the FIRST capture bring-up of this power-up, so the main
-         * loop can pulse the capture gate a few SOFs later. One-shot:
-         * g_adc_pulsed keeps every later stream free of the cost.
-         *
-         * This is the placement the measurements of 2026-08-07 point at, and
-         * they overturned the reasoning that had put it at boot. A firmware
-         * main-loop pulse fired DURING a capture clears the start-up transient
-         * completely -- flat, -99 to -103 dBFS -- while byte-identical code at
-         * boot leaves it re-armed on every stream start at tau = 171 ms. The
-         * variable is when the pulse fires relative to the ADC being enabled,
-         * not the execution context and not the clock state: all three publish
-         * contexts were measured landing on the codec.
-         *
-         * HERE and not at the end of streaming_set_rate(), which is where
-         * build 0x003B put it and was measured inert. That routine runs on
-         * every SET_CUR of the sampling frequency, including with no capture
-         * open at all -- and this firmware calls it from main() at boot, so a
-         * mark there fires the pulse before any ADC has been enabled, which is
-         * precisely the failure. Capture bring-up is the event that arms the
-         * transient, so it is the event to hang the pulse on.
-         *
-         * The cost is known and paid once per power-up: hw_short_delay()'s
-         * 78.2 ms hold plus the fixed 188.0 ms +/- 0.2 that RELEASING the gate
-         * costs (measured across a 32x range of holds), so the first capture
-         * after a power cycle opens with ~0.27 s of exact digital zeros.
-         *
-         * Most of that is the hold, and the hold is 78 ms against a proven
-         * requirement of about 1 ms -- so this could be cut to ~0.19 s by not
-         * borrowing hw_init's delay. Not done here: a dedicated shorter delay
-         * costs bytes this image does not have spare, and the difference is
-         * 78 ms once per power cycle.
-         *
-         * Against that cost, the transient it removes is -50 dBFS of DC
-         * settling at the top of EVERY capture, and the mute-through-the-
-         * transient design this replaces would have cost 1.34 s on every take
-         * rather than 0.27 s on one. */
-        if (!g_adc_pulsed && !g_adc_clock_mark_set) {
-            g_adc_clock_mark_set = 1;
-            g_adc_clock_mark = tlm.sof_count;
-        }
     } else {
-        /* #198. Re-arm on teardown, so a capture that went down before the
-         * pulse fired does not consume the one-shot.
-         *
-         * BUILD 0x0043 HAD NO THIS AND WAS MEASURED FAILING. snd-usb-audio
-         * touches alt 1 when it BINDS, not only when a capture opens, so the
-         * mark was taken and the pulse fired seconds before arecord ran --
-         * TLM_PHASE_ADC_PULSE was already set with no capture having happened,
-         * and the first real capture showed the transient at full size,
-         * -16.3 dBFS with DC +0.152 and tau = 171 ms intact. SET_INTERFACE is
-         * too coarse an event to hang this on by itself.
-         *
-         * Re-arming is what makes that self-correcting: the probe's blip may
-         * still take the mark, but it releases it again on the way down, and
-         * the capture that follows takes a fresh one. Paired with the
-         * dwell requirement in the main loop, a blip cannot fire the pulse at
-         * all. */
-        g_adc_clock_mark_set = 0;
+
 
         DMACTL1 &= (unsigned char)~DMA_EN;  /* Rev 20 fcn.0x0330 @ 0x032D */
         IEPCNF1  = 0;

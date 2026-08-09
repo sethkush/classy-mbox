@@ -155,7 +155,10 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0049   /* 0049: boot self-capture REVERTED, measured
+#define TLM_BUILD_ID     0x004A   /* 004A: restore stock's CLR of the mute pair
+                                   *       before clock reprogramming -- the ADC
+                                   *       offset calibration. Pulse deleted.
+                                   * 0049: boot self-capture REVERTED, measured
                                    *       not to work. Same behaviour as 0047.
                                    * 0048: #198 stage 2 -- boot self-capture, for
                                    *       a clean FIRST take.
@@ -545,7 +548,12 @@
  * flashed without any way to tell "the pulse did not fire" from "it fired and
  * did not work", and each cost a power cycle to learn nothing. One bit ends
  * that. */
-#define TLM_PHASE_ADC_PULSE  0x40
+/* 0x40 was TLM_PHASE_ADC_PULSE, set when the #197/#198 capture-gate pulse
+ * fired. Removed 2026-08-08 with the pulse itself: the transient it existed to
+ * suppress was mboxfw dropping stock's CLR of the pair before the clock
+ * reprogramming (Rev 20 fcn.0x0728 @ 0x072F/0x0731, Rev 22 fcn.0x070F @
+ * 0x0710/0x0712), which left the AK5383's offset calibration never triggered.
+ * Restoring that write makes the pulse redundant. Bit not reused. */
 
 /* Counters. Written from ISR context, read from the SETUP handler (also
  * ISR context), so no cross-context tearing — but keep them volatile so

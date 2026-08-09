@@ -145,11 +145,6 @@ void codec_write_word(void)
  * which is the boot state and the behaviour every build before 0x0036 had. */
 __data unsigned char g_host_mute = 0;
 __data unsigned char g_path_enabled = 0;
-/* #197 one-shot: the capture-gate pulse fires once per power-up. */
-__data unsigned char g_adc_pulsed = 0;
-/* SOF count when the master clocks came up, and whether it has been taken. */
-__data unsigned char g_adc_clock_mark_set = 0;
-__data unsigned int  g_adc_clock_mark = 0;
 
 void codec_apply_mute(void)
 {
@@ -179,95 +174,6 @@ void codec_apply_mute(void)
     g_codec_state_23 &= (unsigned char)(g_path_enabled
                                         | (unsigned char)~CODEC23_MUTE_PAIR_ALL);
     codec_write_word();
-}
-
-void codec_clear_adc_transient(void)
-{
-    /* #197. The capture gate must be driven HIGH, then held LOW, then raised
-     * again. That low->high edge is what clears the ADC start-up transient,
-     * and it clears it for the whole power-up. FINDING_197.
-     *
-     * BUILD 0x0039 GOT THIS WRONG AND WAS MEASURED WRONG ON HARDWARE. It
-     * raised the pair, held it HIGH for ~860 ms, then lowered it -- the
-     * opposite polarity, ending in the wrong state. After the cold boot that
-     * flash required, both units still showed the transient in full: unit A
-     * -33.4 dBFS in the first 100 ms with DC +0.127, unit B -36.8. The hold
-     * duration was never the problem; the direction was.
-     *
-     * MINIMISED AGAINST HARDWARE, on units re-armed by a plain power cycle of
-     * the 0x0039 image (whose pulse leaves the transient intact, which made it
-     * a free fixture). A precise single-process pulse -- tools/mutepulse.c,
-     * written because two amixer invocations cannot resolve below tens of ms --
-     * cleared unit A with a 1 ms low-hold and unit B with NO usleep at all,
-     * both going from about -38 dBFS in the first 100 ms to -101.
-     *
-     * So the requirement is the EDGE, not a settling time. The floor actually
-     * proven is about 1 ms, because even a zero-usleep host pulse is still two
-     * USB control transfers apart; two back-to-back codec_write_word() calls in
-     * firmware would be far quicker than anything measured. One hw_short_delay()
-     * is kept as the hold for that margin, and it costs less code than the
-     * 8-iteration loop it replaces -- no counter, no loop.
-     *
-     * That hold is 78.2 ms, measured 2026-08-07, not the ~3 ms this comment
-     * used to claim. Generous against a 1 ms requirement, and irrelevant next
-     * to the 188.0 ms of digital zeros that RELEASING the gate costs -- also
-     * measured that day, and the reason a pulse can never be free during a
-     * live capture. FINDING_197.
-     *
-     * ENDS HIGH, deliberately, and that is also what makes it safe. usb_init()
-     * runs first (task #47), so a SET_INTERFACE can land during the hold; a
-     * sequence ending LOW would switch the capture path off underneath a
-     * stream that had just opened, which is what 0x0039 risked. Ending HIGH is
-     * correct either way, and it is what stock does anyway -- stock raises the
-     * pair once at power-up (Rev 20 0x080B-0x0852, Rev 22 0x09B6-0x09F5) and
-     * holds it for the session.
-     *
-     * NOVEL — reason: neither stock image pulses this gate. Stock raises the
-     * pair once and never lowers it, and its per-stream path (Rev 20
-     * 0x0395-0x03BD, Rev 22 0x0399-0x03C1) contains no mute and no long delay,
-     * so the transient is original Mbox 1 behaviour and this is an improvement
-     * over stock rather than a repair. FINDING_196 has the stock table. */
-    /* EXACTLY the host path, not an equivalent-looking one.
-     *
-     * Builds 0x003D and 0x003E hand-wrote the same nominal bit sequence --
-     * raise the pair, drop it, raise it, with codec_write_word() each time --
-     * and both only PARTIALLY cleared the transient: -61 to -62 dBFS against
-     * the -101 a host pulse reaches. The comparison that settles it was run on
-     * one unit in one boot: after the firmware pulse the first 100 ms read
-     * -60.9 dBFS, then a host pulse on the same unit read -101.2, and the codec
-     * word was 0x1CC0 before and after both. Same end state, same bits, three
-     * orders of magnitude apart in effect.
-     *
-     * Ruled out along the way: the delay is not elided (the generated asm keeps
-     * both `lcall _hw_short_delay`), and dropping the whole pair rather than
-     * just the capture gate changed nothing (0x003E vs 0x003D).
-     *
-     * So drive the mute the way a host does -- set g_host_mute, publish through
-     * codec_apply_mute(), clear it, publish again. That path is measured to
-     * work, repeatedly, on both units.
-     *
-     * BUILD 0x0040 MASKED INTERRUPTS ACROSS EACH PUBLISH, on the theory that
-     * codec_write_word()'s bit-bang on P1 could be preempted mid-shift by the
-     * USB ISR, stretching a clock phase, so that the codec mis-sampled a word
-     * telemetry would still report as correct (block 9 mirrors what firmware
-     * wrote, never what the shift register latched). It changed nothing, and
-     * on 2026-08-07 the premise itself failed: the residual is the SAME
-     * transient at 1/33 amplitude with tau = 171 ms intact, and a corrupted
-     * word does not produce a correctly-shaped decay. The masking is dropped
-     * -- it bought nothing, and dropping it is 18 of the 42 bytes that the
-     * per-unit serial descriptors cost.
-     *
-     * The 0x0041 gate probe drove exactly these four statements from three
-     * different execution contexts and measured all three landing on the
-     * codec, so this sequence is not merely believed to publish, it is the one
-     * that was measured publishing. */
-    g_host_mute |= (unsigned char)CODEC23_MUTE_CAPTURE;
-    codec_apply_mute();
-
-    hw_short_delay();
-
-    g_host_mute &= (unsigned char)~CODEC23_MUTE_CAPTURE;
-    codec_apply_mute();
 }
 
 void codec_init(void)

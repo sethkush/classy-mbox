@@ -192,45 +192,35 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         return 1;
 
     case 11:
-        /* WAS the ACG clock measurement (#186 stage 1). Its REPORTING is
-         * retired 2026-08-07 and the index now carries #198 pulse state, which
-         * is a deliberate exception to the never-reuse rule and is why this
-         * comment is long.
+        /* ACG clock measurement -- #186 stage 1.
          *
-         * The rule exists so a host tool from an older build cannot silently
-         * misread a block. The ACG block was added in 0x0032 and read by one
-         * decoder in tools/mboxtlm.py, which prints a labelled MCLK figure --
-         * so a stale tool against this build prints obvious nonsense (an MCLK
-         * of a few counts) rather than a plausible wrong number. That is the
-         * failure mode the rule guards against, and it is visible here.
+         * Bytes 0-3: the accumulated MCLK count for the last completed window.
+         * Bytes 4-5: the last single-frame capture difference.
+         * Byte 6: completed-window count, saturating -- proves the measurement
+         * is live and lets a host confirm two reads span different windows.
          *
-         * The measurement itself is NOT removed: streaming_acg_sample() still
-         * runs every SOF and still feeds fb_value, which the feedback endpoint
-         * publishes. Only the read-out goes. Its questions are answered --
-         * MCLKO measured at 256 fs on both units, 12287.91 against a nominal
-         * 12288, and #186 decided on that basis.
+         * Byte 7: tlm_fb_rejects, the count of implausible windows discarded.
          *
-         * What it buys: three values that three builds in a row could not see.
-         * 0x0043's pulse fired too early, 0x0044's and 0x0045's never fired at
-         * all, and nothing on the host could say whether the mark was never
-         * taken or the dwell never elapsed. tlm.sof_count is reported by NO
-         * block since block 5 was retired -- block 11's byte 7 was documented
-         * as carrying it and never did -- so every SOF-based wait in this
-         * firmware has been unfalsifiable from the host. That is the actual
-         * defect; the pulse is just what tripped over it.
+         * THIS COMMENT USED TO SAY "low byte of tlm.sof_count", and the code
+         * has never done that. Caught 2026-08-07 while trying to establish
+         * whether SOF was counting: byte 7 read a constant 2 across a fast
+         * poll, which reads exactly like a dead SOF counter and is in fact a
+         * live reject count that had simply stopped changing. tlm.sof_count is
+         * exposed in no block -- block 5 carried it and was retired -- which is
+         * survivable now only because no SOF-based wait remains in the
+         * firmware. Restore a reader before adding one.
          *
-         * Read twice, a second apart, during a capture:
-         *   byte 0     g_adc_clock_mark_set -- must be 1 for the whole capture
-         *   byte 1     g_adc_pulsed
-         *   bytes 2-3  g_adc_clock_mark     -- the SOF the mark was taken at
-         *   bytes 4-5  tlm.sof_count        -- must climb by ~1000 per second
-         * Whichever of those is false is the bug, and no two can be confused. */
-        out[0] = g_adc_clock_mark_set;
-        out[1] = g_adc_pulsed;
-        put16(&out[2], g_adc_clock_mark);
-        put16(&out[4], tlm.sof_count);
-        out[6] = 0;
-        out[7] = 0;
+         * This block briefly carried #198 pulse state instead (build 0x0046),
+         * to find out why a SOF wait never elapsed. It found it -- TLM_INC16
+         * saturates -- and the ACG reporting comes back now that the pulse
+         * machinery it was diagnosing has been deleted. */
+        out[0] = (unsigned char)(tlm_acg_window & 0xFF);
+        out[1] = (unsigned char)((tlm_acg_window >> 8) & 0xFF);
+        out[2] = (unsigned char)((tlm_acg_window >> 16) & 0xFF);
+        out[3] = (unsigned char)((tlm_acg_window >> 24) & 0xFF);
+        put16(&out[4], tlm_acg_last);
+        out[6] = tlm_acg_count;
+        out[7] = tlm_fb_rejects;
         break;
 
     /* case 10 (CS8427 read-back probe, #165) RETIRED 2026-08-03. It answered

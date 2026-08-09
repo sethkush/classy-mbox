@@ -171,33 +171,6 @@ extern __data unsigned char g_path_enabled;
  * at stock's point in the sequence rather than early. */
 void codec_apply_mute(void);
 
-/* #197. One pulse of the capture gate at boot, which clears the ADC start-up
- * transient for the rest of the power-up. Call once, after the codec and the
- * CS8427 are up. FINDING_197. */
-void codec_clear_adc_transient(void);
-extern __data unsigned char g_adc_pulsed;
-extern __data unsigned char g_adc_clock_mark_set;
-extern __data unsigned int  g_adc_clock_mark;
-/* SOFs to wait after the FIRST capture bring-up before pulsing (#198).
- *
- * Was 8000 = 8 s, waiting for the master clocks to have been up "for a while",
- * which is the theory the 2026-08-07 measurements overturned: all three
- * publish contexts land on the codec, and what a working pulse needs is to
- * come after the ADC is enabled, not after any amount of clock time.
- *
- * This is a DWELL, not a settling time: the capture path must have been
- * continuously up this long. 10 ms was tried in 0x0043 and was not enough --
- * snd-usb-audio's bind-time alt 1 lasted longer than that, so the pulse fired
- * into a capture nobody had opened and the one-shot was gone. 250 ms is chosen
- * to be far longer than any probe blip and far shorter than a take.
- *
- * The cost is that the first capture after a power cycle carries its transient
- * for these 250 ms, then goes to zeros for ~266 ms, then is clean for the rest
- * of the power-up. Ugly exactly once. Keying off the first isochronous IN
- * packet instead would remove the 250 ms, because that is an event only a real
- * capture produces -- worth doing if this ever needs to be prettier. */
-#define ADC_PULSE_DELAY_SOF  250u
-
 /* Codec control-word bytes — externally visible so control handlers can poke
  * individual bits and then call codec_write_word(). */
 extern __data unsigned char g_codec_state_23;
