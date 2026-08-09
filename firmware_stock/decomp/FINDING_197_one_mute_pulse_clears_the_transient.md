@@ -559,3 +559,85 @@ Better than either: key the pulse off the first isochronous IN interrupt rather
 than off SET_INTERFACE. That is an event only a real capture produces, so the
 dwell disappears entirely and the pulse fires at the true stream start — the
 first take would open with the gap and nothing else.
+
+---
+
+# RESOLVED 2026-08-08: mboxfw had dropped stock's CLR. Root cause, not a trick.
+
+Build 0x004A, unit A. Two lines restored; the entire pulse mechanism deleted.
+
+| capture | zeros at top | after that |
+|---|---|---|
+| 1st | 183.35 ms | −104.8 dBFS, flat, DC 0 |
+| 2nd | 183.67 ms | −103.9, flat, DC 0 |
+| 3rd | 183.15 ms | −102.5, flat, DC 0 |
+
+Against −20.4 dBFS with DC +0.094 two builds earlier. **The transient is gone
+entirely** — not reduced, not hidden: there is no decay left to measure.
+
+## What was wrong
+
+Stock brackets its clock reprogramming:
+
+```
+CLR 0x23.2 / CLR 0x23.3 ; PUBLISH ; reprogram ; SETB both ; PUBLISH
+```
+
+Rev 20 fcn.0x0728 @ 0x072F/0x0731 then 0x0733, release @ 0x07EE/0x07F0 then
+0x07F2. Rev 22 fcn.0x070F @ 0x0710/0x0712 then 0x0714, release @ 0x07D2/0x07D4
+then 0x07D6.
+
+mboxfw ported only the release. The comment above that code has always
+described the full bracket; no CLR was ever emitted, so the SETB wrote bits
+already set and neither edge occurred.
+
+0x23.2 is the AK5383's RST. AKM: *"When this pin returns to High, an offset
+calibration cycle starts. An offset calibration cycle should always be
+initiated upon powering up the device."* Without a falling edge that cycle
+never ran, so the ADC has been operating **un-calibrated** for the life of the
+project, and its DC offset settled out through the digital high-pass at the top
+of every capture.
+
+Both measured constants are the part's own, which is what makes this a
+mechanism rather than a story:
+
+| measured | datasheet |
+|---|---|
+| decay τ = 171 ms | HPF −3 dB at 1.0 Hz → τ = 159 ms |
+| 188.0 ± 0.2 ms of zeros from a manual pulse | tRTV = 8960/fs = **186.7 ms** |
+| 183.4 ms of zeros now, every stream start | the same tRTV, seen from inside the stream |
+
+## The transient was an mboxfw regression
+
+`FINDING_196` concluded *"the capture start-up thump is original Mbox 1
+behaviour, not an mboxfw regression"* — explicitly flagged as an RE inference
+that had never been checked against hardware. Stock's own code contradicts it.
+That sentence licensed two days of treating the transient as normal.
+
+## Eight builds to rediscover a write we already had written down
+
+`FINDING_197` recorded on day one that `streaming_set_rate()` does an OR onto
+an already-set bit, and read it as *why the transient persists* rather than as
+*a missing stock write*. `FINDING_bringup_waveform.md` had "stock establishes a
+running clock during bring-up, mboxfw waits for the host to ask" under a
+heading reading **Not yet assessed**. The answer was in the repo before the
+first build.
+
+Every intermediate theory — execution context, clock dwell, time since boot,
+data flow, ISR preemption — was a property of the codec inferred from the
+outside, and each one was wrong. What settled it was reading the decompiled
+stock function and a part number off the board.
+
+## Remaining cost, and the one open choice
+
+Every stream start recalibrates, because the host's `SET_CUR(48000)` re-runs
+`streaming_set_rate()`, so every take opens with ~183 ms of digital silence.
+**That is what stock does** — Rev 20 0x03BA calls the same 0x0728 on every
+stream open — so it is now stock behaviour, and it predicts stock has the same
+silence.
+
+It could be made conditional: the bracket exists to protect the ADC across a
+clock disturbance, so when the requested rate equals the running one and no
+clock register would change, neither edge is needed. That would confine the
+183 ms to boot and to genuine rate changes. It is a deliberate divergence from
+stock and belongs in `tools/rev20_diff_justifications.md` if taken.
