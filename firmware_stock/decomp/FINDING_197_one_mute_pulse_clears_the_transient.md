@@ -674,3 +674,43 @@ reprogrammed on a genuine rate change and not merely skipped everywhere.
 So the shipped behaviour is now: calibration once at boot, and again only on a
 real rate or clock-mode change. Every take opens clean, with no silence and no
 transient.
+
+## The analog reference takes ~16 s to settle, which is why boot-only cannot work
+
+Measured on unit B, build 0x004B used as the instrument: its calibration runs
+ONLY on a clock-mode change, so alternating the capture rate forces exactly one
+calibration per rung, and a bad calibration leaves a STANDING offset -- so every
+rung is independently readable rather than depending on earlier ones failing.
+
+One cold boot:
+
+| calibrated at | DC left standing | level |
+|---|---|---|
+| t = 1 s | +0.00304 | −50.3 dBFS |
+| t = 2 s | +0.00104 | −59.6 |
+| t = 4 s | +0.00029 | −70.8 |
+| t = 8 s | +0.00003 | −89.4 |
+| t = 16 s | +0.00000 | **−100.5** |
+| t = 32 s | −0.00002 | −93.9 |
+
+Roughly 10 dB better per doubling of elapsed time, reaching the noise floor
+somewhere between 8 and 16 seconds. That is the VREFL/VREFR node charging --
+each sits on a 10 uF electrolytic per the datasheet's own application circuit.
+
+**So a boot-only calibration is not viable.** It would have to wait ~16 s, and
+a user can plug the unit in and hit record in five. A capture opened before the
+delay elapsed would carry a −70 dBFS DC offset for the whole power-up with no
+way to clear it short of a power cycle.
+
+This is also, retrospectively, why stock recalibrates on every stream open: it
+never has to know this number, and it is right whenever the user records.
+
+## Candidate refinement, untested
+
+Calibrate at every stream CLOSE rather than every open, plus once at the first
+open of a power-up. A take would then open already calibrated -- by the close of
+the previous one -- so only the very first take of a power-up pays the 183 ms.
+
+Not attempted. It needs its own cold-boot proof, and the lesson of 0x004B is
+that this class of change passes every warm test and fails the only one that
+counts.
