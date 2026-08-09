@@ -641,3 +641,36 @@ clock disturbance, so when the requested rate equals the running one and no
 clock register would change, neither edge is needed. That would confine the
 183 ms to boot and to genuine rate changes. It is a deliberate divergence from
 stock and belongs in `tools/rev20_diff_justifications.md` if taken.
+
+## 0x004B: the calibration made conditional, with a regression suite
+
+Stock recalibrates on every stream open. The bracket exists to hold the ADC in
+reset across a **clock disturbance**, and when the host asks for the rate
+already running -- which `snd-usb-audio` does at every stream open -- no clock
+register changes value. So 0x004B guards the reprogramming on what was actually
+PROGRAMMED (`clock_programmed`, 0 until the first call) rather than on what was
+requested.
+
+Deliberate divergence from stock. No row was added to
+`tools/rev20_diff_justifications.md`: that table is keyed by SFR address and
+write pattern, and this changes *when* writes happen rather than which, so a
+row there would be a wrong row -- which CLAUDE.md rates worse than none.
+
+**Measured on unit B, build 0x004B:**
+
+| test | result |
+|---|---|
+| three consecutive 48 kHz captures | **no zero run, no transient**, flat −103.6 / −104.8 dBFS from sample 0 |
+| rate change to 44.1 kHz | one 183.56 ms calibration; ACG reads **11289.4** MCLK/frame against a nominal 11289.6 |
+| 44.1 kHz repeated | **no** calibration |
+| back to 48 kHz | one 183.33 ms calibration; ACG reads **12287.9** against 12288.0 |
+| clock mode 1 (S/PDIF slave) then back to mode 3 | both apply and read back correctly |
+| tone from unit A into unit B over the cross-wired loop | **−29.8 dBFS steady** across 2 s, other channel at the floor |
+| preflight | 37/37 |
+
+The ACG figures are the load-bearing ones: they prove the clock really is
+reprogrammed on a genuine rate change and not merely skipped everywhere.
+
+So the shipped behaviour is now: calibration once at boot, and again only on a
+real rate or clock-mode change. Every take opens clean, with no silence and no
+transient.

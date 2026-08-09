@@ -155,7 +155,10 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x004A   /* 004A: restore stock's CLR of the mute pair
+#define TLM_BUILD_ID     0x004B   /* 004B: reprogram the clock ONLY when the mode
+                                   *       changes, so the calibration silence is
+                                   *       paid at boot and on rate changes only.
+                                   * 004A: restore stock's CLR of the mute pair
                                    *       before clock reprogramming -- the ADC
                                    *       offset calibration. Pulse deleted.
                                    * 0049: boot self-capture REVERTED, measured

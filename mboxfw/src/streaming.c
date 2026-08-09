@@ -35,6 +35,17 @@ static __data unsigned char sof_bcnt_lo = 0xFF;
 /* Currently-active sample rate — mirrors g_sample_rate in usb.c. */
 static __data unsigned long stream_rate = 48000UL;
 
+/* Which clock mode the ACG has actually been PROGRAMMED to by this routine.
+ * 0 = never, so the first call after boot always programs -- and therefore
+ * always runs the AK5383's offset calibration, which is what the CLR/SETB
+ * bracket below exists to trigger.
+ *
+ * Deliberately NOT g_clock_mode. That is seeded to 3 to describe the part's
+ * power-on state rather than anything this routine did, so guarding on it
+ * would skip the boot programming and with it the one calibration that must
+ * always happen. */
+static __data unsigned char clock_programmed = 0;
+
 /* Stock's RAM[0x08]. See streaming.h for the numbering and the citations.
  * Seeded to 3 because hw_init leaves the part on internal 48 kHz, which is the
  * mode stock's boot path also lands in — and NOT on mode 1, deliberately: see
@@ -180,168 +191,195 @@ void streaming_set_rate(unsigned long hz)
     fb_frames  = 0;
     acg_primed = 0;
 
-    /* HOLD THE PAIR LOW ACROSS THE CLOCK REPROGRAMMING, AND PUBLISH THAT.
+    /* ONLY WHEN THE CLOCK ACTUALLY CHANGES.
      *
-     * Rev 20 fcn.0x0728 @ 0x072F/0x0731 (CLR 0x1a / CLR 0x1b) then @ 0x0733
-     * (LCALL 0x0E62); Rev 22 fcn.0x070F @ 0x0710/0x0712 then @ 0x0714. The
-     * matching release is the SETB pair and publish further down.
+     * DELIBERATE DIVERGENCE FROM STOCK -- see tools/rev20_diff_justifications.md.
+     * Stock runs this bracket unconditionally on every stream open (Rev 20
+     * 0x03BA / Rev 22 0x03BE both LCALL the mode-apply with mode 3), so stock
+     * recalibrates the ADC every time a stream starts and pays ~183 ms of
+     * digital silence at the top of every take. Measured on build 0x004A,
+     * which mirrored stock exactly: 183.35 / 183.67 / 183.15 ms on three
+     * consecutive captures.
      *
-     * THIS LINE WAS MISSING FOR THE WHOLE LIFE OF THE PROJECT, and it is the
-     * cause of the ADC start-up transient (#197/#198). The comment further
-     * down has always described this bracket -- "pair cleared before the clock
-     * is disturbed, raised again only once the clock is stable" -- but only
-     * the raise was ever ported. With no clear there is no falling edge, so
-     * the SETB below writes a bit that was already set and no rising edge
-     * occurs either.
+     * The bracket exists to hold the ADC in reset across a clock disturbance.
+     * When the host asks for the rate that is already running -- which is what
+     * snd-usb-audio does at every single stream open -- no clock register
+     * changes value, so there is nothing to protect the converter from, and
+     * the calibration it triggers is re-deriving an offset it already has.
      *
-     * 0x23.2 is the AK5383 ADC's RST (FINDING_the_parts_are_identified). Its
-     * datasheet: "When this pin returns to High, an offset calibration cycle
-     * starts. An offset calibration cycle should always be initiated upon
-     * powering up the device." Without the falling edge that cycle never runs,
-     * so the converter operates un-calibrated and its DC offset settles out
-     * through the digital high-pass at the top of every capture -- which is
-     * exactly the measured transient, tau = 171 ms against the part's 1.0 Hz
-     * HPF corner, and the 188.0 ms of digital zeros the manual pulse produced
-     * is tRTV = 8960/fs = 186.7 ms, the calibration itself.
-     *
-     * `&=` cannot set a bit, so latch_word_bit_diff.py still reads the literal
-     * `|=` below as the whole truth about what this routine can raise. */
-    g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_PAIR_ALL;
-    codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x0714 */
+     * So the guard is on what was PROGRAMMED, not on what was requested. The
+     * first call after boot always programs, because clock_programmed starts
+     * at 0 and no mode is 0; a genuine rate change always programs; a repeat
+     * of the standing rate does not. */
+    {
+    unsigned char want = (hz == 0UL) ? 1u : ((hz == 48000UL) ? 3u : 2u);
+    if (want != clock_programmed) {
+        clock_programmed = want;
 
-    /* Prelude — seed both adaptive-clock-generator digital control
-     * registers with 0x10, exactly as Rev 20 does.
-     *
-     * 0xFFE2 is ACGDCTL and 0xFFF6 is ACG2DCTL per TI Reg_stc1.h. This
-     * previously read `XDATA(0xFFE2) = 0x00` with the comment "Rev-20
-     * DMACTL2 halt", citing rev20_dynamic_reconfig.md §2's line
-     * `DMACTL2 = 0`. Both halves of that were wrong:
-     *   - 0xFFE2 is not a DMA register at all. Our regs.h alias
-     *     "DMACTL2" for it was invented; TI names it ACGDCTL.
-     *   - Rev 20 never writes 0x00 there. Its only reference to 0xFFE2
-     *     is at 0x0736 (MOV DPTR,#0xFFE2) followed by LCALL 0x0E18,
-     *     and 0x0E18 is `MOV A,#0x10 / MOVX @DPTR,A / MOV DPTR,#0xFFF6
-     *     / MOVX @DPTR,A / RET` — it writes 0x10 to BOTH ACG registers.
-     *     Verified by scanning rev20_firmware_code.bin for every
-     *     occurrence of the byte sequence 90 FF E2; there is exactly one.
-     *
-     * Writing 0 to a clock-generator control register instead of 0x10
-     * would misconfigure the capture clock on every rate change. */
-    ACGDCTL  = 0x10;   /* Rev 20 fcn.0x0728 @ 0x0736 — the caller selects
-                         * ACGDCTL (`90 ff e2`) and LCALLs the shared helper at
-                         * 0x0E18, which writes the caller's DPTR then ACG2DCTL.
-                         * Cite the site that names the register, not the helper. */
-    ACG2DCTL = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E1B */
+        /* HOLD THE PAIR LOW ACROSS THE CLOCK REPROGRAMMING, AND PUBLISH THAT.
+         *
+         * Rev 20 fcn.0x0728 @ 0x072F/0x0731 (CLR 0x1a / CLR 0x1b) then @ 0x0733
+         * (LCALL 0x0E62); Rev 22 fcn.0x070F @ 0x0710/0x0712 then @ 0x0714. The
+         * matching release is the SETB pair and publish further down.
+         *
+         * THIS LINE WAS MISSING FOR THE WHOLE LIFE OF THE PROJECT, and it is the
+         * cause of the ADC start-up transient (#197/#198). The comment further
+         * down has always described this bracket -- "pair cleared before the clock
+         * is disturbed, raised again only once the clock is stable" -- but only
+         * the raise was ever ported. With no clear there is no falling edge, so
+         * the SETB below writes a bit that was already set and no rising edge
+         * occurs either.
+         *
+         * 0x23.2 is the AK5383 ADC's RST (FINDING_the_parts_are_identified). Its
+         * datasheet: "When this pin returns to High, an offset calibration cycle
+         * starts. An offset calibration cycle should always be initiated upon
+         * powering up the device." Without the falling edge that cycle never runs,
+         * so the converter operates un-calibrated and its DC offset settles out
+         * through the digital high-pass at the top of every capture -- which is
+         * exactly the measured transient, tau = 171 ms against the part's 1.0 Hz
+         * HPF corner, and the 188.0 ms of digital zeros the manual pulse produced
+         * is tRTV = 8960/fs = 186.7 ms, the calibration itself.
+         *
+         * `&=` cannot set a bit, so latch_word_bit_diff.py still reads the literal
+         * `|=` below as the whole truth about what this routine can raise. */
+        g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_PAIR_ALL;
+        codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x0714 */
 
-    /* Adaptive clock generator.
-     *
-     * Rev 20's rate/clock dispatcher `fcn.0x0728` takes a mode in r7. Its
-     * two stream-start call sites pass mode 3 (0x03CA capture, 0x0436
-     * playback); modes 1/2/4/5 come from other request handlers. Mode 2 and
-     * mode 3 differ ONLY in the 24-bit frequency word — both end at the
-     * shared tail 0x0E0F..0x0E16, which writes ACGCTL = 0x06.
-     *
-     * ACGCTL bit 2 is DIVEN, the divide-by-I / divide-by-M enable
-     * (datasheet §6.5.3.11, block diagram Figure 2-1). Every build before
-     * 2026-07-28 left ACGCTL at 0xC0 with DIVEN clear, so the ÷M circuit was
-     * off, neither MCLKO output ran, the codec was never clocked, no I2S
-     * frame reached the C-port, and the DMA never cleared the NACK flag in
-     * IEPDCNTX/Y. Per datasheet §2.2.7.4.1: "if an isochronous in token is
-     * received when there is no new data to be output ... the UBM will
-     * respond to the isochronous in request with a NULL packet" — precisely
-     * the zero-length packets usbmon measured. Telemetry read ACGCTL back as
-     * exactly 0xC0, confirming DIVEN was off.
-     *
-     * WHICH FREQUENCY WORD, measured rather than reasoned. A paired
-     * experiment on two units, same host, same instant, one variable:
-     *
-     *   mode-2 word (0x6A/0x4B/0x20)  ->  DCNTX = 88 samples per USB frame
-     *   mode-3 word (0x61/0xA8/0x0F)  ->  DCNTX = 96
-     *
-     * Both were exactly double a standard rate (88.2 = 2 x 44.1, 96 = 2 x
-     * 48), because CPTRXCNF4 was set to DIVB2 = ÷2 where stock's boot init
-     * uses ÷4 — see the long comment in hw_init.c. With ÷4 restored:
-     *
-     *   mode 3 -> 48 kHz      mode 2 -> 44.1 kHz
-     *
-     * which is consistent with Rev 20 passing mode 3 at SET_INTERFACE: 48
-     * kHz is its default, and the host's SET_CUR selects a mode afterwards.
-     *
-     * This mapping has been wrong twice in this file, in both directions,
-     * and each time the reasoning sounded fine. It is now anchored to a
-     * measured sample count rather than to which Rev 20 branch looked most
-     * relevant. If a rate ever comes out wrong again, read DCNTX first.
-     *
-     * hz == 0 IS CLOCK MODE 1 — slaved to the incoming S/PDIF stream (#177).
-     * It is not a sentinel this firmware invented: Rev 20's SET_CUR data
-     * handler `ep0_out_data_handler` @0x0D25 tests the rate's low byte and
-     * posts work code 0x06 when it is ZERO (0x0D40-0x0D42), and cmd6
-     * @0x0478 is `MOV R7,#1; LCALL 0x0728` — mode 1, nothing else. The
-     * kernel quirk drives the same encoding from the other side
-     * (`snd_mbox1_set_clk_source`, rate 0 = slave to S/PDIF), and
-     * `setup_get_sample_freq` @0x008A reports 0,0,0 back whenever
-     * RAM[0x08] == 1. Three artifacts, one encoding.
-     *
-     * No frequency word is programmed in this mode, because nothing is
-     * being synthesized — both master clocks come from MCLKI instead.
-     *
-     * MODE 1 MUST NEVER BE THE BOOT DEFAULT, and this is a safety property
-     * rather than a preference. `ACGCTL = 0x0D` sources both codec master
-     * clocks from MCLKI, which is only useful if MCLKI is wired to the
-     * CS8427's RMCK. cs8427_boot_init() writes CONTROL1 = 0x01 with SWCLK = 0
-     * so RMCK carries the recovered clock, and stock's mode 1 is coherent only
-     * under that wiring — but no schematic has been read, so it stays an
-     * inference. If it is wrong, mode 1 leaves the codec with no clock at all.
-     *
-     * What makes that survivable is that the CPU runs from the oscillator, not
-     * from MCLKO: a wrong guess costs audio and nothing else, EP0 keeps
-     * answering, and another vendor request undoes it. No power cycle, no 2 km
-     * round trip. That holds ONLY while every path into this arm is
-     * host-initiated — hw_init leaves the part on mode 3, g_clock_mode is
-     * seeded to 3, and no boot path calls this with 0.
-     *
-     * RESOLVED 2026-08-04, build 0x0020 on hardware: the inference was right.
-     * With the CS8427 as serial slave (SOMS = 0, so OSCLK/OLRCK are TAS
-     * outputs derived from MCLKO), a dead MCLKI in this mode would stop the
-     * C-port and the DMA would emit zero-length packets. Capture instead ran
-     * 576000 frames in 12.00 s with bit-stable content across the switch —
-     * S/PDIF in at a bit-exact -9.0 dBFS. See FINDING_spdif_input_works.md.
-     * The boot-default rule stays: it costs nothing and it is what made the
-     * question safe to ask remotely in the first place.
-     */
-    if (hz == 0UL) {
-        /* ACGCTL = 0x0D: MCLKO1S = 01, DIVEN, MCLKO2S = 01 — BOTH codec
-         * master clocks sourced from MCLKI, the external clock input
-         * (datasheet §6.5.3.11). Paired with CLOCKSOURCE = 0x41 in the
-         * tail below; the two writes are meaningless apart. */
-        ACGCTL = 0x0D;    /* Rev 20 fcn.0x0728 @ 0x074D — mode 1 */
-        g_clock_mode = 1; /* Rev 20 fcn.0x0728 @ 0x0753 — MOV 0x08,#1 */
+        /* Prelude — seed both adaptive-clock-generator digital control
+         * registers with 0x10, exactly as Rev 20 does.
+         *
+         * 0xFFE2 is ACGDCTL and 0xFFF6 is ACG2DCTL per TI Reg_stc1.h. This
+         * previously read `XDATA(0xFFE2) = 0x00` with the comment "Rev-20
+         * DMACTL2 halt", citing rev20_dynamic_reconfig.md §2's line
+         * `DMACTL2 = 0`. Both halves of that were wrong:
+         *   - 0xFFE2 is not a DMA register at all. Our regs.h alias
+         *     "DMACTL2" for it was invented; TI names it ACGDCTL.
+         *   - Rev 20 never writes 0x00 there. Its only reference to 0xFFE2
+         *     is at 0x0736 (MOV DPTR,#0xFFE2) followed by LCALL 0x0E18,
+         *     and 0x0E18 is `MOV A,#0x10 / MOVX @DPTR,A / MOV DPTR,#0xFFF6
+         *     / MOVX @DPTR,A / RET` — it writes 0x10 to BOTH ACG registers.
+         *     Verified by scanning rev20_firmware_code.bin for every
+         *     occurrence of the byte sequence 90 FF E2; there is exactly one.
+         *
+         * Writing 0 to a clock-generator control register instead of 0x10
+         * would misconfigure the capture clock on every rate change. */
+        ACGDCTL  = 0x10;   /* Rev 20 fcn.0x0728 @ 0x0736 — the caller selects
+                             * ACGDCTL (`90 ff e2`) and LCALLs the shared helper at
+                             * 0x0E18, which writes the caller's DPTR then ACG2DCTL.
+                             * Cite the site that names the register, not the helper. */
+        ACG2DCTL = 0x10;   /* Rev 20 fcn.0x0E18 @ 0x0E1B */
 
-    } else if (hz == 48000UL) {
-        ACG1FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DEC — mode 3, 48 kHz */
-        ACG1FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0DF2 */
-        ACG1FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0DF8 */
-        ACG2FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DFE */
-        ACG2FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0E04 */
-        ACG2FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E0A */
-        g_clock_mode = 3; /* Rev 20 fcn.0x0728 @ 0x0791 — MOV 0x08,#3 */
+        /* Adaptive clock generator.
+         *
+         * Rev 20's rate/clock dispatcher `fcn.0x0728` takes a mode in r7. Its
+         * two stream-start call sites pass mode 3 (0x03CA capture, 0x0436
+         * playback); modes 1/2/4/5 come from other request handlers. Mode 2 and
+         * mode 3 differ ONLY in the 24-bit frequency word — both end at the
+         * shared tail 0x0E0F..0x0E16, which writes ACGCTL = 0x06.
+         *
+         * ACGCTL bit 2 is DIVEN, the divide-by-I / divide-by-M enable
+         * (datasheet §6.5.3.11, block diagram Figure 2-1). Every build before
+         * 2026-07-28 left ACGCTL at 0xC0 with DIVEN clear, so the ÷M circuit was
+         * off, neither MCLKO output ran, the codec was never clocked, no I2S
+         * frame reached the C-port, and the DMA never cleared the NACK flag in
+         * IEPDCNTX/Y. Per datasheet §2.2.7.4.1: "if an isochronous in token is
+         * received when there is no new data to be output ... the UBM will
+         * respond to the isochronous in request with a NULL packet" — precisely
+         * the zero-length packets usbmon measured. Telemetry read ACGCTL back as
+         * exactly 0xC0, confirming DIVEN was off.
+         *
+         * WHICH FREQUENCY WORD, measured rather than reasoned. A paired
+         * experiment on two units, same host, same instant, one variable:
+         *
+         *   mode-2 word (0x6A/0x4B/0x20)  ->  DCNTX = 88 samples per USB frame
+         *   mode-3 word (0x61/0xA8/0x0F)  ->  DCNTX = 96
+         *
+         * Both were exactly double a standard rate (88.2 = 2 x 44.1, 96 = 2 x
+         * 48), because CPTRXCNF4 was set to DIVB2 = ÷2 where stock's boot init
+         * uses ÷4 — see the long comment in hw_init.c. With ÷4 restored:
+         *
+         *   mode 3 -> 48 kHz      mode 2 -> 44.1 kHz
+         *
+         * which is consistent with Rev 20 passing mode 3 at SET_INTERFACE: 48
+         * kHz is its default, and the host's SET_CUR selects a mode afterwards.
+         *
+         * This mapping has been wrong twice in this file, in both directions,
+         * and each time the reasoning sounded fine. It is now anchored to a
+         * measured sample count rather than to which Rev 20 branch looked most
+         * relevant. If a rate ever comes out wrong again, read DCNTX first.
+         *
+         * hz == 0 IS CLOCK MODE 1 — slaved to the incoming S/PDIF stream (#177).
+         * It is not a sentinel this firmware invented: Rev 20's SET_CUR data
+         * handler `ep0_out_data_handler` @0x0D25 tests the rate's low byte and
+         * posts work code 0x06 when it is ZERO (0x0D40-0x0D42), and cmd6
+         * @0x0478 is `MOV R7,#1; LCALL 0x0728` — mode 1, nothing else. The
+         * kernel quirk drives the same encoding from the other side
+         * (`snd_mbox1_set_clk_source`, rate 0 = slave to S/PDIF), and
+         * `setup_get_sample_freq` @0x008A reports 0,0,0 back whenever
+         * RAM[0x08] == 1. Three artifacts, one encoding.
+         *
+         * No frequency word is programmed in this mode, because nothing is
+         * being synthesized — both master clocks come from MCLKI instead.
+         *
+         * MODE 1 MUST NEVER BE THE BOOT DEFAULT, and this is a safety property
+         * rather than a preference. `ACGCTL = 0x0D` sources both codec master
+         * clocks from MCLKI, which is only useful if MCLKI is wired to the
+         * CS8427's RMCK. cs8427_boot_init() writes CONTROL1 = 0x01 with SWCLK = 0
+         * so RMCK carries the recovered clock, and stock's mode 1 is coherent only
+         * under that wiring — but no schematic has been read, so it stays an
+         * inference. If it is wrong, mode 1 leaves the codec with no clock at all.
+         *
+         * What makes that survivable is that the CPU runs from the oscillator, not
+         * from MCLKO: a wrong guess costs audio and nothing else, EP0 keeps
+         * answering, and another vendor request undoes it. No power cycle, no 2 km
+         * round trip. That holds ONLY while every path into this arm is
+         * host-initiated — hw_init leaves the part on mode 3, g_clock_mode is
+         * seeded to 3, and no boot path calls this with 0.
+         *
+         * RESOLVED 2026-08-04, build 0x0020 on hardware: the inference was right.
+         * With the CS8427 as serial slave (SOMS = 0, so OSCLK/OLRCK are TAS
+         * outputs derived from MCLKO), a dead MCLKI in this mode would stop the
+         * C-port and the DMA would emit zero-length packets. Capture instead ran
+         * 576000 frames in 12.00 s with bit-stable content across the switch —
+         * S/PDIF in at a bit-exact -9.0 dBFS. See FINDING_spdif_input_works.md.
+         * The boot-default rule stays: it costs nothing and it is what made the
+         * question safe to ask remotely in the first place.
+         */
+        if (hz == 0UL) {
+            /* ACGCTL = 0x0D: MCLKO1S = 01, DIVEN, MCLKO2S = 01 — BOTH codec
+             * master clocks sourced from MCLKI, the external clock input
+             * (datasheet §6.5.3.11). Paired with CLOCKSOURCE = 0x41 in the
+             * tail below; the two writes are meaningless apart. */
+            ACGCTL = 0x0D;    /* Rev 20 fcn.0x0728 @ 0x074D — mode 1 */
+            g_clock_mode = 1; /* Rev 20 fcn.0x0728 @ 0x0753 — MOV 0x08,#1 */
 
-    } else {
-        ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0765 — mode 2, 44.1 kHz */
-        ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x075F */
-        ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x076B */
-        ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 */
-        ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
-        ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
-        g_clock_mode = 2; /* Rev 20 fcn.0x0728 @ 0x0785 — MOV 0x08,#2 */
+        } else if (hz == 48000UL) {
+            ACG1FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DEC — mode 3, 48 kHz */
+            ACG1FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0DF2 */
+            ACG1FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0DF8 */
+            ACG2FRQ1 = 0xA8;  /* Rev 20 fcn.0x0DEC @ 0x0DFE */
+            ACG2FRQ2 = 0x61;  /* Rev 20 fcn.0x0DEC @ 0x0E04 */
+            ACG2FRQ0 = 0x0F;  /* Rev 20 fcn.0x0DEC @ 0x0E0A */
+            g_clock_mode = 3; /* Rev 20 fcn.0x0728 @ 0x0791 — MOV 0x08,#3 */
 
+        } else {
+            ACG1FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0765 — mode 2, 44.1 kHz */
+            ACG1FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x075F */
+            ACG1FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x076B */
+            ACG2FRQ2 = 0x6A;  /* Rev 20 fcn.0x0728 @ 0x0777 */
+            ACG2FRQ1 = 0x4B;  /* Rev 20 fcn.0x0728 @ 0x0771 */
+            ACG2FRQ0 = 0x20;  /* Rev 20 fcn.0x0728 @ 0x077D */
+            g_clock_mode = 2; /* Rev 20 fcn.0x0728 @ 0x0785 — MOV 0x08,#2 */
+
+        }
+        if (hz != 0UL) {
+            /* Shared by both rates: Rev 20's modes 2 and 3 both end at the tail
+             * 0x0E0F..0x0E16, which writes ACGCTL = 0x06 (DIVEN + both MCLKO
+             * sourced from their synthesizers after ÷M). Mode 1 does NOT reach
+             * this tail — it writes 0x0D and jumps straight to 0x07C5. */
+            ACGCTL = 0x06;        /* Rev 20 @ 0x0E10 */
+        }
     }
-    if (hz != 0UL) {
-        /* Shared by both rates: Rev 20's modes 2 and 3 both end at the tail
-         * 0x0E0F..0x0E16, which writes ACGCTL = 0x06 (DIVEN + both MCLKO
-         * sourced from their synthesizers after ÷M). Mode 1 does NOT reach
-         * this tail — it writes 0x0D and jumps straight to 0x07C5. */
-        ACGCTL = 0x06;        /* Rev 20 @ 0x0E10 */
     }
 
     /* CS8427 CLOCKSOURCE, the other half of the mode.
