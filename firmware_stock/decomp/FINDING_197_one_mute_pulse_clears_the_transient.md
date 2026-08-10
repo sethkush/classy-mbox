@@ -782,3 +782,89 @@ The floors above -- −103.6, −103.1, −101.1 dBFS at 44.1 kHz and −98.8, �
 −99.3 at 48 kHz, DC at zero to five decimal places on all six -- are the first
 confirmation that 0x004A is clean at the second rate. Every capture behind the
 0x004A result to date was at 48 kHz.
+
+## The datasheet, read at last (2026-08-09)
+
+`reference/AK5383_datasheet_M0049-E-03.txt` (AKM M0049-E-03, 2000/4), text of
+the Digi-Key PDF. Everything below is quoted, not inferred.
+
+### The latched-offset model is CONFIRMED, verbatim
+
+> **Offset Calibration** -- When RST pin goes to "L", the digital section is
+> powered-down. Upon returning "H", an offset calibration cycle is started. An
+> offset calibration cycle should always be initiated after power-up.
+>
+> During the offset calibration cycle, the digital section of the part measures
+> and **stores the values of calibration input of each channel in registers. The
+> calibration input value is subtracted from all future outputs.** The
+> calibration input may be obtained from either the analog input pins (AIN+/-)
+> or the VCOM pins depending on the state of the ZCAL pin.
+
+Latched into a register, subtracted statically thereafter. That is why a bad
+calibration is *permanent for the power-up* rather than self-healing, which is
+the entire justification for recalibrating at every stream open, and the reason
+0x004B's cold-boot offset could never decay away.
+
+### The timing constants are exactly the ones the wire proof used
+
+> RST rising to CAL falling (Note 11)  tRCF  8704  1/fs
+> RST rising to SDATA Valid (Note 11)  tRTV  8960  1/fs
+>
+> Note 11. The number of the LRCK rising edges after RST brought high at
+> DFS="L". ... When DFS="H", tRCF=17408 and tRTV=17920.
+
+Two things fall out. The units are LRCK edges -- sample clocks -- which is what
+made the rate sweep decisive. And **DFS = "L"** on this board: had the part been
+strapped for double speed we would have measured ~17920 frames, not ~8800.
+
+### My mechanism was wrong in one part, and I am retracting a piece of evidence
+
+I had it that the part "uses the high-pass filter to derive an offset value
+during calibration, latches it, and subtracts it statically". The latching half
+is right; the derivation half is not. They are **two independent blocks**:
+
+- the calibration reference is VCOM or the AIN pins, selected by ZCAL. The HPF
+  is not involved.
+- the HPF is a separate, continuously-running 1 Hz digital filter gated by HPFE.
+
+So the near-match between our measured tau = 171 ms and a 1 Hz corner's 159 ms
+was **not** evidence for the calibration mechanism, and I should not have used
+it as such. Whatever produced that decay, it was not this register.
+
+### HPFE is LOW on this board, and it does not matter
+
+The spec separates the two cases sharply:
+
+> Offset Error, after calibration, HPF=OFF   ±200 typ, ±1000 max  LSB24
+> Offset Error, after calibration, HPF=ON    ±1                   LSB24
+
+Measured post-calibration DC on the six 0x004A captures above, in LSB24:
+
+| fs | DC left | DC right |
+|---|---|---|
+| 48000 | +14.79, −6.71, −6.91 | +4.80, +5.79, +7.34 |
+| 44100 | +1.53, +3.07, −23.72 | −7.97, +18.32, −6.29 |
+
+The noise floor is sd ~90 LSB over ~87000 frames, so the standard error on each
+mean is ~0.3 LSB: these are resolved, and they are consistently 5-24 LSB rather
+than the ±1 the HPF=ON case would give. **HPFE is tied low.** The values are
+comfortably inside the HPF=OFF ±1000 max and better than its ±200 typ, which is
+what ZCAL="L" (calibrating against VCOM rather than the input pins) should give.
+
+This closes the HPFE question as **not worth chasing**. 20 LSB24 is −112 dBFS,
+thirteen decibels below the −99 dBFS noise floor these same captures measure. It
+is not audible, not measurable in normal use, and driving HPFE high -- if it is
+even on a 4094 output, which is unknown -- would buy nothing.
+
+### And it explains the scale of the 0x004B failure
+
+0x004B's cold boot left −43 dBFS, which is 0.007 FS = ~58700 LSB24 -- three
+orders of magnitude outside the ±1000 max. So that was not a calibration that
+landed badly within spec. Against a 2.45 Vpp full scale it is ~17 mV, inside the
+part's
+
+> Offset Calibration Range (HPF=OFF)  ±50 mV
+
+so the cycle completed and faithfully stored what it was shown: a VCOM node still
+17 mV from its final value, 1-2 s into a ~16 s charge. The part did its job. The
+firmware asked it the question too early.

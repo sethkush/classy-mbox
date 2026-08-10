@@ -96,3 +96,23 @@ Both AKM datasheets should be read before the next build. Every timing number
 in `FINDING_197` was measured from the outside; the parts have specified
 values for the mute interval and the high-pass corner, and if those match the
 188 ms and the 171 ms, the mechanism is closed.
+
+## Datasheet acquired 2026-08-09
+
+`reference/AK5383_datasheet_M0049-E-03.txt`. It confirms the RST reading in the
+part's own words -- *"Upon returning 'H', an offset calibration cycle is
+started. An offset calibration cycle should always be initiated after
+power-up."* -- and confirms tRCF = 8704/fs and tRTV = 8960/fs as LRCK-edge
+counts, which is what made the sample-rate sweep decisive. Note 11 also fixes
+**DFS = "L"** on this board: at DFS="H" the constants are 17408 and 17920, and
+we measured ~8800.
+
+Two corrections to what this document assumed, both in `FINDING_197`:
+
+- the calibration and the high-pass filter are **independent blocks**. The
+  calibration reference is VCOM or the AIN pins per ZCAL; the HPF is not
+  involved in deriving it.
+- **HPFE is tied low.** Post-calibration DC measures 5-24 LSB24 across six
+  captures, against ±1 LSB24 for HPF=ON and ±200 typ for HPF=OFF. At -112 dBFS
+  it sits thirteen dB below the noise floor, so this is closed as not worth
+  chasing.
