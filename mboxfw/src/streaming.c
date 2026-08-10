@@ -224,15 +224,31 @@ void streaming_set_rate(unsigned long hz)
      * the SETB below writes a bit that was already set and no rising edge
      * occurs either.
      *
-     * 0x23.2 is the AK5383 ADC's RST (FINDING_the_parts_are_identified). Its
-     * datasheet: "When this pin returns to High, an offset calibration cycle
-     * starts. An offset calibration cycle should always be initiated upon
-     * powering up the device." Without the falling edge that cycle never runs,
-     * so the converter operates un-calibrated and its DC offset settles out
-     * through the digital high-pass at the top of every capture -- which is
-     * exactly the measured transient, tau = 171 ms against the part's 1.0 Hz
-     * HPF corner, and the 188.0 ms of digital zeros the manual pulse produced
-     * is tRTV = 8960/fs = 186.7 ms, the calibration itself.
+     * 0x23.2 is the AK5383 ADC's RST, PROVED on the wire 2026-08-09 and not
+     * merely inferred: the datasheet's tRTV is 8960/**fs**, a count of LRCK
+     * edges, so the leading zero run must hold constant in FRAMES across sample
+     * rates. Measured 8787..8813 frames at both 48000 and 44100 -- 9 % apart in
+     * wall time -- and 8813 > 8704 excludes tRCF, leaving 8960 fitting both
+     * rates on one 3.4 ms head loss. FINDING_197.
+     *
+     * Datasheet, M0049-E-03: "Upon returning 'H', an offset calibration cycle
+     * is started. An offset calibration cycle should always be initiated after
+     * power-up. ... the digital section of the part measures and stores the
+     * values of calibration input of each channel in registers. The calibration
+     * input value is subtracted from all future outputs."
+     *
+     * Without the falling edge that cycle never runs, so the converter operates
+     * with an uninitialised offset register for the life of the power-up. That
+     * is the transient. The ~183 ms of exact zeros this bracket now costs at the
+     * top of every capture IS the calibration -- tRTV = 8960/fs = 186.7 ms at
+     * 48 kHz, less the few ms before the host's first URB lands.
+     *
+     * An earlier version of this comment also cited tau = 171 ms against the
+     * part's 1.0 Hz HPF corner. RETRACTED: the datasheet makes calibration and
+     * the HPF independent blocks -- the calibration reference is VCOM or the
+     * AIN pins per ZCAL, with no filter involved -- and HPFE measures LOW here
+     * anyway (post-calibration DC 5..24 LSB24, against +/-1 for HPF=ON). That
+     * match was a coincidence and is not evidence for this write.
      *
      * `&=` cannot set a bit, so latch_word_bit_diff.py still reads the literal
      * `|=` below as the whole truth about what this routine can raise. */
