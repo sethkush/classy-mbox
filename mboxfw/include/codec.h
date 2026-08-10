@@ -88,8 +88,18 @@ void codec_init(void);
  * #171 read them as ONE global enable because its build removed both bits at
  * once -- the correct reading of that experiment, which could not tell one gate
  * from two. */
-#define CODEC23_MODE5_A      0x04u  /* 0x23.2 — CAPTURE  path enable (#189) */
-#define CODEC23_MODE5_B      0x08u  /* 0x23.3 — PLAYBACK path enable (#189) */
+/* 2026-08-09: 0x23.2 is the AK5383 ADC's RST pin (pin 10), proved on the wire
+ * without a meter. The AK5383 specifies tRTV -- RST rising to valid SDATA -- as
+ * 8960/fs, a SAMPLE count rather than a time, so the leading zero run at the top
+ * of a capture must be constant in FRAMES across sample rates and must differ in
+ * wall time. Measured 8787..8813 frames at both 48000 and 44100 (9 % apart in
+ * ms), with 8813 > 8704 excluding tRCF and 8960 fitting both rates on a single
+ * 3.4 ms head loss. Raising this bit therefore does not merely "enable capture":
+ * it starts the ADC's offset calibration, which is why streaming_set_rate() must
+ * CLEAR it first. FINDING_197, "0x23.2 IS the AK5383's RST". */
+#define CODEC23_MODE5_A      0x04u  /* 0x23.2 — AK5383 RST / CAPTURE  path (#189) */
+#define CODEC23_MODE5_B      0x08u  /* 0x23.3 — AK4393      / PLAYBACK path (#189) */
+#define CODEC23_ADC_RST      CODEC23_MODE5_A
 #define CODEC23_MUTE_CAPTURE   CODEC23_MODE5_A
 #define CODEC23_MUTE_PLAYBACK  CODEC23_MODE5_B
 /* #46. The pair as one mask, so the mute-split experiment

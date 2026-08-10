@@ -43,15 +43,21 @@ Three things this explains that were previously just observed:
 Neither AKM part has a serial control port at this position anyway: the AK5383
 is pin-configured, so a GPIO latch is the only way to control it.
 
-## Consequently 0x23.2 is almost certainly the ADC's PDN
+## 0x23.2 is the ADC's RST -- inferred here, PROVED 2026-08-09
 
-The AK5383's one significant control pin is **PDN**, power-down. Reading 0x23.2
-as PDN accounts for every measurement in `FINDING_197`:
+**Correction.** This section originally called the pin **PDN**, power-down. The
+AK5383 has no PDN pin. The pin is **RST (pin 10)**, and the datasheet is
+explicit about what it does: *"When this pin is Low, the digital section is
+powered down. When this pin returns to High, an offset calibration cycle
+starts. An offset calibration cycle should always be initiated upon powering up
+the device."* That last sentence is the whole bug -- see `FINDING_197`.
 
-| measured | under the PDN reading |
+Reading 0x23.2 as RST accounts for every measurement in `FINDING_197`:
+
+| measured | under the RST reading |
 |---|---|
-| gate low gives EXACT digital zeros | the ADC is powered down; there is no output |
-| releasing it costs a FIXED 188.0 ms ± 0.2 of zeros, independent of hold length over a 32x range | the ADC's internal mute after PDN release -- a fixed cycle count, which is why hold length cannot move it |
+| gate low gives EXACT digital zeros | RST low powers the digital section down; there is no output |
+| releasing it costs a FIXED 188.0 ms ± 0.2 of zeros, independent of hold length over a 32x range | the AK5383's tRTV after RST release -- 8960/fs, a fixed SAMPLE count, which is why hold length cannot move it |
 | the transient decays with tau = 171 ms | the DC-blocking high-pass converging after power-up |
 | **171 ms < 188 ms** | the high-pass converges *inside* the internal mute window, so nothing reaches the output |
 | one pulse fixes it for the whole power-up | the DC stays converged as long as the ADC stays powered |
@@ -65,9 +71,19 @@ said for two days and which explained nothing.
 
 Unverified, and both are checkable without a scope:
 
-1. **Continuity.** Trace the 4094 output that carries 0x23.2 to the AK5383's
-   PDN pin with a multimeter. That converts the whole reading above from
-   inference to fact, and it is the measurement this bench can actually make.
+1. ~~**Continuity.** Trace the 4094 output that carries 0x23.2 to the AK5383's
+   PDN pin with a multimeter.~~ **SETTLED 2026-08-09, and not this way.** A
+   continuity beep proves a net exists, not that the far chip treats the edge as
+   RST. The datasheet specifies tRTV as 8960/**fs** -- a sample count, not a
+   time -- so counting the leading zero run in FRAMES at 48000 and at 44100
+   discriminates directly. It is constant in frames (8787..8813) and differs by
+   9 % in wall time, and 8813 > 8704 excludes tRCF, leaving tRTV = 8960 with a
+   3.4 ms head loss that fits both rates to 0.01 ms. No meter was needed.
+   `FINDING_197`, "0x23.2 IS the AK5383's RST".
+
+   The general lesson: where a datasheet specifies an interval in sample clocks,
+   the sample rate is a free variable this bench controls, and sweeping it
+   identifies the PART rather than the net.
 2. **Why early pulses fail.** Builds pulsing at 300 ms, 2.5 s and 8 s after
    boot were all inert; pulses tens of seconds later work. Under this reading
    the high-pass converges to whatever DC the analog input sits at -- so pulsing
