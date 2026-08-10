@@ -9,13 +9,29 @@ behaviour pins the mapping exactly.
 
 | Firmware | Panel state |
 |---|---|
-| Power-on, before firmware drives anything | **all LEDs on** |
+| Power-on, before firmware drives anything | **all LEDs on** — but see the correction below |
 | Stock Rev 20 (and Rev 22) after init | spdif, USB, mono, inst×2, line×2 **off**; **two mic LEDs on** |
 | mboxfw | reaches the **same two-mic-LED state** |
 | safety_net | **all on** — never drives either latch |
 | bootstrap / boot-ROM DFU | **all on** — boot ROM never drives either latch |
 
 Peak LEDs flash on then off at power-up; that is analog/hardware, not firmware.
+
+### Correction 2026-08-10: "all LEDs on at power-on" is not universal
+
+That row was written from **one unit**. The second unit on the void box
+(`RK1672500M`) does not do it — it comes up with the panel in a different state
+before firmware drives either latch. Two units, two behaviours, so an undriven
+panel is **not** guaranteed to read all-on.
+
+The mechanism claimed below — "neither chain is driven by the boot ROM, which is
+why an undriven panel reads all-on" — explains why the panel is undriven, which
+is solid, but not what an undriven panel *shows*. That depends on how the
+4094 outputs power up and on per-unit analog behaviour, and it evidently varies.
+
+Consequence for anyone debugging: **the panel is not a reliable indicator of
+whether firmware has run.** Use telemetry block 0 (`build id`, `stage`,
+`phases`) instead, which is unambiguous and costs one EP0 read.
 
 ## The two latch chains
 

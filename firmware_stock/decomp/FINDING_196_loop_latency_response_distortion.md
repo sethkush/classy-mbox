@@ -125,14 +125,15 @@ dial is for — but it means every absolute level in `BENCH_WIRING.md` sits 20 d
 below where the converter would like to be. The loop is perfectly linear over
 the full 60 dB swept (every 3 dB in gives 3 dB out).
 
-## Neither stock image does anything about the transient
+## ~~Neither stock image does anything about the transient~~ — RETRACTED, see below
 
 Checked in both, as the rule requires.
 
-**The mute pair is raised ONCE at power-up**, not per stream — Rev 20
-0x080B–0x0852, Rev 22 0x09B6–0x09F5, byte-identical bit order
-(`IRAM23_IRAM25_ANNOTATION.md`): `SETB 0x23.2 ; SETB 0x23.3 ; publish`, wrapped
-in settling delays, then held.
+~~**The mute pair is raised ONCE at power-up**, not per stream~~ — the boot
+bring-up is real (Rev 20 0x080B–0x0852, Rev 22 0x09B6–0x09F5, byte-identical bit
+order, `IRAM23_IRAM25_ANNOTATION.md`: `SETB 0x23.2 ; SETB 0x23.3 ; publish`,
+wrapped in settling delays), but "not per stream" is false. See the retraction
+at the end of this section.
 
 The per-stream path is instruction-for-instruction identical between the two
 images and contains **no mute and no long delay**:
@@ -149,15 +150,47 @@ images and contains **no mute and no long delay**:
 switches on it. It is stock's `streaming_set_rate()`, and mode 3 is internal
 48 kHz, which is what block 9 reports. mboxfw calls the same thing.
 
-**So the capture start-up thump is original Mbox 1 behaviour, not an mboxfw
-regression.** Any mitigation would be an improvement over stock rather than a
-repair.
+### ~~So the capture start-up thump is original Mbox 1 behaviour~~ — WRONG, retracted 2026-08-10
 
-Stated as an RE conclusion, with its limit: stock cannot be measured on this
-bench at all. It is vendor-class, `snd-usb-audio` will not bind, so there is no
-`arecord` path — confirming this on hardware would need a raw libusb
-isochronous capture under stock firmware. No contrary observation exists, but
-none has been sought.
+**This conclusion was wrong, and the table above contains its own refutation.**
+
+The reasoning was: the per-stream path contains "no mute", therefore stock does
+not mute per stream, therefore stock has the transient too. But the per-stream
+path *calls* `0x0728` / `0x070F`, which this very table identifies correctly as
+stock's `streaming_set_rate()` — and the mute bracket is **inside that routine**:
+
+    Rev 20 fcn.0x0728          Rev 22 fcn.0x070F
+      @0x072F  CLR  0x1a         @0x0710  CLR  0x1a
+      @0x0731  CLR  0x1b         @0x0712  CLR  0x1b
+      @0x0733  LCALL 0x0E62      @0x0714  LCALL 0x0E56     <- publish, pair LOW
+               ... reprogram the clocks ...
+      @0x07EE  SETB 0x1a         @0x07D2  SETB 0x1a
+      @0x07F0  SETB 0x1b         @0x07D4  SETB 0x1b
+      @0x07F2  LCALL 0x0E62      @0x07D6  LCALL 0x0E56     <- publish, pair HIGH
+
+So stock **does** clear and re-raise the pair on every stream open, exactly as
+it does at boot. The search that produced "no mute in the per-stream path" was
+one level too shallow: it read the caller and not the callee.
+
+0x23.2 is the AK5383's RST (`FINDING_the_parts_are_identified`, proved on the
+wire 2026-08-09), so that bracket is an offset calibration on every stream open.
+Stock pays the same ~183 ms of digital zeros mboxfw now pays, and stock does
+**not** have this transient.
+
+The transient was an mboxfw regression after all — mboxfw ported the `SETB` half
+of the bracket and not the `CLR` half, so neither edge ever occurred and the
+converter ran un-calibrated for the life of the project. Fixed in 0x004A;
+`FINDING_197` has the whole account.
+
+The caveat below stands and is worth keeping for its own sake — but note that it
+is exactly the caveat that let a wrong conclusion survive. "No contrary
+observation exists, but none has been sought" was true, and the answer was
+sitting in the decompiled source the whole time.
+
+> Stated as an RE conclusion, with its limit: stock cannot be measured on this
+> bench at all. It is vendor-class, `snd-usb-audio` will not bind, so there is no
+> `arecord` path — confirming this on hardware would need a raw libusb
+> isochronous capture under stock firmware.
 
 ## The mute gate itself is clean
 
