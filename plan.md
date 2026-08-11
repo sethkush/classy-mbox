@@ -12,18 +12,54 @@
 
 ## 0. Status
 
+**Last updated 2026-08-11. Phases 1–5 are complete and Phase 6's items have
+shipped.** The paragraphs below used to describe 2026-07-16 and called Rev 20 a
+"blocker for Phase 2 onwards"; that blocker was cleared weeks ago and the
+sections further down are kept as the historical plan, not as current state.
+
 - **Repo:** initialized 2026-07-16, `~/projects/mbox`.
-- **Reference research:** complete (2026-07-16). See §3, §10.
-- **Hardware in hand:** Mbox 1, serial `RK10874600Q`.
-- **Phase 0 dump:** complete (2026-07-16). VID/PID confirmed
-  `0x0dba:0x1000`, device unclaimed by any audio kext (only
-  `AppleUSBHostCompositeDevice` bound). `bcdDevice = 0x0020` confirmed
-  to be firmware **Rev 20** — the buggy pre-v22 revision that
-  produces loud static during playback. **Blocker for Phase 2
-  onwards** unless we obtain `MboxFirmware22_33860.dmg` and flash on
-  an old Intel Mac. Phase 1 (capture skeleton) can proceed safely
-  since the bug appears playback-only. Full findings in
-  `reference/phase0/20260717T041923Z/FINDINGS.md`.
+- **Hardware in hand:** TWO Mbox 1 units — `RK10874600Q` (unit A) and
+  `RK1672500M` (unit B) — both on the void box `192.168.1.76`, ports 2-1.4 and
+  2-1.2. Serials are compiled in (`MBOX_UNIT=A`/`=B`), so they must go back into
+  the same ports. `BENCH_WIRING.md` before designing any loopback.
+- **Both units run mboxfw `0x0053`**, 5949/5947 bytes of the 6016-byte program
+  RAM, 37/37 preflight gates.
+
+**What works, measured on hardware rather than inferred:**
+
+- Class-compliant UAC1 capture and playback, 2 ch × 24-bit, **44.1 and 48 kHz**
+  (`bSamFreqType = 2`), on both units.
+- S/PDIF input and output, with UAC Selector Units for source and clock.
+- Feature Units with mute; `GET_MIN`/`MAX`/`RES` on the sampling-frequency
+  control; endpoint sync types corrected to match what the hardware does.
+- Front-panel sources and mono, settable over the wire (the panel is 1 km away).
+- Byte-exact recompilation of BOTH stock images — `link51.py rev20` and
+  `rev22` rebuild the 8174-byte ROMs bit-for-bit from C.
+- DFU flashers for macOS (IOKit) and Linux (pyusb), and ~40 verification gates.
+
+**Known and characterised, not defects to chase:**
+
+- The first capture of each power-up carries 183 ms of digital silence — the
+  AK5383's offset calibration, which costs 8960 LRCK edges and can only be spent
+  while a stream runs. Stock pays it on EVERY capture. Every route to avoiding it
+  is refuted by measurement in `FINDING_202_the_cport_does_not_free_run.md`.
+- Every capture opens with a ~−85 dBFS transient decaying to zero within 400 ms:
+  the ADC's high-pass re-converging, because the part is not clocked between
+  captures. Also hardware. Skip the first 400 ms of any measurement.
+- Clean audio ~15 s after power-up, full behaviour at 30 s.
+
+**The significant gap: macOS.** The project exists so Core Audio drives this
+device natively on Apple Silicon, and the last macOS validation was build
+`0x0019` on 2026-08-03 — 34 builds ago, before the Feature Units, the S/PDIF
+terminal, the sync-type corrections, the serial descriptors and the whole
+calibration rework. Everything since has been validated on Linux/ALSA only.
+Core Audio is stricter about descriptor consistency and fails silently rather
+than loudly, so a Linux pass does not predict a macOS pass.
+
+- **Phase 0 dump:** complete (2026-07-16), `reference/phase0/.../FINDINGS.md`.
+  Historical note: `bcdDevice = 0x0020` identified the unit as **Rev 20**, the
+  pre-v22 revision with the playback static bug. Superseded — the unit has since
+  run Rev 22, and now runs mboxfw.
 
 ## 1. Executive summary
 
@@ -90,15 +126,19 @@ Confirmed from ALSA thread + upstream Linux driver + Zammit write-up:
     outputs, S/PDIF in/out on RCA, 1/4" TRS headphone jack, USB-B.
   - Front: 3.5 mm headphone jack. Both headphone jacks mirror the
     line output.
-- **Front-panel controls (all analog, none exposed on USB — no
-  driver-side work needed):**
-  - Per-channel source-type switch (mic / line / inst).
-  - Per-channel gain knob.
-  - Input↔playback mix knob (the monitoring blend).
-  - Headphone volume knob with a mono-sum switch.
-  - +48V phantom switch (also analog — but verify in Phase 0
-    whether its state happens to be queryable via a vendor
-    control transfer; would be useful to surface if so).
+- **Front-panel controls.** The "all analog, none exposed on USB" reading below
+  was WRONG on two of five, and mboxfw drives both:
+  - Per-channel source-type switch (mic / line / inst) — **firmware**, not a
+    switch. 74HC157 muxes, published in the codec word's low nibble; patterns
+    0x06 = mic, 0x05 = line, 0x03 = inst. Settable over the wire
+    (`TLM_REQ_SET_MUX`), which the bench depends on because the panel is 1 km
+    away. It boots to MIC while both bench loopbacks feed LINE — see
+    `BENCH_WIRING.md`.
+  - Headphone mono-sum — **firmware**, IRAM `0x23.6`.
+  - Per-channel gain knob — analog, genuinely not exposed. This is why #196
+    needs someone physically at the unit.
+  - Input↔playback mix knob (the monitoring blend) — analog.
+  - +48V phantom — mechanical, confirmed not firmware.
 
 ## 3. Linux driver analysis (`sound/usb/`, mainline since 3.19)
 
@@ -230,7 +270,7 @@ mbox/
 
 ## 7. Implementation phases
 
-### Phase 1: Reverse-engineer the stock flasher (in progress)
+### Phase 1: Reverse-engineer the stock flasher — DONE
 - Extract i386 slice from `Update Mbox Firmware v22.app`.
 - Static analysis with radare2: locate `PrepareForDownload`, find
   every `IOUSBDeviceInterface` control-transfer call site, note the
@@ -241,21 +281,22 @@ mbox/
 - Deliverable: `firmware_stock/protocol_notes.md` fully specifying
   the flash sequence, and `firmware_stock/flash_payload.bin`.
 
-### Phase 2: Native macOS flasher (1 week)
+### Phase 2: Native macOS flasher — DONE (`mboxflash/`, plus `tools/mboxflash_linux.py`)
 - Write `mboxflash` in ObjC using IOUSBHost.
 - Implement the protocol from Phase 1's notes.
 - First run: flash the ORIGINAL Digi v22 payload back onto the
   device (safest possible test — should end up in the same state).
 - Confirm `bcdDevice` reads 0x22 after re-enumeration.
 
-### Phase 3: Fix this unit's firmware (1 day)
+### Phase 3: Fix this unit's firmware — DONE (both units have taken Rev 22)
 - Run `mboxflash` on the actual Mbox with the Digi v22 payload.
 - Confirm playback is clean (no more Rev-20 white-noise bug).
 - From this point on, this Mbox can be used safely with the Linux
   driver / any UAC-emulating tool, so the flasher is proven safe
   even if the class-compliant firmware effort stalls.
 
-### Phase 4: Reverse-engineer the stock firmware (2–4 weeks)
+### Phase 4: Reverse-engineer the stock firmware — DONE, and past the original goal:
+`firmware_stock/decomp/` rebuilds BOTH images byte-for-byte from C source.
 - After flashing, dump the EEPROM contents back through `mboxflash`
   read path (if the Digi protocol supports READ_EEPROM — some do).
 - If not, extract the payload from the flasher binary as canonical
@@ -267,7 +308,7 @@ mbox/
   and the S/PDIF chip.
 - Deliverable: `firmware_stock_dumped/pinout.md`.
 
-### Phase 5: Class-compliant firmware (4–8 weeks)
+### Phase 5: Class-compliant firmware — DONE (`mboxfw/`, shipping 0x0053)
 - Start from TI's TAS1020A UAC reference (part of the eval kit,
   should be recoverable from TI archives — may need another
   research fork). Fallback: write from scratch using the TAS1020A
@@ -278,7 +319,7 @@ mbox/
   fall back to Digi v22 via `mboxflash` if the custom firmware is
   unbootable.
 
-### Phase 6 (optional): Feature parity + polish
+### Phase 6 (optional): Feature parity + polish — SHIPPED, all four items
 - S/PDIF I/O as switchable input source (mirror Linux quirk's
   input-source concept, but exposed as a UAC selector unit).
 - Clock-source selector (internal vs. S/PDIF sync) as a UAC unit.
