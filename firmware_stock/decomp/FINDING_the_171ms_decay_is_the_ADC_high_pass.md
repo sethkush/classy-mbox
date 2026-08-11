@@ -110,3 +110,83 @@ the offset, the shape, the re-arming, and why the fix removes it. **It is not
 proved.** Proving it needs a build with the `CLR` removed again, and a flash,
 and the fix is not in doubt, so it has not been done. Recorded as the best
 available account and labelled as such.
+
+
+## Digging further: the converter is settling during the tRTV window
+
+`tools/calwindow_sweep.py`. If the high-pass state is cleared when RST goes low
+-- the datasheet says the digital section is powered down -- then it must
+re-converge somewhere, and the only place it can hide is the 187 ms of zeros
+before SDATA goes valid. That is testable: inject a mux step at a known delay
+INTO the window, and see how much of it survives to the output.
+
+48 kHz, 4 repeats per delay, both channels, all steps MIC->LINE. The comparator
+is the reverse step made with audio live, in the same capture.
+
+| switch at | residual |peak| | suppression | HPF-alone prediction |
+|---|---|---|---|
+| +10 ms | 999 LSB24 | 4.3x | 18 (242x) |
+| +50 ms | 1218 | 3.5x | 424 (10.1x) |
+| +90 ms | 1550 | 2.8x | 1092 (3.9x) |
+| +130 ms | 1874 | 2.3x | 2074 (2.1x) |
+| +170 ms | 2384 | 1.8x | 3486 (1.2x) |
+| **+230 ms** | **6293** | 0.7x | 4302 (1.0x) |
+| **+400 ms** | **6223** | 0.7x | 4302 (1.0x) |
+
+The last two rows land after SDATA is valid and are the control: they come back
+full size, as they must.
+
+**The trend is real and monotonic.** A step introduced early in the window
+survives four times smaller than the same step introduced late, so the
+converter's digital path is running and settling while its output is still
+muted. The 187 ms is 1.06 tau, and it is a settling window as well as a
+calibration cycle.
+
+**But the early delays leave a floor the high-pass alone does not explain.** At
++10 ms a clean model -- state cleared at RST release, double pole, tau = 176 ms,
+1.01 tau of convergence available -- predicts 18 LSB24 and 999 was measured.
+Something keeps ~23 % of the step alive no matter how early it is introduced.
+
+Two candidates, and this bench cannot separate them:
+
+- the mux step is not a step. Switching source changes the DC the analog path
+  must charge to, and that path has its own settling, so the input is still
+  moving when SDATA goes valid.
+- the model of what is cleared at RST-low is wrong.
+
+So the direction is established and the magnitude is not. **ZCAL is not
+determined by any of this** -- the reasoning that briefly suggested it
+(suppression larger than the high-pass could explain, therefore the calibration
+must be cancelling input DC) rested on the retracted number below.
+
+## RETRACTED: the "45x suppression" figure
+
+An earlier run of this experiment reported a mux step made during the window
+emerging **45x** smaller than one made live, and inferred from the excess over
+the high-pass prediction that the calibration must also be cancelling input DC,
+hence ZCAL = "H". **All of that is wrong.**
+
+The driver chose the target source from the loop index rather than from the
+current source, so after the first iteration the "test" switch was usually a
+no-op -- setting MIC when the mux was already MIC. The average was one real step
+diluted by eleven flat traces. The true figure at that delay is ~3.5x.
+
+It was caught by the control arm: the +230 ms case lands after SDATA is valid
+and MUST look like an ordinary live step. It did not, and there was no reading
+of the physics under which it could. **The lesson is the cheap one: the sweep
+only became trustworthy once it included a delay whose answer was known in
+advance.** The first version had no such arm, and its headline number was off by
+an order of magnitude in the flattering direction.
+
+## What is still not proved, and what it would take
+
+That reprogramming the clocks is what disturbs the converter and re-arms the
+transient. Everything measured is consistent with it and nothing tests it,
+because neither available build offers the needed arm: 0x004A always brackets
+the reprogramming with RST, and 0x004B (unit B) gates the reprogramming and the
+bracket together, so a same-rate request does nothing at all.
+
+It needs an image that reprograms the clocks WITHOUT touching RST -- cleanest as
+a diagnostic vendor request rather than by re-introducing the regression. That
+is a flash, and a flash is a physical trip. The fix is not in doubt, so this is
+recorded as the open question rather than pursued.
