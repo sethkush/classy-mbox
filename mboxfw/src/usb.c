@@ -669,7 +669,26 @@ static void handle_set_clock(void)
         g_internal_rate = rate;
     }
     g_sample_rate = rate;
+
+    /* #199 bench diagnostic. wIndexH == 0xD1 reprograms the clocks with the
+     * AK5383's RST left HIGH -- no calibration, no tRTV mute. Armed and
+     * disarmed around this single call, so the flag is never observable set by
+     * any other path, and any value of wIndexH other than 0xD1 leaves the
+     * shipping behaviour bit-for-bit unchanged.
+     *
+     * NOVEL — reason: bench instrument. It supplies the experimental arm that
+     * neither 0x004A (always brackets) nor 0x004B (gates reprogramming and
+     * bracket together) can, and it does so WITHOUT re-introducing the #197
+     * regression into the shipping path.
+     *
+     * wIndexH is safe to read here: this request carries no data stage, so the
+     * handler runs while its own SETUP is still current -- unlike the #190
+     * SET_CUR path, which has to capture wIndexH early for exactly that reason
+     * (see g_ep0_mute_bit). */
+    g_diag_no_rst = (unsigned char)(wIndexH == 0xD1);
     streaming_set_rate(rate);
+    g_diag_no_rst = 0;
+
     reply_zero_length();
 }
 

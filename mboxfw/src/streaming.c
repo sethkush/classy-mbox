@@ -41,6 +41,33 @@ static __data unsigned long stream_rate = 48000UL;
  * the boot-default note in streaming_set_rate(). */
 __data unsigned char g_clock_mode = 3;
 
+/* #199 DIAGNOSTIC. When set, streaming_set_rate() reprograms the clocks with
+ * the AK5383's RST left HIGH -- no falling edge, so no offset calibration and
+ * no tRTV mute. Set only by TLM_REQ_SET_CLOCK with wIndexH == 0xD1, and cleared
+ * by that same handler the instant the call returns, so no path other than that
+ * one request can ever observe it set.
+ *
+ * NOVEL — reason: this is a bench instrument, not a port of stock. It exists to
+ * supply the one experimental arm neither shipping build can: reprogramming the
+ * clocks WITHOUT the RST bracket. The proposed mechanism for #197 is that
+ * reprogramming disturbs the converter's digital-filter state, so its high-pass
+ * re-converges from scratch and reveals whatever DC sits under it; every
+ * measurement to date is consistent with that and none tests it, because 0x004A
+ * always brackets the reprogramming and 0x004B gates reprogramming and bracket
+ * together.
+ *
+ * Deliberately implemented as ONE guard on the CLR rather than two. With no
+ * falling edge the `|=` further down writes bits that are already set, so no
+ * rising edge occurs either and the publish is electrically a no-op -- which is
+ * exactly the pre-0x004A behaviour this needs to reproduce on demand.
+ *
+ * Note what the experiment then requires: on a calibrated part the underlying
+ * offset is ~0, so a disturbance has nothing to reveal and the result would be
+ * flat either way. The DC has to be supplied -- switch the source with
+ * TLM_REQ_SET_MUX, let the high-pass cancel it, and only then fire this. See
+ * FINDING_the_171ms_decay_is_the_ADC_high_pass.md. */
+__data unsigned char g_diag_no_rst = 0;
+
 /*
  * #186 stage 1 — measure this device's own clock against the host's frame
  * clock, and report it. MEASUREMENT ONLY: nothing here changes the clock, the
@@ -243,17 +270,22 @@ void streaming_set_rate(unsigned long hz)
      * top of every capture IS the calibration -- tRTV = 8960/fs = 186.7 ms at
      * 48 kHz, less the few ms before the host's first URB lands.
      *
-     * An earlier version of this comment also cited tau = 171 ms against the
-     * part's 1.0 Hz HPF corner. RETRACTED: the datasheet makes calibration and
-     * the HPF independent blocks -- the calibration reference is VCOM or the
-     * AIN pins per ZCAL, with no filter involved -- and HPFE measures LOW here
-     * anyway (post-calibration DC 5..24 LSB24, against +/-1 for HPF=ON). That
-     * match was a coincidence and is not evidence for this write.
+     * An earlier version of this comment cited tau = 171 ms against the part's
+     * 1.0 Hz HPF corner as supporting evidence. That INFERENCE stays retracted:
+     * the datasheet makes calibration and the HPF independent blocks, so the
+     * match never bore on the calibration mechanism. The ATTRIBUTION is now
+     * measured, though -- the decay is the HPF, tau = 176 ms, and it scales with
+     * fs (zero-crossing 176.44 ms at 48000 against 191.53 ms at 44100, ratio
+     * 1.0855 vs the rate ratio 1.0884). A later claim here that HPFE measures
+     * LOW is also retracted; it is HIGH.
+     * FINDING_the_171ms_decay_is_the_ADC_high_pass.md.
      *
      * `&=` cannot set a bit, so latch_word_bit_diff.py still reads the literal
      * `|=` below as the whole truth about what this routine can raise. */
-    g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_PAIR_ALL;
-    codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x0714 */
+    if (!g_diag_no_rst) {
+        g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_PAIR_ALL;
+        codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x0714 */
+    }
 
     /* Prelude — seed both adaptive-clock-generator digital control
      * registers with 0x10, exactly as Rev 20 does.

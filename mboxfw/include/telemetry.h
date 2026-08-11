@@ -96,6 +96,21 @@
  * byte 7 the applied clock mode, so the request can be confirmed rather than
  * assumed from the absence of a stall. */
 #define TLM_REQ_SET_CLOCK 0x14
+/* #199. wIndexH == 0xD1 on TLM_REQ_SET_CLOCK reprograms the clocks with the
+ * AK5383's RST left HIGH: no falling edge, so no offset calibration and no tRTV
+ * mute. Any other wIndexH leaves the shipping path bit-for-bit unchanged.
+ *
+ * This is a modifier on an existing request rather than a new request code,
+ * which costs 21 bytes against the 133 remaining and needs no new dispatch arm.
+ *
+ * What it is for: the #197 mechanism holds that reprogramming the clocks
+ * disturbs the converter's digital-filter state, so its high-pass re-converges
+ * and reveals whatever DC sits under it. Neither shipping build can test that --
+ * 0x004A always brackets the reprogramming with RST, 0x004B gates reprogramming
+ * and bracket together. Note the part must be given a DC to reveal: switch the
+ * source with TLM_REQ_SET_MUX, let the high-pass cancel it, then fire this.
+ * FINDING_the_171ms_decay_is_the_ADC_high_pass.md. */
+#define TLM_SET_CLOCK_NO_RST 0xD1
 
 /* 0x15 was TLM_REQ_SET_MUTE, the #189 bench control for the 0x23.2/0x23.3
  * pair. REMOVED in build 0x0036, when #190 declared the two UAC1 Feature Units
@@ -155,7 +170,19 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x004C   /* 004C: 004B REVERTED -- a cold boot proved the
+#define TLM_BUILD_ID     0x004D   /* 004D: #199 bench diagnostic -- SET_CLOCK with
+                                   *       wIndexH == 0xD1 reprograms the clocks
+                                   *       with the ADC's RST left HIGH. Supplies
+                                   *       the one arm neither shipping build can.
+                                   *       Shipping behaviour unchanged for every
+                                   *       other wIndexH.
+                                   *       NOT a re-flash of 004C: 004C is already
+                                   *       recorded in the findings as the plain
+                                   *       revert, and a build id meaning two
+                                   *       different images is the trap this list
+                                   *       exists to prevent. 004C was never
+                                   *       flashed to anything.
+                                   * 004C: 004B REVERTED -- a cold boot proved the
                                    *       conditional makes a bad boot calibration
                                    *       permanent. Unconditional, as stock.
                                    * 004B: reprogram the clock ONLY when the mode

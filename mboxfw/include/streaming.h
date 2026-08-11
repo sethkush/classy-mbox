@@ -12,6 +12,13 @@
  * analog-restore path deliberately does NOT use this (see g_internal_rate). */
 extern __data unsigned char g_clock_mode;
 
+/* #199 bench diagnostic. Suppresses the RST bracket inside streaming_set_rate()
+ * for exactly one call, so the clocks are reprogrammed with the AK5383 left
+ * running -- the one arm neither shipping build can supply. Set and cleared
+ * around that call by TLM_REQ_SET_CLOCK with wIndexH == 0xD1; nothing else
+ * writes it. See streaming.c for the full rationale. */
+extern __data unsigned char g_diag_no_rst;
+
 void streaming_set_rate(unsigned long hz);
 void streaming_playback_enable(unsigned char on);
 void streaming_capture_enable(unsigned char on);
