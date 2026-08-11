@@ -243,10 +243,28 @@ def block1(b):
            "iep0_count:      %d" % iep0,
            "chunks pushed:   %d" % chunks,
            "transfers drained: %d" % drains]
-    # For an N-packet reply the device takes N IEP0 interrupts and pushes N
-    # chunks. chunks short of iep0 means the device stopped being asked.
-    if iep0 and chunks < iep0:
-        out.append("  NOTE: chunks < iep0_count -- pushes are being missed")
+    # chunks < iep0 is NORMAL and says nothing about loss. It fired on every
+    # reading taken for weeks and meant nothing. Two entirely healthy things
+    # raise iep0 without ever touching chunks:
+    #
+    #   - single-packet replies, which usb.c serves with stage_immediate():
+    #     it writes the EP0 buffer directly and never calls push_reply_chunk().
+    #     EVERY telemetry read is one of these, so merely polling this block
+    #     widens the gap.
+    #   - no-data control writes (SET_ADDRESS, SET_CONFIGURATION, SET_INTERFACE,
+    #     SET_CUR, the vendor requests), whose zero-length IN status stage takes
+    #     an IEP0 interrupt with nothing to push.
+    #
+    # Measured 2026-08-11: 10 reads moved iep0 +11 and chunks +0, and 10 no-data
+    # writes moved iep0 +11 and chunks +0. Meanwhile 50 reads of the 238-byte
+    # config descriptor -- the chunked path, which is what `chunks` counts --
+    # returned 0 short reads with chunks at +1516 against a floor of +1500. The
+    # chunked path is healthy.
+    #
+    # What WOULD be wrong is pushes with nothing ever completing.
+    if chunks and not drains:
+        out.append("  NOTE: chunks pushed but nothing drained -- transfers are "
+                   "starting and never finishing")
     return out
 
 

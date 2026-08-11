@@ -62,12 +62,27 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
     case 1:
         /* EP0 continuation forensics — the reason this exists.
          *
-         * For an N-packet reply the device should take N IEP0 interrupts
-         * and push N chunks. chunks falling short of what the SETUPs
+         * For an N-packet CHUNKED reply the device takes N IEP0 interrupts
+         * and pushes N chunks. chunks falling short of what the SETUPs
          * asked for means the device stopped being asked: a lost
          * interrupt. drains lagging chunks means transfers are being
          * abandoned somewhere else. Host-side timeouts cannot separate
-         * those two; this can. */
+         * those two; this can.
+         *
+         * READ THE COUNTERS RIGHT. `chunks` counts push_reply_chunk() only,
+         * so it counts the CHUNKED path and nothing else. Single-packet
+         * replies go through stage_immediate(), which writes the EP0 buffer
+         * directly and never increments it — and every telemetry read is one
+         * of those, as is the zero-length IN status stage of every no-data
+         * control write. So `iep0 > chunks` always, on a completely healthy
+         * device, and the gap widens just by polling this block.
+         *
+         * mboxtlm.py used to flag that gap as "pushes are being missed". It
+         * fired on every reading for weeks and meant nothing; the rule is now
+         * `chunks && !drains` instead. Measured 2026-08-11: 10 reads gave
+         * iep0 +11 / chunks +0, 10 no-data writes gave iep0 +11 / chunks +0,
+         * and 50 reads of the 238-byte config descriptor gave 0 short reads
+         * with chunks +1516 against a floor of +1500. */
         put16(&out[0], tlm.setup_count);
         put16(&out[2], tlm.iep0_count);
         put16(&out[4], tlm.chunks);
