@@ -357,3 +357,27 @@ Consequences for measurement:
     thing A's `out2 -> src2` self-loop structurally cannot do, since it puts
     A's DAC and ADC in series. That is what would separate the output half of
     the #171 mute pair from the capture half already proven.
+
+## There is no remote power cycle — settled 2026-08-11
+
+Both hosts' hubs report `ppps`, both accept `uhubctl -a off` / `-a cycle`, and
+both then report `Port N: 0000 off`. **None of that means VBUS dropped.** The
+status bit is set by the request, not by the port's actual power state.
+
+Tested with a unit on the port (the empty-port test was inconclusive precisely
+because nothing was there to observe): on the void box's Intel `8087:0024`,
+`-a off`, 20 s dwell, `-a on` brought the unit back with its counters
+**climbing** — `setup_count` 59→111, `iep0_count` 110→219, bus resets 3→7. A
+cold boot drives those *down*; a physical unplug on the same unit minutes later
+took bus resets 7→3. So `uhubctl` delivers a bus reset and nothing more.
+
+Consequences:
+
+  * Every cold-boot verification costs a physical trip. Budget for it.
+  * `-a off` with a long dwell is **not** a stronger version of `-a cycle`.
+    Do not re-test this hoping otherwise; it has now been tested the only way
+    that can answer it.
+  * Anything that must be proved on a power-up — `g_ref_settled` (#201), the
+    boot-time calibration path, `codec_init()` ordering — cannot be proved from
+    the desk, and a warm test that passes proves nothing about it. 0x004B is
+    the standing example: warm-clean, cold-broken.
