@@ -193,3 +193,61 @@ Note also what is NOT different: both designs re-converge the ADC's high-pass at
 every stream open, because neither can clock the part between streams. The
 transient's existence is hardware; only its amplitude is a firmware choice, and
 the amplitude difference is 2.2 dB.
+
+## Playback does NOT clock the ADC — the C-port's receive side frames separately
+
+The obvious free refresh: a running playback stream is host isochronous traffic,
+so if LRCK were shared between directions the AK5383 would be clocked whenever
+playback runs, its high-pass would stay converged, and a capture opened on top of
+a playback stream would open flat.
+
+Interleaved on unit A, both orders, 6 arms each, `aplay` from /dev/zero:
+
+| | mean abs(head DC) | peak in first 400 ms |
+|---|---|---|
+| playback RUNNING | 214.7 | 490.2 = -84.7 dBFS |
+| nothing streaming | 234.3 | 526.0 = -84.1 dBFS |
+
+**No difference.** The playback arm was verified live rather than assumed --
+`/proc/asound/card2/stream0` read `Status: Running`, `Packet Size = 294`,
+`Momentary freq = 48000 Hz` during the capture. This matters because an `aplay`
+that silently failed would produce exactly this null.
+
+It also is not the panel write. `panel_update_streaming()` republishes only on a
+CHANGE and the 0x80 bit is shared between the two directions, so with playback
+already running a capture open does not touch the panel chain at all -- yet the
+transient is fully present in that arm. That rules out LED/latch activity as the
+injector, using the playback arm as a natural control.
+
+The consistent reading is that **the C-port's receive direction frames
+separately from its transmit direction**. TI gives I2S mode 5 its own receive
+configuration registers (`CPTRXCNF2`, `CPTRXCNF3`, `CPTRXCNF4`, sles025b
+§2.2.13), and the AK5383 is on the receive side. Playback drives TX framing and
+the DAC; it does not clock the ADC. That is consistent with every result here:
+playback does not help, and arming the capture DMA without host traffic (#202b)
+does not either.
+
+So the high-pass model stands. The ADC is clocked only while a capture stream is
+actively running with host traffic, which is why the filter restarts at every
+capture open and why there is no moment at which a free recalibration could be
+spent.
+
+## Final state of the question
+
+Every avenue that could remove or shrink the opening transient, and its result:
+
+| avenue | result |
+|---|---|
+| free-running C-port (CPTBLK = 0) | refuted -- no calibration in 5 s at raised RST |
+| self-driven capture (DMAEN) | refuted with a corrected window -- 8774 lead zeros |
+| playback keeps the ADC clocked | refuted -- 490 vs 526 peak, no difference |
+| recalibrate at every open (stock) | works, buys 2.2 dB, costs 183 ms per capture |
+| periodic refresh when stale | useless -- the penalty appears within seconds of a
+  calibration, not over minutes, so there is no staleness to chase |
+| firmware DC compensation | impossible -- the audio path is DMA straight to USB
+  and the 8051 never sees a sample |
+| disable the high-pass | impossible -- HPFE is strapped HIGH in hardware |
+
+**0x0053 is the optimum available.** The transient is a property of an AK5383
+that is not clocked between captures, it peaks around -85 dBFS, and it decays to
+a true zero within 400 ms.
