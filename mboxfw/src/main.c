@@ -357,11 +357,23 @@ void main(void)
          * in the firmware), so a bare `> 20000` would go false again after 65 s
          * and let a late calibration count as trustworthy when it is not.
          *
-         * The HIGH BYTE alone is the test. 0x50 << 8 = 20480 SOFs = 20.5 s,
-         * which is the same threshold to within half a second and costs a byte
-         * compare instead of a 16-bit one -- nine bytes, which is exactly what
-         * this had to find to fit alongside the per-unit serials. */
-        if (!g_ref_settled && (unsigned char)(tlm.sof_count >> 8) >= 0x50u) {
+         * The HIGH BYTE alone is the test, which costs a byte compare instead
+         * of a 16-bit one -- nine bytes, and that is what this had to find to
+         * fit alongside the per-unit serials.
+         *
+         * 0x75 << 8 = 30000 SOFs = 30 s, not the 20 s the settling measurement
+         * strictly needs. The margin is free: the calibration this gates is the
+         * ONE that stands for the whole power-up, so landing it early is
+         * permanent, while landing it late costs only that a capture opened in
+         * the first 30 s pays the 183 ms -- which is exactly today's behaviour,
+         * so there is no regression to trade against. The settle table is flat
+         * by 16 s (-100.5 dBFS at 16 s against -89.4 at 8 s).
+         *
+         * Note sof_count is exposed in NO telemetry block, so this threshold
+         * cannot be checked over the wire. It is checked from the audio instead:
+         * the first capture of a power-up shows ~8800 leading zeros and later
+         * ones show none. If every capture shows 8800, this never fired. */
+        if (!g_ref_settled && (unsigned char)(tlm.sof_count >> 8) >= 0x75u) {
             g_ref_settled = 1;
         }
 
