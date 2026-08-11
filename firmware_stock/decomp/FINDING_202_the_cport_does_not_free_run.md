@@ -156,3 +156,40 @@ The remaining avenue is unchanged and still not recommended: make the C-port
 frame without host traffic by driving the DMA and endpoint state machinery
 directly, rather than through the stream-open path. That means the machinery
 #147 and #186 both had to be careful with, for 183 ms once per power-up.
+
+## Is stock's design the better one? Measured: no, by 2.2 dB
+
+Stock recalibrates at EVERY stream open (Rev 20 `audio_clock_mode_apply` clears
+the pair at 0x072F, Rev 22 at 0x0716, both above the mode dispatch and therefore
+unconditional). It pays 183 ms on every capture and in exchange always has a
+fresh offset. Ours calibrates once per power-up. The fair question is what that
+freshness is worth.
+
+Interleaved on unit A, both orders, 8 arms each, request 0x17 forcing the
+recalibration. Known-answer arm: recalibrated captures must show ~8800 leading
+zeros and latched ones must show 0. Both held, so the stimulus fired.
+
+| | lead zeros | mean abs(head DC) | peak in first 400 ms |
+|---|---|---|---|
+| recalibrate every open (stock) | 8800 | 76.3 | 367.6 = **-87.2 dBFS** |
+| calibrate once (0x0053) | 0 | 200.2 | 473.5 = **-85.0 dBFS** |
+
+A fresh calibration genuinely helps -- mean opening DC is ~2.6x smaller. But on
+the peak excursion, which is what the artefact actually is, the difference is
+**2.2 dB**.
+
+So stock spends 183 ms of digital black at the top of every capture to improve an
+inaudible sub--85 dBFS settling artefact by 2.2 dB. For a recording interface
+that is the wrong side of the trade: losing the first 183 ms of a take is a
+functional defect, and 2 dB at -85 dBFS is not detectable outside a measurement
+rig.
+
+Stock's choice is the CONSERVATIVE one rather than a wrong one -- it never has to
+reason about when the reference settled. That is sound for firmware with no
+telemetry and no way to measure any of this. It is not the better outcome now
+that both sides can be measured.
+
+Note also what is NOT different: both designs re-converge the ADC's high-pass at
+every stream open, because neither can clock the part between streams. The
+transient's existence is hardware; only its amplitude is a firmware choice, and
+the amplitude difference is 2.2 dB.
