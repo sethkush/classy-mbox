@@ -72,6 +72,27 @@ __data unsigned char g_clock_mode = 3;
 __bit g_ref_settled = 0;
 __bit g_cal_done = 0;
 
+/* #202b. The calibration cannot be spent unless the AK5383 is CLOCKED, and
+ * #202 proved LRCK does not run between streams: RST raised with no stream
+ * open and held 5 s still produced the full 8769-frame zero run inside the next
+ * capture, because tRTV is 8960 LRCK EDGES and the counter does not advance
+ * without them. FINDING_202_the_cport_does_not_free_run.md.
+ *
+ * So run a capture ourselves. Nothing about the calibration needs a host --
+ * it needs frames on the C-port, and streaming_capture_enable() is exactly the
+ * three writes that produce them. The data lands in the EP1 IN buffer and is
+ * never collected, which is fine: no host is streaming, so nothing reads it,
+ * and the real stream open rewrites IEPDCNTX1 and IEPCNF1 before any URB
+ * arrives.
+ *
+ * g_cal_clocking says that self-driven capture is running; g_cal_hi0 is the
+ * sof_count HIGH BYTE when it started, so the window is measured by a
+ * wrap-safe byte subtraction rather than a 16-bit deadline. One step of the
+ * high byte is 256 ms and the window runs 256..511 ms, comfortably over the
+ * 186.7 ms that 8960 edges take at 48 kHz. */
+__bit g_cal_clocking = 0;
+__data unsigned char g_cal_hi0 = 0;
+
 /*
  * #186 stage 1 — measure this device's own clock against the host's frame
  * clock, and report it. MEASUREMENT ONLY: nothing here changes the clock, the

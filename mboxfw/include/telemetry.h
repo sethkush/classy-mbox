@@ -174,7 +174,14 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0050   /* 0050: #202 -- spend the calibration with NO
+#define TLM_BUILD_ID     0x0051   /* 0051: #202b -- RUN OUR OWN CAPTURE at 30 s so
+                                   *       the calibration is CLOCKED with no
+                                   *       host streaming. #202 proved raising
+                                   *       RST alone does nothing: tRTV is 8960
+                                   *       LRCK EDGES and LRCK does not run
+                                   *       between streams. Target: EVERY
+                                   *       capture clean, including the first.
+                                   * 0050: #202 -- spend the calibration with NO
                                    *       stream open, so the FIRST capture of a
                                    *       power-up is clean too. 0x23.2 is held
                                    *       high once g_ref_settled, so a stream
