@@ -30,6 +30,18 @@ accounts, each of which was retired by experiment rather than by argument.
    block 11 never saw this, and why "the clock never stops" was true and
    irrelevant. **MCLKO is not the converter's sample clock.**
 
+   **Directly confirmed 2026-08-11 by #202**, which is worth recording because
+   the evidence originally given here did NOT establish it. The support offered
+   was that opening DC is independent of the close-to-reopen gap (0/1/20 s), and
+   that does not discriminate: a step injected into a *running* 1 Hz high-pass
+   decays with the same tau = 171 ms as a filter converging from scratch, so the
+   observation fits both stories equally. The register also pointed the other
+   way -- `CPTCNF4 = 0x03` has `CPTBLK` clear, and TI says CSYNC and CSCLK
+   free-run in that state. The direct test: raise RST with no stream open, wait
+   5 s, capture. The capture still showed 8769 leading zeros, i.e. the
+   calibration had not run despite 5 s at the raised level, and completed only
+   once audio started. `FINDING_202_the_cport_does_not_free_run.md`.
+
 4. **So every stream open starts the filter from scratch**, the latched error
    appears at full amplitude, and the filter removes it over ~2 tau.
 
