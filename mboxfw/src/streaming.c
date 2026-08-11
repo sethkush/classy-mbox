@@ -200,9 +200,22 @@ void streaming_set_rate(unsigned long hz)
      * single stream start. usbmon caught it as 16 consecutive polls of
      * 0x0D1FFD, one window's worth of arming.
      *
-     * Re-priming acg_prev matters as much as zeroing the sum: MCLKO stops
-     * while the generator is idle, so the first difference taken across a
-     * restart is against a capture from before the gap and means nothing. */
+     * Re-priming acg_prev matters as much as zeroing the sum: the first
+     * difference taken across a reprogramming is against a capture from before
+     * it and means nothing.
+     *
+     * NOT because "MCLKO stops while the generator is idle", which this comment
+     * used to say and which is FALSE. Measured 2026-08-10 via block 11, which
+     * counts MCLKO against the frame clock and needs no stream: with NO capture
+     * open it reads 12287.97 counts/frame and keeps updating, indistinguishable
+     * from the streaming value. MCLKO does not stop between streams, and clock
+     * mode 1 with no S/PDIF present does not stop it either (12582822..12582883
+     * per window against 12582882 at 48 kHz -- 4.8 ppm).
+     *
+     * That killed the last standing candidate for the #197 transient at the
+     * PREMISE rather than by experiment: there is no clock stop at stream start
+     * to disturb the converter, because the clock never stops.
+     * FINDING_the_171ms_decay_is_the_ADC_high_pass.md. */
     fb_sum     = 0UL;
     fb_frames  = 0;
     acg_primed = 0;

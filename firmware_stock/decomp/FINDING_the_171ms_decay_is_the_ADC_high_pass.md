@@ -267,3 +267,77 @@ remains the live candidate.
 gone, floors at −99 to −104 dBFS, DC at zero -- and by stock doing the same
 thing. What is wrong is the story about WHY, which is worth more corrected than
 plausible.
+
+## Two more candidates eliminated, and a premise found false (2026-08-10)
+
+### The clock never stops, so nothing at stream start can be a clock stop
+
+The refutation above left one candidate: at stream start the ACG comes up from
+idle, and `streaming_set_rate()`'s own comment said "MCLKO stops while the
+generator is idle". That would be a stopped-and-restarted clock with RST high,
+exactly the condition the datasheet warns about.
+
+Two measurements, both free, both using block 11 -- which counts MCLKO against
+the USB frame clock and needs no stream open:
+
+| condition | window total | per frame |
+|---|---|---|
+| streaming at 48 kHz | 12582882 | 12287.9707 |
+| clock mode 1, no S/PDIF present | 12582822 .. 12582873 | ~12287.90 |
+| **NO STREAM OPEN AT ALL** | 12582881 .. 12582883 | **12287.97** |
+
+**MCLKO does not stop between streams, and mode 1 does not stop it either.** The
+mode-1 figures differ from the streaming ones by 4.8 ppm, which is nothing.
+
+So the comment in `streaming.c` was false and is corrected. And the candidate
+dies at the premise rather than by experiment: there is no clock stop at stream
+start to disturb the converter, because the clock never stops.
+
+This also disposes of an inference `streaming.c` had flagged as unverified --
+"if it is wrong, mode 1 leaves the codec with no clock at all". It does not.
+Mode 1 keeps MCLKO running at essentially 48 kHz x 256. (Something else does
+change: the noise floor drops 7.4 dB, 96.4 -> 41.4 LSB RMS, while the stream
+keeps flowing with unchanged repeat rates. Unexplained, and not pursued.)
+
+A clock-stop experiment WAS run before these measurements and returned null
+(STOP minus CTRL +15 +/- 65 LSB24, 0.4 % of a 3904 LSB24 reference). That null is
+void, not evidence: the instrument never stopped the clock. It is recorded only
+so nobody re-derives it as a result.
+
+### The ADC was calibrated ONCE per power-up, not never
+
+`g_path_enabled` is written in exactly two places: set in `streaming_set_rate()`,
+cleared only in `codec_init()` at boot. **Nothing clears it on stream close.** So
+before 0x004A the pair was raised at the FIRST stream open and never lowered
+again.
+
+The consequence, and it corrects the fix's own commit message ("the ADC was
+never offset-calibrated"):
+
+- boot: `codec_init()` publishes 0x0000, so RST goes LOW
+- first stream open: the `SETB` raises it -> **one** offset calibration
+- every later stream open: already high, no edge, no calibration
+
+So the converter was calibrated exactly once per power-up, at whatever moment the
+user first hit record. What 0x004A changed is not never-to-once but
+**once-to-every-open**. That is also precisely the 0x004B behaviour, which is why
+0x004B reproduced the pre-fix failure mode on a cold boot.
+
+### What that leaves, stated as a constraint rather than a story
+
+The transient's DC **decayed to zero**, not to some standing value. The
+high-pass removed it completely. So the DC was UPSTREAM of the filter -- at the
+input or in the modulator -- and was not a wrong constant in the calibration
+register, because that register is subtracted downstream and its error cannot be
+filtered away. (0x004B's cold-boot offset was permanent, which is what a
+downstream constant looks like, and is a different failure.)
+
+So the thing being sought is an INPUT-side DC step that recurs at every stream
+open. Eliminated as its cause: clock reprogramming at the same rate, at a changed
+rate, and any clock stop. Not yet eliminated: whatever else stream start does --
+the capture DMA arming, the endpoint configuration, the alt-setting switch, and
+the digital activity that begins with them.
+
+**Nothing here touches the fix**, which is proved by measurement and matches
+stock. What keeps being wrong is the explanation, and three versions of it have
+now been retired by experiment rather than by argument.
