@@ -283,16 +283,26 @@ void streaming_set_rate(unsigned long hz)
      *
      * Without the falling edge that cycle never runs, so the converter operates
      * with an uninitialised offset register for the life of the power-up. That
-     * is the transient -- as an OBSERVATION. The mechanism by which the offset
-     * reaches the output at every stream open is NOT established: #199 tested
-     * the proposed one (that reprogramming disturbs the converter's filter state
-     * so the high-pass re-converges and reveals the offset) and REFUTED it. A
-     * high-pass actively holding a 3327 LSB24 correction keeps it across a
-     * reprogramming, at the same rate or a changed one, to within ~2 %.
-     * The live candidate is now the ACG coming up from IDLE at stream start --
-     * MCLKO stops while the generator is idle, which the diagnostic does not
-     * reproduce because it fires mid-stream. See
-     * FINDING_the_171ms_decay_is_the_ADC_high_pass.md, "#199". The ~183 ms of exact zeros this bracket now costs at the
+     * is the transient. RESOLVED 2026-08-10 and measured end to end:
+     *
+     *   - the boot path calibrates THREE times within milliseconds of power-up
+     *     (block 12 rst_cycles = 3), against a VCOM that needs ~16 s to settle,
+     *     so it latches a constant that is badly wrong -- 0.122 of full scale
+     *     once the reference finishes charging
+     *   - between streams the AK5383 is NOT CLOCKED: LRCK and SCLK come from the
+     *     C-port, which idles when nothing is open. MCLKO keeps running, which
+     *     is why block 11 never saw this -- MCLKO is not the sample clock
+     *   - so every stream open starts its high-pass from scratch, the latched
+     *     error appears at full amplitude, and the filter removes it over ~2 tau
+     *
+     * Measured tau = 170.7 ms against FINDING_197's historical 171 ms, and the
+     * opening amplitude is identical whether the device sat closed for 1 s or
+     * 20 s -- the filter converges only while a stream is open.
+     *
+     * So this bracket does not add a missing calibration. It replaces a
+     * calibration taken at the worst possible moment, and never revisited, with
+     * one taken whenever the user actually records.
+     * FINDING_197_RESOLVED_the_full_mechanism.md. The ~183 ms of exact zeros this bracket now costs at the
      * top of every capture IS the calibration -- tRTV = 8960/fs = 186.7 ms at
      * 48 kHz, less the few ms before the host's first URB lands.
      *

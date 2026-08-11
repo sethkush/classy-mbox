@@ -601,7 +601,7 @@ def block12(b):
     if mask != 0x0C:
         out.append("  NOTE: this unit is NOT in shipping configuration. Audio")
         out.append("        measured now does not represent shipped behaviour.")
-    return "\n".join(out)
+    return out
 
 
 def block11(b):
