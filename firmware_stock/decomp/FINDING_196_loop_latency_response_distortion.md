@@ -160,13 +160,13 @@ path *calls* `0x0728` / `0x070F`, which this very table identifies correctly as
 stock's `streaming_set_rate()` — and the mute bracket is **inside that routine**:
 
     Rev 20 fcn.0x0728          Rev 22 fcn.0x070F
-      @0x072F  CLR  0x1a         @0x0710  CLR  0x1a
-      @0x0731  CLR  0x1b         @0x0712  CLR  0x1b
-      @0x0733  LCALL 0x0E62      @0x0714  LCALL 0x0E56     <- publish, pair LOW
+      @0x072F  CLR  0x1a         @0x0716  CLR  0x1a
+      @0x0731  CLR  0x1b         @0x0718  CLR  0x1b
+      @0x0733  LCALL 0x0E62      @0x071A  LCALL 0x0E56     <- publish, pair LOW
                ... reprogram the clocks ...
-      @0x07EE  SETB 0x1a         @0x07D2  SETB 0x1a
-      @0x07F0  SETB 0x1b         @0x07D4  SETB 0x1b
-      @0x07F2  LCALL 0x0E62      @0x07D6  LCALL 0x0E56     <- publish, pair HIGH
+      @0x07EE  SETB 0x1a         @0x07CF  SETB 0x1a
+      @0x07F0  SETB 0x1b         @0x07D1  SETB 0x1b
+      @0x07F2  LCALL 0x0E62      @0x07D3  LCALL 0x0E56     <- publish, pair HIGH
 
 So stock **does** clear and re-raise the pair on every stream open, exactly as
 it does at boot. The search that produced "no mute in the per-stream path" was

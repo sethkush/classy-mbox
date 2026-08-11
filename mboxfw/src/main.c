@@ -347,6 +347,24 @@ void main(void)
          * from "wedged", which no static value can. */
         TLM_INC16(tlm_loop_count);
 
+        /* #201. The analog reference needs ~16 s to charge (10 uF on each of
+         * VREFL/VREFR, measured). Until it has, any offset calibration latches a
+         * constant against a VCOM that is still moving -- which is the whole
+         * cause of the #197 transient. 20000 SOFs is 20 s with margin.
+         *
+         * Sticky, and tested here rather than in the SOF ISR: sof_count WRAPS
+         * (it saturated until 0x0047, which silently killed every SOF-based wait
+         * in the firmware), so a bare `> 20000` would go false again after 65 s
+         * and let a late calibration count as trustworthy when it is not.
+         *
+         * The HIGH BYTE alone is the test. 0x50 << 8 = 20480 SOFs = 20.5 s,
+         * which is the same threshold to within half a second and costs a byte
+         * compare instead of a 16-bit one -- nine bytes, which is exactly what
+         * this had to find to fit alongside the per-unit serials. */
+        if (!g_ref_settled && (unsigned char)(tlm.sof_count >> 8) >= 0x50u) {
+            g_ref_settled = 1;
+        }
+
         /*
          * Two-rate loop, mirroring Rev 20 0x0AD3-0x0B0F (Rev 22
          * 0x0A7D-0x0AB9):

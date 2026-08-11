@@ -873,7 +873,9 @@ static void handle_setup(void)
              * telemetry block 12 so the state is confirmed rather than assumed
              * -- four measurements were voided this session by an instrument
              * that was doing nothing. */
-            g_diag_clr_mask = (unsigned char)(wValueL & 0x0Cu);
+            /* #201 bench control: force a recalibration at the next stream
+             * open. Clearing the latch is the whole of it. */
+            g_cal_done = 0;
             reply_zero_length();
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             /* Same latch as the Digi class request; see

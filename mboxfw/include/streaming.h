@@ -12,18 +12,13 @@
  * analog-restore path deliberately does NOT use this (see g_internal_rate). */
 extern __data unsigned char g_clock_mode;
 
-/* #200 bench diagnostic. g_diag_clr_mask selects which pair bits
- * streaming_set_rate() clears before reprogramming: 0x0C shipping, 0x00
- * reproduces the pre-fix condition, 0x04/0x08 one bit each. Latched, defaulting
- * to the shipping value. g_diag_rst_cycles counts what actually happened.
- *
- * The structural arms (skip the reprogramming / skip the endpoint re-arm) did
- * NOT fit -- the image is 6008 of 6016 with this much -- so they are not here
- * rather than present and inert. A control that can be set and does nothing is
- * how four measurements were voided in one session.
- * See streaming.c and PLAN_200_reproduce_the_transient.md. */
-extern __data unsigned char g_diag_clr_mask;
-extern __data unsigned char g_diag_rst_cycles;
+/* #200's runtime diagnostics are retired; see streaming.c. */
+
+/* #201. g_ref_settled says the analog reference has had time to charge; the main
+ * loop sets it. g_cal_done says a calibration has been taken since then, after
+ * which no stream open pays the 183 ms. See streaming.c. */
+extern __bit g_ref_settled;
+extern __bit g_cal_done;
 
 void streaming_set_rate(unsigned long hz);
 void streaming_playback_enable(unsigned char on);

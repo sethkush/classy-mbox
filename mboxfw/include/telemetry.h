@@ -29,7 +29,7 @@
 /* 12 since build 0x0032: #186 stage 1 added the ACG clock block at index
  * 11. Retired indices (3, 6, 7, 8, 10) are never reused -- see the
  * BLOCK_RETIRED note in tools/mboxtlm.py for why. */
-#define TLM_NUM_BLOCKS   13
+#define TLM_NUM_BLOCKS   12
 
 /* Vendor requests. DEVICE recipient, NOT interface: snd-usb-audio claims
  * the audio interfaces, and an interface-recipient request then fails with
@@ -174,7 +174,23 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x004E   /* 004E: #200 -- g_diag_clr_mask, LATCHED. Selects
+#define TLM_BUILD_ID     0x004F   /* 004F: #201 -- RECLAIM THE 183 ms. Calibrate at
+                                   *       every stream open UNTIL one lands with
+                                   *       the analog reference settled, then stop.
+                                   *       Measured: after one settled calibration,
+                                   *       five captures over 185 s with calibration
+                                   *       disabled were all clean, 0 lead zeros,
+                                   *       floors -103.7 dBFS. So the per-open
+                                   *       calibration was never needed for
+                                   *       correctness -- only a good one was.
+                                   *       Stock pays the 183 ms on EVERY capture
+                                   *       (Rev 20 0x072F, Rev 22 0x0716, above the
+                                   *       mode dispatch, so unconditional); this is
+                                   *       better than stock, not a restoration of
+                                   *       it. #200's runtime diagnostics retired to
+                                   *       pay for it -- the captured audio is a
+                                   *       better instrument than they were.
+                                   * 004E: #200 -- g_diag_clr_mask, LATCHED. Selects
                                    *       which pair bits set_rate clears, so the
                                    *       pre-fix condition can be reproduced at
                                    *       RUNTIME (mask 0x00) and compared against
@@ -601,7 +617,7 @@
  * fired. Removed 2026-08-08 with the pulse itself: the transient it existed to
  * suppress was mboxfw dropping stock's CLR of the pair before the clock
  * reprogramming (Rev 20 fcn.0x0728 @ 0x072F/0x0731, Rev 22 fcn.0x070F @
- * 0x0710/0x0712), which left the AK5383's offset calibration never triggered.
+ * 0x0716/0x0718), which left the AK5383's offset calibration never triggered.
  * Restoring that write makes the pulse redundant. Bit not reused. */
 
 /* Counters. Written from ISR context, read from the SETUP handler (also

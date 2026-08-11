@@ -72,7 +72,7 @@ REQ_IN = 0xC0              # vendor | device-to-host | device
 REQ_OUT = 0x40             # vendor | host-to-device | device
 
 BLOCK_SIZE = 8
-NUM_BLOCKS = 13
+NUM_BLOCKS = 12
 
 # The build in which each block FIRST EXISTED, read off the TLM_NUM_BLOCKS
 # bumps in telemetry.h's history. A device running an older build answers a
@@ -88,7 +88,6 @@ BLOCK_FIRST_BUILD = {
     9: 0x0013,   # NUM_BLOCKS 9 -> 10
     10: 0x0015,  # NUM_BLOCKS 10 -> 11
     11: 0x0032,  # NUM_BLOCKS 11 -> 12, #186 stage 1 ACG clock
-    12: 0x004E,  # NUM_BLOCKS 12 -> 13, #200 diagnostic mode
 }
 
 # Blocks whose question is ANSWERED and whose fill code was removed from the
@@ -584,26 +583,6 @@ def block10(b):
     return out
 
 
-def block12(b):
-    """#200 diagnostic state.
-
-    Reports what the firmware IS configured to do and what it HAS done, so a
-    null result can be told apart from a stimulus that never fired -- four
-    measurements were voided that way in a single session.
-    """
-    mask = b[0]
-    names = {0x0C: "shipping -- calibrate at every stream open",
-             0x00: "PRE-FIX -- no RST edge, no calibration, transient returns",
-             0x04: "AK5383 RST only",
-             0x08: "AK4393 gate only"}
-    out = ["  clear mask:      0x%02X  %s" % (mask, names.get(mask, "UNEXPECTED"))]
-    out.append("  RST cycles:      %d  (times set_rate actually cycled the pair)" % b[2])
-    if mask != 0x0C:
-        out.append("  NOTE: this unit is NOT in shipping configuration. Audio")
-        out.append("        measured now does not represent shipped behaviour.")
-    return out
-
-
 def block11(b):
     """ACG clock measurement — #186 stage 1.
 
@@ -678,8 +657,7 @@ def block11(b):
 DECODERS = {0: block0, 1: block1, 2: block2, 3: block3,
             
             4: block4, 5: block5, 6: block6, 7: block7,
-            8: block8, 9: block9, 10: block10, 11: block11,
-            12: block12}
+            8: block8, 9: block9, 10: block10, 11: block11}
 
 TITLES = {
     0: "identity and liveness",
@@ -694,7 +672,6 @@ TITLES = {
     9: "panel state (selected source)",
     10: "CS8427 readback probe (#165) -- which pin answered",
     11: "ACG clock measurement (#186 stage 1)",
-    12: "diagnostic mode (#200)",
 }
 
 

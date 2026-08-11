@@ -41,36 +41,36 @@ static __data unsigned long stream_rate = 48000UL;
  * the boot-default note in streaming_set_rate(). */
 __data unsigned char g_clock_mode = 3;
 
-/* #200 DIAGNOSTIC. Which pair bits streaming_set_rate() clears before it
- * reprograms the clocks. 0x0C -- both -- is the shipping value and the default,
- * so a power cycle always returns the unit to correct behaviour and a diagnostic
- * build left on a unit is not a trap.
- *
- *   0x0C  shipping: clear both, so the ADC calibrates at every stream open
- *   0x00  PRE-FIX: no edge, no calibration, the #197 transient returns
- *   0x04  the AK5383's RST only
- *   0x08  the AK4393's gate only
- *
- * NOVEL -- reason: bench instrument, not a port of stock.
- *
- * It replaces #199's g_diag_no_rst, which self-cleared after each request and
- * therefore could not affect the streaming_set_rate() that arecord's own SET_CUR
- * drives at stream open -- which is the moment under investigation. This one is
- * LATCHED and survives until changed or power-cycled.
- *
- * Why a build is needed at all: every probe so far returned null because on a
- * calibrated part there is nothing to reveal. The DC has to be PRESENT before a
- * disturbance can expose it. #199 fired the reprogramming diagnostic mid-stream
- * and found nothing, which does not mean reprogramming is innocent -- it means
- * it had nothing to expose. Re-running that with the mask at 0x00 is the point.
- * PLAN_200_reproduce_the_transient.md. */
-__data unsigned char g_diag_clr_mask = CODEC23_MUTE_PAIR_ALL;
+/* #200's runtime diagnostics are RETIRED -- the settable mask and the cycle
+ * counter both. They existed to reproduce and confirm the pre-fix condition,
+ * they did that (FINDING_197_RESOLVED), and the captured audio is a better
+ * confirmation than either: ~8800 leading zeros IS a calibration. The bytes are
+ * worth more to #201. Request 0x17 survives, meaning "recalibrate at the next
+ * stream open", which is what makes #201 testable without a power cycle. */
 
-/* Count of RST cycles actually performed, and the SOF count at the last one.
- * Cheap insurance: four measurements were voided this session by an instrument
- * that was doing nothing, so the firmware reports what it DID rather than
- * leaving a null indistinguishable from a stimulus that never fired. */
-__data unsigned char g_diag_rst_cycles = 0;
+/* #201 -- reclaim the 183 ms.
+ *
+ * The transient was never caused by a MISSING calibration. It was caused by one
+ * taken milliseconds after power-up, against a reference that needs ~16 s to
+ * settle, and then never revisited. Measured 2026-08-10: after a single
+ * calibration taken with the reference settled, five captures spanning 185 s
+ * with calibration disabled were all clean -- zero lead zeros, floors -103.7 dBFS
+ * -- so the per-open calibration is not needed for correctness.
+ *
+ * So calibrate at every stream open UNTIL one lands with the reference settled,
+ * then stop. Before that point every open pays the 183 ms and needs to, because
+ * any constant latched early is wrong. After it, no open pays anything.
+ *
+ * g_ref_settled is set by the main loop, not here, and not from the SOF ISR:
+ * the test is a 16-bit compare and does not belong on an interrupt path.
+ *
+ * NOT the same shape as 0x004B, which also skipped calibrations and was a
+ * regression. 0x004B's condition was "the clock mode changed", which is
+ * uncorrelated with anything physical, so its one calibration could land at any
+ * moment including the worst one. This condition IS the settling, and it keeps
+ * recalibrating until it is satisfied. FINDING_197_RESOLVED. */
+__bit g_ref_settled = 0;
+__bit g_cal_done = 0;
 
 /*
  * #186 stage 1 — measure this device's own clock against the host's frame
@@ -257,7 +257,7 @@ void streaming_set_rate(unsigned long hz)
     /* HOLD THE PAIR LOW ACROSS THE CLOCK REPROGRAMMING, AND PUBLISH THAT.
      *
      * Rev 20 fcn.0x0728 @ 0x072F/0x0731 (CLR 0x1a / CLR 0x1b) then @ 0x0733
-     * (LCALL 0x0E62); Rev 22 fcn.0x070F @ 0x0710/0x0712 then @ 0x0714. The
+     * (LCALL 0x0E62); Rev 22 fcn.0x070F @ 0x0716/0x0718 then @ 0x071A. The
      * matching release is the SETB pair and publish further down.
      *
      * THIS LINE WAS MISSING FOR THE WHOLE LIFE OF THE PROJECT, and it is the
@@ -318,10 +318,15 @@ void streaming_set_rate(unsigned long hz)
      *
      * `&=` cannot set a bit, so latch_word_bit_diff.py still reads the literal
      * `|=` below as the whole truth about what this routine can raise. */
-    if (g_diag_clr_mask) {
-        g_codec_state_23 &= (unsigned char)~g_diag_clr_mask;
-        codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x0714 */
-        g_diag_rst_cycles++;
+    if (!g_cal_done) {
+        g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_PAIR_ALL;
+        codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x071A */
+        /* This calibration is trustworthy only if the reference had settled
+         * when it was taken. Latch that fact HERE rather than testing uptime
+         * alone: a device that sits idle past the settling point and only then
+         * opens its first stream must still calibrate once, and a rule keyed on
+         * uptime by itself would skip it. */
+        if (g_ref_settled) { g_cal_done = 1; }
     }
 
     /* Prelude — seed both adaptive-clock-generator digital control
@@ -581,7 +586,7 @@ void streaming_set_rate(unsigned long hz)
     /* Publish the codec word. This is Rev 20's `LCALL 0x0E62` at 0x07F2,
      * immediately after the SETB pair above — the unmute half of the bracket
      * that opened with CLR 0x23.2 / CLR 0x23.3 and its own LCALL 0x0E62 at
-     * 0x072F-0x0733. Rev 22 at 0x07D6 / 0x0714.
+     * 0x072F-0x0733. Rev 22 at 0x07D3 / 0x071A.
      *
      * Was codec_commit(), which also republished the mux word and ran the
      * 0x22.6 derivation. Neither belongs on a clock-mode change: stock's

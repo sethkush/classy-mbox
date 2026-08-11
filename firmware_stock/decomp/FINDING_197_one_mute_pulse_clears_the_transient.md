@@ -584,8 +584,8 @@ CLR 0x23.2 / CLR 0x23.3 ; PUBLISH ; reprogram ; SETB both ; PUBLISH
 ```
 
 Rev 20 fcn.0x0728 @ 0x072F/0x0731 then 0x0733, release @ 0x07EE/0x07F0 then
-0x07F2. Rev 22 fcn.0x070F @ 0x0710/0x0712 then 0x0714, release @ 0x07D2/0x07D4
-then 0x07D6.
+0x07F2. Rev 22 fcn.0x070F @ 0x0716/0x0718 then 0x071A, release @ 0x07CF/0x07D1
+then 0x07D3.
 
 mboxfw ported only the release. The comment above that code has always
 described the full bracket; no CLR was ever emitted, so the SETB wrote bits

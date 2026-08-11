@@ -223,20 +223,10 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[7] = tlm_fb_rejects;
         break;
 
-    case 12:
-        /* #200 diagnostic state. Reports what the firmware IS doing and what it
-         * HAS done, so a null result can be told apart from a stimulus that
-         * never fired -- four measurements were voided that way in one session.
-         */
-        out[0] = g_diag_clr_mask;
-        out[1] = 0;
-        out[2] = g_diag_rst_cycles;
-        out[3] = 0;
-        out[4] = 0;
-        out[5] = 0;
-        out[6] = 0;
-        out[7] = 0;
-        break;
+    /* case 12 (#200 diagnostic state) RETIRED the same day it was added. Its
+     * job was to confirm a stimulus had fired, and the captured audio does that
+     * better: a run of ~8800 leading zeros IS a calibration, and its absence is
+     * the absence of one. Reclaimed for #201. Index not reused. */
 
     /* case 10 (CS8427 read-back probe, #165) RETIRED 2026-08-03. It answered
      * its question -- no P3 pin ever varied across the eight read clocks, so
