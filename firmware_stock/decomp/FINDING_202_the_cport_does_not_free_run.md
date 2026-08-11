@@ -97,3 +97,62 @@ C-port or a DMA channel to generate frames into a discarded buffer for ~200 ms a
 the 30 s mark. That is a much more invasive change than a held bit, it touches
 the DMA path that #147 and #186 both had to be careful with, and the payoff is
 183 ms once per power-up. Recorded as an option, not a recommendation.
+
+## #202b — driving the clock ourselves, and why that fails too
+
+The obvious follow-up: if the calibration needs frames rather than a host, run a
+capture ourselves. `streaming_capture_enable()` is exactly the three writes that
+start C-port framing (`IEPDCNTX1 = 0`, `IEPCNF1 = 0xC5`, `DMACTL1 |= DMA_EN`), so
+0x0051 raised RST at the 30 s mark, started a self-driven capture, waited, and
+stopped it. The samples land in the EP1 IN buffer and are never collected --
+harmless, since no host is streaming and the real stream open rewrites those
+registers before any URB arrives.
+
+**0x0051's result was void, and its own instrument was the reason.** The wait was
+written as a wrap-safe subtraction on the `sof_count` HIGH byte with a threshold
+of one step, described in the comment as "256..511 ms". That is wrong:
+`sof_count` FREE-RUNS, so the saved high byte is not a zero to count up from and
+the first step arrives 1..256 ms after arming, depending only on where the
+counter already was. About 73 % of arm points give a window shorter than the
+186.7 ms a calibration needs. The self-capture was started and killed before it
+could do anything, on both units.
+
+This is the standing trap in this project -- a null from an instrument that never
+fired looks exactly like a refutation -- and it was caught only by re-deriving
+the window arithmetic rather than by any arm in the run itself.
+
+0x0052 changed the threshold to two steps, which is 256..511 ms whatever the arm
+point. Re-run on unit A:
+
+```
+baseline (RST already high, calibrated):
+  before re-arm                lead  8797  head DC     -67.8  tail   +34.2
+re-arming: drop RST, main loop re-raises it with NO stream open
+  after re-arm, +5s settle     lead  8774  head DC     -19.7  tail   +13.4
+  after re-arm, +15s settle    lead     0  head DC    +322.6  tail    +2.4
+```
+
+Still 8774. With a window now provably longer than a calibration takes, the
+self-driven capture produces **no LRCK at all**. Arming the DMA is not what
+starts C-port framing; the frames only run when the host is actually moving
+isochronous data.
+
+## Conclusion
+
+Two independent attempts, one of them re-run after its instrument was corrected:
+
+1. raise RST and wait (0x0050) -- no calibration
+2. raise RST and drive the capture engine (0x0052) -- no calibration
+
+**0x004F is the floor.** The AK5383's offset calibration costs 8960 LRCK edges,
+LRCK exists only while a host stream is running, and therefore the calibration
+can only ever be spent inside a capture. #201 already moved it to the first
+capture of a power-up, which is as far as it goes.
+
+Both units were reverted to that behaviour as 0x0053, which builds to 5949/5947
+bytes -- byte-for-byte 0x004F's size, confirming the revert is clean.
+
+The remaining avenue is unchanged and still not recommended: make the C-port
+frame without host traffic by driving the DMA and endpoint state machinery
+directly, rather than through the stream-open path. That means the machinery
+#147 and #186 both had to be careful with, for 183 ms once per power-up.

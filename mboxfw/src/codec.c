@@ -22,7 +22,6 @@
 #include "regs.h"
 #include "mux.h"
 #include "codec.h"
-#include "streaming.h"   /* #202 -- g_ref_settled gates 0x23.2's hold-high */
 
 /* hw_init.c owns the ~4000-cycle settle spin; #197 borrows it rather than
  * carrying a second copy. Declared here in the style main.c uses for hw_init()
@@ -149,7 +148,6 @@ __data unsigned char g_path_enabled = 0;
 
 void codec_apply_mute(void)
 {
-    unsigned char up;
     /* The pair is a pure function of two pieces of state, and this is the ONLY
      * writer of those two bits. Splitting "is the path up" from "has the host
      * muted it" is what keeps the two independent: the alternative -- reading
@@ -171,41 +169,9 @@ void codec_apply_mute(void)
      * cannot set a bit, so the gate skips it and the literal `|=` is the whole
      * truth about what this can raise. The gate caught the byte-wide version
      * twice in two days, here and in the #189 bench handler. */
-    /* #202. Once the analog reference has settled, 0x23.2 (the AK5383's RST)
-     * stops following g_path_enabled and is simply HELD HIGH. It still follows
-     * g_host_mute -- muting capture is still a real reset of the part, and
-     * unmuting still costs a recalibration, which is correct.
-     *
-     * The point is the EDGE, not the level. Raising RST starts an offset
-     * calibration and the part emits exact zeros for tRTV = 8960/fs (~183 ms)
-     * while it runs. As long as RST tracks g_path_enabled, every stream open
-     * raises it and every capture opens with that zero run -- #201 removed it
-     * from all but the first capture of a power-up by declining to CLEAR the
-     * bit, but the first open still finds it low and still pays.
-     *
-     * Held high, there is no edge at stream open at all, so the first capture
-     * is clean too. The calibration is spent once, in the main loop, with no
-     * stream open -- which is only possible if the AK5383 is clocked with
-     * nothing streaming. It should be: CPTCNF4 bit 3 is CPTBLK, we write
-     * CPTCNF4 = 0x03 (bit 3 CLEAR), and TI says "when CPTBLK is set to 0,
-     * CSYNC and CSCLK are free running once the C-port is enabled" (sles025b,
-     * CPTCNF4 @ FFDDh); CPTEN goes up in hw_init() and MCLKO runs continuously
-     * (telemetry block 11).
-     *
-     * THAT IS THE HYPOTHESIS UNDER TEST, and it contradicts
-     * FINDING_197_RESOLVED mechanism #3 ("the C-port idles when no stream is
-     * open"). If it is wrong, the main-loop calibration never completes and the
-     * first capture of a power-up shows the ~8800-frame zero run anyway -- the
-     * same behaviour as 0x004F, so the failure mode is a null result and not a
-     * regression. FINDING_197 #3's own evidence does not decide it either way:
-     * a step injected into a RUNNING 1 Hz high-pass decays with the same
-     * tau = 171 ms as one converging from scratch, so the gap-independence that
-     * was read as proof of "not clocked" is consistent with both. #202. */
-    up = g_path_enabled;
-    if (g_ref_settled) { up |= (unsigned char)CODEC23_ADC_RST; }
     g_codec_state_23 |= (unsigned char)CODEC23_MUTE_PAIR_ALL;
     g_codec_state_23 &= (unsigned char)~g_host_mute;
-    g_codec_state_23 &= (unsigned char)(up
+    g_codec_state_23 &= (unsigned char)(g_path_enabled
                                         | (unsigned char)~CODEC23_MUTE_PAIR_ALL);
     codec_write_word();
 }

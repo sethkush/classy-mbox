@@ -174,7 +174,17 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0051   /* 0051: #202b -- RUN OUR OWN CAPTURE at 30 s so
+#define TLM_BUILD_ID     0x0053   /* 0053: #202 and #202b REVERTED. Both attempts
+                                   *       to spend the calibration without a
+                                   *       host stream are refuted by
+                                   *       measurement, so this is 0x004F's
+                                   *       behaviour exactly -- the verified
+                                   *       floor. 0x0052 corrected 0x0051's
+                                   *       too-short window and still measured
+                                   *       8774 lead zeros, so the self-driven
+                                   *       capture produces no LRCK at all.
+                                   *       FINDING_202_the_cport_does_not_free_run.md
+                                   * 0051: #202b -- RUN OUR OWN CAPTURE at 30 s so
                                    *       the calibration is CLOCKED with no
                                    *       host streaming. #202 proved raising
                                    *       RST alone does nothing: tRTV is 8960

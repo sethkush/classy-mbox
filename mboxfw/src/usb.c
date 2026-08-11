@@ -873,17 +873,8 @@ static void handle_setup(void)
              * telemetry block 12 so the state is confirmed rather than assumed
              * -- four measurements were voided this session by an instrument
              * that was doing nothing. */
-            /* #202 bench control: force a recalibration NOW, without a power
-             * cycle. Clearing the latch alone is no longer enough -- 0x23.2 is
-             * held high once calibrated, so nothing would produce an edge and
-             * the main loop would simply re-latch. So drop RST here and let the
-             * main loop raise it on its next pass, which IS the edge.
-             *
-             * Direct store rather than codec_apply_mute(), because that function
-             * now re-raises the bit whenever g_ref_settled is set -- calling it
-             * would undo the drop in the same breath. */
-            g_codec_state_23 &= (unsigned char)~CODEC23_ADC_RST;
-            codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x071a */
+            /* #201 bench control: force a recalibration at the next stream
+             * open. Clearing the latch is the whole of it. */
             g_cal_done = 0;
             reply_zero_length();
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {

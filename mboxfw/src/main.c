@@ -395,36 +395,6 @@ void main(void)
          * still raises the pin but the part is unclocked, so no calibration
          * completes and the next stream open behaves as it does today. Null
          * result, not a regression -- see the note in codec_apply_mute(). */
-        if (g_cal_clocking) {
-            /* Wrap-safe: one step of the high byte is 256 ms, so this waits
-             * 256..511 ms against the 186.7 ms that 8960 LRCK edges take at
-             * 48 kHz. Not an equality test -- a main loop that stalled past a
-             * whole step would never see it. */
-            if ((unsigned char)((unsigned char)(tlm.sof_count >> 8) - g_cal_hi0)
-                    >= 1u) {
-                streaming_capture_enable(0);
-                g_cal_clocking = 0;
-                g_cal_done = 1;
-            }
-        } else if (g_ref_settled && !g_cal_done && g_path_enabled == 0) {
-            /* Raise RST, then CLOCK it. codec_apply_mute() holds 0x23.2 high
-             * from here on, so this is the only rising edge of the power-up and
-             * the real stream opens produce none.
-             *
-             * The self-driven capture is what #202 was missing. Raising RST is
-             * not enough on its own -- proved, not assumed -- because tRTV is
-             * counted in LRCK edges and LRCK does not run between streams.
-             *
-             * Gated on g_path_enabled == 0 for the 0x004B reason: a stream
-             * already open when the threshold trips has RST high already,
-             * raised at that open and possibly seconds after boot, and latching
-             * that calibration would be exactly 0x004B's bug. Until it closes,
-             * 0x004F's per-open path stays in force. */
-            g_cal_hi0 = (unsigned char)(tlm.sof_count >> 8);
-            g_cal_clocking = 1;
-            codec_apply_mute();
-            streaming_capture_enable(1);
-        }
 
         /*
          * Two-rate loop, mirroring Rev 20 0x0AD3-0x0B0F (Rev 22

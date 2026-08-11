@@ -19,9 +19,6 @@ extern __data unsigned char g_clock_mode;
  * which no stream open pays the 183 ms. See streaming.c. */
 extern __bit g_ref_settled;
 extern __bit g_cal_done;
-/* #202b -- the self-driven capture that clocks the calibration through. */
-extern __bit g_cal_clocking;
-extern __data unsigned char g_cal_hi0;
 
 void streaming_set_rate(unsigned long hz);
 void streaming_playback_enable(unsigned char on);
