@@ -377,6 +377,29 @@ void main(void)
             g_ref_settled = 1;
         }
 
+        /* #202. Spend the calibration HERE, with no stream open, so the first
+         * capture of a power-up is clean like every later one. codec_apply_mute()
+         * raises 0x23.2 once g_ref_settled is set and then holds it, so this one
+         * call is the rising edge and there is never another.
+         *
+         * Gated on g_path_enabled == 0 deliberately. If a stream is already open
+         * when the threshold trips, RST is ALREADY high -- raised at that open,
+         * possibly seconds after boot with the reference nowhere near settled --
+         * and publishing here would latch that bad calibration as the good one.
+         * That is exactly the 0x004B failure: one calibration, taken at an
+         * arbitrary moment, latched forever. Waiting for the stream to close
+         * costs nothing, because until then 0x004F's per-open path is still in
+         * force and still recalibrating at every open.
+         *
+         * If the C-port does NOT free-run (FINDING_197_RESOLVED #3), this call
+         * still raises the pin but the part is unclocked, so no calibration
+         * completes and the next stream open behaves as it does today. Null
+         * result, not a regression -- see the note in codec_apply_mute(). */
+        if (g_ref_settled && !g_cal_done && g_path_enabled == 0) {
+            g_cal_done = 1;
+            codec_apply_mute();
+        }
+
         /*
          * Two-rate loop, mirroring Rev 20 0x0AD3-0x0B0F (Rev 22
          * 0x0A7D-0x0AB9):

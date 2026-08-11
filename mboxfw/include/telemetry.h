@@ -174,7 +174,18 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x004F   /* 004F: #201 -- RECLAIM THE 183 ms. Calibrate at
+#define TLM_BUILD_ID     0x0050   /* 0050: #202 -- spend the calibration with NO
+                                   *       stream open, so the FIRST capture of a
+                                   *       power-up is clean too. 0x23.2 is held
+                                   *       high once g_ref_settled, so a stream
+                                   *       open no longer produces an RST edge.
+                                   *       Tests FINDING_197_RESOLVED #3 ("the
+                                   *       C-port idles when no stream is open"),
+                                   *       which contradicts CPTBLK=0 in our own
+                                   *       CPTCNF4=0x03. If #3 is right the first
+                                   *       capture still shows ~8800 lead zeros --
+                                   *       a null, not a regression.
+                                   * 004F: #201 -- RECLAIM THE 183 ms. Calibrate at
                                    *       every stream open UNTIL one lands with
                                    *       the analog reference settled, then stop.
                                    *       Measured: after one settled calibration,
