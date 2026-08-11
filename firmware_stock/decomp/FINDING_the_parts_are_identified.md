@@ -112,7 +112,9 @@ Two corrections to what this document assumed, both in `FINDING_197`:
 - the calibration and the high-pass filter are **independent blocks**. The
   calibration reference is VCOM or the AIN pins per ZCAL; the HPF is not
   involved in deriving it.
-- **HPFE is tied low.** Post-calibration DC measures 5-24 LSB24 across six
-  captures, against ±1 LSB24 for HPF=ON and ±200 typ for HPF=OFF. At -112 dBFS
-  it sits thirteen dB below the noise floor, so this is closed as not worth
-  chasing.
+- ~~**HPFE is tied low.**~~ **Retracted 2026-08-10 — HPFE is HIGH.** The
+  post-calibration DC that claim rested on is sub-1-Hz bench drift, which a 1 Hz
+  high-pass barely attenuates. A mux-injected DC step recovers 8.55 % slower at
+  44.1 kHz than at 48 kHz, against 8.84 % expected for an fs-clocked pole, so the
+  filter is running inside the part.
+  `FINDING_the_171ms_decay_is_the_ADC_high_pass.md`.

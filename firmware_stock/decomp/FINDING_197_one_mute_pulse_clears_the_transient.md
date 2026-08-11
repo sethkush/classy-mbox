@@ -829,9 +829,14 @@ is right; the derivation half is not. They are **two independent blocks**:
 
 So the near-match between our measured tau = 171 ms and a 1 Hz corner's 159 ms
 was **not** evidence for the calibration mechanism, and I should not have used
-it as such. Whatever produced that decay, it was not this register.
+it as such. That much stands.
 
-### HPFE is LOW on this board, and it does not matter
+It does **not** follow that the HPF is uninvolved in the decay, which is where
+this went next and got it wrong. Measured 2026-08-10: the decay is the HPF, and
+tau = 176 ms by direct measurement against the 171 ms here.
+`FINDING_the_171ms_decay_is_the_ADC_high_pass.md`.
+
+### ~~HPFE is LOW on this board, and it does not matter~~ — WRONG, retracted 2026-08-10
 
 The spec separates the two cases sharply:
 
@@ -851,10 +856,20 @@ than the ±1 the HPF=ON case would give. **HPFE is tied low.** The values are
 comfortably inside the HPF=OFF ±1000 max and better than its ±200 typ, which is
 what ZCAL="L" (calibrating against VCOM rather than the input pins) should give.
 
-This closes the HPFE question as **not worth chasing**. 20 LSB24 is −112 dBFS,
-thirteen decibels below the −99 dBFS noise floor these same captures measure. It
-is not audible, not measurable in normal use, and driving HPFE high -- if it is
-even on a 4094 output, which is unknown -- would buy nothing.
+~~This closes the HPFE question as not worth chasing.~~
+
+**RETRACTED 2026-08-10. HPFE is HIGH; the filter is already enabled.** The
+reasoning above is a non-sequitur: a 1 Hz high-pass barely attenuates sub-1-Hz
+content, so a bench source with slow drift leaves exactly this residual, and the
+±1 LSB24 figure describes the converter's own offset with a clean input. The
+measurement never bore on the pin.
+
+What settles it is the sample-rate lever again. A DC step injected with
+`TLM_REQ_SET_MUX` -- which never touches 0x23.2, so no calibration confounds it
+-- recovers with a zero-crossing at 176.44 ms at 48 kHz and 191.53 ms at
+44.1 kHz. Ratio 1.0855 against the fs ratio 1.0884, a 0.3 % match, so the pole is
+clocked at fs and is inside the converter. 112 steps per rate.
+`FINDING_the_171ms_decay_is_the_ADC_high_pass.md`.
 
 ### And it explains the scale of the 0x004B failure
 
