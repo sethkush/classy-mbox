@@ -41,32 +41,36 @@ static __data unsigned long stream_rate = 48000UL;
  * the boot-default note in streaming_set_rate(). */
 __data unsigned char g_clock_mode = 3;
 
-/* #199 DIAGNOSTIC. When set, streaming_set_rate() reprograms the clocks with
- * the AK5383's RST left HIGH -- no falling edge, so no offset calibration and
- * no tRTV mute. Set only by TLM_REQ_SET_CLOCK with wIndexH == 0xD1, and cleared
- * by that same handler the instant the call returns, so no path other than that
- * one request can ever observe it set.
+/* #200 DIAGNOSTIC. Which pair bits streaming_set_rate() clears before it
+ * reprograms the clocks. 0x0C -- both -- is the shipping value and the default,
+ * so a power cycle always returns the unit to correct behaviour and a diagnostic
+ * build left on a unit is not a trap.
  *
- * NOVEL — reason: this is a bench instrument, not a port of stock. It exists to
- * supply the one experimental arm neither shipping build can: reprogramming the
- * clocks WITHOUT the RST bracket. The proposed mechanism for #197 is that
- * reprogramming disturbs the converter's digital-filter state, so its high-pass
- * re-converges from scratch and reveals whatever DC sits under it; every
- * measurement to date is consistent with that and none tests it, because 0x004A
- * always brackets the reprogramming and 0x004B gates reprogramming and bracket
- * together.
+ *   0x0C  shipping: clear both, so the ADC calibrates at every stream open
+ *   0x00  PRE-FIX: no edge, no calibration, the #197 transient returns
+ *   0x04  the AK5383's RST only
+ *   0x08  the AK4393's gate only
  *
- * Deliberately implemented as ONE guard on the CLR rather than two. With no
- * falling edge the `|=` further down writes bits that are already set, so no
- * rising edge occurs either and the publish is electrically a no-op -- which is
- * exactly the pre-0x004A behaviour this needs to reproduce on demand.
+ * NOVEL -- reason: bench instrument, not a port of stock.
  *
- * Note what the experiment then requires: on a calibrated part the underlying
- * offset is ~0, so a disturbance has nothing to reveal and the result would be
- * flat either way. The DC has to be supplied -- switch the source with
- * TLM_REQ_SET_MUX, let the high-pass cancel it, and only then fire this. See
- * FINDING_the_171ms_decay_is_the_ADC_high_pass.md. */
-__data unsigned char g_diag_no_rst = 0;
+ * It replaces #199's g_diag_no_rst, which self-cleared after each request and
+ * therefore could not affect the streaming_set_rate() that arecord's own SET_CUR
+ * drives at stream open -- which is the moment under investigation. This one is
+ * LATCHED and survives until changed or power-cycled.
+ *
+ * Why a build is needed at all: every probe so far returned null because on a
+ * calibrated part there is nothing to reveal. The DC has to be PRESENT before a
+ * disturbance can expose it. #199 fired the reprogramming diagnostic mid-stream
+ * and found nothing, which does not mean reprogramming is innocent -- it means
+ * it had nothing to expose. Re-running that with the mask at 0x00 is the point.
+ * PLAN_200_reproduce_the_transient.md. */
+__data unsigned char g_diag_clr_mask = CODEC23_MUTE_PAIR_ALL;
+
+/* Count of RST cycles actually performed, and the SOF count at the last one.
+ * Cheap insurance: four measurements were voided this session by an instrument
+ * that was doing nothing, so the firmware reports what it DID rather than
+ * leaving a null indistinguishable from a stimulus that never fired. */
+__data unsigned char g_diag_rst_cycles = 0;
 
 /*
  * #186 stage 1 — measure this device's own clock against the host's frame
@@ -304,9 +308,10 @@ void streaming_set_rate(unsigned long hz)
      *
      * `&=` cannot set a bit, so latch_word_bit_diff.py still reads the literal
      * `|=` below as the whole truth about what this routine can raise. */
-    if (!g_diag_no_rst) {
-        g_codec_state_23 &= (unsigned char)~CODEC23_MUTE_PAIR_ALL;
+    if (g_diag_clr_mask) {
+        g_codec_state_23 &= (unsigned char)~g_diag_clr_mask;
         codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x0714 */
+        g_diag_rst_cycles++;
     }
 
     /* Prelude — seed both adaptive-clock-generator digital control

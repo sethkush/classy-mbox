@@ -29,7 +29,7 @@
 /* 12 since build 0x0032: #186 stage 1 added the ACG clock block at index
  * 11. Retired indices (3, 6, 7, 8, 10) are never reused -- see the
  * BLOCK_RETIRED note in tools/mboxtlm.py for why. */
-#define TLM_NUM_BLOCKS   12
+#define TLM_NUM_BLOCKS   13
 
 /* Vendor requests. DEVICE recipient, NOT interface: snd-usb-audio claims
  * the audio interfaces, and an interface-recipient request then fails with
@@ -96,21 +96,25 @@
  * byte 7 the applied clock mode, so the request can be confirmed rather than
  * assumed from the absence of a stall. */
 #define TLM_REQ_SET_CLOCK 0x14
-/* #199. wIndexH == 0xD1 on TLM_REQ_SET_CLOCK reprograms the clocks with the
- * AK5383's RST left HIGH: no falling edge, so no offset calibration and no tRTV
- * mute. Any other wIndexH leaves the shipping path bit-for-bit unchanged.
+/* #199's TLM_SET_CLOCK_NO_RST (wIndexH == 0xD1 on SET_CLOCK) is REMOVED, and
+ * its number is not reused as a modifier. It self-cleared after the handler
+ * returned, so it could never affect the streaming_set_rate() that arecord's own
+ * SET_CUR drives at stream open -- the moment under investigation. Superseded by
+ * the latched TLM_REQ_DIAG_MODE below, with which firing an ordinary SET_CLOCK
+ * while the mask is 0x00 is the same experimental arm and more.
  *
- * This is a modifier on an existing request rather than a new request code,
- * which costs 21 bytes against the 133 remaining and needs no new dispatch arm.
+ * #200. Latched bench diagnostics.
+ *   wValue = which pair bits streaming_set_rate() clears before reprogramming:
+ *            0x0C shipping (both) / 0x00 PRE-FIX, transient returns /
+ *            0x04 the AK5383's RST only / 0x08 the AK4393's gate only
+ *   wIndex = structural flags: 0x01 skip the ACG reprogramming,
+ *            0x02 skip the endpoint re-arm
+ * Both default to the shipping behaviour, so a power cycle always returns the
+ * unit to correct operation. Read back in block 12.
  *
- * What it is for: the #197 mechanism holds that reprogramming the clocks
- * disturbs the converter's digital-filter state, so its high-pass re-converges
- * and reveals whatever DC sits under it. Neither shipping build can test that --
- * 0x004A always brackets the reprogramming with RST, 0x004B gates reprogramming
- * and bracket together. Note the part must be given a DC to reveal: switch the
- * source with TLM_REQ_SET_MUX, let the high-pass cancel it, then fire this.
- * FINDING_the_171ms_decay_is_the_ADC_high_pass.md. */
-#define TLM_SET_CLOCK_NO_RST 0xD1
+ * Every probe before this returned null for one reason: on a calibrated part
+ * there is nothing to reveal. PLAN_200_reproduce_the_transient.md. */
+#define TLM_REQ_DIAG_MODE 0x17
 
 /* 0x15 was TLM_REQ_SET_MUTE, the #189 bench control for the 0x23.2/0x23.3
  * pair. REMOVED in build 0x0036, when #190 declared the two UAC1 Feature Units
@@ -170,7 +174,20 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x004D   /* 004D: #199 bench diagnostic -- SET_CLOCK with
+#define TLM_BUILD_ID     0x004E   /* 004E: #200 -- g_diag_clr_mask, LATCHED. Selects
+                                   *       which pair bits set_rate clears, so the
+                                   *       pre-fix condition can be reproduced at
+                                   *       RUNTIME (mask 0x00) and compared against
+                                   *       shipping (0x0C) in the same power-up.
+                                   *       Every probe before this returned null
+                                   *       because a calibrated part has nothing to
+                                   *       reveal. Replaces #199's self-clearing
+                                   *       flag, which could not survive the
+                                   *       set_rate that arecord's SET_CUR drives.
+                                   *       Block 12 reports mask + RST cycles.
+                                   *       The structural arms did not fit and are
+                                   *       ABSENT rather than inert. 5997/6016.
+                                   * 004D: #199 bench diagnostic -- SET_CLOCK with
                                    *       wIndexH == 0xD1 reprograms the clocks
                                    *       with the ADC's RST left HIGH. Supplies
                                    *       the one arm neither shipping build can.

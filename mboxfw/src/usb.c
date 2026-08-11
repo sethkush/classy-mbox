@@ -670,25 +670,13 @@ static void handle_set_clock(void)
     }
     g_sample_rate = rate;
 
-    /* #199 bench diagnostic. wIndexH == 0xD1 reprograms the clocks with the
-     * AK5383's RST left HIGH -- no calibration, no tRTV mute. Armed and
-     * disarmed around this single call, so the flag is never observable set by
-     * any other path, and any value of wIndexH other than 0xD1 leaves the
-     * shipping behaviour bit-for-bit unchanged.
-     *
-     * NOVEL — reason: bench instrument. It supplies the experimental arm that
-     * neither 0x004A (always brackets) nor 0x004B (gates reprogramming and
-     * bracket together) can, and it does so WITHOUT re-introducing the #197
-     * regression into the shipping path.
-     *
-     * wIndexH is safe to read here: this request carries no data stage, so the
-     * handler runs while its own SETUP is still current -- unlike the #190
-     * SET_CUR path, which has to capture wIndexH early for exactly that reason
-     * (see g_ep0_mute_bit). */
-    g_diag_no_rst = (unsigned char)(wIndexH == 0xD1);
+    /* #199's wIndexH == 0xD1 modifier is GONE, replaced by the latched
+     * g_diag_clr_mask (TLM_REQ_DIAG_MODE). A flag that self-cleared after this
+     * handler could never affect the streaming_set_rate() that arecord's own
+     * SET_CUR drives at stream open, which is the moment under investigation.
+     * With the mask latched, this request needs no modifier at all: firing it
+     * while the mask is 0x00 IS the reprogramming-without-RST arm. */
     streaming_set_rate(rate);
-    g_diag_no_rst = 0;
-
     reply_zero_length();
 }
 
@@ -879,6 +867,14 @@ static void handle_setup(void)
             handle_set_mux();
         } else if (bReq == TLM_REQ_SET_CLOCK && !(bmReq & 0x80)) {
             handle_set_clock();   /* #177 */
+        } else if (bReq == TLM_REQ_DIAG_MODE && !(bmReq & 0x80)) {
+            /* #200. wValue = which pair bits set_rate clears (0x0C shipping,
+             * 0x00 pre-fix), wIndex = structural flags. Latched. Read back in
+             * telemetry block 12 so the state is confirmed rather than assumed
+             * -- four measurements were voided this session by an instrument
+             * that was doing nothing. */
+            g_diag_clr_mask = (unsigned char)(wValueL & 0x0Cu);
+            reply_zero_length();
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             /* Same latch as the Digi class request; see
              * handle_digi_enter_dfu(). This alias exists because the class

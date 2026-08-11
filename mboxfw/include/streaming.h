@@ -12,12 +12,18 @@
  * analog-restore path deliberately does NOT use this (see g_internal_rate). */
 extern __data unsigned char g_clock_mode;
 
-/* #199 bench diagnostic. Suppresses the RST bracket inside streaming_set_rate()
- * for exactly one call, so the clocks are reprogrammed with the AK5383 left
- * running -- the one arm neither shipping build can supply. Set and cleared
- * around that call by TLM_REQ_SET_CLOCK with wIndexH == 0xD1; nothing else
- * writes it. See streaming.c for the full rationale. */
-extern __data unsigned char g_diag_no_rst;
+/* #200 bench diagnostic. g_diag_clr_mask selects which pair bits
+ * streaming_set_rate() clears before reprogramming: 0x0C shipping, 0x00
+ * reproduces the pre-fix condition, 0x04/0x08 one bit each. Latched, defaulting
+ * to the shipping value. g_diag_rst_cycles counts what actually happened.
+ *
+ * The structural arms (skip the reprogramming / skip the endpoint re-arm) did
+ * NOT fit -- the image is 6008 of 6016 with this much -- so they are not here
+ * rather than present and inert. A control that can be set and does nothing is
+ * how four measurements were voided in one session.
+ * See streaming.c and PLAN_200_reproduce_the_transient.md. */
+extern __data unsigned char g_diag_clr_mask;
+extern __data unsigned char g_diag_rst_cycles;
 
 void streaming_set_rate(unsigned long hz);
 void streaming_playback_enable(unsigned char on);
