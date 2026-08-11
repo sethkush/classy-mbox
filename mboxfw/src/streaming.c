@@ -266,7 +266,16 @@ void streaming_set_rate(unsigned long hz)
      *
      * Without the falling edge that cycle never runs, so the converter operates
      * with an uninitialised offset register for the life of the power-up. That
-     * is the transient. The ~183 ms of exact zeros this bracket now costs at the
+     * is the transient -- as an OBSERVATION. The mechanism by which the offset
+     * reaches the output at every stream open is NOT established: #199 tested
+     * the proposed one (that reprogramming disturbs the converter's filter state
+     * so the high-pass re-converges and reveals the offset) and REFUTED it. A
+     * high-pass actively holding a 3327 LSB24 correction keeps it across a
+     * reprogramming, at the same rate or a changed one, to within ~2 %.
+     * The live candidate is now the ACG coming up from IDLE at stream start --
+     * MCLKO stops while the generator is idle, which the diagnostic does not
+     * reproduce because it fires mid-stream. See
+     * FINDING_the_171ms_decay_is_the_ADC_high_pass.md, "#199". The ~183 ms of exact zeros this bracket now costs at the
      * top of every capture IS the calibration -- tRTV = 8960/fs = 186.7 ms at
      * 48 kHz, less the few ms before the host's first URB lands.
      *

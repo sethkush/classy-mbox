@@ -190,3 +190,80 @@ It needs an image that reprograms the clocks WITHOUT touching RST -- cleanest as
 a diagnostic vendor request rather than by re-introducing the regression. That
 is a flash, and a flash is a physical trip. The fix is not in doubt, so this is
 recorded as the open question rather than pursued.
+
+## #199: the proposed mechanism is REFUTED (2026-08-10)
+
+Both units flashed to 0x004D, which adds `TLM_REQ_SET_CLOCK` with
+`wIndexH == 0xD1`: reprogram the clocks with the AK5383's RST left HIGH. That is
+the arm neither shipping build could supply.
+
+The claim under test: reprogramming disturbs the converter's digital-filter
+state, so its high-pass re-converges from scratch and reveals whatever DC sits
+under it. If true, a high-pass that is actively holding a correction must LOSE it
+when the clocks are reprogrammed.
+
+`tools/diag199.py`. Flip the source, wait 2.5 s so the high-pass is holding a
+correction, then fire the diagnostic. Controls in the same capture: the same
+diagnostic fired 6 s after the last flip, with nothing held (the artefact of
+doing it at all), and a plain mux flip for the amplitude scale.
+
+| arm | peak | vs control |
+|---|---|---|
+| LIVE (plain mux step) | **+3327 ± 175 LSB24** | reference |
+| CHG (rate CHANGED, correction held) | +7 ± 66 | **−56 ± 88, 0.6σ, 1.7 % of LIVE** |
+| SAME (rate unchanged, correction held) | +44 ± 47 | **−20 ± 82, 0.2σ, 0.6 % of LIVE** |
+| CTRL (rate changed, nothing held) | +63 ± 70 | — |
+
+**Nothing. The held correction survives.** Reprogramming the clocks does not
+clear or meaningfully disturb the high-pass state, at either the same or a
+different frequency, with an upper bound around 5 % of the held correction. If
+the mechanism were right the CHG arm would read something approaching +3327.
+
+### Why the rate had to be changed, and why the first run was void
+
+The first run reprogrammed 48000 -> 48000 and returned null. That null meant
+nothing, because of this:
+
+> As the AK5383 includes the phase detect circuit for LRCK, the AK5383 is reset
+> automatically when the synchronization is out of phase by **changing the clock
+> frequencies**. Therefore, the reset is only needed for power-up.
+
+A same-rate reprogramming lands on the same frequency, so the phase detector need
+never trip. The arm had to be re-run with the frequency genuinely changing, and
+both arms are reported above.
+
+### Two of my own errors, and the arm that caught them
+
+The first corrected attempt applied an **alternating sign to a non-alternating
+sequence**. Four flips per iteration returns the mux to its starting source, so
+the physical direction at each slot is identical every time; the alternating sign
+averaged the signal to zero. Its LIVE arm came out at −56 ± 769 LSB24 -- no
+reference signal at all -- which is how it was caught. The same run also had a
+"control" with a mux flip only 2.5 s before it, so it was not a control.
+
+Both are the same failure as the retracted 45x figure earlier in this document:
+an arm whose answer is known in advance is what makes the rest legible. **The
+rule this bench keeps re-learning: if the reference arm shows no signal, nothing
+else in the run can be believed, and the run is void rather than interesting.**
+
+The final version applies no sign correction at all -- the raw mean is already
+meaningful -- which removes the entire class of error rather than getting it
+right once.
+
+### What this does and does not settle
+
+Settled: reprogramming the clocks **mid-stream** does not disturb the converter's
+high-pass state. The #197 account in this document and in `streaming.c` is wrong
+about the mechanism, and is corrected accordingly.
+
+NOT settled, and an honest limit on the refutation: the transient appeared at
+stream **start**, where the ACG additionally comes up from idle -- MCLKO stops
+while the generator is idle, which is why `streaming_set_rate()` has to re-prime
+`acg_prev`. The diagnostic fires mid-stream with the generator already running,
+so it does not reproduce a clock that has been stopped and restarted. That
+remains the live candidate.
+
+**The fix is untouched by any of this.** It is proved by measurement -- transient
+gone, floors at −99 to −104 dBFS, DC at zero -- and by stock doing the same
+thing. What is wrong is the story about WHY, which is worth more corrected than
+plausible.
