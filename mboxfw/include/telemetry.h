@@ -99,21 +99,22 @@
 /* #199's TLM_SET_CLOCK_NO_RST (wIndexH == 0xD1 on SET_CLOCK) is REMOVED, and
  * its number is not reused as a modifier. It self-cleared after the handler
  * returned, so it could never affect the streaming_set_rate() that arecord's own
- * SET_CUR drives at stream open -- the moment under investigation. Superseded by
- * the latched TLM_REQ_DIAG_MODE below, with which firing an ordinary SET_CLOCK
- * while the mask is 0x00 is the same experimental arm and more.
+ * SET_CUR drives at stream open -- the moment under investigation. It was
+ * superseded by #200's latched mask, which is itself now retired.
  *
- * #200. Latched bench diagnostics.
- *   wValue = which pair bits streaming_set_rate() clears before reprogramming:
- *            0x0C shipping (both) / 0x00 PRE-FIX, transient returns /
- *            0x04 the AK5383's RST only / 0x08 the AK4393's gate only
- *   wIndex = structural flags: 0x01 skip the ACG reprogramming,
- *            0x02 skip the endpoint re-arm
- * Both default to the shipping behaviour, so a power cycle always returns the
- * unit to correct operation. Read back in block 12.
+ * TLM_REQ_DIAG_MODE, current meaning: RECALIBRATE AT THE NEXT STREAM OPEN.
+ * bmRequestType 0x40; wValue and wIndex are ignored.
  *
- * Every probe before this returned null for one reason: on a calibrated part
- * there is nothing to reveal. PLAN_200_reproduce_the_transient.md. */
+ * #200's form -- wValue selecting which pair bits streaming_set_rate() cleared,
+ * wIndex carrying structural flags, both read back in block 12 -- is GONE along
+ * with block 12. It existed to reproduce the pre-fix transient on demand, it did
+ * that, and the questions are closed (FINDING_197_RESOLVED, FINDING_202).
+ *
+ * What survives is worth its ~10 bytes: it is the only way to force a
+ * recalibration without a power cycle, and a power cycle is a 2 km round trip.
+ * It is what measured stock's per-open calibration against #201's calibrate-once
+ * -- 2.2 dB of opening transient for 183 ms on every capture -- which is the
+ * measurement that justifies the shipping behaviour. */
 #define TLM_REQ_DIAG_MODE 0x17
 
 /* 0x15 was TLM_REQ_SET_MUTE, the #189 bench control for the 0x23.2/0x23.3

@@ -670,12 +670,12 @@ static void handle_set_clock(void)
     }
     g_sample_rate = rate;
 
-    /* #199's wIndexH == 0xD1 modifier is GONE, replaced by the latched
-     * g_diag_clr_mask (TLM_REQ_DIAG_MODE). A flag that self-cleared after this
-     * handler could never affect the streaming_set_rate() that arecord's own
-     * SET_CUR drives at stream open, which is the moment under investigation.
-     * With the mask latched, this request needs no modifier at all: firing it
-     * while the mask is 0x00 IS the reprogramming-without-RST arm. */
+    /* #199's wIndexH == 0xD1 modifier is GONE and nothing replaced it. A flag
+     * that self-cleared after this handler could never affect the
+     * streaming_set_rate() that a host's own SET_CUR drives at stream open,
+     * which was the moment under investigation. #200's latched g_diag_clr_mask
+     * took over that job and has since been retired too -- the questions it
+     * existed for are closed (FINDING_197_RESOLVED, FINDING_202). */
     streaming_set_rate(rate);
     reply_zero_length();
 }
@@ -868,13 +868,15 @@ static void handle_setup(void)
         } else if (bReq == TLM_REQ_SET_CLOCK && !(bmReq & 0x80)) {
             handle_set_clock();   /* #177 */
         } else if (bReq == TLM_REQ_DIAG_MODE && !(bmReq & 0x80)) {
-            /* #200. wValue = which pair bits set_rate clears (0x0C shipping,
-             * 0x00 pre-fix), wIndex = structural flags. Latched. Read back in
-             * telemetry block 12 so the state is confirmed rather than assumed
-             * -- four measurements were voided this session by an instrument
-             * that was doing nothing. */
-            /* #201 bench control: force a recalibration at the next stream
-             * open. Clearing the latch is the whole of it. */
+            /* Bench control: force a recalibration at the next stream open.
+             * Clearing the latch is the whole of it -- wValue and wIndex are
+             * ignored, and block 12 no longer exists.
+             *
+             * #200's mask-and-flags form is RETIRED with the questions it was
+             * built for. What it still buys is the only way to recalibrate
+             * without a power cycle, which is how the stock-vs-#201 comparison
+             * was measured (FINDING_202: stock's per-open calibration buys
+             * 2.2 dB and costs 183 ms per capture). Keep it for that. */
             g_cal_done = 0;
             reply_zero_length();
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {

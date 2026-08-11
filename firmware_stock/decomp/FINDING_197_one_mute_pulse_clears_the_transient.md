@@ -1,3 +1,14 @@
+> **REFINED — read `FINDING_197_RESOLVED_the_full_mechanism.md` first.** The
+> result below is real: one pulse of 0x23.2 removes the large start-up transient,
+> because that pulse IS an offset calibration. But "permanently" is too strong.
+> It holds for the power-up in which it is taken, and only if the analog
+> reference had settled first — a calibration taken in the first seconds latches a
+> constant wrong by up to 0.122 FS. And a much smaller transient (~-85 dBFS,
+> decaying inside 400 ms) returns at EVERY capture open, because the ADC's
+> high-pass restarts whenever the part stops being clocked. That residue cannot
+> be removed at all: see `FINDING_202_the_cport_does_not_free_run.md` for the
+> full table of avenues tried and refuted.
+
 # One pulse of the capture gate clears the start-up transient, permanently
 
 2026-08-06, build 0x0038, both units. Follows `FINDING_196`, and corrects a

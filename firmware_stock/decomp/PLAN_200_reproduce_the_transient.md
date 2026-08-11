@@ -1,3 +1,15 @@
+> **SUPERSEDED — this is the design document, not the result.** The build was
+> made (0x004E), the experiments ran, and every question here is answered in
+> `FINDING_197_RESOLVED_the_full_mechanism.md` and
+> `FINDING_202_the_cport_does_not_free_run.md`.
+>
+> The apparatus it describes NO LONGER EXISTS: `g_diag_clr_mask`, the structural
+> flags, and telemetry block 12 are all retired. `TLM_REQ_DIAG_MODE` (0x17)
+> survives with a different meaning — *recalibrate at the next stream open* — and
+> `tools/coldboot200.py` and `tools/diag200.py`, which drove the old mask, have
+> been deleted. Nothing here should be treated as a description of the current
+> firmware.
+
 # #200 — a build that reproduces the transient, and what to run on it
 
 Design only. Nothing here is built or flashed yet.

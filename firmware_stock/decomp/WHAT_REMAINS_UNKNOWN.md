@@ -563,3 +563,36 @@ answer searched the category the previous answer had defined.
 **Still unexecuted after this.** `mboxflash_linux.py`'s DFU block protocol and
 the macOS `mboxflash` binary — this gate reads their constants and nothing more.
 The boot-ROM DFU path end to end. `sigkill`, `ramflash`, `ramloader`.
+
+
+## 9. The capture start-up transient -- CLOSED 2026-08-11, end to end
+
+Listed here because it was the largest single investigation since this inventory
+was written, and because a closed question with no entry invites reopening.
+
+**Cause.** The AK5383's offset calibration is started by the RISING edge of
+0x23.2 (its RST, pin 10). Stock and every mboxfw build before 0x004A calibrated
+within milliseconds of power-up, against an analog reference that needs ~16 s to
+settle, and latched a constant wrong by up to **+1,024,190 LSB24 = 0.122 FS**.
+The ADC's high-pass then removed that error over ~2 tau at every stream open,
+which is what the transient was.
+`FINDING_197_RESOLVED_the_full_mechanism.md`.
+
+**Fix, shipping since 0x004F.** Calibrate at every stream open UNTIL one lands
+with the reference settled (30 s of SOFs), then latch and stop. Cold-boot
+verified: 16 consecutive calibrating opens, then a clean permanent transition at
+t = 32.67 s. Stock pays 183 ms on every capture; this pays it once per power-up.
+
+**What could NOT be fixed, and is now proved rather than assumed.** The
+calibration costs 8960 LRCK edges, and LRCK runs only while a capture stream is
+actively moving data. Refuted by measurement: the C-port does not free-run
+despite CPTBLK = 0; a self-driven capture (DMAEN) produces no framing; a running
+playback stream does not clock the ADC, because the C-port's receive direction
+frames separately. So the calibration can only ever be spent inside a capture,
+and the residual ~-85 dBFS opening transient is a property of an ADC that is not
+clocked between captures. Full table in
+`FINDING_202_the_cport_does_not_free_run.md`.
+
+**Do not re-open without new hardware information.** Every avenue in that table
+was measured on the units, several with known-answer arms, and two of the nulls
+were traced to the instrument rather than the hypothesis before being trusted.
