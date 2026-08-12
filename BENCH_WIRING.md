@@ -381,3 +381,31 @@ Consequences:
     boot-time calibration path, `codec_init()` ordering — cannot be proved from
     the desk, and a warm test that passes proves nothing about it. 0x004B is
     the standing example: warm-clean, cold-broken.
+
+## The long TS cable (A out1 → B src1) costs 25 dB of THD — 2026-08-11
+
+Measured, and it contaminated a whole gain sweep before it was caught.
+
+| source into B src1 | cable | best THD |
+|---|---|---|
+| A out1 | **long TS** | **−61.7 dB** |
+| A out1 | short TRS | −86.4 dB |
+| A out2 | short TRS | −87.2 dB |
+
+Same output, same input, same gain — only the cable differs, and it is worth
+25 dB. The two line outputs are within 0.8 dB of each other and their gains match
+to 0.07 dB, so nothing is wrong with either output.
+
+The other long-TS run (B out1 → A src1) reads −82.5 dB and is NOT degraded, so
+this is **one bad cable**, not a property of long or unbalanced runs. A dirty or
+partly-seated TS plug makes a nonlinear junction and would look exactly like
+this. It has not been inspected or swapped for a second long TS.
+
+**Use the short TRS for anything measuring distortion.** The default topology
+above is fine for level, gain, noise and clipping, all of which are independent
+of the source's THD.
+
+This is also a warning about the table at the top of this file: it records cable
+types precisely because they are not interchangeable, and a comparison that
+changes the output AND the cable at once proves nothing about either. That
+mistake was made here, in this session, after quoting that very table.

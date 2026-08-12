@@ -1,4 +1,4 @@
-# #196 — the gain curve, unity, and a 25 dB outlier that was contaminating the THD
+# #196 — the gain curve, unity, and a bad TS cable worth 25 dB of THD
 
 2026-08-11, both units on mboxfw 0x0053, void box 192.168.1.76.
 Instrument: `tools/measure_point.py`. Rig per `BENCH_WIRING.md`.
@@ -59,47 +59,73 @@ dynamic range peaks in the middle:
 you cannot use; above it you amplify noise. Note these figures include unit A's
 DAC noise, so they bound the rig, not the Mbox input alone.
 
-## The outlier: unit A's line out 1 is 25 dB worse than its line out 2
+## The outlier is the CABLE, not the output — and the first answer here was wrong
 
 Through all ten dial positions the THD column read **−61.7 dB and never moved**,
 across 50 dB of gain, with the five-level profile identical to 0.1 dB every time.
 Distortion that does not respond to the gain control is not in the gain stage.
+That much was right.
 
-Confirmed by re-patching **A out2 → B src1**, putting a known-good output into
-the *same* input at the *same* gain:
+The first conclusion drawn from it was not. Re-patching **A out2 → B src1** gave
+−87.2 dB against A out1's −61.7 dB, and that was written up as "unit A's line out
+1 is 25 dB worse than its line out 2". **It changed two variables at once.**
+`BENCH_WIRING.md` records the cable types and they differ:
 
-| source into B src1 | best THD |
+| path | cable |
 |---|---|
-| A out1 | −61.7 dB |
-| **A out2** | **−87.2 dB** |
+| A out1 → B src1 | **long TS**, unbalanced |
+| A out2 → A src2 | **short TRS**, balanced |
 
-Gains −20.76 and −20.52 respectively, so the comparison is like-for-like.
+Seth caught it. The single-variable test is the same cable on both outputs:
 
-**Unit B's channel-1 input is at least −87 dB.** The −61.7 dB that sat in every
-row of the sweep was unit A's line out 1, throughout.
+| source into B src1 | cable | best THD |
+|---|---|---|
+| A out1 | **long TS** | **−61.7 dB** |
+| A out1 | short TRS | −86.4 dB |
+| A out2 | short TRS | −87.2 dB |
 
-All three paths, ranked:
+**The two outputs differ by 0.8 dB**, and their gains match to 0.07 dB
+(−20.59 vs −20.52). There is nothing wrong with A's line out 1.
 
-| path | best THD |
-|---|---|
-| A out2 → A src2 (ch2 self-loop) | −94.3 dB |
-| A out2 → B src1 | −87.2 dB |
-| B out1 → A src1 | −82.5 dB |
-| **A out1 → B src1** | **−61.7 dB** |
+**The long unbalanced TS cable costs ~25 dB of THD.** Whether that is the length,
+the unbalanced topology, or a nonlinear contact in one of its plugs is not
+established — a dirty or partly-seated TS plug is a classic harmonic-distortion
+source and would look exactly like this. The cable has not been swapped for a
+second long TS, nor inspected.
+
+All four paths, ranked, with cables named:
+
+| path | cable | best THD |
+|---|---|---|
+| A out2 → A src2 (ch2 self-loop) | short TRS | −94.3 dB |
+| A out2 → B src1 | short TRS | −87.2 dB |
+| A out1 → B src1 | short TRS | −86.4 dB |
+| B out1 → A src1 | long TS | −82.5 dB |
+| **A out1 → B src1** | **long TS** | **−61.7 dB** |
+
+Note the other long-TS path (B out1 → A src1) reads −82.5 dB, i.e. NOT degraded
+the same way. So it is not "long TS cables are bad" as a class — it is this one
+cable, which points at a specific fault in it rather than at the topology.
 
 ## Consequences
 
-- **A out1 is a known-bad measurement source.** Anything needing a clean source
-  uses A out2. The default rig in `BENCH_WIRING.md` (A out1 → B src1) is fine for
-  level, gain, noise and clipping work — all of which are independent of the
-  source's distortion — and useless for THD.
-- **The gain, noise, unity and clipping results above stand.** Only the THD
-  column of the sweep was contaminated, and it was contaminated by a constant.
-- Whether A's out1 is faulty or merely a poorer output is **not settled**. 25 dB
-  between two nominally identical line outputs on one board is a lot. It has not
-  been opened, scoped, or compared against a third unit.
+- **Both of unit A's line outputs are fine.** So is unit B's channel-1 input, at
+  ≥ −87 dB. Every THD number in the gain sweep was measuring the long TS cable.
+- **The gain, noise, unity and clipping results stand.** None of them depend on
+  the source's distortion, and the contamination was a constant.
+- **Retire or investigate that TS cable before it contaminates anything else.**
+  Use the short TRS for any THD work.
 - ch1 and ch2 are different analog front ends (mic preamp vs DI, plan.md §2), so
   the ch2 self-loop's −94.3 dB is not a ceiling for ch1 paths.
+
+## The lesson, since it cost a wrong conclusion
+
+Ten identical readings across 50 dB of gain looked like a solid measurement
+rather than a stuck one — the consistency made it MORE convincing, not less. It
+only broke when something the number should not have depended on was changed.
+And the follow-up test that "confirmed" it moved the cable and the output
+together, which is exactly the confound `BENCH_WIRING.md` exists to prevent, in a
+table that had already been quoted earlier in the same session.
 
 ## Method notes worth keeping
 
