@@ -142,3 +142,58 @@ table that had already been quoted earlier in the same session.
   a meaningless signal.
 - One capture in ~30 comes back as silence (−123 dBFS). The `level > −100` guard
   drops it rather than averaging it in; a repeat run cleared it.
+
+## Unity is NOT the same dial position for LINE and INST — 18.9 dB apart
+
+The 74HC157 muxes select which front end feeds the shared gain stage, so each
+source arrives at its own fixed sensitivity before the knob acts. Measured on
+unit B channel 1, same cable, same dial position, same source level, only the mux
+changing (`TLM_REQ_SET_MUX`, so no hands needed):
+
+| mode | gain |
+|---|---|
+| LINE | −20.59, −20.59, −20.60, −20.60 |
+| INST | −1.70, −1.69, −1.70, −1.69 |
+
+Interleaved line/inst/line/inst; the two LINE arms agree to 0.01 dB, so the run
+is not drift. **INST is 18.9 dB hotter at the same knob position.**
+
+Applying that offset to the LINE curve:
+
+| position | LINE | INST |
+|---|---|---|
+| min | −20.76 | −1.9 |
+| 9:00 | −19.57 | −0.7 |
+| 1:30 | 0 (unity) | +18.9 |
+
+**LINE unity is 1:30; INST unity is near 9:00.** The instrument input has ~2 dB
+of range below unity and ~50 dB above, so a guitar is set in the bottom eighth of
+the rotation — which is also where the taper is flattest (0.041 dB per
+clock-minute) and setting is therefore easiest.
+
+**Assumption not yet tested:** the offset was measured at ONE dial position
+(minimum). A mux ahead of the shared gain stage implies a constant offset, which
+is the natural reading, but it has not been checked at a second position.
+
+### THD does not depend on the input mode, only on level
+
+INST appeared far worse -- −61.6 dB at −20 dBFS in against LINE's −85.0. It is
+not. Compared at matched CAPTURED level rather than source level:
+
+| | captured | THD |
+|---|---|---|
+| LINE @ −1 dBFS in | −21.57 | −62.3 dB |
+| INST @ −20 dBFS in | −21.69 | −61.6 dB |
+
+Same level at the converter, same distortion to 0.7 dB. The INST path is not
+dirtier; it is 19 dB hotter for a given source, so a given source level drives
+the shared stage that much harder.
+
+### MIC is not testable on this rig
+
+MIC is the XLR half of the combo jack and only a 1/4" plug is connected, so
+selecting it reads silence rather than a hotter path -- a null that would look
+exactly like a broken mux. Expect the gap to far exceed 18.9 dB: a mic preamp
+needs 40--60 dB where a line input needs ~0, putting mic unity well up the dial.
+Measuring it needs an XLR source, either a padded line signal or a real mic
+against a reference.
