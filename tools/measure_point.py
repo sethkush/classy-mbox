@@ -109,9 +109,19 @@ def analyse(x):
     sp = np.abs(np.fft.rfft(seg * np.hanning(NFFT))) / (NFFT * 0.5 / 2.0)
     def bp(k, s=2):
         return float(np.sum(sp[max(k - s, 0):min(k + s + 1, len(sp))] ** 2))
-    f = bp(TONE_BIN)
-    h = sum(bp(TONE_BIN * i) for i in range(2, 11) if TONE_BIN * i < len(sp) - 3)
-    resid = max(float(np.sum(sp ** 2)) - f, 1e-30)
+    # HANN 3-BIN SPREAD. An exact-bin sine windowed by Hann puts amplitude A in
+    # the centre bin and A/2 in each neighbour, so summing power over the bins
+    # gives 1.5*A^2, i.e. every absolute level reads 10*log10(1.5) = +1.76 dB
+    # high. It did, at every level, by exactly that -- caught by feeding the
+    # analyser a tone of known level (the calibration arm below). THD is a
+    # RATIO of two bin_pow results so the factor cancels and those numbers were
+    # always right; the absolute levels, the gain figures derived from them, and
+    # THD+N's denominator were not.
+    HANN_3BIN = 1.5
+    f_raw = bp(TONE_BIN)
+    f = f_raw / HANN_3BIN
+    h = sum(bp(TONE_BIN * i) for i in range(2, 11) if TONE_BIN * i < len(sp) - 3) / HANN_3BIN
+    resid = max(float(np.sum(sp ** 2)) - f_raw, 1e-30)
     db = lambda v: 10 * np.log10(max(v, 1e-30))
     return {"level": db(f), "thd": db(h / max(f, 1e-30)),
             "thdn": db(resid / max(f, 1e-30)),
