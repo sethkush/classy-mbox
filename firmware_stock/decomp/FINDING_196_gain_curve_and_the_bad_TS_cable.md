@@ -189,11 +189,30 @@ Same level at the converter, same distortion to 0.7 dB. The INST path is not
 dirtier; it is 19 dB hotter for a given source, so a given source level drives
 the shared stage that much harder.
 
-### MIC is not testable on this rig
+### MIC is XLR-only — the 1/4" jack does not reach the mic preamp (tested)
 
-MIC is the XLR half of the combo jack and only a 1/4" plug is connected, so
-selecting it reads silence rather than a hotter path -- a null that would look
-exactly like a broken mux. Expect the gap to far exceed 18.9 dB: a mic preamp
-needs 40--60 dB where a line input needs ~0, putting mic unity well up the dial.
-Measuring it needs an XLR source, either a padded line signal or a real mic
-against a reference.
+Worth testing rather than assuming, and the test is safe: the mux is a 74HC157
+SIGNAL selector, so switching it only reroutes what the ADC listens to. It
+changes no analog voltage on the jack and does not touch phantom, which is
+mechanical and independent.
+
+Interleaved line/mic/line/mic, three source levels each:
+
+| mode | played | captured | gain |
+|---|---|---|---|
+| LINE | −60 / −40 / −20 | −80.6 / −60.6 / −40.6 | −20.6 |
+| **MIC** | −60 / −40 / −20 | **−122.2 / −123.0 / −119.8** | — |
+
+The MIC captures do not track the source at all: they sit at the analysis floor
+whatever is played, where a real path would move 40 dB across that range. Both
+LINE arms read normally in both interleaves, so the rig was alive and this is a
+genuine null rather than a dead cable — a distinction that matters here, because
+"input selected with nothing plugged into it" and "mux is broken" produce
+identical silence.
+
+It also VALIDATES the MIC mux pattern (0x06): the ADC clearly switched to a
+different input. A wrong pattern would have left the line signal audible.
+
+So mic unity needs an XLR source — a padded line feed, or a real mic against a
+reference. Expect the offset to far exceed INST's 18.9 dB, since a mic preamp
+needs 40--60 dB where a line input needs ~0.
