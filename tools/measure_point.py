@@ -131,7 +131,15 @@ def analyse(x):
 def main():
     if len(sys.argv) < 6:
         sys.exit(__doc__.strip().splitlines()[-1])
-    ss, sc, ds, dc, chan = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
+    ss, sc, ds, dc = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+    # <ch> is normally one number: the tone plays on that channel and is captured
+    # on it. A re-patched cable can cross channels -- e.g. A out2 -> B src1, which
+    # plays on 2 and captures on 1 -- so accept "play:capture" as well. Getting
+    # this wrong reads the silent channel and looks like a dead path.
+    if ":" in sys.argv[5]:
+        pch, chan = (int(v) for v in sys.argv[5].split(":"))
+    else:
+        pch = chan = int(sys.argv[5])
     label = sys.argv[6] if len(sys.argv) > 6 else "(unlabelled)"
     other = 2 if chan == 1 else 1
 
@@ -141,13 +149,13 @@ def main():
         set_line(dut, "DUT")
 
     rig = "SELF-LOOP (same unit both ends)" if ds == ss else "crossed"
-    print("== %s ==  ch%d, %s rig, src %s card %s -> dut %s card %s"
-          % (label, chan, rig, ss, sc, ds, dc))
+    print("== %s ==  play ch%d -> capture ch%d, %s rig, src %s card %s -> dut %s card %s"
+          % (label, pch, chan, rig, ss, sc, ds, dc))
     print("  played    captured    gain      THD    THD+N   noise   ch%d" % other)
 
     rows = []
     for lv in LEVELS:
-        make_tone("/tmp/mp_tone.raw", lv, chan)
+        make_tone("/tmp/mp_tone.raw", lv, pch)
         got = play_capture(sc, dc)
         if got is None:
             print("  %+6.1f    CAPTURE FAILED" % lv); continue
