@@ -42,6 +42,11 @@ extern volatile __data unsigned char g_stalls;
  * never requested", which the monotonic stage ladder cannot. */
 extern volatile __data unsigned char g_chunks;
 #define STAGE(n) do { if ((unsigned char)(n) > g_stage) g_stage = (n); } while (0)
+#elif defined(MBOX_RELEASE)
+/* RELEASE: the stage ladder's only reader is telemetry block 0, which is
+ * compiled out, so maintaining the high-water mark would cost stores in the
+ * SETUP and IEP0 paths that nothing can observe. */
+#define STAGE(n) do { } while (0)
 #else
 /* Non-canary build: the stage ladder still feeds telemetry block 0, so the
  * high-water mark is readable over USB without the LED diagnostic build. */
@@ -491,6 +496,8 @@ static void handle_digi_enter_dfu(void)
 }
 
 
+#ifndef MBOX_RELEASE   /* RELEASE: mux_pattern_legal()'s only caller is
+                       * handle_set_mux(), which is compiled out below. */
 /* Set the source mux from the host — see TLM_REQ_SET_MUX in telemetry.h for
  * why this exists. Reaches the same states the front-panel buttons reach, by
  * the same publish path, without depending on the buttons.
@@ -546,6 +553,7 @@ static void handle_set_mux(void)
     TLM_INC8(tlm_mux_sets);
     reply_zero_length();
 }
+#endif  /* !MBOX_RELEASE */
 
 
 /* --- UAC1 Selector Unit (#177) --- */
@@ -629,9 +637,44 @@ static void selector_set_source(unsigned char spdif)
  * numbers the AC interface differently is not a reason to refuse.
  */
 #define UAC_SELECTOR_UNIT_ID   0x05
-#define SELECTOR_ANALOG        0x01
-#define SELECTOR_SPDIF         0x02
+#define SELECTOR_ANALOG        0x01   /* LINE  — position 1, unchanged */
+#define SELECTOR_SPDIF         0x02   /* S/PDIF — position 2, unchanged */
+#define SELECTOR_INST          0x03   /* INSTRUMENT — appended by #203 */
 
+/* #203. Apply a Selector position, including the analog front end it names.
+ *
+ * Positions 1 and 3 are both "analog" as far as the S/PDIF routing bit is
+ * concerned; they differ in which front end the 74HC157 muxes select, which is
+ * a separate publish through the codec word's low nibble. Measured 18.9 dB
+ * apart in sensitivity, so these are genuinely different signal paths and not
+ * a cosmetic distinction. FINDING_196_gain_curve_and_the_bad_TS_cable.md.
+ *
+ * BOTH CHANNELS move together, deliberately. Apple's driver creates every input
+ * selector as kIOAudioControlChannelIDAll and cannot express per-channel source
+ * select at all (FINDING_macos_one_input_selector.md), and the front-panel
+ * buttons already move both. A control that moved only channel 1 would be the
+ * inconsistency #159 was removed for. */
+static void selector_apply_position(unsigned char pos)
+{
+    if (pos == SELECTOR_SPDIF) {
+        selector_set_source(1);
+        return;
+    }
+    /* Analog. Pick the front end first, then route, so the mux is settled
+     * before anything downstream samples it. */
+    {
+        unsigned char pat = (pos == SELECTOR_INST) ? MUX_PAT_INST : MUX_PAT_LINE;
+        g_mux_state = (unsigned char)((g_mux_state & 0xC0) | (pat << 3) | pat);
+        codec_source_changed();
+        mux_write(g_mux_state);
+        codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x071a */
+    }
+    selector_set_source(0);
+}
+
+#ifndef MBOX_RELEASE   /* RELEASE: the dispatch arm is compiled out, and an
+                       * emitted-but-uncalled body is exactly what
+                       * verify_reachability.py exists to catch. */
 /*
  * Device-recipient alias for both S/PDIF controls — see TLM_REQ_SET_CLOCK in
  * telemetry.h for why an alias is needed at all (short version: the class
@@ -679,6 +722,7 @@ static void handle_set_clock(void)
     streaming_set_rate(rate);
     reply_zero_length();
 }
+#endif  /* !MBOX_RELEASE */
 
 static void handle_selector_unit_request(void)
 {
@@ -687,8 +731,18 @@ static void handle_selector_unit_request(void)
          * sampling-frequency control; the work happens in VEC_OEP0. */
         g_ep0_out_pending = EP0_OUT_SET_SOURCE;
     } else if (bReq == UAC_GET_CUR) {
-        unsigned char pos = (g_codec_state_25 & CODEC25_SEL_SPDIF)
-                                ? SELECTOR_SPDIF : SELECTOR_ANALOG;
+        /* #203: three positions now, so "not S/PDIF" is no longer enough --
+         * the analog case splits on which front end the mux currently selects.
+         * Reported from the PUBLISHED mux state rather than from a shadow of
+         * the last request, so a front-panel button press is reflected too. */
+        unsigned char pos;
+        if (g_codec_state_25 & CODEC25_SEL_SPDIF) {
+            pos = SELECTOR_SPDIF;
+        } else if ((g_mux_state & 0x07) == MUX_PAT_INST) {
+            pos = SELECTOR_INST;
+        } else {
+            pos = SELECTOR_ANALOG;
+        }
         stage_immediate(&pos, 1);
     } else {
         reply_stall();
@@ -843,17 +897,38 @@ static void handle_setup(void)
 
     /* Record the SETUP before dispatching, so a request that wedges us is
      * still visible in telemetry block 2 afterwards. */
+#ifndef MBOX_RELEASE
+    /* RELEASE: block 2 is what reads these back, and it is compiled out. */
     tlm_last_bmreq   = bmReq;
     tlm_last_breq    = bReq;
     tlm_last_wvalue  = ((unsigned int)wValueH << 8) | wValueL;
     tlm_last_windex  = ((unsigned int)wIndexH << 8) | wIndexL;
     tlm_last_wlength = ((unsigned int)wLenH   << 8) | wLenL;
+#endif
 
     /* Vendor requests (telemetry) are handled first and unconditionally.
      * They must keep working even when everything else is broken — that is
      * their entire purpose. DEVICE recipient, so no interface claim is
      * needed and snd-usb-audio cannot intercept them. */
     if (reqtype == 0x40) {
+#ifdef MBOX_RELEASE
+        /* RELEASE BUILD -- the diagnostic vendor requests are compiled out:
+         * telemetry read/reset, the mux and clock aliases, and the recalibrate
+         * control. See RELEASE.md.
+         *
+         * TLM_REQ_ENTER_DFU IS KEPT, and must never be stripped. It is the only
+         * software path into DFU: it breaks the EEPROM header checksum, and the
+         * SDA short is retired. The class-request form is INTERFACE recipient,
+         * so a host driver claiming the interface makes it undeliverable --
+         * which on a release build is always. Strip this and the device can
+         * never be reflashed without opening the case. */
+        if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
+            reply_zero_length();
+            g_dfu_request_pending = 1;
+        } else {
+            reply_stall();
+        }
+#else
         if (bReq == TLM_REQ_READ && (bmReq & 0x80)) {
             unsigned char blk[TLM_BLOCK_SIZE];
             (void)tlm_read_block(wValueL, blk);
@@ -889,6 +964,7 @@ static void handle_setup(void)
         } else {
             reply_stall();
         }
+#endif
         return;
     }
 
@@ -1415,8 +1491,9 @@ void usb_service(void)
                  * rather than treating 0 or 7 as "S/PDIF" — a Selector Unit
                  * with two inputs has two legal positions, and stalling an
                  * illegal one is what tells the host it asked wrongly. */
-                if (pos == SELECTOR_ANALOG || pos == SELECTOR_SPDIF) {
-                    selector_set_source(pos == SELECTOR_SPDIF);
+                if (pos == SELECTOR_ANALOG || pos == SELECTOR_SPDIF
+                        || pos == SELECTOR_INST) {
+                    selector_apply_position(pos);
                     reply_zero_length();
                 } else {
                     reply_stall();

@@ -761,7 +761,16 @@ extern volatile __data unsigned char tlm_mux_rejects;
 /* Saturating increments — a counter that wraps mid-experiment reads as a
  * smaller number than reality and would silently corrupt a measurement. */
 #define TLM_INC8(c)   do { if ((c) < 0xFF)   (c)++; } while (0)
+#ifdef MBOX_RELEASE
+/* RELEASE: the saturating counters exist only to be read back over EP0, and the
+ * block reader that reads them is compiled out. Keeping the increments would
+ * cost code in the SETUP and IEP0 paths to maintain values nothing can observe.
+ * The struct itself stays -- it is DATA, not CODE, and DATA is not the
+ * constrained resource here. */
+#define TLM_INC16(c)  do { } while (0)
+#else
 #define TLM_INC16(c)  do { if ((c) < 0xFFFF) (c)++; } while (0)
+#endif
 
 /* Fill an 8-byte block. Returns 0 and fills 0xFF for an unknown index so
  * a host reading past the end gets a clean sentinel instead of a stall. */

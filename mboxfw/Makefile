@@ -58,6 +58,23 @@ ifeq ($(MBOX_UNIT),B)
 EXTRA_CFLAGS += -DMBOX_SERIAL_B
 endif
 
+# RELEASE BUILD. `make MBOX_RELEASE=1` compiles out the diagnostic surface:
+# the telemetry block reader and counter reset, the saturating counters
+# themselves, the boot canaries, the stage ladder, the last-SETUP capture, and
+# the mux / clock / recalibrate vendor aliases. See mboxfw/RELEASE.md.
+#
+# NOT stripped, and this is deliberate in both cases:
+#   * TLM_REQ_ENTER_DFU  -- the ONLY software path into DFU. The class-request
+#     form is interface-recipient and undeliverable once a host driver binds,
+#     which on a release build is always. Without this the device cannot be
+#     reflashed without opening the case.
+#   * the per-unit serial (MBOX_UNIT) -- a FEATURE, not scaffolding. macOS keys
+#     per-device settings on iSerialNumber, so two units without serials collide.
+#     A release image is therefore built PER UNIT.
+ifeq ($(MBOX_RELEASE),1)
+EXTRA_CFLAGS += -DMBOX_RELEASE
+endif
+
 CFLAGS  = $(if $(MBOX_PID),-DMBOX_PID=$(MBOX_PID)) -mmcs51 --model-small --std-c99 --opt-code-size $(INC)
 # --code-size REVERTED 0x1C00 -> 0x1780 (7168 -> 6016) on 2026-08-03, after an
 # image built against the raised value bricked Mbox A.

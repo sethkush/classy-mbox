@@ -96,6 +96,16 @@ BLOCK_FIRST_BUILD = {
 # BLOCK_FIRST_BUILD exists to prevent, and it cannot express "index 8 used to
 # mean something else". A retired block reads as the all-0xFF sentinel.
 BLOCK_RETIRED = {
+    11: (0x0054, "ACG clock measurement (#186 stage 1) -- retired to pay for "
+                 "#203's Selector Unit extension. Its question is closed: it "
+                 "decided the feedback-endpoint design, proved MCLKO runs at "
+                 "256 fs to within 7 ppm, and proved MCLKO keeps running with "
+                 "no stream open -- which is what made FINDING_202's "
+                 "receive-side-frames-separately reading possible. "
+                 "streaming_acg_sample() STAYS: it is the feedback endpoint's "
+                 "data source, so this removes the readback, not the "
+                 "measurement, which is why this block was the right one to "
+                 "retire rather than 0, 1, 2 or 9"),
     4:  (0x0037, "stalls + live P1/P3 -- retired to make room, and it cost no "
                  "capability twice over: P3 is already reported by block 9 "
                  "byte 4, and the stall counter's ONLY reader was this block, "
@@ -108,7 +118,9 @@ BLOCK_RETIRED = {
                  "while nothing came back, and audio now streams at both rates "
                  "on both units (FINDING_196). Block 2 still shows the last "
                  "SETUP, so a SET_INTERFACE and its alt remain visible. "
-                 "sof_count survives -- block 11 byte 7 reads it"),
+                 "NOTE: this note claimed sof_count survives in block 11 byte 7. "
+                 "It never did -- byte 7 is tlm_fb_rejects -- and block 11 is now "
+                 "retired as well. sof_count has NO reader"),
     6:  (0x002F, "DMA + C-port live state -- answered why isochronous IN returned "
                  "zero-length packets (0xFFE1 is ACGCTL, not a DMA enable, so "
                  "DMACTL0/DMACTL1 had never been armed). Fixed and since measured "
@@ -602,74 +614,31 @@ def block10(b):
 
 
 def block11(b):
-    """ACG clock measurement — #186 stage 1.
+    """ACG clock measurement — #186 stage 1. RETIRED in firmware 0x0054.
 
-    The device counts its own MCLKO against the host's SOF, on-chip: ACGCAP is
-    a free-running 16-bit counter latched at every frame, and the firmware
-    accumulates per-frame differences over a 1024-frame window. Those
-    differences telescope, so the window total is exact to +/-1 count at each
-    end -- about 0.04 ppm, against the 4.3 ppm effect #181 measured from the
-    host side by completely different means.
+    Retired to pay for #203's Selector Unit extension. The question is closed:
+    this measurement decided the feedback-endpoint design, proved MCLKO runs at
+    256 fs to within 7 ppm, and proved MCLKO keeps running with no stream open
+    -- which is what made FINDING_202's "the C-port receive side frames
+    separately from transmit" reading possible.
 
-    This block exists to prove the counter works BEFORE a feedback endpoint is
-    built on it. TI's own SoftPll.c contains `MclkPerMs = 11290;` hardcoded,
-    live, under the comment "debug test for capture counter malfunction".
+    streaming_acg_sample() STAYS in the firmware: it is the feedback endpoint's
+    data source, so this removes the readback and not the measurement. That is
+    exactly why this block was the right one to retire rather than 0, 1, 2 or 9.
 
-    Nominal MCLK-per-frame is not asserted here: it depends on which ACG
-    frequency word and C-port divider are loaded, and guessing it is how a
-    reading gets talked into agreeing with an expectation. The raw count is
-    printed and the ppm is quoted against whichever standard multiple of the
-    sample rate it is nearest -- with the multiple named, so a wrong guess is
-    visible rather than silent.
+    A device running 0x0053 or earlier still answers with real data, so the
+    decode is kept for those. BLOCK_FIRST_BUILD and BLOCK_RETIRED together are
+    what distinguish a live reading from the all-0xFF sentinel.
     """
+    if all(x == 0xFF for x in b):
+        return ["RETIRED in firmware 0x0054 -- only the readback went; "
+                "streaming_acg_sample() still feeds the feedback endpoint"]
     window = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)
-    last = b[4] | (b[5] << 8)
-    windows = b[6]
-    rejects = b[7]
-    out = []
-    if windows == 0:
-        out.append("  no completed window yet (1024 frames ~ 1.02 s)")
-        out.append("  last frame delta: %d MCLK" % last)
-        out.append("  completed windows: 0   rejected windows: %d" % rejects)
-        if last == 0:
-            out.append("  DELTA IS ZERO: either the ACG is idle (no stream has"
-                       " started, so MCLKO is not running) or ACGCAP does not"
-                       " count on this part. Start a stream and re-read before"
-                       " concluding anything.")
-        return out
-    per_frame = window / 1024.0
-    out.append("  window total: %d MCLK over 1024 frames" % window)
-    out.append("  per frame:    %.4f MCLK   (last single frame: %d)"
-               % (per_frame, last))
-    out.append("  completed windows: %d   rejected windows: %d"
-               % (windows, rejects))
-    if rejects:
-        out.append("  %d window(s) were implausible and DISCARDED. One per rate"
-                   " change is the stream-start window being dropped on"
-                   " purpose; a climbing count means the clock is moving under"
-                   " the accumulator and the published rate is stale." % rejects)
-    # A USB frame is 1 ms, so per-frame count IS the MCLK frequency in kHz.
-    out.append("  implied MCLKO: %.4f kHz" % per_frame)
-    best = None
-    for rate in (44100, 48000):
-        for mult, name in ((256, "256 fs"), (384, "384 fs"), (512, "512 fs")):
-            nominal = rate * mult / 1000.0      # counts per 1 ms frame
-            if nominal < 1000 or nominal > 65000:
-                continue
-            ppm = (per_frame - nominal) / nominal * 1e6
-            if best is None or abs(ppm) < abs(best[0]):
-                best = (ppm, rate, name, nominal)
-    if best:
-        ppm, rate, name, nominal = best
-        out.append("  nearest standard: %d Hz x %s = %.1f counts/frame"
-                   % (rate, name, nominal))
-        out.append("  error vs that:    %+.2f ppm" % ppm)
-        if abs(ppm) > 1000:
-            out.append("  NOTE: more than 1000 ppm from every standard"
-                       " multiple. Treat the nearest-match line as a guess,"
-                       " not a reading -- the loaded divider is then outside"
-                       " the set this tool enumerates.")
-    return out
+    return ["(pre-0x0054 firmware -- this block still carries live data)",
+            "  window total: %d MCLK over 1024 frames" % window,
+            "  per frame:    %.4f   (last single frame: %d)"
+            % (window / 1024.0, b[4] | (b[5] << 8)),
+            "  completed windows: %d   rejected: %d" % (b[6], b[7])]
 
 
 DECODERS = {0: block0, 1: block1, 2: block2, 3: block3,

@@ -33,6 +33,35 @@ check() {
     fi
 }
 
+# RELEASE BUILD DETECTION. A `make MBOX_RELEASE=1` image compiles out the
+# telemetry block reader, the counters, and the boot canaries, so the three
+# gates that exercise that surface cannot pass and are not defects.
+#
+# Detected from the LINK MAP rather than an environment variable, so it reflects
+# the artifact actually being gated instead of what someone meant to build. A
+# flag could be passed while gating a stale diagnostic build in build/ -- which
+# is a real mistake that happened while writing this, and produced a full
+# 37/37 PASS on the wrong image.
+#
+# Skipped is printed as SKIP and counted separately. It is never counted as a
+# pass: a release build genuinely has less evidence behind it than a diagnostic
+# one, and the summary should say so rather than round up.
+MBOXFW_MAP="mboxfw/build/mboxfw.map"
+IS_RELEASE=0
+if [ -f "$MBOXFW_MAP" ] && ! grep -q "_tlm_read_block" "$MBOXFW_MAP"; then
+    IS_RELEASE=1
+fi
+skipped=0
+check_diag() {
+    local name="$1"; shift
+    if [ "$IS_RELEASE" = "1" ]; then
+        printf "  %-45s %sSKIP%s (release build: no telemetry)\n" "$name" "$YELLOW" "$NORMAL"
+        skipped=$((skipped+1))
+        return
+    fi
+    check "$name" "$@"
+}
+
 echo "=== GATE RUN ==="
 
 # Target detection: safety_net-flavored images run the safety_net gate
@@ -94,7 +123,7 @@ if [[ "$TARGET" == "safety_net" ]]; then
     check "mboxflash --validate on target"  ./mboxflash/mboxflash --validate "$IMG"
 else
     check "code size within budget"             python3 tools/check_code_size.py
-    check "sim_smoke (main loop + CONN + canaries)" bash tools/sim_smoke.sh
+    check_diag "sim_smoke (main loop + CONN + canaries)" bash tools/sim_smoke.sh
     check "verify_descriptors"        python3 tools/verify_descriptors.py
     check "terminals cite a measurement"      python3 tools/check_terminal_evidence.py
     check "verify_usb_init"           python3 tools/verify_usb_init.py
@@ -110,7 +139,7 @@ else
     # SETUP packet to XDATA 0xFF28, sets VECINT, and reads back what gets
     # staged -- descriptors, GET_STATUS, the telemetry protocol, and the
     # STALL on an unsupported request. FINDING_ep0_request_harness.md.
-    check "EP0 answers requests (executed)"     python3 tools/sim_ep0_requests.py
+    check_diag "EP0 answers requests (executed)"     python3 tools/sim_ep0_requests.py
     # The gate above checks mboxfw against expectations we wrote. This checks
     # it against safety_net -- the one image in this tree whose USB behaviour
     # is confirmed on the real device (it enumerated, bcdDevice 0xDEAD on the
@@ -123,7 +152,7 @@ else
     # them on the bench. Until it existed, ~570 lines of decoder had never
     # seen a byte, and a retired second reader was 6 blocks behind the
     # firmware. FINDING_telemetry_roundtrip.md.
-    check "telemetry round-trip (fw -> host tool)" python3 tools/sim_telemetry_roundtrip.py
+    check_diag "telemetry round-trip (fw -> host tool)" python3 tools/sim_telemetry_roundtrip.py
     # The round-trip gate above proves the DECODER is right. This proves the
     # tool talks to the unit you named: `--serial` given before the subcommand
     # was silently discarded by argparse, and with one unit attached that read
@@ -177,7 +206,15 @@ if (( fail > 0 )); then
     done
     exit 1
 fi
-printf "%sAll %d gates PASSED.%s\n" "$GREEN" "$pass" "$NORMAL"
+if (( skipped > 0 )); then
+    printf "%sAll %d gates PASSED, %d SKIPPED.%s\n" "$GREEN" "$pass" "$skipped" "$NORMAL"
+    printf "%s  RELEASE BUILD: the skipped gates exercise telemetry and the boot\n" "$YELLOW"
+    printf "  canaries, which this image compiles out. It therefore carries LESS\n"
+    printf "  evidence than a diagnostic build, not the same amount. Validate the\n"
+    printf "  diagnostic image first, then ship this one.%s\n" "$NORMAL"
+else
+    printf "%sAll %d gates PASSED.%s\n" "$GREEN" "$pass" "$NORMAL"
+fi
 
 echo
 echo "=== CHECKLIST (POLICY.md §6) ==="

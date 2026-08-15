@@ -78,7 +78,13 @@ void isr_timer2(void)  __interrupt(5);
  * addresses under 0xFA10 aren't used by TI's engUsbInit or Rev 20's
  * boot init; verified by grepping both. */
 #define CANARY_BASE     0xFA00
+#ifdef MBOX_RELEASE
+/* RELEASE: the canaries are read over EP0 or blinked on the panel, and both
+ * readers are compiled out. */
+#define CANARY(n, v)    do { } while (0)
+#else
 #define CANARY(n, v)    (*(volatile __xdata unsigned char *)(CANARY_BASE + (n))) = (v)
+#endif
 #define CANARY_MAIN     0xA1   /* main() entered */
 #define CANARY_USB      0xA2   /* usb_init returned */
 #define CANARY_HW       0xA3   /* hw_init returned */

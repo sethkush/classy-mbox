@@ -136,6 +136,29 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0x03, 0x00,             /* wChannelConfig = FL + FR */
     0, 0,                   /* iChannel, iTerminal */
 
+    /* ---- Input Terminal: instrument / Hi-Z (12 bytes) ---- #203
+     *
+     * The SAME physical 1/4" jack as TERM_ANALOG_IN. The 74HC157 muxes choose
+     * which front end feeds the shared gain stage, and they are genuinely
+     * different circuits rather than a relabelling: measured **18.9 dB apart**
+     * in sensitivity at one identical dial position, interleaved
+     * line/inst/line/inst, with the two LINE arms agreeing to 0.01 dB so the
+     * difference is the mux and not drift.
+     * FINDING_196_gain_curve_and_the_bad_TS_cable.md.
+     *
+     * Type 0x0603 (line connector) rather than a dedicated instrument type,
+     * because UAC1's Terminal Types document has none -- 0x0601..0x0606 offer
+     * analog/digital/line/legacy/SPDIF/1394 and nothing for Hi-Z. The distinct
+     * TERMINAL is what carries the meaning here, and iTerminal (#204) will
+     * carry the name. */
+    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
+    TERM_INST_IN,
+    UAC_TT_LINE_IN & 0xFF, (UAC_TT_LINE_IN >> 8) & 0xFF,
+    0,                      /* bAssocTerminal */
+    2,                      /* bNrChannels */
+    0x03, 0x00,             /* wChannelConfig = FL + FR */
+    0, 0,                   /* iChannel, iTerminal */
+
     /* ---- Selector Unit: analog vs S/PDIF (8 bytes) ---- #160
      *
      * bLength = 6 + bNrInPins per UAC1 §4.3.2.4. Pin ORDER IS THE PROTOCOL:
@@ -153,11 +176,23 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
      * two whole signal paths is precisely the model that driver does have
      * ("items are PATHS, not pins"), so this is the shape that suits both
      * hosts rather than the one that suited only Linux. */
-    8, USB_DT_CS_INTERFACE, UAC_AC_SELECTOR_UNIT,
+    /* #203 extends this from two pins to three. POSITIONS 1 AND 2 KEEP THEIR
+     * MEANING -- instrument is APPENDED as 3, and microphone will append as 4
+     * once there is a measurement behind it. Appending cannot renumber what a
+     * host already knows; inserting would, and pin order is the protocol.
+     *
+     * Microphone is NOT declared yet, deliberately. All that has been measured
+     * of that path is that the 1/4" jack does NOT reach it (interleaved
+     * line/mic, MIC read the analysis floor at every source level while LINE
+     * read normally), which proves the mux switches but not that the preamp
+     * carries audio. check_terminal_evidence.py would reject it, correctly.
+     * It needs an XLR source. */
+    9, USB_DT_CS_INTERFACE, UAC_AC_SELECTOR_UNIT,
     UNIT_SELECTOR,
-    2,                      /* bNrInPins */
-    TERM_ANALOG_IN,         /* baSourceID(1) — position 1 = analog */
-    TERM_SPDIF_IN,          /* baSourceID(2) — position 2 = S/PDIF */
+    3,                      /* bNrInPins */
+    TERM_ANALOG_IN,         /* baSourceID(1) — position 1 = LINE   (unchanged) */
+    TERM_SPDIF_IN,          /* baSourceID(2) — position 2 = S/PDIF (unchanged) */
+    TERM_INST_IN,           /* baSourceID(3) — position 3 = INSTRUMENT  (#203) */
     0,                      /* iSelector */
 
     /* ---- Feature Unit: playback Mute (10 bytes) ---- #190

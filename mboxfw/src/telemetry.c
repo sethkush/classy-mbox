@@ -38,6 +38,8 @@ volatile __data unsigned int  tlm_last_wlength = 0;
 
 
 
+#ifndef MBOX_RELEASE   /* RELEASE: the block reader and the counter
+                       * reset are the bulk of the diagnostic surface. */
 /* Little-endian 16-bit store, matching how the host unpacks the blocks. */
 static void put16(unsigned char __data *p, unsigned int v)
 {
@@ -206,37 +208,26 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         out[7] = g_clock_mode;
         return 1;
 
-    case 11:
-        /* ACG clock measurement -- #186 stage 1.
-         *
-         * Bytes 0-3: the accumulated MCLK count for the last completed window.
-         * Bytes 4-5: the last single-frame capture difference.
-         * Byte 6: completed-window count, saturating -- proves the measurement
-         * is live and lets a host confirm two reads span different windows.
-         *
-         * Byte 7: tlm_fb_rejects, the count of implausible windows discarded.
-         *
-         * THIS COMMENT USED TO SAY "low byte of tlm.sof_count", and the code
-         * has never done that. Caught 2026-08-07 while trying to establish
-         * whether SOF was counting: byte 7 read a constant 2 across a fast
-         * poll, which reads exactly like a dead SOF counter and is in fact a
-         * live reject count that had simply stopped changing. tlm.sof_count is
-         * exposed in no block -- block 5 carried it and was retired -- which is
-         * survivable now only because no SOF-based wait remains in the
-         * firmware. Restore a reader before adding one.
-         *
-         * This block briefly carried #198 pulse state instead (build 0x0046),
-         * to find out why a SOF wait never elapsed. It found it -- TLM_INC16
-         * saturates -- and the ACG reporting comes back now that the pulse
-         * machinery it was diagnosing has been deleted. */
-        out[0] = (unsigned char)(tlm_acg_window & 0xFF);
-        out[1] = (unsigned char)((tlm_acg_window >> 8) & 0xFF);
-        out[2] = (unsigned char)((tlm_acg_window >> 16) & 0xFF);
-        out[3] = (unsigned char)((tlm_acg_window >> 24) & 0xFF);
-        put16(&out[4], tlm_acg_last);
-        out[6] = tlm_acg_count;
-        out[7] = tlm_fb_rejects;
-        break;
+    /* case 11 (ACG clock measurement, #186 stage 1) RETIRED to pay for #203's
+     * Selector Unit extension. Its question is closed: the measurement decided
+     * the feedback-endpoint design (FINDING_186_ti_softpll_is_the_feedback_
+     * endpoint.md), proved MCLKO runs at 256 fs to within 7 ppm, and proved
+     * MCLKO keeps running with no stream open -- which is what made
+     * FINDING_202's "the C-port receive side frames separately" reading
+     * possible.
+     *
+     * streaming_acg_sample() STAYS and is not diagnostic. It is the source of
+     * the feedback endpoint's 10.14 value, so removing the block removes only
+     * the readback, not the measurement. That is the whole reason this block
+     * was the right one to retire rather than block 0, 1, 2 or 9.
+     *
+     * tlm_fb_rejects loses its only reader here. Left in place rather than
+     * removed: it is one byte of DATA, DATA is not the constrained resource,
+     * and #186's rejection logic reads it internally. It is NOT a write-only
+     * counter of the kind block 4's retirement had to avoid -- that trap was
+     * about counters costing CODE at every increment for no reader.
+     *
+     * The index is NOT reused. */
 
     /* case 12 (#200 diagnostic state) RETIRED the same day it was added. Its
      * job was to confirm a stimulus had fired, and the captured audio does that
@@ -274,3 +265,4 @@ void tlm_reset_counters(void)
      * current experiment, and clearing them would destroy the only record
      * of an init failure. */
 }
+#endif  /* !MBOX_RELEASE */

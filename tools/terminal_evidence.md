@@ -40,6 +40,7 @@ proves them is that the stream carries audio at all.
 |---|---|---|---|---|
 | 1 | IT | 0x0101 | `FINDING_170_audio_works.md` | protocol — the playback stream reaches the DAC; analog loopback at both rates |
 | 2 | IT | 0x0603 | `FINDING_170_audio_works.md` | 1 kHz tone through the LINE input appears in capture, and moves when the cable moves |
+| 10 | IT | 0x0603 | `FINDING_196_gain_curve_and_the_bad_TS_cable.md` | the instrument front end carries the signal 18.9 dB hotter than LINE at an identical gain position — interleaved line/inst/line/inst, both LINE arms agreeing to 0.01 dB, so the difference is the mux and not drift |
 | 6 | IT | 0x0605 | `FINDING_spdif_input_works.md` | the CS8427 receiver locks to an external carrier and the recovered audio reaches capture |
 | 5 | SU | — | `FINDING_spdif_input_works.md` | SET_CUR moves the capture source between analog and S/PDIF; macOS names both items |
 | 8 | FU | — | `FINDING_189_the_mute_pair_separates.md` | 0x23.3 kills playback and leaves capture intact, on both units, bracketed |

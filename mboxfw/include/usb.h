@@ -130,6 +130,15 @@
  * produce. The silent control returned exact zeros rather than a noise floor.
  * See FINDING_187_spdif_output_is_real.md. */
 #define TERM_SPDIF_OUT         0x07   /* AES3 transmitter as a playback sink  */
+/* #203. The instrument (Hi-Z) front end as its own capture source.
+ *
+ * Same physical 1/4" jack as TERM_ANALOG_IN -- the 74HC157 muxes pick which
+ * front end feeds the shared gain stage, and they are genuinely different
+ * circuits: measured 18.9 dB apart in sensitivity at an identical dial
+ * position, interleaved, with both LINE arms agreeing to 0.01 dB.
+ * FINDING_196_gain_curve_and_the_bad_TS_cable.md. */
+#define TERM_INST_IN           0x0A   /* instrument/Hi-Z analog capture source */
+                                      /* 0x08/0x09 are the two Feature Units */
 /* #190. One Feature Unit per path, each carrying a single Mute control on the
  * master channel. Two units and not one because #189 measured the hardware to
  * BE two: 0x23.3 gates playback and 0x23.2 gates capture, each killing exactly
@@ -220,12 +229,14 @@
 /*            header  IT-usb  IT-analog  IT-spdif  SU  OT-lineout  OT-usbin
  *            OT-spdifout
  * #160 added the S/PDIF input terminal (12) and the Selector Unit (6 + 2
- * source pins = 8). #187 added the S/PDIF OUTPUT terminal (9). A host that
- * reads a short wTotalLength silently ignores every unit past it, which
- * presents as "the selector does not exist" rather than as a descriptor error
- * — so this and the array below are the same fact twice and have to move
- * together. */
-#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 8 + 9 + 9 + 9 \
+ * source pins = 8). #187 added the S/PDIF OUTPUT terminal (9). #203 added the
+ * instrument input terminal (12) and grew the Selector by one source pin
+ * (8 -> 9). A host that reads a short wTotalLength silently ignores every unit
+ * past it, which presents as "the selector does not exist" rather than as a
+ * descriptor error — so this and the array below are the same fact twice and
+ * have to move together. verify_descriptors.py caught exactly that here: the
+ * declared 101 against 114 bytes actually emitted. */
+#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 12 + 9 + 9 + 9 + 9 \
                              + FU_DESC_LEN + FU_DESC_LEN)
 
 /* Per streaming interface: alt 0 (9) + alt 1 (9 + 7 + 14 + 9 + 7).
