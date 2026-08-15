@@ -75,6 +75,25 @@ ifeq ($(MBOX_RELEASE),1)
 EXTRA_CFLAGS += -DMBOX_RELEASE
 endif
 
+# LEAN DIAGNOSTIC BUILD. `make MBOX_TLM_LEAN=1` keeps telemetry blocks 0 and 9
+# and drops 1 and 2, so a feature-heavy build still answers the two questions
+# every bench session actually asks -- "which build is running" (block 0) and
+# "what is this capture routed to" (block 9, the one whose absence voided a whole
+# session on 2026-07-29).
+#
+# This exists so features never have to be release-only. A feature present in the
+# shipped image but absent from the build that carries telemetry would be both
+# untested AND undiagnosable, which inverts the reason telemetry exists at all:
+# one power cycle buys one image and costs a 2 km round trip.
+#
+# Blocks 1 and 2 are the droppable pair. Block 1's defect is fixed and its
+# warning was measured to be an accounting artefact (FINDING: chunks counts the
+# chunked path only); block 2 is generic SETUP debug that matters when
+# enumeration is broken, which is not the state a feature build is usually in.
+ifeq ($(MBOX_TLM_LEAN),1)
+EXTRA_CFLAGS += -DMBOX_TLM_LEAN
+endif
+
 CFLAGS  = $(if $(MBOX_PID),-DMBOX_PID=$(MBOX_PID)) -mmcs51 --model-small --std-c99 --opt-code-size $(INC)
 # --code-size REVERTED 0x1C00 -> 0x1780 (7168 -> 6016) on 2026-08-03, after an
 # image built against the raised value bricked Mbox A.

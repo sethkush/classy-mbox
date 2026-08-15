@@ -61,6 +61,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         put16(&out[6], tlm.rstr_count);
         return 1;
 
+#ifndef MBOX_TLM_LEAN
     case 1:
         /* EP0 continuation forensics — the reason this exists.
          *
@@ -90,7 +91,9 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         put16(&out[4], tlm.chunks);
         put16(&out[6], tlm.drains);
         return 1;
+#endif
 
+#ifndef MBOX_TLM_LEAN
     case 2:
         /* Last SETUP seen — "which request is failing?" */
         out[0] = tlm_last_bmreq;
@@ -99,6 +102,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         put16(&out[4], tlm_last_windex);
         put16(&out[6], tlm_last_wlength);
         return 1;
+#endif
 
     /* case 3 (#46 endpoint geometry + DMABCNT0 + playback resyncs) RETIRED
      * 2026-08-05 with the 88.2/96 kHz support it was built for. It existed to
