@@ -99,6 +99,19 @@ ifeq ($(MBOX_TLM_FULL),1)
 EXTRA_CFLAGS += -DMBOX_TLM_FULL
 endif
 
+# `make MBOX_TLM_ROUTING=1` adds block 9 -- the published mux/codec words, the
+# button pins and the applied clock mode.
+#
+# It went behind a flag when #207 pushed the diagnostic build over 6016. The case
+# for keeping it weakened at the same time it got expensive: #203's Selector Unit
+# now reports the live source through a standard class GET_CUR, so the ROUTING
+# question -- the one whose absence voided a session on 2026-07-29 -- is
+# answerable without this block. What block 9 still uniquely carries is the mono
+# flag, the raw button pins, and the mux accept/reject counters.
+ifeq ($(MBOX_TLM_ROUTING),1)
+EXTRA_CFLAGS += -DMBOX_TLM_ROUTING
+endif
+
 CFLAGS  = $(if $(MBOX_PID),-DMBOX_PID=$(MBOX_PID)) -mmcs51 --model-small --std-c99 --opt-code-size $(INC)
 # --code-size REVERTED 0x1C00 -> 0x1780 (7168 -> 6016) on 2026-08-03, after an
 # image built against the raised value bricked Mbox A.

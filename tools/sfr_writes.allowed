@@ -9,10 +9,16 @@
 # generated from a working image would have flagged that
 # specific tuple as a diff before flash.
 
+0xff18  assign    0x00    # usb
+0xff19  runtime   -       # usb
 0xff20  runtime   -       # streaming
 0xff21  runtime   -       # streaming
 0xff22  runtime   -       # streaming
 0xff2e  rmw       -       # usb
+0xff50  runtime   -       # usb
+0xff51  assign    0xe3    # usb
+0xff52  assign    0x01    # usb
+0xff53  assign    0x02    # usb
 0xff58  assign    0xc2    # streaming
 0xff58  runtime   -       # streaming
 0xff59  assign    0xe4    # streaming

@@ -86,6 +86,11 @@
  * SoftPll.c writes INEP2_X and arms IEPDCNTX2. Its register block (IEPCNF2 =
  * 0xFF58) was free, and 0x81 was already taken by capture. */
 #define EP_AUDIO_FEEDBACK      0x82
+#define EP_STATUS_IN           0x83   /* EP3 IN = UAC1 status interrupt (#207) */
+#define EP_STATUS_PKT_LEN      2      /* UAC1 §3.7.1.2: bStatusType + bOriginator */
+#ifndef USB_EP_INTERRUPT
+#define USB_EP_INTERRUPT       0x03   /* bmAttributes: interrupt transfer */
+#endif
 /* 3 bytes, 10.14, samples per frame. Full-speed feedback is 3 bytes; the
  * format is confirmed twice over -- TI's SoftPll.c builds (nInt << 14) |
  * (nFrac << 4), and the Linux driver states "full speed devices report
@@ -269,7 +274,7 @@
 #define AS_IFACE_CAPTURE_LEN   (9 + (9 + 7 + 14 + 9 + 7))
 #define AS_IFACE_PLAYBACK_LEN  (AS_IFACE_CAPTURE_LEN + 9)
 
-#define APP_CFG_TOTAL_LEN   (9 + 9 + AC_BLOCK_LEN \
+#define APP_CFG_TOTAL_LEN   (9 + 9 + 9 + AC_BLOCK_LEN \
                              + AS_IFACE_PLAYBACK_LEN + AS_IFACE_CAPTURE_LEN)
 
 /* Set by the Digi enter-DFU class request handler, consumed by main().
@@ -284,5 +289,8 @@ unsigned char usb_is_configured(void);
 /* EP0 buffer + count setup, re-runnable on resume. Stock calls the same
  * routine from its resume tail (Rev 20 0x0554 -> fcn.0x0970). */
 void usb_ep0_setup(void);
+
+/* #207. Raise the UAC1 status interrupt for a unit whose value changed. */
+void usb_status_notify(unsigned char unit_id);
 
 #endif /* MBOXFW_USB_H */

@@ -66,7 +66,7 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     9, USB_DT_INTERFACE,
     0,                      /* bInterfaceNumber */
     0,                      /* bAlternateSetting */
-    0,                      /* bNumEndpoints — control uses EP0 */
+    1,                      /* bNumEndpoints — #207 status interrupt EP3 IN */
     0x01, UAC_SUBCLASS_CONTROL, 0x00,
     0,                      /* iInterface */
 
@@ -295,6 +295,31 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     UNIT_FU_CAPTURE,       /* #190 bSourceID = the capture Feature Unit,
                             * which is itself fed by the selector. */
     0,
+
+    /* ---- Status interrupt endpoint, EP3 IN (9 bytes) ---- #207
+     *
+     * UAC1 §3.7.1.2. A standard endpoint descriptor and no class-specific
+     * companion -- the AudioControl status endpoint does not take one.
+     *
+     * Two bytes: bStatusType and bOriginator. The device raises it when a
+     * control the host can read has changed underneath it -- a front-panel
+     * source press -- and the host answers with GET_CUR on the named unit,
+     * which is the path #203 already serves. Without this, the host shows
+     * whatever it last read until something else makes it poll.
+     *
+     * bInterval 8: full-speed interrupt endpoints take bInterval in FRAMES, so
+     * this is 8 ms -- immediate to a finger, and free.
+     *
+     * Its buffer is 8 bytes given back by the capture allocation. See
+     * EP_STATUS_BUF_ADDR in regs.h for why the region had room after all: the
+     * first reading of the memory map said it did not. */
+    9, USB_DT_ENDPOINT,
+    EP_STATUS_IN,
+    USB_EP_INTERRUPT,
+    EP_STATUS_PKT_LEN, 0,   /* wMaxPacketSize = 2 */
+    8,                      /* bInterval = 8 ms */
+    0,                      /* bRefresh       — unused for an interrupt EP */
+    0,                      /* bSynchAddress  — none; this is not a data EP */
 
     /* ==================================================================
      * Interface 1: AudioStreaming — playback (host → device on EP2 OUT)

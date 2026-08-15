@@ -215,6 +215,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
      * 0xFF sentinel rather than being reused, so a host tool from before this
      * build reads "not served" instead of decoding block 9's panel state as a
      * handoff snapshot. */
+#ifdef MBOX_TLM_ROUTING
     case 9:
         /* Panel state — which source is actually selected, right now.
          *
@@ -247,6 +248,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
          * the pair that has to agree for S/PDIF input to work at all. */
         out[7] = g_clock_mode;
         return 1;
+#endif
 
     /* case 11 (ACG clock measurement, #186 stage 1) RETIRED to pay for #203's
      * Selector Unit extension. Its question is closed: the measurement decided

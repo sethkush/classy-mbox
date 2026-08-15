@@ -19,6 +19,7 @@
 #include "buttons.h"
 #include "mux.h"
 #include "codec.h"
+#include "usb.h"   /* #207 usb_status_notify() */
 
 /* Rev 20 stores the previous button-state snapshot in RAM[0x20]. */
 static __data unsigned char prev_p3 = 0x00;
@@ -142,5 +143,16 @@ void buttons_poll(void)
         codec_source_changed();
         mux_write(g_mux_state);
         codec_write_word();
+
+        /* #207. Tell the host the source moved under it. Without this a
+         * front-panel press is invisible until something makes the host poll
+         * again, so ALSA and Core Audio keep showing the previous input --
+         * which is exactly the mismatch that voided a measurement session on
+         * 2026-07-29, in the other direction.
+         *
+         * Names the Selector Unit, because that is the control whose value
+         * changed as far as a host is concerned: #203 made its GET_CUR report
+         * the PUBLISHED mux state, so the host reads the truth when it asks. */
+        usb_status_notify(UNIT_SELECTOR);
     }
 }

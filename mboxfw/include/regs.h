@@ -196,6 +196,33 @@
 #define EP_FEEDBACK_BUF_ADDR  0xFF20   /* 8 B, the free tail of the region */
 #define EP_FEEDBACK_BUF_SIZE  8
 
+/* #207 — the status interrupt endpoint, EP3 IN.
+ *
+ * WHY THIS FITS, since the first reading of the map said it did not.
+ *
+ * IEPBSIZx is the size of the PAIR of buffers, not of each one. The datasheet's
+ * wording ("the size of the two data buffers") is ambiguous, but the feedback
+ * endpoint settles it: 8 bytes at 0xFF20 with the endpoint-data-buffer region
+ * ending at 0xFF27 only works if X and Y are 4 bytes each. Per-buffer would put
+ * Y at 0xFF28, on top of the setup-packet buffer, and the device enumerates.
+ *
+ * And isochronous endpoints have no DBUF bit -- §6.4.4.6.2 gives bits 4:0 to the
+ * BPS field -- so the audio endpoints always use both halves. 640 is therefore
+ * 320 + 320, against a 294-byte maximum packet: 26 bytes of slack per half.
+ *
+ * So the region is full, but not TIGHT. Giving 8 bytes back from capture leaves
+ * 316 per half, still 22 clear of the largest packet this firmware declares, and
+ * more than that at 44.1 kHz where packets are 264/270. Those 8 bytes are this
+ * endpoint's X and Y, 4 each, of which it uses 2. */
+#define EP_AUDIO_CAPTURE_BUF_SIZE  0x0278   /* 632 = 316 + 316 (#207) */
+#define EP_STATUS_BUF_ADDR    0xFF18   /* 8 B freed from the capture buffer */
+#define EP_STATUS_BUF_SIZE    8
+
+#define IEPCNF3     XDATA(0xFF50)   /* status interrupt (device → host) */
+#define IEPBBAX3    XDATA(0xFF51)
+#define IEPBSIZ3    XDATA(0xFF52)
+#define IEPDCNTX3   XDATA(0xFF53)
+
 /* USB setup-packet block (SETPACK, 8 bytes at 0xFF28-0xFF2F) */
 #define SETPACK_BMREQ  XDATA(0xFF28)
 #define SETPACK_BREQ   XDATA(0xFF29)

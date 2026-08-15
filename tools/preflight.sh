@@ -48,7 +48,11 @@ check() {
 # one, and the summary should say so rather than round up.
 MBOXFW_MAP="mboxfw/build/mboxfw.map"
 IS_RELEASE=0
-if [ -f "$MBOXFW_MAP" ] && ! grep -q "_tlm_read_block" "$MBOXFW_MAP"; then
+# Keyed on _tlm_reset_counters, NOT _tlm_read_block. #205 put a cut-down
+# tlm_read_block back into release builds so a field unit can still report its
+# build id, which silently broke the older test and turned three SKIPs into
+# FAILs. tlm_reset_counters has no release counterpart.
+if [ -f "$MBOXFW_MAP" ] && ! grep -q "_tlm_reset_counters" "$MBOXFW_MAP"; then
     IS_RELEASE=1
 fi
 skipped=0

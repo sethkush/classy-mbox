@@ -684,6 +684,11 @@ static void selector_apply_position(unsigned char pos)
     selector_set_source(0);
 }
 
+/* #207 is NOT raised from selector_apply_position(): that path runs because the
+ * HOST just set the value, so it already knows. The interrupt exists for changes
+ * the host did not cause -- the front-panel buttons -- and raising it here would
+ * only prompt a GET_CUR for a value the host wrote itself. */
+
 #ifndef MBOX_RELEASE   /* RELEASE: the dispatch arm is compiled out, and an
                        * emitted-but-uncalled body is exactly what
                        * verify_reachability.py exists to catch. */
@@ -1251,8 +1256,50 @@ void usb_ep0_setup(void)
                                             * Rev 22 fcn.0x0891 @ 0x08C9 */
     OEPBSIZ2 = EP_BSIZE(EP_AUDIO_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09AE,
                                              * Rev 22 fcn.0x0891 @ 0x08CF */
-    IEPBSIZ1 = EP_BSIZE(EP_AUDIO_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09B4,
+    /* #207 gives 8 bytes of the capture allocation to the status endpoint, so
+     * this is 632 rather than stock's 640 -- 316 per half against a 294-byte
+     * maximum packet. DIVERGES FROM STOCK DELIBERATELY; stock declares no
+     * status endpoint and has no reason to. */
+    IEPBSIZ1 = EP_BSIZE(EP_AUDIO_CAPTURE_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09B4,
                                              * Rev 22 fcn.0x0891 @ 0x08D5 */
+
+    /* #207 status interrupt endpoint, EP3 IN. Configured here rather than at
+     * stream start because it is not a streaming endpoint: it must answer a
+     * host poll whenever the device is configured, including when nothing is
+     * streaming -- a front-panel press with no stream open is exactly the case
+     * it exists for.
+     *
+     * IEPCNF3 = 0x80: IEPEN with ISO clear, so §6.4.4.6.1's bit map applies and
+     * DBUF stays 0 -- single buffered, X only. Two bytes of the four.
+     *
+     * NOVEL — reason: stock ships no status endpoint, so there is no address to
+     * mirror. UAC1 §3.7.1.2 defines the endpoint and its two-byte status word. */
+    IEPBBAX3 = EP_BBAX(EP_STATUS_BUF_ADDR);
+    IEPBSIZ3 = EP_BSIZE(EP_STATUS_BUF_SIZE);
+    IEPCNF3  = 0x80;
+}
+
+/* #207. Tell the host a control it can read has changed.
+ *
+ * UAC1 §3.7.1.2: a two-byte status word. bStatusType bit 6 (MEM_CHANGED is bit
+ * 5; bit 6 is INTERFACE) — we send originator type 0 = AudioControl interface,
+ * with bOriginator naming the unit. The host responds by issuing GET_CUR on
+ * that unit, which is the path #203 already serves.
+ *
+ * Without this, a front-panel button press is invisible: the host keeps showing
+ * whatever it last read until something makes it poll again. With it, ALSA and
+ * Core Audio track the hardware.
+ *
+ * Fire-and-forget by design. If the endpoint is already armed with an
+ * unconsumed packet this overwrites it, which is correct: the newest state is
+ * the only one worth delivering, and the host reads the actual value with
+ * GET_CUR anyway. */
+void usb_status_notify(unsigned char unit_id)
+{
+    __xdata unsigned char *buf = (__xdata unsigned char *)EP_STATUS_BUF_ADDR;
+    buf[0] = 0x00;          /* bStatusType: AudioControl interface, no pending */
+    buf[1] = unit_id;       /* bOriginator */
+    IEPDCNTX3 = EP_STATUS_PKT_LEN;
 }
 
 void usb_init(void)
