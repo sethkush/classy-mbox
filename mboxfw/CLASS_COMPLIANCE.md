@@ -1,6 +1,12 @@
 # What is class-compliant, what is not, and what we can do about it
 
-Inventory taken 2026-08-05 against build 0x0030 (5181 bytes, 835 free).
+Inventory REFRESHED 2026-08-14 against build 0x0053 (5949 bytes, 67 free).
+
+Sections 1-5 were originally taken 2026-08-05 against build 0x0030 and had gone
+35 builds stale: they still described the sync types as unverified ADAPTIVE, the
+S/PDIF output as undeclared, and Mute as dishonest to declare. All three were
+closed by tasks #185-#190 and are corrected below. Section 6's roadmap was kept
+current throughout.
 Sources: `src/descriptors.c`, `src/usb.c` `handle_setup()`, `src/cs8427.c`,
 `tools/verify_descriptors.py`. Host evidence is cited per row; anything not
 cited is a declaration nobody has confirmed on the wire.
@@ -33,63 +39,40 @@ both operating systems with no kernel quirk and no vendor driver.
 
 ---
 
-## 2. Declared but never verified against a host
+## 2. Declared but never verified against a host — CLOSED
 
-**Both iso endpoints declare `SYNC_ADAPTIVE` (0x08).** This is the one
-declaration in the descriptor set that is not yet tested against the hardware it
-describes. If it is wrong, the symptom is long-run drift rather than an
-immediate failure — a defect that a 3-second loopback measurement cannot see.
+**Was:** both iso endpoints declared `SYNC_ADAPTIVE` (0x08) with no evidence that
+the Adaptive Clock Generator locks to SOF, so the label might have been a
+fiction.
 
-Adaptive means the endpoint slaves its converter rate to the other end. Our
-converters are clocked by the TAS1020B's Adaptive Clock Generator running from a
-24-bit frequency word (`ACG1FRQ`, 0x0FA861 for 48 kHz). Whether that generator
-phase-locks to the USB SOF — which is what would make "adaptive" honest — or
-free-runs from the crystal is **not established anywhere in this repo**.
-`FINDING_179` says so explicitly: "whether the capture endpoint's fixed-size
-packets drift against the host's buffer over long captures is a separate,
-unmeasured question."
+**Now:** both declare `SYNC_ASYNC` (0x04), and the playback side publishes the
+explicit feedback endpoint that async obliges (EP2 IN, `bSynchAddress` set).
+`FINDING_186_ti_softpll_is_the_feedback_endpoint.md`.
 
-Three outcomes, and the fix differs for each:
+The drift question that motivated the doubt was measured rather than argued:
+#181 and #182 ran ten-minute captures at both rates, and #183 confirmed packet
+sizes track the declared rate (264/270 mixed 9:1 at 44.1 kHz, −9.0 ppm). The ACG
+free-runs from the crystal; async is the honest label and is what is declared.
 
-- **ACG locks to SOF** → the honest label is `SYNC_SYNC` (0x0C). Two byte
-  values change, no code. Adaptive is close enough that no host will complain.
-- **ACG free-runs, playback** → the honest label is `SYNC_ASYNC` (0x04), which
-  obliges us to publish an explicit feedback endpoint. We have no spare endpoint
-  budget and no feedback code. Declaring adaptive without adapting is what we
-  have now; it presents as a slow xrun.
-- **ACG free-runs, capture** → `SYNC_ASYNC` (0x04) alone is fine. IN endpoints
-  need no feedback endpoint; the host reads whatever arrives. One byte, no code.
-
-**The measurement costs no flash.** Stream for ten minutes and compare frames
-delivered against wall clock:
-
-    arecord -D hw:Mbox -f S24_3LE -c2 -r48000 -d 600 /tmp/drift.wav
-    # frames/600s vs 48000 → ppm error; and count xruns in dmesg
-
-A free-running crystal shows tens to hundreds of ppm and accumulates xruns; a
-SOF-locked generator shows near-zero and none. Do this before changing any byte.
+Nothing in the descriptor set is now an unverified declaration.
 
 ---
 
-## 3. Live in hardware, absent from the descriptors
+## 3. Live in hardware, absent from the descriptors — CLOSED
 
-**The S/PDIF output is undeclared.** `cs8427.c:221` writes `DATAFLOW = 0x0C`,
-which is `TXD = 01` (`CS8427_TXDSERIAL`) with `TXOFF` clear: the AES3
-transmitter is on and sourced from the serial audio input port — the playback
-side of the C-port. The RCA digital output is therefore carrying audio, and no
-host can see it, because the only Output Terminal on the playback path is
-`TERM_LINE_OUT` (0x0603).
+**Was:** the S/PDIF output carried audio (`cs8427.c` writes `DATAFLOW = 0x0C`,
+transmitter on, sourced from the C-port playback side) while no host could see
+it, because the only playback Output Terminal was `TERM_LINE_OUT`.
 
-Cost to declare: **9 bytes, no code** — one more Output Terminal of type 0x0605
-sourced from `TERM_USB_OUT_STREAM`, plus the automatic `AC_BLOCK_LEN` and
-`wTotalLength` updates. That is the cheapest capability in this entire document.
+**Now declared.** `TERM_SPDIF_OUT` (type 0x0605) is in the descriptor set,
+sourced from the playback Feature Unit. #187.
 
-Caveat worth stating plainly: the routing above is read from the register we
-write, not measured at the jack. Declaring a terminal that turns out to be
-silent would be worse than not declaring it, so hang a scope or a second S/PDIF
-input on the output first. Unit A's transmitter feeding unit B's receiver is
-already the bench topology that `BENCH_WIRING.md` describes, so this is
-measurable today.
+The caveat the old text insisted on was honoured rather than waived: the routing
+was **measured at the jack** before the terminal was declared, using unit A's
+transmitter into unit B's receiver — the topology `BENCH_WIRING.md` describes.
+#184, `FINDING_spdif_input_works.md`. `check_terminal_evidence.py` now gates
+every declared terminal against a measured path (#194), so this class of
+mistake — declaring something silent — cannot recur silently.
 
 ---
 
@@ -102,7 +85,7 @@ None of these is a defect. Each is a documented trade with a reason.
 | **Vendor requests at `bmRequestType = 0x40`** (telemetry read/reset, set-mux, set-clock, enter-DFU) | vendor space is *reserved* for exactly this; DEVICE recipient so `snd-usb-audio` cannot intercept it | none — a compliant host never sends these |
 | **Digi enter-DFU accepted at device recipient, and with any wIndex** | the class-request form becomes undeliverable once a host claims the interface; being strict costs a screwdriver (`BRICK_LOG`) | a host sending class-request 0x00/wValue 0x000A would trip it. No host does |
 | **SET_FEATURE / CLEAR_FEATURE always ACK** | a STALL here makes some hosts abandon the device; no features exist to set | spec-legal for iso endpoints (USB 2.0 §5.6.4 — iso endpoints cannot halt) |
-| **GET_MIN / GET_MAX / GET_RES stall** | `bSamFreqType = 2` publishes discrete rates, so the host reads the list; UAC1 §5.2.2.1.1 doesn't require the range trio for discrete controls | Windows has been seen to probe these. Untested — we have no Windows host |
+| **GET_MIN / GET_MAX / GET_RES stall** | `bSamFreqType = 2` publishes discrete rates, so the host reads the list; UAC1 §5.2.2.1.1 doesn't require the range trio for discrete controls. Answering MIN=44100/MAX=48000 would imply 45000 is selectable, and SET_CUR rejects it | Windows has been seen to probe these. #191 closed this as NOT APPLICABLE with four independent lines of agreement, including that TI's own reference defines the three and implements none. `FINDING_191_min_max_res_do_not_apply.md` |
 | **`iSerialNumber = 0` in the default build** | the serial only exists behind `MBOX_UNIT=A/B`; a default image cannot have a per-unit string | macOS keys per-device settings on the serial, so the default build makes two units indistinguishable. Build per-unit for bench work |
 | **PID 0x2000 rather than 0x1000** | at the stock PID the kernel's `mbox1` quirk claims the device and `snd-usb-audio` never binds | this is us dodging a host workaround written for stock firmware, not a compliance issue. Correct as-is |
 
@@ -113,7 +96,7 @@ None of these is a defect. Each is a documented trade with a reason.
 | feature | status |
 |---|---|
 | **Feature Unit — Volume** | **impossible.** The codec has no register interface; its entire control surface is a 16-bit shift word with no gain field, and samples never pass through the 8051 (DMA moves them endpoint↔C-port). Front-panel gain is analog pots. See `FINDING_46_feature_unit_has_no_hardware.md` |
-| **Feature Unit — Mute** | **exists in hardware, dishonest to declare.** IRAM 0x23.2/0x23.3 is a *global* audio-path enable measured across both directions (#171). UAC1 puts a Feature Unit on one path; ours would mute the other one too. One diagnostic build (`MBOX_MUTE_PAIR_MASK=0x04`/`0x08`, already written, unflashed) would show whether the bits separate. If they do: ~10 descriptor bytes + ~60 code bytes |
+| **Feature Unit — Mute** | **IMPLEMENTED.** The pair does separate — #189 measured 0x23.2 = capture, 0x23.3 = playback, so the #171 "global enable" reading was an artefact of a build that removed both bits at once. Feature Units declared and confirmed on hardware: snd-usb-audio parses both, each switch drives its own gate, and the mute survives a stream reopen. #190, `FINDING_190_feature_units_on_hardware.md` |
 | **Feature Unit — Bass/Treble/EQ/AGC/Delay/Loudness** | no hardware exists for any of them |
 | **88.2 / 96 kHz** | removed deliberately. The ACG synthesizer caps at 25 MHz, so the doubled rates come from halving the C-port divider — but the codec follows MCLK and has no way to be told, so everything above the base Nyquist folds. Proven: 30 kHz returns at 18 kHz with nothing at 30. See `FINDING_46_no_bandwidth_above_24k.md` |
 | **Asymmetric rates** (96-in/48-out) | shown schedulable and the USB engine handles it, but the supporting code went with #46. Needs a divider split plus a relaxed cross-check. No use case, since the fast side carries no bandwidth |
