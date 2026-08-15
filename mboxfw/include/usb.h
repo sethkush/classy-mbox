@@ -182,6 +182,24 @@
 #define APP_STRING_MFR_LEN      22   /* 2 + 2*10 "Digidesign"   */
 #define APP_STRING_PRODUCT_LEN  26   /* 2 + 2*12 "Mbox (classc" */
 
+/* #204. Terminal names, so a host shows "Instrument" instead of a bare
+ * terminal ID. Indices start at 4 because 3 is the per-unit serial and that
+ * number is fixed by APP_ISERIAL in the device descriptor -- renumbering it
+ * would change what iSerialNumber points at.
+ *
+ * These are what make the Selector Unit legible: #203 gave it three positions
+ * and without iTerminal a host has nothing to label them with but numbers. */
+#define STR_LINE_IN_IDX        4    /* string 4: "Line In" */
+#define STR_LINE_IN_LEN        16   /* 2 + 2*7 */
+#define STR_INST_IN_IDX        5    /* string 5: "Instrument" */
+#define STR_INST_IN_LEN        22   /* 2 + 2*10 */
+#define STR_SPDIF_IN_IDX       6    /* string 6: "S/PDIF In" */
+#define STR_SPDIF_IN_LEN       20   /* 2 + 2*9 */
+#define STR_LINE_OUT_IDX       7    /* string 7: "Line Out" */
+#define STR_LINE_OUT_LEN       18   /* 2 + 2*8 */
+#define STR_SPDIF_OUT_IDX      8    /* string 8: "S/PDIF Out" */
+#define STR_SPDIF_OUT_LEN      22   /* 2 + 2*10 */
+
 /* iSerialNumber — string #3, optional, per-unit.
  *
  * WHY THIS EXISTS. Two Mboxes share the bench, and until now they were told

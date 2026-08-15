@@ -75,23 +75,28 @@ ifeq ($(MBOX_RELEASE),1)
 EXTRA_CFLAGS += -DMBOX_RELEASE
 endif
 
-# LEAN DIAGNOSTIC BUILD. `make MBOX_TLM_LEAN=1` keeps telemetry blocks 0 and 9
-# and drops 1 and 2, so a feature-heavy build still answers the two questions
-# every bench session actually asks -- "which build is running" (block 0) and
-# "what is this capture routed to" (block 9, the one whose absence voided a whole
-# session on 2026-07-29).
+# TELEMETRY TIERS.
 #
-# This exists so features never have to be release-only. A feature present in the
-# shipped image but absent from the build that carries telemetry would be both
-# untested AND undiagnosable, which inverts the reason telemetry exists at all:
-# one power cycle buys one image and costs a 2 km round trip.
+# The DEFAULT diagnostic build carries blocks 0 and 9 -- "which build is
+# running" and "what is this capture routed to". Those are the two every bench
+# session actually reads, and block 9's absence is what voided a whole session
+# on 2026-07-29 when the mux sat on MIC while the loopbacks fed LINE.
 #
-# Blocks 1 and 2 are the droppable pair. Block 1's defect is fixed and its
-# warning was measured to be an accounting artefact (FINDING: chunks counts the
-# chunked path only); block 2 is generic SETUP debug that matters when
-# enumeration is broken, which is not the state a feature build is usually in.
-ifeq ($(MBOX_TLM_LEAN),1)
-EXTRA_CFLAGS += -DMBOX_TLM_LEAN
+# `make MBOX_TLM_FULL=1` adds blocks 1 (EP0 forensics) and 2 (last SETUP).
+# THIS CURRENTLY OVERFLOWS: with #203, #204 and #205 in, the full set does not
+# fit in 6016 bytes. Kept as a flag rather than deleted because those two blocks
+# are what you want when enumeration ITSELF is broken, and getting them back is
+# a matter of dropping something else for that build, not of rewriting them.
+#
+# Blocks are opt-IN rather than opt-out deliberately: the default has to be a
+# configuration that BUILDS. A flag whose absence produces a link error is a
+# trap for whoever types plain `make` next.
+#
+# Features are in EVERY tier. A feature present in the shipped image but absent
+# from the build that carries telemetry would be both untested and
+# undiagnosable, which inverts the reason telemetry exists at all.
+ifeq ($(MBOX_TLM_FULL),1)
+EXTRA_CFLAGS += -DMBOX_TLM_FULL
 endif
 
 CFLAGS  = $(if $(MBOX_PID),-DMBOX_PID=$(MBOX_PID)) -mmcs51 --model-small --std-c99 --opt-code-size $(INC)

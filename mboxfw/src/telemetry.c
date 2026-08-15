@@ -38,6 +38,42 @@ volatile __data unsigned int  tlm_last_wlength = 0;
 
 
 
+/* #205. RELEASE builds keep block 0 and nothing else.
+ *
+ * Stripping ALL field visibility to save ~60 bytes out of 1120 is a bad trade.
+ * "Which firmware is running" is the one question you cannot debug anything
+ * without, and on a part where one power cycle buys one image and costs a 2 km
+ * round trip, answering it over the wire is worth more than the bytes.
+ *
+ * What survives is honest about what it can still see. The stage ladder and the
+ * saturating counters ARE compiled out, so their bytes read zero rather than
+ * stale values -- and byte 2 is documented as "not measured in release" instead
+ * of being filled with something that looks like a reading. tlm_phases survives
+ * because main.c sets it with plain ORs that are not part of the diagnostic
+ * surface, so the boot-phase mask is real in every build. */
+#ifdef MBOX_RELEASE
+unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
+{
+    unsigned char i;
+
+    for (i = 0; i < TLM_BLOCK_SIZE; i++) {
+        out[i] = 0xFF;            /* the unknown-block sentinel */
+    }
+    if (index != 0) {
+        return 0;
+    }
+    out[0] = (unsigned char)(TLM_BUILD_ID & 0xFF);
+    out[1] = (unsigned char)(TLM_BUILD_ID >> 8);
+    out[2] = 0;                   /* stage ladder: not measured in release */
+    out[3] = tlm_phases;          /* real -- plain ORs in main.c */
+    out[4] = 0;
+    out[5] = 0;
+    out[6] = 0;
+    out[7] = 0;                   /* loop_count and rstr_count: not measured */
+    return 1;
+}
+#endif
+
 #ifndef MBOX_RELEASE   /* RELEASE: the block reader and the counter
                        * reset are the bulk of the diagnostic surface. */
 /* Little-endian 16-bit store, matching how the host unpacks the blocks. */
@@ -61,7 +97,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         put16(&out[6], tlm.rstr_count);
         return 1;
 
-#ifndef MBOX_TLM_LEAN
+#ifdef MBOX_TLM_FULL
     case 1:
         /* EP0 continuation forensics — the reason this exists.
          *
@@ -93,7 +129,7 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
         return 1;
 #endif
 
-#ifndef MBOX_TLM_LEAN
+#ifdef MBOX_TLM_FULL
     case 2:
         /* Last SETUP seen — "which request is failing?" */
         out[0] = tlm_last_bmreq;

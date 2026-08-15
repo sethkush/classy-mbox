@@ -118,7 +118,7 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0,                      /* bAssocTerminal */
     2,                      /* bNrChannels */
     0x03, 0x00,             /* wChannelConfig = FL + FR */
-    0, 0,                   /* iChannel, iTerminal */
+    0, STR_LINE_IN_IDX,          /* iChannel, iTerminal (#204) */
 
     /* ---- Input Terminal: S/PDIF receiver (12 bytes) ---- #160
      *
@@ -134,7 +134,7 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0,                      /* bAssocTerminal */
     2,                      /* bNrChannels */
     0x03, 0x00,             /* wChannelConfig = FL + FR */
-    0, 0,                   /* iChannel, iTerminal */
+    0, STR_SPDIF_IN_IDX,          /* iChannel, iTerminal (#204) */
 
     /* ---- Input Terminal: instrument / Hi-Z (12 bytes) ---- #203
      *
@@ -157,7 +157,7 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0,                      /* bAssocTerminal */
     2,                      /* bNrChannels */
     0x03, 0x00,             /* wChannelConfig = FL + FR */
-    0, 0,                   /* iChannel, iTerminal */
+    0, STR_INST_IN_IDX,          /* iChannel, iTerminal (#204) */
 
     /* ---- Selector Unit: analog vs S/PDIF (8 bytes) ---- #160
      *
@@ -230,7 +230,7 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     UAC_TT_LINE_OUT & 0xFF, (UAC_TT_LINE_OUT >> 8) & 0xFF,
     0,
     UNIT_FU_PLAYBACK,      /* #190 bSourceID = playback Feature Unit */
-    0,
+    STR_LINE_OUT_IDX,      /* iTerminal (#204) */
 
     /* ---- Output Terminal: S/PDIF transmitter (9 bytes) ---- #187
      *
@@ -262,7 +262,7 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
                             * what the hardware does: 0x23.3 gates the C-port
                             * playback side that feeds the DAC and the AES3
                             * transmitter alike. */
-    0,                     /* iTerminal */
+    STR_SPDIF_OUT_IDX,     /* iTerminal (#204) */
 
     /* ---- Feature Unit: capture Mute (10 bytes) ---- #190
      *
@@ -455,4 +455,31 @@ const unsigned char __code AppStringMfr[APP_STRING_MFR_LEN] = {
 const unsigned char __code AppStringProduct[APP_STRING_PRODUCT_LEN] = {
     26, USB_DT_STRING,
     'M',0,'b',0,'o',0,'x',0,' ',0,'(',0,'c',0,'l',0,'a',0,'s',0,'s',0,'c',0
+};
+
+/* #204 terminal-name strings. */
+
+const unsigned char __code AppStrStrLineIn[STR_LINE_IN_LEN] = {
+    0x10, 0x03,
+    'L',0, 'i',0, 'n',0, 'e',0, ' ',0, 'I',0, 'n',0
+};
+
+const unsigned char __code AppStrStrInstIn[STR_INST_IN_LEN] = {
+    0x16, 0x03,
+    'I',0, 'n',0, 's',0, 't',0, 'r',0, 'u',0, 'm',0, 'e',0, 'n',0, 't',0
+};
+
+const unsigned char __code AppStrStrSpdifIn[STR_SPDIF_IN_LEN] = {
+    0x14, 0x03,
+    'S',0, '/',0, 'P',0, 'D',0, 'I',0, 'F',0, ' ',0, 'I',0, 'n',0
+};
+
+const unsigned char __code AppStrStrLineOut[STR_LINE_OUT_LEN] = {
+    0x12, 0x03,
+    'L',0, 'i',0, 'n',0, 'e',0, ' ',0, 'O',0, 'u',0, 't',0
+};
+
+const unsigned char __code AppStrStrSpdifOut[STR_SPDIF_OUT_LEN] = {
+    0x16, 0x03,
+    'S',0, '/',0, 'P',0, 'D',0, 'I',0, 'F',0, ' ',0, 'O',0, 'u',0, 't',0
 };
