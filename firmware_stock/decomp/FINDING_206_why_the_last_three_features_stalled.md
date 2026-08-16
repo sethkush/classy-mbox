@@ -95,3 +95,40 @@ The release build has ~830 bytes free after the three that shipped. Every
 remaining item is blocked by hardware — a packet-memory slot that does not exist,
 a data path that cannot convert, and a sequencing rule about not stacking
 untested EP0 changes. Freeing more code space would not move any of them.
+
+---
+
+# CORRECTION, 2026-08-15 — "#3 is blocked" was wrong
+
+**The status interrupt endpoint shipped.** It is in build 0x0054, it enumerates,
+and `ch9_probe` addresses it. Everything above under "#3 — the status interrupt
+endpoint: NO BUFFER SLOT EXISTS" is a **wrong conclusion from a misread
+register**, left in place because the way it was wrong is the useful part.
+
+The error is one sentence in the table: the allocation does **not** fill
+0xFA10–0xFF27 exactly.
+
+`IEPBSIZx` sizes the **X/Y buffer PAIR, not one buffer.** So `EP_BSIZE(640)` on
+the playback and capture endpoints was never claiming 640 bytes each — it was
+claiming 640 for the pair, i.e. 320 per buffer. The map I drew double-counted
+both streaming endpoints and reported the region as full when half of it was
+free.
+
+**What proves it, rather than merely re-reading the datasheet:** the feedback
+endpoint's 8 bytes sit at 0xFF20–0xFF27, which is *exactly* the last 8 bytes of
+the region. If the pair reading were wrong and each `IEPBSIZ` sized one buffer,
+the allocation above would already have overrun the region end — and it
+enumerates and streams. The map that was already working is the evidence.
+
+Isochronous endpoints have no DBUF bit to turn double-buffering off
+(§6.4.4.6.2 gives bits 4:0 to BPS), so iso *always* uses X and Y, which is why
+the pair reading is the only one consistent with a working device.
+
+EP3 got its slot at 0xFF18 by shrinking the capture pair from 640 to 632 (#207).
+
+**The transferable lesson is in the last section, and it survives.** "The budget
+was never the binding constraint" was correct; "blocked by hardware" was not.
+The failure mode was diagnosing a hardware limit from a register description I
+had not cross-checked against a layout that was already known to work. A
+register whose meaning is in doubt should be resolved against the running
+device before it is written up as a wall.

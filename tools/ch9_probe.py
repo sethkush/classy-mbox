@@ -40,7 +40,9 @@ try:
     import usb.core
     import usb.util
 except ImportError:
-    sys.exit("pyusb not installed. On the void box: ~/mbox-venv/bin/python")
+    # --coverage is documentation and must work anywhere, including the mac
+    # this repo is edited on. Every other mode needs pyusb and says so below.
+    usb = None
 
 MBOX_VID = 0x0DBA
 AUDIO_PIDS = (0x1000,) + tuple(range(0x2000, 0x2010))
@@ -58,9 +60,85 @@ GET_INTERFACE, SET_INTERFACE, SYNCH_FRAME = 0x0A, 0x0B, 0x0C
 DT_DEVICE, DT_CONFIG, DT_STRING = 0x01, 0x02, 0x03
 
 
+# --------------------------------------------------------------------------
+# The USB20CV Chapter 9 suite, reconstructed by subject and mapped to where
+# each subject is covered here.
+#
+# HOW THIS WAS BUILT, because it bounds how much the map is worth. USB20CV is
+# closed-source and Windows-only and nobody on this project has run it, so this
+# is NOT a transcription of its test list -- it is the set of behaviours USB 2.0
+# Chapter 9 makes testable over a control pipe, grouped the way USB20CV's
+# published suite groups them. Where a group name is a guess at USB20CV's
+# wording it is still an accurate name for the SPEC requirement, and the spec
+# requirement is the thing being tested. Treat "covered" as "we test the
+# behaviour", never as "USB20CV would pass us".
+#
+# The four UNREACHABLE rows are the honest reason #192 stays open. Three of them
+# are unreachable from ANY userspace host stack, not just ours.
+# --------------------------------------------------------------------------
+COVERAGE = """\
+USB20CV Chapter 9 subjects -> ch9_probe coverage
+
+  COVERED (default run)
+    Device descriptor              18 bytes, bLength, bMaxPacketSize0, short
+                                   read at 8, over-long read clamps to 18
+    Configuration descriptor       9-byte header, wTotalLength, full read,
+                                   over-long read clamps, wLength 0
+    String descriptors             LANGID array, every index the device
+                                   descriptor names, undeclared index stalls
+    Device Qualifier               must STALL (full-speed-only, bcdUSB 1.10)
+    Other Speed Configuration      must STALL, same reason
+    Non-retrievable types          INTERFACE / ENDPOINT requested directly
+                                   must STALL (§9.4.3)
+    Unsupported descriptor types   HID report / BOS / class must STALL
+    Get/Set Configuration          reports 1, legal no-op set, bad value stalls
+    Get/Set Interface              all 3 interfaces, bad alt and bad iface stall
+    Get Status                     device / interface / endpoint, AND the
+                                   device bits cross-checked against
+                                   bmAttributes
+    Set/Clear Feature              unsupported selectors stall (#188);
+                                   DEVICE_REMOTE_WAKEUP stalls, matching
+                                   bmAttributes
+    Unimplemented requests         SET_DESCRIPTOR, SYNCH_FRAME, undefined
+                                   bRequest all stall
+    Post-stall liveness            device still answers after every stall above
+
+  COVERED (--invasive only, state-changing)
+    Halt Endpoint                  SET_FEATURE(ENDPOINT_HALT) on EP 0x83,
+                                   GET_STATUS reads back halted, CLEAR_FEATURE,
+                                   GET_STATUS reads back clear
+    Unconfigured (Address) State   SET_CONFIGURATION(0), GET_CONFIGURATION
+                                   returns 0, descriptors still answer, restore
+
+  COVERED ELSEWHERE (offline, no device needed)
+    Descriptor field rulebook      tools/verify_descriptors.py walks the built
+                                   image: bLength per type, wTotalLength
+                                   recomputed, bNumInterfaces, dangling
+                                   bSourceID, duplicate unit IDs, endpoint
+                                   addresses vs code, UAC1 format fields,
+                                   iSerialNumber vs the linked serial string
+
+  UNREACHABLE from Linux userspace -- these are what #192 is actually for
+    Set Address                    the host stack owns addressing; re-assigning
+                                   an address from userspace strands the device
+    Malformed packets / timing     libusb cannot emit a bad packet, a wrong
+                                   toggle, or a short inter-packet gap
+    Data toggle reset              SET_INTERFACE and CLEAR_FEATURE(HALT) must
+                                   reset the toggle; only an analyser sees it
+    Electrical / signalling        eye diagrams, rise times, EOP width
+
+  KNOWN DIVERGENCE (open)
+    GET_DESCRIPTOR wLength 0       the device STALLs it; legal per §9.3.5 and
+                                   USB20CV would flag it. WHO stalls it --
+                                   our code or the UBM -- is still unmeasured.
+                                   See FINDING_208.
+"""
+
+
 class Probe:
-    def __init__(self, dev):
+    def __init__(self, dev, invasive=False):
         self.dev = dev
+        self.invasive = invasive
         self.passes = 0
         self.failures = []
         self.notes = []
@@ -151,8 +229,55 @@ def run(p):
                     GET_DESCRIPTOR, DT_CONFIG << 8, 0, 0,
                     lambda b: None if len(b) == 0 else f"returned {len(b)}")
 
+    # --- wLength shorter and longer than the descriptor, on DEVICE too ----
+    #
+    # The config case is covered above; USB20CV runs the same pair against the
+    # device descriptor, and they fail differently. A SHORT read is the one
+    # every host performs for real: Linux asks for 8 bytes of the device
+    # descriptor first, to learn bMaxPacketSize0 before it can ask for the
+    # rest. A device that returns all 18 to that request overruns EP0 and the
+    # host sees a babble error at the very first transaction of enumeration.
+    p.expect_ok("GET_DESCRIPTOR(device, wLength 8) returns exactly 8",
+                D2H_STD_DEV, GET_DESCRIPTOR, DT_DEVICE << 8, 0, 8,
+                lambda b: None if len(b) == 8
+                else f"asked 8, got {len(b)} -- a short read must be truncated, "
+                     f"not completed")
+    p.expect_ok("GET_DESCRIPTOR(device, over-long wLength) returns exactly 18",
+                D2H_STD_DEV, GET_DESCRIPTOR, DT_DEVICE << 8, 0, 255,
+                lambda b: None if len(b) == 18
+                else f"asked 255, got {len(b)} (expected exactly 18)")
+
+    # --- USB20CV: Device Qualifier / Other Speed Configuration ------------
+    #
+    # These two are the tests most often failed by a device that was written
+    # against a high-speed example. USB 2.0 §9.6.2: a device_qualifier
+    # describes what changes if the device were operated at its OTHER speed,
+    # and a device that operates at ONE speed only "must not return" it -- the
+    # request MUST be answered with a Request Error, i.e. a STALL. §9.6.3 says
+    # the same for other_speed_configuration.
+    #
+    # We declare bcdUSB = 1.10 (descriptors.c:24) and are full-speed only, so
+    # neither descriptor exists and both must stall. Returning something --
+    # even a plausible-looking 10 bytes -- tells the host to try high-speed
+    # negotiation against hardware that has no such mode.
+    #
+    # Answering these WRONGLY is silent on Linux, which never asks a 1.10
+    # device for them. That is exactly the class of bug this suite is for.
+    for t, nm in ((0x06, "DEVICE_QUALIFIER"), (0x07, "OTHER_SPEED_CONFIG")):
+        p.expect_stall(f"GET_DESCRIPTOR({nm}) stalls -- §9.6.2/§9.6.3, "
+                       f"full-speed-only device", D2H_STD_DEV, GET_DESCRIPTOR,
+                       t << 8, 0, 64)
+
+    # §9.4.3: INTERFACE and ENDPOINT descriptors are only ever returned as
+    # part of a configuration descriptor -- "there is no way for the host to
+    # retrieve them directly" -- so a request naming one must stall. A device
+    # that helpfully answers is inventing a transfer the spec does not define.
+    for t, nm in ((0x04, "INTERFACE"), (0x05, "ENDPOINT")):
+        p.expect_stall(f"GET_DESCRIPTOR({nm}) stalls -- §9.4.3, not directly "
+                       f"retrievable", D2H_STD_DEV, GET_DESCRIPTOR, t << 8, 0, 64)
+
     # §9.4.3: an unsupported descriptor TYPE must stall.
-    for t, nm in ((0x22, "HID report"), (0x0F, "BOS"), (0x07, "reserved 0x07")):
+    for t, nm in ((0x22, "HID report"), (0x0F, "BOS"), (0x21, "class 0x21")):
         p.expect_stall(f"GET_DESCRIPTOR(type 0x{t:02X} {nm}) stalls",
                        D2H_STD_DEV, GET_DESCRIPTOR, t << 8, 0, 64)
     # An out-of-range descriptor INDEX must stall too.
@@ -207,9 +332,39 @@ def run(p):
                    GET_INTERFACE, 0, 9, 1)
 
     # --- §9.4.5 GET_STATUS at all three recipients ------------------------
-    p.expect_ok("GET_STATUS(device)", D2H_STD_DEV, GET_STATUS, 0, 0, 2,
-                lambda b: None if len(b) == 2 else f"returned {len(b)} bytes, "
-                                                   f"§9.4.5 requires 2")
+    # §9.4.5 does not merely require two bytes -- it requires two bytes that
+    # AGREE WITH THE CONFIG DESCRIPTOR. Bit 0 is Self Powered, bit 1 is Remote
+    # Wakeup, and both restate what bmAttributes already declared. USB20CV
+    # cross-checks the pair; checking only the length (which is all this did
+    # until now) passes a device that reports self-powered while its descriptor
+    # says bus-powered, and that contradiction is what a host uses to decide
+    # whether it may suspend the port.
+    #
+    # We declare bmAttributes = 0x80 (descriptors.c:59): bus-powered, no remote
+    # wakeup. So the correct answer is exactly 0x0000.
+    cfg_attr = cfg[7] if cfg is not None and len(cfg) >= 8 else None
+
+    def _status_matches(b):
+        if len(b) != 2:
+            return f"returned {len(b)} bytes, §9.4.5 requires 2"
+        if cfg_attr is None:
+            return None
+        want_self = 1 if (cfg_attr & 0x40) else 0
+        want_wake = 1 if (cfg_attr & 0x20) else 0
+        got_self, got_wake = b[0] & 1, (b[0] >> 1) & 1
+        bad = []
+        if got_self != want_self:
+            bad.append(f"Self Powered = {got_self} but bmAttributes "
+                       f"0x{cfg_attr:02X} says {want_self}")
+        if got_wake != want_wake:
+            bad.append(f"Remote Wakeup = {got_wake} but bmAttributes "
+                       f"0x{cfg_attr:02X} says {want_wake}")
+        if b[0] & 0xFC or b[1]:
+            bad.append(f"reserved bits set in {list(b)}; §9.4.5 requires zero")
+        return "; ".join(bad) if bad else None
+
+    p.expect_ok("GET_STATUS(device) agrees with bmAttributes", D2H_STD_DEV,
+                GET_STATUS, 0, 0, 2, _status_matches)
     p.expect_ok("GET_STATUS(interface 0)", D2H_STD_IFACE, GET_STATUS, 0, 0, 2,
                 lambda b: None if len(b) == 2 and b[0] == 0 and b[1] == 0
                 else f"returned {list(b)}; §9.4.5 reserves both bytes as zero")
@@ -253,6 +408,78 @@ def run(p):
             p.expect_stall(f"UAC {rn} sampling freq stalls, {nm}", 0xA2, req,
                            UAC_SAMPLING_FREQ << 8, ep, 3)
 
+    # --- USB20CV: Halt Endpoint Test (state-changing, opt-in) -------------
+    #
+    # §9.4.5 makes the halt feature MANDATORY on every interrupt and bulk
+    # endpoint: SET_FEATURE(ENDPOINT_HALT) must halt it, GET_STATUS(endpoint)
+    # must then report bit 0 set, and CLEAR_FEATURE must clear it again. This
+    # is the one Chapter 9 test we cannot fold into the default run, because
+    # a device that implements the SET half and not the CLEAR half leaves the
+    # endpoint stuck -- and on this project un-sticking it costs a 2 km round
+    # trip. So it runs only under --invasive, and only on EP 0x83, the status
+    # interrupt endpoint (#207): nothing streams on it, so a stuck halt loses
+    # no audio.
+    #
+    # #188 made us stall UNSUPPORTED feature selectors. ENDPOINT_HALT on a real
+    # interrupt endpoint is not one of those -- it is required to work, and
+    # whether we implement it is genuinely unknown until this runs.
+    if p.invasive:
+        HALT, EP = 0x00, 0x83
+        kind, _ = p._xfer(H2D_STD_EP, SET_FEATURE, HALT, EP, None)
+        if kind != "ok":
+            p.failures.append(
+                f"SET_FEATURE(ENDPOINT_HALT, EP 0x{EP:02X}): {kind} -- §9.4.9 "
+                f"makes the halt feature mandatory on an interrupt endpoint")
+        else:
+            p.passes += 1
+            st = p.expect_ok(f"GET_STATUS(EP 0x{EP:02X}) reports halted",
+                             D2H_STD_EP, GET_STATUS, 0, EP, 2,
+                             lambda b: None if len(b) == 2 and (b[0] & 1)
+                             else f"returned {list(b)}; after SET_FEATURE the "
+                                  f"halt bit must read back set")
+            kind, _ = p._xfer(H2D_STD_EP, CLEAR_FEATURE, HALT, EP, None)
+            if kind != "ok":
+                p.failures.append(
+                    f"CLEAR_FEATURE(ENDPOINT_HALT, EP 0x{EP:02X}): {kind} -- "
+                    f"the endpoint is now STUCK HALTED until the unit is "
+                    f"replugged")
+            else:
+                p.passes += 1
+                p.expect_ok(f"GET_STATUS(EP 0x{EP:02X}) reports cleared",
+                            D2H_STD_EP, GET_STATUS, 0, EP, 2,
+                            lambda b: None if len(b) == 2 and not (b[0] & 1)
+                            else f"returned {list(b)}; halt did not clear")
+
+        # --- USB20CV: Unconfigured (Address) State Test ------------------
+        #
+        # §9.4.7: SET_CONFIGURATION(0) returns the device to the Address state.
+        # It must stay ANSWERABLE there -- GET_CONFIGURATION reports 0, and the
+        # standard requests still work -- because that is the state every host
+        # passes through on the way to configuring it. A device that goes deaf
+        # at config 0 can be enumerated once and never again.
+        kind, _ = p._xfer(H2D_STD_DEV, SET_CONFIGURATION, 0, 0, None)
+        if kind != "ok":
+            p.failures.append(f"SET_CONFIGURATION(0): {kind} -- §9.4.7 requires "
+                              f"a device to accept a return to the Address state")
+        else:
+            p.passes += 1
+            p.expect_ok("GET_CONFIGURATION reports 0 when unconfigured",
+                        D2H_STD_DEV, GET_CONFIGURATION, 0, 0, 1,
+                        lambda b: None if len(b) == 1 and b[0] == 0
+                        else f"returned {list(b)}, expected [0]")
+            p.expect_ok("GET_DESCRIPTOR(device) still answers when unconfigured",
+                        D2H_STD_DEV, GET_DESCRIPTOR, DT_DEVICE << 8, 0, 18,
+                        lambda b: None if len(b) == 18 else f"returned {len(b)}")
+            kind, _ = p._xfer(H2D_STD_DEV, SET_CONFIGURATION, 1, 0, None)
+            if kind != "ok":
+                p.failures.append(f"SET_CONFIGURATION(1) to RESTORE: {kind} -- "
+                                  f"the device is left unconfigured")
+            else:
+                p.passes += 1
+    else:
+        p.notes.append("Halt Endpoint and Unconfigured State tests SKIPPED "
+                       "(state-changing) -- rerun with --invasive")
+
     # --- the property every stall above depends on ------------------------
     # A device that stalls correctly and then stops answering is worse than one
     # that never stalled. This is the check the whole suite rests on.
@@ -268,7 +495,22 @@ def main():
     ap.add_argument("--keep-driver", action="store_true",
                     help="do not detach snd-usb-audio; interface-recipient "
                          "cases will then read as host-stack refusals")
+    ap.add_argument("--invasive", action="store_true",
+                    help="also run the state-changing tests: the Halt Endpoint "
+                         "cycle on EP 0x83 and the Unconfigured State test. "
+                         "Both restore themselves IF the device implements the "
+                         "clearing half; if it does not, the unit needs a "
+                         "replug. Off by default for that reason.")
+    ap.add_argument("--coverage", action="store_true",
+                    help="print the USB20CV-to-here mapping and exit without "
+                         "touching a device")
     a = ap.parse_args()
+
+    if a.coverage:
+        print(COVERAGE)
+        return 0
+    if usb is None:
+        sys.exit("pyusb not installed. On the void box: ~/mbox-venv/bin/python")
 
     found = []
     for pid in AUDIO_PIDS:
@@ -306,7 +548,7 @@ def main():
     if detached:
         print(f"detached kernel driver from interface(s) {detached}")
 
-    p = Probe(dev)
+    p = Probe(dev, invasive=a.invasive)
     try:
         run(p)
     finally:

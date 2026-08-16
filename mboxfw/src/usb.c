@@ -210,14 +210,6 @@ static void stage_immediate(const unsigned char *bytes, unsigned char len)
     unsigned char i;
     /* Cap to what the host asked for (wLength) — never send more. */
     unsigned int wLen = ((unsigned int)wLenH << 8) | wLenL;
-    /* #208, same reasoning as stage_reply(): no data stage means no IN to arm.
-     * This path serves the single-packet replies -- telemetry blocks, GET_CUR --
-     * and a host asking for one of those with wLength = 0 must be answered the
-     * same way. */
-    if (wLen == 0) {
-        g_ep0_reply_remaining = 0;
-        return;
-    }
     if (n > wLen) n = (unsigned char)wLen;
     for (i = 0; i < n; i++) {
         dst[i] = bytes[i];
@@ -259,33 +251,17 @@ static void stage_reply(__code const unsigned char *src, unsigned int len)
     /* Cap reply length to what the host actually asked for. */
     unsigned int wLen = ((unsigned int)wLenH << 8) | wLenL;
 
-    /* #208. wLength == 0 on a device-to-host request: there is no data stage at
-     * all, and arming a zero-length IN here is what made the device STALL it.
+    /* wLength == 0 on a device-to-host request falls out of the clamp below:
+     * len becomes 0, push_reply_chunk() arms IEPDCNTX0 = 0, and the transfer
+     * is a bare status stage — which is what USB 2.0 §8.5.3 asks for.
      *
-     * MEASURED, because the spec alone points the other way. USB 2.0 §8.5.3
-     * says a transfer with no data stage takes its status IN — which is exactly
-     * what IEPDCNTX0 = 0 arms, and what reply_zero_length() does for
-     * SET_CONFIGURATION, where it demonstrably works. So on paper this path was
-     * already correct. On the wire it is not: GET_DESCRIPTOR(config) with
-     * wLength = 0 returns a pipe error, and setup_count proves the request
-     * REACHES the device rather than being refused by the host — the device is
-     * what stalls it.
-     *
-     * The difference the hardware cares about is the SETUP's direction bit, not
-     * whether a data stage occurred. For a device-to-host SETUP the UBM runs its
-     * control-READ state machine and expects the host's OUT status, which it
-     * already completes on its own after every normal descriptor reply. Arming
-     * an IN across that is the mismatch.
-     *
-     * So do nothing but clear any half-finished reply, and let the same
-     * automatic path that ends every other control read end this one.
-     *
-     * No real host issues this; USB20CV does, which is why it exists (#192). */
-    if (wLen == 0) {
-        g_ep0_reply_remaining = 0;
-        return;
-    }
-
+     * The device nevertheless STALLs GET_DESCRIPTOR with wLength = 0 (#208).
+     * Special-casing this path was tried and changed nothing on the wire: the
+     * device only ever sees the 8 SETUP bytes, so arming a ZLP and arming
+     * nothing are indistinguishable to it, and both stall in ~445 us. The
+     * stall therefore originates somewhere this function cannot reach.
+     * WHO stalls it is still unmeasured — see FINDING_208. Do not "fix" this
+     * again without the stall counter in hand. */
     if (len > wLen) len = wLen;
     g_ep0_reply_src = src;
     g_ep0_reply_remaining = len;
