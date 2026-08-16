@@ -1694,7 +1694,7 @@ void usb_service(void)
             break;
 
         case VEC_RSTR:
-            TLM_INC16(tlm.rstr_count);
+            TLM_INC16_KEEP(tlm.rstr_count);   /* kept in release: cold-boot proof */
             /* USB bus reset. Per TAS1020B datasheet §6.5.1.4, bus reset
              * CLEARS FEN — the UBM then ignores all USB transactions
              * until FEN is set again. Re-arm EP0 config (also cleared

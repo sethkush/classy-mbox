@@ -45,12 +45,19 @@ volatile __data unsigned int  tlm_last_wlength = 0;
  * without, and on a part where one power cycle buys one image and costs a 2 km
  * round trip, answering it over the wire is worth more than the bytes.
  *
- * What survives is honest about what it can still see. The stage ladder and the
- * saturating counters ARE compiled out, so their bytes read zero rather than
- * stale values -- and byte 2 is documented as "not measured in release" instead
- * of being filled with something that looks like a reading. tlm_phases survives
- * because main.c sets it with plain ORs that are not part of the diagnostic
- * surface, so the boot-phase mask is real in every build. */
+ * What survives is honest about what it can still see. The stage ladder and all
+ * but one of the saturating counters ARE compiled out, so their bytes read zero
+ * rather than stale values -- and byte 2 is documented as "not measured in
+ * release" instead of being filled with something that looks like a reading.
+ * tlm_phases survives because main.c sets it with plain ORs that are not part of
+ * the diagnostic surface, so the boot-phase mask is real in every build.
+ *
+ * The exception is rstr_count, added to release on 2026-08-16 when #214 pushed
+ * the diagnostic build past 6016 and the release tier became the shipping one.
+ * It is the only way to tell a bus reset from a cold boot -- the proof is a
+ * counter going DOWN -- and without it every future power-cycle question would
+ * need a diagnostic build flashed first, spending a power cycle to ask a
+ * question about power cycles. 28 bytes. */
 #ifdef MBOX_RELEASE
 unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
 {
@@ -67,9 +74,12 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
     out[2] = 0;                   /* stage ladder: not measured in release */
     out[3] = tlm_phases;          /* real -- plain ORs in main.c */
     out[4] = 0;
-    out[5] = 0;
-    out[6] = 0;
-    out[7] = 0;                   /* loop_count and rstr_count: not measured */
+    out[5] = 0;                   /* loop_count: not measured in release */
+    /* rstr_count IS measured in release. Same bytes 6-7 as the diagnostic
+     * build, so mboxtlm.py's block 0 decoder needs no tier awareness. It is
+     * the only counter that survives -- see TLM_INC16_KEEP in telemetry.h. */
+    out[6] = (unsigned char)(tlm.rstr_count & 0xFF);
+    out[7] = (unsigned char)(tlm.rstr_count >> 8);
     return 1;
 }
 #endif

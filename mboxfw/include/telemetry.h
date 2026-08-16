@@ -175,7 +175,28 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0055   /* 0055: #208 REVERTED, and #209's instrument.
+#define TLM_BUILD_ID     0x0055   /* 0055: TWO CONFORMANCE FIXES, #212 + #214.
+                                   *       #212: SET_ADDRESS took any wValueL
+                                   *       with no range check. ch9addr.ko sent
+                                   *       200, the device ACCEPTED it (§9.4.6
+                                   *       makes >127 a Request Error) and then
+                                   *       stopped answering at its old address
+                                   *       until a port cycle. Now stalls >127.
+                                   *       #214: ENDPOINT_HALT is mandatory on
+                                   *       an INTERRUPT endpoint and we stalled
+                                   *       it. #188's "all our endpoints are
+                                   *       isochronous" was true when written
+                                   *       and expired when #207 added EP 0x83.
+                                   *       Per-endpoint: 0x81/0x02/0x82 keep
+                                   *       stalling it, correctly (§5.6.3).
+                                   *       6011 of 6016 -- which is why
+                                   *       MBOX_TLM_STALL=1 does NOT build in
+                                   *       this tree. #209's counter and #214
+                                   *       cannot both fit, and a fix that
+                                   *       affects real hosts outranks an
+                                   *       instrument for a compliance footnote.
+                                   *       #208 REVERTED here too, and #209's
+                                   *       instrument exists behind the flag.
                                    *       The two wLen==0 early-returns are out
                                    *       of stage_reply()/stage_immediate():
                                    *       they changed nothing on the wire,
@@ -846,6 +867,20 @@ extern volatile __data unsigned char tlm_mux_rejects;
 #else
 #define TLM_INC16(c)  do { if ((c) < 0xFFFF) (c)++; } while (0)
 #endif
+
+/* SURVIVES MBOX_RELEASE, deliberately, and only this one counter.
+ *
+ * rstr_count is not diagnostic trivia -- it is the ONLY way this project can
+ * tell a bus reset from a cold boot. Re-enumeration looks identical either way;
+ * the established proof is a counter going DOWN, and that has been needed on
+ * every power-cycle question so far (uhubctl -a cycle, -a off with a dwell, and
+ * a full host reboot -- all three of which turned out NOT to drop VBUS, and all
+ * three of which were settled by this number).
+ *
+ * A release image with no rstr_count would make every future cold-boot question
+ * unanswerable without reflashing a diagnostic build first, which costs a power
+ * cycle to ask a question about power cycles. Sixteen bytes is a bargain. */
+#define TLM_INC16_KEEP(c)  do { if ((c) < 0xFFFF) (c)++; } while (0)
 
 /* Fill an 8-byte block. Returns 0 and fills 0xFF for an unknown index so
  * a host reading past the end gets a clean sentinel instead of a stall. */
