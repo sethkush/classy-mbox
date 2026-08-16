@@ -46,6 +46,7 @@
  */
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/usb.h>
 
@@ -213,7 +214,118 @@ static int __init ch9addr_init(void)
 				"OLD address after SET_ADDRESS(0) -- it ACKed the "
 				"request and did not act on it\n", ret);
 
-		pr_warn("ch9addr: recover with: uhubctl -l <hub> -p <port> -a cycle\n");
+		/* ---- DEFAULT-STATE TESTS -------------------------------------
+		 *
+		 * This was written off as "only USB20CV can reach this, because it
+		 * drives enumeration". That was wrong, and the route was already
+		 * built: SET_ADDRESS(0) above puts the device in the Default state,
+		 * which means it is now answering AT ADDRESS 0. usbcore addresses
+		 * transfers from udev->devnum, so pointing that at 0 talks to it
+		 * there. No enumeration control needed -- just the state.
+		 *
+		 * Restoring is a plain SET_ADDRESS back to the original value, so
+		 * the happy path costs nothing. A port cycle is still the fallback.
+		 */
+		{
+			int saved = udev->devnum;
+			unsigned char *b = kmalloc(18, GFP_KERNEL);
+
+			udev->devnum = 0;
+			pr_info("ch9addr: --- Default state (talking to address 0) ---\n");
+
+			if (b) {
+				/* §9.6.1: the 8-byte read every host makes first, before
+				 * it knows bMaxPacketSize0. If this fails in Default
+				 * state, nothing can ever enumerate the device. */
+				ret = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0),
+						      USB_REQ_GET_DESCRIPTOR,
+						      USB_DIR_IN | USB_TYPE_STANDARD |
+							      USB_RECIP_DEVICE,
+						      (USB_DT_DEVICE << 8), 0, b, 8, 2000);
+				pr_info("ch9addr: %s GET_DESCRIPTOR(device,8) @addr0 -> %d%s\n",
+					(ret == 8) ? "PASS" : "FAIL", ret,
+					(ret == 8) ? "" : "  [required by §9.6.1]");
+				if (ret == 8)
+					pr_info("ch9addr:      bLength=%u bDescriptorType=%u "
+						"bMaxPacketSize0=%u\n", b[0], b[1], b[7]);
+
+				/* SET_CONFIGURATION in the Default state.
+				 *
+				 * NOT scored, deliberately. The first version called
+				 * accepting it a FAIL on the strength of "§9.4.7: not
+				 * valid before the device is addressed" -- which I wrote
+				 * without checking, and which is stronger than what the
+				 * spec says. USB 2.0 §9.4 marks several requests' Default
+				 * state behaviour as NOT SPECIFIED rather than requiring a
+				 * Request Error, and if this is one of them then accepting
+				 * it is legal and a FAIL here is a fabricated defect.
+				 *
+				 * So it is reported as an observation with the spec
+				 * question named. Someone with the document open can score
+				 * it; until then this records what the device does and
+				 * does not pretend to know whether that is wrong. The
+				 * §5.6.3-vs-§5.6.4 mess earlier the same day is why. */
+				ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
+						      USB_REQ_SET_CONFIGURATION,
+						      USB_DIR_OUT | USB_TYPE_STANDARD |
+							      USB_RECIP_DEVICE,
+						      1, 0, NULL, 0, 2000);
+				pr_info("ch9addr: OBSERVED SET_CONFIGURATION(1) @addr0 -> %d "
+					"(%s). NOT SCORED -- §9.4 may mark Default-state "
+					"behaviour for this request as 'not specified', in which "
+					"case either answer is legal. Verify against the document "
+					"before calling it either way.\n",
+					ret, (ret < 0) ? "refused" : "accepted");
+				kfree(b);
+			}
+
+			/* Put it back where usbcore thinks it is. */
+			ret = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
+					      USB_REQ_SET_ADDRESS,
+					      USB_DIR_OUT | USB_TYPE_STANDARD |
+						      USB_RECIP_DEVICE,
+					      saved, 0, NULL, 0, 5000);
+			udev->devnum = saved;
+
+			/* VERIFY THE RESTORE. The first version printed "re-addressed
+			 * to %d; NO port cycle needed" as soon as SET_ADDRESS returned
+			 * >= 0 -- an ACK, not evidence. The unit was in fact NOT back:
+			 * the next run found every request stalling, and it needed a
+			 * port cycle after all.
+			 *
+			 * That is the same mistake this file warns about forty lines
+			 * up, about SET_ADDRESS(0): "an ACK only proves the device
+			 * answered, not that it acted". Written, and then not applied
+			 * to the restore path in the same function. A claim that the
+			 * device is healthy has to be a transfer that worked. */
+			if (ret >= 0) {
+				unsigned char *v = kmalloc(18, GFP_KERNEL);
+				int chk = -ENOMEM;
+
+				if (v) {
+					msleep(20);   /* §9.2.6.3 recovery interval, generously */
+					chk = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0),
+							      USB_REQ_GET_DESCRIPTOR,
+							      USB_DIR_IN | USB_TYPE_STANDARD |
+								      USB_RECIP_DEVICE,
+							      (USB_DT_DEVICE << 8), 0,
+							      v, 18, 2000);
+					kfree(v);
+				}
+				if (chk == 18) {
+					pr_info("ch9addr: re-addressed to %d and VERIFIED "
+						"answering; no port cycle needed\n", saved);
+					goto done;
+				}
+				pr_warn("ch9addr: SET_ADDRESS(%d) was ACKed but the device "
+					"does NOT answer there (%d)\n", saved, chk);
+			} else {
+				pr_warn("ch9addr: could not re-address to %d (%d)\n",
+					saved, ret);
+			}
+			pr_warn("ch9addr: THE UNIT IS DOWN. Recover with:\n");
+			pr_warn("ch9addr:     uhubctl -l <hub> -p <port> -a cycle\n");
+		}
 	} else {
 		pr_info("ch9addr: SET_ADDRESS(0) skipped (allow_risky=0)\n");
 	}
