@@ -350,3 +350,39 @@ both stall. Capture 576,044 bytes and playback clean on both cards.
 
 **#211 is closed.** The endpoint was declared on 2026-08-04 and delivered its
 first byte on 2026-08-16.
+
+## The device's true playback rate, now that the loop reports it
+
+Five minutes per arm, same unit, exact playback packet sizes:
+
+| armed | 288 B (48 samples) | 282 B (47 samples) | underruns |
+|---|---|---|---|
+| 3 — feedback babbling | **300000** | 0 | 0 |
+| 1 — feedback working | 299902 | **101** | 0 |
+
+300,000 packets with the loop open and **not one** departure from nominal. With
+it closed, 101 corrections.
+
+That makes the mean 14,400,043 samples over 300,003 frames = **47.99966
+samples per frame**, i.e. the host is now clocking playback at **-7.0 ppm**
+against nominal 48 kHz. Before today that number did not exist: the host had no
+way to know and sent 48.000000 forever.
+
+Neither arm produced an underrun in five minutes, so this was never audible —
+which is exactly why it survived from #186 to now.
+
+### An open disagreement, stated rather than resolved
+
+The feedback VALUE the device reports reads slightly **above** nominal
+(0x0BFFF7 = 48.0001), which should make the host insert extra samples. The
+correction it actually applies is **negative**, -7 ppm. Those disagree in sign.
+
+101 corrections over 300,003 frames is far too consistent to be noise, so the
+disagreement is real. It is not resolved here, and two candidates are open:
+`snd-usb-audio` runs its own buffer-level correction on top of the feedback
+value and may simply dominate it, or our 10.14 value is scaled or signed in a
+way that does not mean what we read it to mean. Distinguishing them needs the
+host's own view of the endpoint, not the device's.
+
+Nothing about the fix depends on it: the endpoint now delivers a legal 3-byte
+packet the host accepts and acts on, where before it delivered nothing at all.
