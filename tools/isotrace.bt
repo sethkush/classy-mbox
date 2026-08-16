@@ -1,0 +1,113 @@
+#!/usr/bin/env bpftrace
+/*
+ * Isochronous frame statistics for the Mbox, aggregated IN THE KERNEL.
+ *
+ * WHY THIS IS NOT usbmon. A 48 kHz stream is 1000 frames a second on each
+ * direction. usbmon copies every one of them, with payload, to userspace, and
+ * then you grep. The buffer wraps, the grep is slow, and the interesting frame
+ * -- a short one, a zero-length one, an errored one -- is one line in a million.
+ * Worse, this project has already been bitten by sampling isochronous telemetry
+ * AFTER teardown and reading the teardown as the measurement.
+ *
+ * eBPF aggregates in place: a histogram of actual_length per packet and a count
+ * per status code, built inside usb_hcd_giveback_urb, with nothing copied out
+ * until you stop it. It is cheap enough to leave running for the whole capture,
+ * which is what makes it a MID-STREAM instrument rather than an after-the-fact
+ * one.
+ *
+ * WHAT IT ANSWERS that nothing else here does:
+ *   * "our capture EP delivers 0 bytes/frame, stock delivers 288" -- as a
+ *     distribution over the whole stream, not a spot check
+ *   * whether short packets are rare-and-scattered or a clean bimodal split
+ *   * whether the packet size tracks the declared rate (#183) frame by frame
+ *   * iso error codes as they happen, separated from the transfer-level status
+ *
+ * READ THE DIRECTION LABELS. Capture is EP 0x81 IN, playback EP 0x02 OUT,
+ * feedback EP 0x81's partner. A histogram that looks wrong is often the other
+ * direction.
+ *
+ * KNOWN-ANSWER ARM, and this project's rules require one: playback OUT packet
+ * lengths are chosen by the HOST, so @len[OUT] must show the sizes ALSA asked
+ * for. If the OUT histogram is empty or nonsense while something is playing,
+ * the probe is not attached to what you think and the IN histogram means
+ * nothing either.
+ *
+ * Usage:
+ *     sudo bpftrace tools/isotrace.bt <busnum> <devnum>
+ *     # then, in another shell, run the capture or playback under test
+ *
+ * Safe on a live unit: observes only.
+ */
+
+BEGIN
+{
+    if ($1 == 0 || $2 == 0) {
+        printf("usage: isotrace.bt <busnum> <devnum>   (from lsusb)\n");
+        exit();
+    }
+    @want_bus = (uint32)$1;
+    @want_dev = (uint32)$2;
+    /* sizeof(struct urb) on this kernel. iso_frame_desc[] is a flexible array
+     * member immediately after it, and each usb_iso_packet_descriptor is
+     * 4 x 32-bit: offset, length, actual_length, status. Both are checked at
+     * runtime below rather than trusted -- see the END block. */
+    @urb_sz  = (uint64)192;
+    @desc_sz = (uint64)16;
+    printf("iso tracing bus %d dev %d -- run the stream now, Ctrl-C to report\n",
+           @want_bus, @want_dev);
+}
+
+kprobe:usb_hcd_giveback_urb
+{
+    $u = (struct urb *)arg1;
+    $d = $u->dev;
+    if ($d == 0) { return; }
+    if ((uint32)$d->devnum != @want_dev) { return; }
+    if ((uint32)$d->bus->busnum != @want_bus) { return; }
+
+    $np = $u->number_of_packets;
+    if ($np <= 0) { return; }          /* not isochronous */
+
+    /* usb_pipetype()/usb_pipeendpoint() open-coded from linux/usb.h. */
+    $pipe = $u->pipe;
+    $ep   = ($pipe >> 15) & 0x0F;
+    $in   = ($pipe & 0x80) ? 1 : 0;
+
+    @urbs[$ep, $in] = count();
+    @pkts_per_urb[$ep, $in] = hist($np);
+    @errcount[$ep, $in] = sum($u->error_count);
+
+    /* Walk the per-packet descriptors. Bounded: a 1 ms iso URB from
+     * snd-usb-audio carries tens of packets, never hundreds, and the verifier
+     * needs a ceiling regardless. If $np exceeds it, @truncated says so rather
+     * than the histogram quietly under-reporting. */
+    if ($np > 64) { @truncated[$ep, $in] = count(); }
+    $n = ($np > 64) ? 64 : $np;
+
+    $base = (uint64)$u + @urb_sz;
+    $i = 0;
+    while ($i < $n) {
+        $p = $base + ((uint64)$i * @desc_sz);
+        $alen = *(uint32 *)($p + 8);
+        $st   = *(int32  *)($p + 12);
+
+        @len[$ep, $in] = hist($alen);
+        @status[$ep, $in, $st] = count();
+        if ($alen == 0) { @zero_len[$ep, $in] = count(); }
+        /* Total bytes actually moved, which is the number that should track
+         * the declared sample rate over a known interval (#183). */
+        @bytes[$ep, $in] = sum($alen);
+
+        $i = $i + 1;
+    }
+}
+
+END
+{
+    clear(@want_bus); clear(@want_dev); clear(@urb_sz); clear(@desc_sz);
+    printf("\nmaps are keyed [endpoint, is_IN]  -- 1,1 = capture 0x81; ");
+    printf("2,0 = playback 0x02\n");
+    printf("@len is per-PACKET actual_length; @bytes is the total moved.\n");
+    printf("If @len is empty for a direction that was streaming, the struct\n");
+    printf("offsets are wrong for this kernel -- check sizeof(struct urb).\n");
+}
