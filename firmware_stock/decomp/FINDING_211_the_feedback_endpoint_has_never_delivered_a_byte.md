@@ -103,3 +103,57 @@ capture makes a 100%-failure rate obvious in the first run.
 **Never argue from absence — but also, look.** Nothing about this endpoint was
 ever asserted falsely. It simply was never measured, and "we declared it and
 playback works" was allowed to stand in for "it functions".
+
+---
+
+## Attempt 1 at the discriminating test: blocked by usbcore, by design
+
+2026-08-15, same day. `tools/fbprobe.py` submits raw isochronous URBs through
+usbfs so the SCHEDULED packet size can be chosen independently of what the
+descriptor declares. If the device is emitting 8 bytes, an 8-byte schedule
+should succeed and hand back what it actually sends.
+
+```
+ sched    urb  packet lengths      status counts
+     3      0  0B x16              -75 x9, 0 x7   <-- CONTROL ARM
+     4     --  submit failed: EMSGSIZE
+     8     --  submit failed: EMSGSIZE
+    16     --  submit failed: EMSGSIZE
+```
+
+**usbcore validates each `iso_frame_desc[].length` against the endpoint's
+`wMaxPacketSize` before the URB ever reaches the host controller.** Asking for
+more than the descriptor declares is refused in software, at the host, with
+EMSGSIZE. The experiment is not reachable from userspace at all — not because
+of permissions, but because the kernel enforces the device's own declaration.
+
+Reaching it needs a module, which can raise the cached
+`ep->desc.wMaxPacketSize` on `struct usb_host_endpoint` before submitting. That
+is two lines on top of the infrastructure `tools/ch9mod/` already has, and it is
+blocked on the same reboot that module is blocked on.
+
+### The control arm did more than validate the harness
+
+It was supposed to just reproduce the -75 and prove the rig. It did — but not
+uniformly. Of 16 packets: **9 with status -75, and 7 with status 0** — all with
+`actual_length` 0.
+
+Under ALSA's own scheduling the rate was 100% -75. So the endpoint has two
+behaviours, not one:
+
+* **status 0, 0 bytes** — the device presented a zero-length packet. Legal, and
+  what a feedback endpoint does when it has nothing new to report.
+* **status -75, 0 bytes** — the device presented something LARGER than 3 bytes.
+
+That is a sharper statement of the defect than "it always babbles". The endpoint
+is alive and is being serviced; when it declines to send, it declines correctly.
+It is only the packets it does send that are the wrong size. Whatever is wrong
+is in the size of the transfer, not in whether the endpoint runs — which is
+consistent with the `IEPBSIZ` hypothesis and inconsistent with, say, the
+endpoint never being armed.
+
+The 9:7 split is not obviously 1-in-4, which is what `FB_ARM_EVERY = 4` and
+`bRefresh = 2` would predict. Not read further: a one-shot 16-packet URB has a
+different phase relationship to the firmware's arming cycle than ALSA's
+continuous submission does, and inferring a duty cycle from one URB would be
+reading structure into 16 samples.
