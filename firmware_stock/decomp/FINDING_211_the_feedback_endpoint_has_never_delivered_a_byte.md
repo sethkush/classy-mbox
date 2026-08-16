@@ -238,3 +238,70 @@ the same thing is not measuring what it thinks.
 
 Unit verified clean afterwards: altsetting restored to 0, 576,044 bytes
 captured, `aplay` rc=0.
+
+---
+
+# RESOLVED AND FIXED, 2026-08-16 — the UBM emits three bytes per unit armed
+
+`TLM_REQ_FB_TUNE` (#215) made the armed count settable at runtime, so the whole
+range could be swept on one flash instead of one round trip per value. The
+answer took one command:
+
+| armed (`IEPDCNTX2`) | 1 | 2 | 3 | 4 | 6 | 8 |
+|---|---|---|---|---|---|---|
+| **emitted bytes** | **3** | 6 | 9 | 12 | 18 | 24 |
+
+**Exactly three bytes on the wire per unit armed.** Six points, perfectly
+linear, no exceptions.
+
+So `IEPDCNTX2 = 3` — which is what TI's `SoftPll.c` arms, and what we copied —
+produces **9 bytes**. That is the whole of #211. The endpoint has babbled on
+every packet since the day it was declared, because the register was armed with
+the number of bytes wanted rather than the number of units that produces them.
+
+At armed = 1 the packet is `fb ff 0b` and nothing else: `0x0BFFFB / 16384 =
+48.0001` samples per frame. The payload was always correct.
+
+## End to end, before changing any firmware
+
+Armed to 1 over the wire, then `isotrace.bt` across a playback stream:
+
+```
+@status[2, 1, 0]:  1005      every packet status 0
+@errcount[2, 1]:      0
+@bytes[2, 1]:      3015      = 1005 x exactly 3 bytes
+@len[2, 1]:  [2,4) 1005
+```
+
+Against 100% `-EOVERFLOW` and **zero bytes delivered** before. Playback
+unaffected in the same run: 4018 packets, status 0.
+
+**The feedback endpoint works, for the first time since it was declared.**
+
+## The fix, and why it is a new constant rather than a changed one
+
+`AUDIO_FEEDBACK_ARM = 1`, separate from `AUDIO_FEEDBACK_LEN = 3`.
+
+They are different quantities that happened to share a number, and sharing it is
+what hid this for so long. The descriptor's 3 is bytes-on-the-wire and is
+correct. The armed value is in whatever unit the UBM counts, which is measured
+as one-third of a byte count and is **not explained** — the datasheet describes
+`IEPDCNTX` as a byte count and TI arms it as one. Collapsing two meanings into
+one `3` made a wrong value look like a consistent one.
+
+## What this cost, and what found it
+
+The endpoint was declared in #186, its descriptor corrected in #185, and its
+arming cited against TI reference code. Every one of those was reasonable and
+none of them looked at the wire. #181 and #182 then measured clock drift as
+acceptable **with the feedback loop open the entire time**, which is worth
+re-reading now that it is closed.
+
+What found it was an instrument that did not exist that morning: an in-kernel
+histogram of every isochronous frame. usbmon could always have seen these
+packets; at 1000 frames a second in each direction, nobody was going to.
+
+Three of my own errors were caught by control arms along the way — a missing
+`URB_DIR_IN`, a concurrent-submitter conflict, and a `sudo`-reset `$HOME` that
+reported a host path bug as a firmware one. Each was caught because the 3-byte
+reference arm failed in a way the device could not have caused.

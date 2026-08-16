@@ -26,7 +26,15 @@ DEV="${2:?usage: fbsweep.sh <busnum> <devnum> [counts...]}"
 shift 2
 COUNTS="${*:-1 2 3 4 6 8}"
 
-PY="${PY:-$HOME/mbox-venv/bin/python}"
+# NOT $HOME/mbox-venv: this script runs under sudo (insmod needs it), and sudo
+# resets HOME to /root, so $HOME/mbox-venv resolves to a venv that does not
+# exist. Every poke then failed with the script's own "pre-0x0056 image"
+# message -- which pointed at the firmware for what was a host-side path bug.
+# Prefer the invoking user's venv, fall back to a system python.
+_owner="${SUDO_USER:-$(id -un)}"
+_home=$(getent passwd "$_owner" 2>/dev/null | cut -d: -f6)
+PY="${PY:-${_home:-$HOME}/mbox-venv/bin/python}"
+[ -x "$PY" ] || PY=$(command -v python3)
 MOD="${MOD:-/tmp/ch9mod/fbmax.ko}"
 TLM_REQ_FB_TUNE=0x18
 
@@ -47,7 +55,7 @@ if d is None:
 d.ctrl_transfer(0x40, 0x18, n, 0, None, 2000)
 PYEOF
     then
-        printf '%-7s %-9s %s\n' "$n" "--" "poke FAILED (pre-0x0056 image, or MBOX_FB_TUNE=0)"
+        printf '%-7s %-9s %s\n' "$n" "--" "poke FAILED -- device stalled it, or $PY is wrong"
         continue
     fi
 

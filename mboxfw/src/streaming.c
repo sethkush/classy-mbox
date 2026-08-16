@@ -138,7 +138,7 @@ static __idata unsigned long fb_nominal;      /* 10.14 nominal for the rate */
 static __idata unsigned long fb_sum;          /* current 64-frame window    */
 static __idata unsigned char fb_frames;
 static __idata unsigned char fb_arm;
-static __idata unsigned char g_fb_count = AUDIO_FEEDBACK_LEN;   /* #215 */
+static __idata unsigned char g_fb_count = AUDIO_FEEDBACK_ARM;   /* #215/#211 */
 
 /* Publish the standing value and hand the packet to the UBM. TI arms both the
  * X and Y counts (SoftPll.c: `IEPDCNTX2 = 3; IEPDCNTY2 = 3;`) and this does

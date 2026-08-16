@@ -100,6 +100,35 @@
  * error. */
 #define AUDIO_FEEDBACK_LEN     3
 
+/* #211 RESOLVED. The value armed into IEPDCNTX2/IEPDCNTY2, which is NOT the
+ * number of bytes that reaches the wire.
+ *
+ * MEASURED, six points, no exceptions -- the UBM emits exactly THREE bytes per
+ * unit armed:
+ *
+ *      armed    1    2    3    4    6    8
+ *      emitted  3    6    9   12   18   24
+ *
+ * TI's SoftPll.c arms 3 here, we copied it, and that is why this endpoint
+ * emitted 9 bytes against a wMaxPacketSize of 3 and babbled on every single
+ * packet since the day it was declared. The payload was always correct; only
+ * the length was wrong.
+ *
+ * Arming 1 produces exactly the 3 bytes UAC1 and USB 2.0 5.12.4.2 require.
+ * Verified end to end before this constant was changed: 1005 consecutive
+ * packets, every one status 0 and exactly 3 bytes, error_count 0, against
+ * 100% -EOVERFLOW and zero bytes delivered beforehand.
+ *
+ * WHY three-per-unit is NOT explained. The datasheet describes IEPDCNTX as a
+ * byte count and TI arms it as one. The 3x is measured and reproducible and the
+ * mechanism behind it is not known -- so this is deliberately a separate
+ * constant from AUDIO_FEEDBACK_LEN rather than the same 3 reused. They are
+ * different quantities that happened to share a number, and collapsing them is
+ * what hid the bug: the descriptor's 3 is bytes-on-the-wire and correct, this
+ * one is whatever unit the UBM counts in. If the 3x is ever explained, this is
+ * the line that changes. */
+#define AUDIO_FEEDBACK_ARM     1
+
 /* Terminal IDs — arbitrary within one AC interface, must be unique */
 #define TERM_USB_OUT_STREAM    0x01   /* host → device audio (playback data)  */
 #define TERM_ANALOG_IN         0x02   /* mic/line/inst analog capture         */
