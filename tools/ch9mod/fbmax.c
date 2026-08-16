@@ -151,6 +151,28 @@ static int __init fbmax_init(void)
 		goto out_dev;
 	}
 
+	/* usb_submit_urb() does not use the endpoint we walked the config to
+	 * find -- it resolves udev->ep_in[n] from the pipe. If those are two
+	 * different structs then raising wMaxPacketSize on ours changes nothing
+	 * the submit path ever reads, and every result would be a null from an
+	 * instrument that was never connected to anything. */
+	{
+		struct usb_host_endpoint *live = udev->ep_in[usb_endpoint_num(&ep->desc)];
+
+		pr_info("fbmax: walked ep=%p, live udev->ep_in[%d]=%p, %s\n",
+			ep, usb_endpoint_num(&ep->desc), live,
+			live == ep ? "SAME (patch will be seen)"
+				   : "DIFFERENT (patch would be invisible)");
+		if (!live) {
+			pr_err("fbmax: udev->ep_in[%d] is NULL -- the endpoint is not "
+			       "active; start a playback stream first\n",
+			       usb_endpoint_num(&ep->desc));
+			ret = -ENODEV;
+			goto out_dev;
+		}
+		ep = live;	/* patch and submit against the same struct */
+	}
+
 	saved_wmax = ep->desc.wMaxPacketSize;
 	pr_info("fbmax: EP 0x%02x declares wMaxPacketSize %d; scheduling %d x %dB\n",
 		epaddr, usb_endpoint_maxp(&ep->desc), npkts, pktsize);
@@ -167,7 +189,13 @@ static int __init fbmax_init(void)
 
 	urb->dev = udev;
 	urb->pipe = usb_rcvisocpipe(udev, usb_endpoint_num(&ep->desc));
-	urb->transfer_flags = URB_ISO_ASAP;
+	/* URB_DIR_IN is NOT optional and NOT derived from the pipe. The
+	 * usb_fill_*_urb() helpers set it for you; this URB is built by hand
+	 * because none of those helpers cover isochronous, and omitting it made
+	 * usb_submit_urb() return -EINVAL on every attempt -- including the
+	 * 3-byte control arm, which is how the mistake was caught as mine rather
+	 * than read as a device result. */
+	urb->transfer_flags = URB_ISO_ASAP | URB_DIR_IN;
 	urb->transfer_buffer = buf;
 	urb->transfer_buffer_length = pktsize * npkts;
 	urb->number_of_packets = npkts;
@@ -181,7 +209,13 @@ static int __init fbmax_init(void)
 
 	ret = usb_submit_urb(urb, GFP_KERNEL);
 	if (ret) {
-		pr_err("fbmax: usb_submit_urb -> %d\n", ret);
+		/* Print the things usb_submit_urb() rejects on, so a refusal names
+		 * itself instead of needing the kernel source read backwards. */
+		pr_err("fbmax: usb_submit_urb -> %d  (speed=%d xfertype=%d ep=%d "
+		       "interval=%d npkts=%d maxp=%d flags=0x%x)\n",
+		       ret, udev->speed, usb_endpoint_type(&ep->desc),
+		       usb_endpoint_num(&ep->desc), urb->interval, npkts,
+		       usb_endpoint_maxp(&ep->desc), urb->transfer_flags);
 		ep->desc.wMaxPacketSize = saved_wmax;
 		goto out_free;
 	}

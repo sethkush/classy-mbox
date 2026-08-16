@@ -145,8 +145,26 @@ static int __init ch9addr_init(void)
 	ret = set_address(udev, 200);
 	report("address > 127 must be a Request Error", 200, ret, true);
 
+	/*
+	 * STOP if the device accepted. The first version of this ran both values
+	 * unconditionally and reported 200 FAIL / 128 PASS -- which read as "it
+	 * gets the boundary right and only fails on large values", and was an
+	 * artefact. By the time 128 was sent the device had already taken the
+	 * illegal address and was no longer answering where the host was asking,
+	 * so that second result describes a device that was not listening. A test
+	 * that runs after the thing under test has changed state is not a test.
+	 */
+	if (ret >= 0) {
+		pr_warn("ch9addr: skipping the remaining address tests -- the device "
+			"moved, so any further result would describe a device that is "
+			"no longer answering here\n");
+		goto done;
+	}
+
 	ret = set_address(udev, 128);
 	report("address > 127, boundary value", 128, ret, true);
+	if (ret >= 0)
+		goto done;
 
 	if (allow_risky) {
 		pr_warn("ch9addr: allow_risky=1, un-addressing the device\n");
@@ -158,6 +176,7 @@ static int __init ch9addr_init(void)
 		pr_info("ch9addr: SET_ADDRESS(0) skipped (allow_risky=0)\n");
 	}
 
+done:
 	usb_put_dev(udev);
 
 	/*

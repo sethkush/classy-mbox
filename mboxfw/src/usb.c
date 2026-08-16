@@ -1084,6 +1084,25 @@ static void handle_setup(void)
                  * that reply here and defer the USBFADR write to the
                  * VEC_IEP0 completion in usb_service() below. */
                 STAGE(15);
+                /* #212. USB 2.0 §9.4.6: "If the specified device address is
+                 * greater than 127 ... then the behavior of the device is not
+                 * specified" -- and Table 9-3 gives bDeviceAddress 7 bits, so
+                 * a value with bit 7 set is a Request Error and must stall.
+                 *
+                 * MEASURED, not read: tools/ch9mod/ch9addr.ko issued
+                 * SET_ADDRESS(200) and this line ACCEPTED it, after which the
+                 * unit stopped answering at its old address and needed a port
+                 * cycle to recover. There was no range check here at all.
+                 *
+                 * 0xFF matters twice over: it is also the "nothing pending"
+                 * sentinel for g_pending_address, so without this check
+                 * SET_ADDRESS(255) would be acknowledged and then silently
+                 * discarded by the deferred-write test below -- the device
+                 * would agree to an address it never takes. */
+                if (wValueL > 127) {
+                    reply_stall();
+                    break;
+                }
                 g_pending_address = wValueL;
                 reply_zero_length();
                 break;
