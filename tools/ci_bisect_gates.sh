@@ -89,6 +89,9 @@ for sha in $commits; do
         # names hardware somebody measured. A bisect over "when did we start
         # claiming a path we cannot back" needs both.
         python3 tools/check_terminal_evidence.py >> /tmp/ci_gate.log 2>&1 || exit 29
+        # #214: an endpoint added without revisiting the halt handler is a
+        # regression bisect must be able to land on.
+        python3 tools/check_endpoint_manifest.py >> /tmp/ci_gate.log 2>&1 || exit 40
         python3 tools/verify_usb_init.py    >> /tmp/ci_gate.log 2>&1 || exit 23
         python3 tools/verify_cs8427.py      >> /tmp/ci_gate.log 2>&1 || exit 24
         python3 tools/verify_setup_paths.py >> /tmp/ci_gate.log 2>&1 || exit 25

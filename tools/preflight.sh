@@ -130,6 +130,10 @@ else
     check_diag "sim_smoke (main loop + CONN + canaries)" bash tools/sim_smoke.sh
     check "verify_descriptors"        python3 tools/verify_descriptors.py
     check "terminals cite a measurement"      python3 tools/check_terminal_evidence.py
+    # #214: the endpoint set is load-bearing for code nowhere near the
+    # descriptors. Sits beside the terminal gate because it is the same shape of
+    # problem -- a declaration whose consequences live elsewhere.
+    check "endpoint set matches manifest"     python3 tools/check_endpoint_manifest.py
     check "verify_usb_init"           python3 tools/verify_usb_init.py
     check "verify_cs8427"             python3 tools/verify_cs8427.py
     # verify_cs8427 checks the ten register VALUES. This runs the image and
