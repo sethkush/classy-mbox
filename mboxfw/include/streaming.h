@@ -28,4 +28,8 @@ void streaming_sof(void);
  * playback-only watchdog, so the clock is measured even with no stream. */
 void streaming_acg_sample(void);
 
+/* #215/#211 bench knob: re-arm the feedback endpoint with a different byte
+ * count, so the count can be swept without one flash per value. */
+void streaming_set_feedback_count(unsigned char n);
+
 #endif

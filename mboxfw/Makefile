@@ -122,6 +122,18 @@ endif
 # would cost a compare on every control transfer for a value nothing reads.
 #
 # Read it with: mboxtlm.py read 4
+# `make MBOX_FB_TUNE=1` adds TLM_REQ_FB_TUNE, the #211 bench knob that re-arms
+# the feedback endpoint's byte count at runtime. Off by default: it is an
+# experiment, not a feature, and a shipping image should not carry a request
+# that serves nothing a host needs.
+#
+# It is compiled into BOTH tiers when enabled. The release tier is the shipping
+# tier, so an experiment present only in the diagnostic build is one that never
+# gets flashed -- which is what the reachability gate caught the first time.
+ifeq ($(MBOX_FB_TUNE),1)
+EXTRA_CFLAGS += -DMBOX_FB_TUNE
+endif
+
 ifeq ($(MBOX_TLM_STALL),1)
 EXTRA_CFLAGS += -DMBOX_TLM_STALL
 endif

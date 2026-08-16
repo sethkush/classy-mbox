@@ -59,6 +59,9 @@ volatile __data unsigned int  tlm_last_wlength = 0;
  * need a diagnostic build flashed first, spending a power cycle to ask a
  * question about power cycles. 28 bytes. */
 #ifdef MBOX_RELEASE
+#ifdef MBOX_TLM_STALL
+static unsigned char tlm_read_block_stall(unsigned char __data *out);
+#endif
 unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
 {
     unsigned char i;
@@ -66,6 +69,11 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
     for (i = 0; i < TLM_BLOCK_SIZE; i++) {
         out[i] = 0xFF;            /* the unknown-block sentinel */
     }
+#ifdef MBOX_TLM_STALL
+    if (index == 4) {
+        return tlm_read_block_stall(out);
+    }
+#endif
     if (index != 0) {
         return 0;
     }
@@ -82,6 +90,22 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
     out[7] = (unsigned char)(tlm.rstr_count >> 8);
     return 1;
 }
+
+#ifdef MBOX_TLM_STALL
+/* #209 in a RELEASE build. The cut-down reader above serves block 0 only, so
+ * without this the counters would exist and increment with no way to read them
+ * -- a write-only counter, which is exactly the defect that got block 4 retired
+ * in 0x0037 in the first place. The release tier is now the shipping tier, so
+ * the instrument has to live here or not at all. */
+static unsigned char tlm_read_block_stall(unsigned char __data *out)
+{
+    out[0] = tlm.stalls;
+    out[1] = tlm.gd_wlen0;
+    out[2] = 0xFF; out[3] = 0xFF; out[4] = 0xFF;
+    out[5] = 0xFF; out[6] = 0xFF; out[7] = 0xFF;
+    return 1;
+}
+#endif
 #endif
 
 #ifndef MBOX_RELEASE   /* RELEASE: the block reader and the counter

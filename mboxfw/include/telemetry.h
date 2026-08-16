@@ -117,6 +117,30 @@
  * measurement that justifies the shipping behaviour. */
 #define TLM_REQ_DIAG_MODE 0x17
 
+/* #215 — set IEPDCNTX2/IEPDCNTY2 at runtime, for the #211 experiment.
+ * bmRequestType 0x40, wValue = the byte count to arm (1..8).
+ *
+ * WHY A RUNTIME KNOB RATHER THAN A CONSTANT. #211 is now precise: the feedback
+ * endpoint emits NINE bytes per packet, the 10.14 value in the first three is
+ * correct, and IEPDCNTX2 = 3 governs nothing. What is unknown is whether the
+ * count register governs the length AT ALL. Testing that with a compile-time
+ * constant costs one flash and one 2 km round trip PER VALUE. This costs one
+ * flash for the whole sweep: `fbmax.ko` reads back what the device actually
+ * emits after each poke.
+ *
+ * WHAT IT DELIBERATELY DOES NOT TOUCH: IEPBSIZ2. The feedback buffer is 8 bytes
+ * at 0xFF20, and EP_BSIZE() works in 8-byte units, so the next size up is 16 --
+ * which runs 0xFF20-0xFF2F and OVERLAPS THE SETUP PACKET BUFFER AT 0xFF28.
+ * Corrupting the setup buffer breaks every control transfer, i.e. the device
+ * stops answering entirely and needs a bench visit. If the count turns out not
+ * to govern, the buffer has to be RELOCATED first, and that is a separate
+ * change designed on its own rather than bolted to this one.
+ *
+ * Clamped to 1..8 in the handler: 0 would arm a zero-length packet forever and
+ * anything above 8 would claim bytes past the declared buffer, which is the
+ * defect under investigation rather than a test of it. */
+#define TLM_REQ_FB_TUNE  0x18
+
 /* 0x15 was TLM_REQ_SET_MUTE, the #189 bench control for the 0x23.2/0x23.3
  * pair. REMOVED in build 0x0036, when #190 declared the two UAC1 Feature Units
  * that carry the same control as a class request.
@@ -175,7 +199,25 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0055   /* 0055: TWO CONFORMANCE FIXES, #212 + #214.
+#define TLM_BUILD_ID     0x0056   /* 0056: instruments, no behaviour change.
+                                   *       #215: TLM_REQ_FB_TUNE sets the
+                                   *       feedback endpoint's byte count at
+                                   *       runtime, so #211's open question --
+                                   *       does IEPDCNTX2 govern the emitted
+                                   *       length at all, given the device sends
+                                   *       9 while it says 3 -- can be swept in
+                                   *       ONE flash instead of one per value.
+                                   *       IEPBSIZ2 is deliberately NOT exposed:
+                                   *       the next size up overlaps the setup
+                                   *       packet buffer at 0xFF28.
+                                   *       #209: the stall + wLen0 counters, and
+                                   *       a block 4 case in the RELEASE reader
+                                   *       -- the release tier is the shipping
+                                   *       tier now, so without that the
+                                   *       counters would be write-only, which
+                                   *       is what retired block 4 originally.
+                                   *       Both behind MBOX_TLM_STALL=1.
+                                   * 0055: TWO CONFORMANCE FIXES, #212 + #214.
                                    *       #212: SET_ADDRESS took any wValueL
                                    *       with no range check. ch9addr.ko sent
                                    *       200, the device ACCEPTED it (§9.4.6
