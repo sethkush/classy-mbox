@@ -110,6 +110,15 @@ USB20CV Chapter 9 subjects -> ch9_probe coverage
     Unconfigured (Address) State   SET_CONFIGURATION(0), GET_CONFIGURATION
                                    returns 0, descriptors still answer, restore
 
+  INDEPENDENT CROSS-CHECK (eBPF, no device change)
+    Bus-level verdict            run this suite under tools/usbtrace.bt and the
+                                 wire disagrees or agrees with every expectation
+                                 above, from outside this script. It also names
+                                 the status -- EPIPE (device STALL) vs EPROTO
+                                 (host gave up) -- which errno alone conflates,
+                                 and it proves which requests never reached the
+                                 device at all.
+
   COVERED ELSEWHERE (offline, no device needed)
     Descriptor field rulebook      tools/verify_descriptors.py walks the built
                                    image: bLength per type, wTotalLength

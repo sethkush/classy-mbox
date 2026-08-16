@@ -1,0 +1,118 @@
+#!/usr/bin/env bpftrace
+/*
+ * Control-transfer tracer for the Mbox, in eBPF.
+ *
+ * WHY THIS EXISTS, given usbmon already works. usbmon is a ring buffer that
+ * copies every byte of every transfer to userspace and then makes you grep it.
+ * That is fine for a handful of control transfers and useless mid-stream, where
+ * a 1000 fps isochronous endpoint drowns the thing you are looking for and the
+ * buffer wraps before you can read it. eBPF filters IN THE KERNEL: this attaches
+ * to the same two functions usbmon hooks, discards everything that is not our
+ * device, and prints only decoded control transfers. It costs nothing when the
+ * device is idle and does not lose the interesting packet in a flood.
+ *
+ * It also reports the completion status as a NUMBER with its name, which is the
+ * distinction that mattered for #208: -EPIPE (32) is a STALL handshake from the
+ * device, -EPROTO (71) is the host controller giving up after its retries, and
+ * -ENOENT / -ECONNRESET are the host stack cancelling. Reading a bare "-32" out
+ * of usbmon and calling it a stall is right, but only by luck -- the tool never
+ * said so.
+ *
+ * WHAT IT CANNOT DO, so it is not mistaken for more than it is:
+ *   * It sees the BUS, not the 8051. Whether our firmware called reply_stall()
+ *     or the UBM stalled on its own is invisible here -- both produce the same
+ *     handshake. That is still #209, and it still needs the firmware counter.
+ *   * It cannot emit anything. eBPF observes; it does not build packets.
+ *
+ * Usage:
+ *     sudo bpftrace tools/usbtrace.bt <busnum> <devnum>
+ *     # e.g. for "Bus 002 Device 006":
+ *     sudo bpftrace tools/usbtrace.bt 2 6
+ *
+ * Safe on a live unit: attaches probes, writes nothing, changes no state.
+ */
+
+BEGIN
+{
+    if ($1 == 0 || $2 == 0) {
+        printf("usage: usbtrace.bt <busnum> <devnum>   (from lsusb)\n");
+        exit();
+    }
+    @want_bus = (uint32)$1;
+    @want_dev = (uint32)$2;
+    printf("tracing control transfers on bus %d dev %d -- Ctrl-C to stop\n\n",
+           @want_bus, @want_dev);
+    printf("%-10s %-4s %-30s %-8s %s\n",
+           "TIME(us)", "DIR", "SETUP", "wLength", "RESULT");
+}
+
+kprobe:usb_submit_urb
+{
+    $u = (struct urb *)arg0;
+    $d = $u->dev;
+    if ($d == 0) { return; }
+    if ((uint32)$d->devnum != @want_dev) { return; }
+    if ((uint32)$d->bus->busnum != @want_bus) { return; }
+
+    $sp = $u->setup_packet;
+    if ($sp == 0) { return; }          /* not a control transfer */
+
+    /* The 8 SETUP bytes, USB 2.0 Table 9-2. */
+    $bmRequestType = *(uint8 *)($sp + 0);
+    $bRequest      = *(uint8 *)($sp + 1);
+    $wValue        = (uint16)(*(uint8 *)($sp + 2)) |
+                     ((uint16)(*(uint8 *)($sp + 3)) << 8);
+    $wIndex        = (uint16)(*(uint8 *)($sp + 4)) |
+                     ((uint16)(*(uint8 *)($sp + 5)) << 8);
+    $wLength       = (uint16)(*(uint8 *)($sp + 6)) |
+                     ((uint16)(*(uint8 *)($sp + 7)) << 8);
+
+    /* Stash by urb pointer so the completion can match it up. */
+    @start[$u] = (uint64)nsecs;
+    @bmreq[$u] = $bmRequestType;
+    @breq[$u]  = $bRequest;
+    @wval[$u]  = $wValue;
+    @widx[$u]  = $wIndex;
+    @wlen[$u]  = $wLength;
+}
+
+kprobe:usb_hcd_giveback_urb
+{
+    $u = (struct urb *)arg1;
+    if (!has_key(@start, $u)) { return; }
+
+    $us  = ((uint64)nsecs - (uint64)@start[$u]) / 1000;
+    $st  = (int32)arg2;
+    $dir = (@bmreq[$u] & 0x80) ? "IN" : "OUT";
+
+    /* Name the status. The three that get confused with each other are the
+     * whole point of printing this at all. */
+    $why = "?";
+    if      ($st == 0)   { $why = "OK"; }
+    else if ($st == -32) { $why = "EPIPE  = device STALL handshake"; }
+    else if ($st == -71) { $why = "EPROTO = host gave up (no/!bad response)"; }
+    else if ($st == -75) { $why = "EOVERFLOW = device sent more than asked"; }
+    else if ($st == -2)  { $why = "ENOENT = host stack cancelled"; }
+    else if ($st == -104){ $why = "ECONNRESET = unlinked"; }
+    else if ($st == -110){ $why = "ETIMEDOUT"; }
+
+    printf("%-10d %-4s %02x %02x val=%04x idx=%04x   %-8d %d actual=%d %s\n",
+           $us, $dir, @bmreq[$u], @breq[$u], @wval[$u], @widx[$u],
+           @wlen[$u], $st, $u->actual_length, $why);
+
+    /* Count outcomes per (bRequest, status) so a long run summarises itself. */
+    @outcome[@breq[$u], $st] = count();
+
+    /* bpftrace >= 0.21 returns a value from delete(); discarding it warns, so
+     * bind it. The scratch variable is never read. */
+    $g = delete(@start, $u); $g = delete(@bmreq, $u); $g = delete(@breq, $u);
+    $g = delete(@wval,  $u); $g = delete(@widx,  $u); $g = delete(@wlen, $u);
+}
+
+END
+{
+    clear(@start); clear(@bmreq); clear(@breq);
+    clear(@wval);  clear(@widx);  clear(@wlen);
+    clear(@want_bus); clear(@want_dev);
+    printf("\n@outcome is keyed [bRequest, urb->status]\n");
+}
