@@ -328,3 +328,25 @@ which should make the host occasionally send 49 samples, not 47. Four packets in
 buffer-level correction on top of the feedback value, so the sign here may not
 be the rate at all. Recorded as an open detail rather than reasoned into a
 story. The result that matters -- fixed versus varying -- does not depend on it.
+
+## Shipped and verified from a cold boot, 0x0057
+
+Both units flashed, both reached `dfuMANIFEST`, both came back reporting build
+`0x0057` with bus resets at 2 -- down from their pre-flash values, which is
+independently the proof it was a genuine cold boot.
+
+EP 0x82 with **no runtime poke of any kind**, straight from power-up:
+
+```
+@status[2, 1, 0]:  1511      every packet, status 0
+@errcount[2, 1]:      0
+@bytes[2, 1]:      4533      = 1511 x exactly 3 bytes
+```
+
+Capture 5015 packets at 287.9 B and playback 6042 at 288.0, both status 0, in
+the same run. Chapter 9 reads `CH9 PASS: all 54 checks, 1 divergence attributed
+to the UBM` on **both** units. #212 still holds -- SET_ADDRESS(200) and (128)
+both stall. Capture 576,044 bytes and playback clean on both cards.
+
+**#211 is closed.** The endpoint was declared on 2026-08-04 and delivered its
+first byte on 2026-08-16.
