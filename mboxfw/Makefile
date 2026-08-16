@@ -112,6 +112,20 @@ ifeq ($(MBOX_TLM_ROUTING),1)
 EXTRA_CFLAGS += -DMBOX_TLM_ROUTING
 endif
 
+# `make MBOX_TLM_STALL=1` restores block 4 as two counters: every reply_stall(),
+# and every handle_get_descriptor() arrival carrying wLength == 0.
+#
+# This is #209's whole instrument, and it exists as a flag rather than as
+# permanent surface because it earns its code only while that one question is
+# open. The counters sit on the SETUP path, which is why TLM_INC_STALL() and
+# TLM_INC_WLEN0() compile to nothing at all when this is off -- an `if` here
+# would cost a compare on every control transfer for a value nothing reads.
+#
+# Read it with: mboxtlm.py read 4
+ifeq ($(MBOX_TLM_STALL),1)
+EXTRA_CFLAGS += -DMBOX_TLM_STALL
+endif
+
 CFLAGS  = $(if $(MBOX_PID),-DMBOX_PID=$(MBOX_PID)) -mmcs51 --model-small --std-c99 --opt-code-size $(INC)
 # --code-size REVERTED 0x1C00 -> 0x1780 (7168 -> 6016) on 2026-08-03, after an
 # image built against the raised value bricked Mbox A.

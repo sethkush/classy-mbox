@@ -106,11 +106,20 @@ BLOCK_RETIRED = {
                  "data source, so this removes the readback, not the "
                  "measurement, which is why this block was the right one to "
                  "retire rather than 0, 1, 2 or 9"),
+    # 4 is RESTORED as of 0x0055, but only in a build made with
+    # MBOX_TLM_STALL=1. It stays listed here because that is the default: any
+    # build without the flag still answers the sentinel, and a reader who finds
+    # 0xFF needs to land on this note rather than conclude the counters are
+    # genuinely zero. block4() distinguishes the two cases explicitly.
     4:  (0x0037, "stalls + live P1/P3 -- retired to make room, and it cost no "
                  "capability twice over: P3 is already reported by block 9 "
                  "byte 4, and the stall counter's ONLY reader was this block, "
                  "so keeping the counter would have left it write-only. "
-                 "Restoring it for #192 is one struct byte plus one TLM_INC8"),
+                 "Restoring it for #192 is one struct byte plus one TLM_INC8. "
+                 "RESTORED in 0x0055 for #209, and the estimate was close: two "
+                 "struct bytes and two increments, because the counter alone "
+                 "cannot separate 'we stalled it' from 'we never saw it'. "
+                 "Build with MBOX_TLM_STALL=1 to get it"),
     5:  (0x0039, "isochronous streaming state -- retired to pay for #197's "
                  "capture-gate pulse. Its questions are closed: sof_count "
                  "proved SOF was masked off (USBIMSK bit 4) and the live "
@@ -355,17 +364,47 @@ def block3(b):
 
 
 def block4(b):
-    """Stalls and the live port reads.
+    """#209: who stalls GET_DESCRIPTOR with wLength = 0.
 
-    Bytes 0-2 carried eeprom_ok / cs8427_status / codec_status until build
-    0x0030. All three werealways 0xFF: initialised to "not run" and never written
-    by anything. They were removed rather than wired up, because nothing in the
-    firmware had a status to report there.
+    Present only in a build made with MBOX_TLM_STALL=1. Any other build has
+    retired this index and answers the all-0xFF sentinel.
+
+    History: bytes 0-2 once carried eeprom_ok / cs8427_status / codec_status
+    (removed in 0x0030 -- all three were always 0xFF, initialised to "not run"
+    and never written), then stalls + live P1/P3 until the block was retired
+    entirely in 0x0037. It is back for one question and one only.
+
+    The reading rule is a JOINT one. Neither counter means anything alone:
+    `stalls` cannot say WHICH of the 24 reply_stall() sites fired, and
+    `gd_wlen0` cannot say what happened after dispatch. Together they place the
+    stall on one side of the firmware boundary or the other.
     """
-    return [
-        "stalls:          %d" % b[0],
-        "P1 live=0x%02X   P3 live=0x%02X" % (b[1], b[2]),
+    stalls, wlen0 = b[0], b[1]
+    if stalls == 0xFF and wlen0 == 0xFF:
+        return ["block 4 reads as the sentinel -- this build was made without "
+                "MBOX_TLM_STALL=1, so nothing here was measured"]
+    out = [
+        "reply_stall() calls:              %d%s"
+        % (stalls, "  (SATURATED)" if stalls == 0xFF else ""),
+        "GET_DESCRIPTOR wLength=0 seen:    %d%s"
+        % (wlen0, "  (SATURATED)" if wlen0 == 0xFF else ""),
     ]
+    # Deltas are what get read, not absolutes -- enumeration stalls a few
+    # requests on its own. The verdict below is only valid for a DELTA taken
+    # across the single wLength=0 request.
+    if wlen0 and stalls:
+        out.append("VERDICT (as a delta): our firmware stalls it. Fixable -- "
+                   "narrow to the reply_stall() sites a GET_DESCRIPTOR reaches.")
+    elif wlen0 and not stalls:
+        out.append("VERDICT (as a delta): firmware handled it and the UBM "
+                   "stalled anyway. Silicon limitation; close #192's last "
+                   "divergence as won't-fix and document it.")
+    elif not wlen0:
+        out.append("VERDICT (as a delta): never dispatched to "
+                   "handle_get_descriptor() at all, despite the SETUP "
+                   "arriving. Contradicts the setup_count reading in "
+                   "FINDING_208 -- re-check both before believing either.")
+    return out
 
 
 def block5(b):

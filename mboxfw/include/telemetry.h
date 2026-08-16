@@ -175,7 +175,22 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0054   /* 0054: FIVE FEATURES, first hardware run.
+#define TLM_BUILD_ID     0x0055   /* 0055: #208 REVERTED, and #209's instrument.
+                                   *       The two wLen==0 early-returns are out
+                                   *       of stage_reply()/stage_immediate():
+                                   *       they changed nothing on the wire,
+                                   *       because the device sees only the 8
+                                   *       SETUP bytes and cannot distinguish
+                                   *       arming a ZLP from arming nothing.
+                                   *       In their place, MBOX_TLM_STALL=1
+                                   *       restores block 4 as reply_stall() and
+                                   *       wLength==0 dispatch counters -- read
+                                   *       as a DELTA across the one request,
+                                   *       they place the stall on one side of
+                                   *       the firmware boundary or the other.
+                                   *       25 bytes, and only when asked for.
+                                   *       See FINDING_208.
+                                   * 0054: FIVE FEATURES, first hardware run.
                                    *       #203 Selector gains position 3 =
                                    *            INSTRUMENT (Line 1, S/PDIF 2
                                    *            unchanged -- appended, not
@@ -690,6 +705,35 @@ struct tlm_ctrs {
     unsigned int  drains;
     unsigned int  rstr_count;
     unsigned int  sof_count;
+#ifdef MBOX_TLM_STALL
+    /* #209. Block 4's stall counter, restored exactly as its retirement note
+     * said it could be: "one struct byte plus one TLM_INC8".
+     *
+     * These two answer one question and are useless apart. `stalls` counts
+     * every reply_stall() -- there are 24 call sites and it does not say which
+     * -- and `gd_wlen0` counts arrivals at handle_get_descriptor() carrying
+     * wLength == 0. The wLength=0 request is issued ONCE, against a quiet
+     * device, so the pair reads unambiguously:
+     *
+     *   stalls +1, gd_wlen0 +1  -> our code stalls it. Fixable, and the search
+     *                              narrows to the paths a GET_DESCRIPTOR can
+     *                              reach.
+     *   stalls  0, gd_wlen0 +1  -> firmware handled it and the UBM stalled
+     *                              anyway. A silicon limitation; document it
+     *                              and close #192's last divergence as
+     *                              won't-fix.
+     *   stalls  0, gd_wlen0  0  -> the MCU never dispatched it, despite the
+     *                              SETUP arriving. Contradicts the setup_count
+     *                              result by a route that does not depend on
+     *                              the off-by-one I already got wrong once.
+     *
+     * Both are unsigned char and saturate at 0xFF via TLM_INC8. Saturation is
+     * the right behaviour here: a wrapped counter reading 0 is exactly the
+     * "null from an instrument that was never connected" this project keeps
+     * being bitten by, and row 3 above is a genuine 0. */
+    unsigned char stalls;
+    unsigned char gd_wlen0;
+#endif
 };
 extern volatile __data struct tlm_ctrs tlm;
 
@@ -780,6 +824,18 @@ extern volatile __data unsigned char tlm_mux_rejects;
 /* Saturating increments — a counter that wraps mid-experiment reads as a
  * smaller number than reality and would silently corrupt a measurement. */
 #define TLM_INC8(c)   do { if ((c) < 0xFF)   (c)++; } while (0)
+
+/* #209, and OFF by default. The two counters sit on the two hottest paths in
+ * the firmware -- reply_stall() and handle_get_descriptor() -- so they are
+ * macros that vanish entirely rather than `if`s that cost a compare per SETUP
+ * in every build that is not running the experiment. */
+#ifdef MBOX_TLM_STALL
+#define TLM_INC_STALL()   TLM_INC8(tlm.stalls)
+#define TLM_INC_WLEN0()   TLM_INC8(tlm.gd_wlen0)
+#else
+#define TLM_INC_STALL()   do { } while (0)
+#define TLM_INC_WLEN0()   do { } while (0)
+#endif
 #ifdef MBOX_RELEASE
 /* RELEASE: the saturating counters exist only to be read back over EP0, and the
  * block reader that reads them is compiled out. Keeping the increments would

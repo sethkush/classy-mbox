@@ -170,6 +170,10 @@ static void reply_stall(void)
 #ifdef CANARY_LED
     if (g_stalls < 99) g_stalls++;
 #endif
+    /* #209: the only place in the firmware that stalls EP0, so the only place
+     * this counter can be incremented without missing a path. See the struct
+     * comment in telemetry.h for how it is read against gd_wlen0. */
+    TLM_INC_STALL();
     /* STALL is bit 3; it must be OR'd IN, not masked out.
      *
      * This previously read `IEPCNF0 &= 0xD7`, which CLEARS bit 5 (TOGGLE)
@@ -300,6 +304,15 @@ static void handle_get_descriptor(void)
      *
      * mboxfw had this on the DEVICE descriptor too, which would break
      * enumeration at the very first request. */
+    /* #209. Counted HERE, at the top of the dispatcher, and deliberately not
+     * inside stage_reply(): the question is whether this request is DISPATCHED
+     * at all, and a counter further down would answer a narrower question by
+     * assuming the answer to the wider one. If gd_wlen0 stays 0 while the SETUP
+     * arrives, the MCU is not reaching this switch. */
+    if (wLenH == 0 && wLenL == 0) {
+        TLM_INC_WLEN0();
+    }
+
     switch (type) {
         case USB_DT_DEVICE:
             STAGE(14);

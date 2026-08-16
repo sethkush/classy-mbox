@@ -216,6 +216,28 @@ unsigned char tlm_read_block(unsigned char index, unsigned char __data *out)
      * build reads "not served" instead of decoding block 9's panel state as a
      * handoff snapshot. */
 #ifdef MBOX_TLM_ROUTING
+#ifdef MBOX_TLM_STALL
+    case 4:
+        /* #209. Block 4 restored to its original subject -- stalls -- after
+         * being retired in 0x0037. The retirement note said restoring it was
+         * "one struct byte plus one TLM_INC8"; it was two bytes and two, since
+         * the counter alone cannot distinguish "we stalled it" from "we never
+         * saw it".
+         *
+         * Bytes 2-7 are left at the 0xFF sentinel rather than padded with
+         * zeros: a zero here would be indistinguishable from a real measured
+         * zero, and rows 2 and 3 of the reading table are both genuine zeros. */
+        out[0] = tlm.stalls;
+        out[1] = tlm.gd_wlen0;
+        out[2] = 0xFF;
+        out[3] = 0xFF;
+        out[4] = 0xFF;
+        out[5] = 0xFF;
+        out[6] = 0xFF;
+        out[7] = 0xFF;
+        return 1;
+#endif
+
     case 9:
         /* Panel state — which source is actually selected, right now.
          *
