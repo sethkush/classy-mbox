@@ -7,7 +7,7 @@
 # reboot rather than forcing vermagic. Forcing it on a box 1 km away risks a
 # struct-layout mismatch, which is memory corruption rather than a clean error.
 KDIR ?= /lib/modules/$(shell uname -r)/build
-obj-m := ch9addr.o fbmax.o
+obj-m := ch9addr.o fbmax.o eptoggle.o
 
 all:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) modules
