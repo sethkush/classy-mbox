@@ -14,12 +14,20 @@ from Linux against the live device. This runs them so that whatever USB20CV
 eventually says, it is not saying it about defects we could have found ourselves.
 
 What genuinely still needs USB20CV (or an analyser):
-  * malformed packets and timing violations -- libusb cannot emit them
-  * SET_ADDRESS behaviour; the host stack owns addressing and re-assigning it
-    from userspace would strand the device
-  * electrical / signalling tests
+  * malformed packets and timing violations -- libusb cannot emit them, and
+    neither can USB20CV: the host controller builds packets, so this tier wants
+    an exerciser
+  * electrical / signalling tests -- a different USB-IF tool entirely
   * the descriptor-vs-class-spec rulebook USB20CV encodes, which is broader
     than Chapter 9
+
+SET_ADDRESS USED TO BE ON THAT LIST and no longer is. It is unreachable from
+USERSPACE -- usbfs will not pass it, because usbcore owns the address map -- but
+tools/ch9mod/ch9addr.ko reaches it from inside the kernel, and on its first run
+it found the only outright Chapter 9 VIOLATION this project has had: the device
+accepted SET_ADDRESS(200) and went unreachable until a port cycle (#212, fixed
+in 0x0055). The gap in the suite was where the defect lived, which is worth
+remembering about the gaps that remain.
 
 CLASSIFY BY ERRNO, NEVER BY MESSAGE. A device STALL is EPIPE (32). EIO means the
 HOST STACK refused the transfer -- typically because a driver owns the interface
@@ -127,20 +135,26 @@ USB20CV Chapter 9 subjects -> ch9_probe coverage
                                    addresses vs code, UAC1 format fields,
                                    iSerialNumber vs the linked serial string
 
+  COVERED BY A KERNEL MODULE (tools/ch9mod, needs matching kernel headers)
+    Set Address                    §9.4.6 out-of-range values must be a Request
+                                   Error. usbfs refuses to pass SET_ADDRESS at
+                                   all -- usbcore owns the address map -- so
+                                   ch9addr.ko issues it from kernel context.
+                                   Safe by construction: a conforming device
+                                   stalls an illegal address and nothing moves.
+                                   FOUND #212, the only outright violation this
+                                   project has had.
+
   WHAT USB20CV REACHES AND THIS CANNOT -- the actual content of #192
-    Set Address                    §9.4.6, and the Default/Address state
-                                   behaviour around it. USB20CV drives
-                                   enumeration itself, so it can re-address the
-                                   device, check that out-of-range values stall,
-                                   and check the address survives
-                                   SET_CONFIGURATION. From Linux userspace the
-                                   kernel owns the address map: issuing
-                                   SET_ADDRESS moves the device while the host
-                                   still believes the old address, stranding it
-                                   until a replug.
     Default-state behaviour        everything a device must do BEFORE it is
-                                   addressed. By the time libusb can see it,
-                                   that phase is over.
+                                   addressed. USB20CV drives enumeration itself;
+                                   by the time either libusb or a module can
+                                   see the device, that phase is over.
+    Address retention edge cases   SET_ADDRESS(0) back to Default state, and
+                                   whether the address survives
+                                   SET_CONFIGURATION. ch9addr can issue these
+                                   (allow_risky=1) but recovering needs a port
+                                   reset, so they are not run by default.
     Class-spec rulebook            USB20CV encodes the Audio 1.0 document, not
                                    just Chapter 9. verify_descriptors.py is our
                                    reading of the same rules, which is one
@@ -165,11 +179,17 @@ USB20CV Chapter 9 subjects -> ch9_probe coverage
                                    fixture) -- USB20CV is command-level only and
                                    never touches this.
 
-  KNOWN DIVERGENCE (open)
+  KNOWN DIVERGENCE (closed as won't-fix -- silicon, not firmware)
     GET_DESCRIPTOR wLength 0       the device STALLs it; legal per §9.3.5 and
-                                   USB20CV would flag it. WHO stalls it --
-                                   our code or the UBM -- is still unmeasured.
-                                   See FINDING_208.
+                                   USB20CV would flag it. ATTRIBUTED by #209:
+                                   across this request the wLength==0 dispatch
+                                   counter went +1 while reply_stall() stayed 0,
+                                   with a normal GET_DESCRIPTOR as a reference
+                                   arm moving neither. It reaches our handler,
+                                   we never stall it, the host still gets EPIPE
+                                   -- the UBM stalls it on its own. #208 tried
+                                   to fix it in firmware and could not, because
+                                   there is nothing there to fix.
 """
 
 
@@ -180,6 +200,11 @@ class Probe:
         self.passes = 0
         self.failures = []
         self.notes = []
+        # Divergences ATTRIBUTED TO SILICON. Separate from failures because the
+        # two demand opposite responses: a failure is ours to fix, and one of
+        # these is ours to document. Nothing lands here on suspicion -- each
+        # entry names the measurement that placed it outside the firmware.
+        self.silicon = []
 
     def _xfer(self, bmreq, breq, wval, widx, data_or_len, timeout=2000):
         """-> ('ok', data) | ('stall', None) | ('hosterr', errno) """
@@ -262,10 +287,35 @@ def run(p):
                     lambda b: None if len(b) == total
                     else f"asked {total+64}, device returned {len(b)} "
                          f"(expected exactly {total})")
-        # wLength 0 is legal and means "no data stage".
-        p.expect_ok("GET_DESCRIPTOR(config, wLength 0)", D2H_STD_DEV,
-                    GET_DESCRIPTOR, DT_CONFIG << 8, 0, 0,
-                    lambda b: None if len(b) == 0 else f"returned {len(b)}")
+        # wLength 0 is legal per §9.3.5 and means "no data stage". The device
+        # STALLs it -- and that is NOT a firmware defect. #209 measured it with
+        # counters on both sides of the boundary: across this exact request the
+        # wLength==0 dispatch counter went +1 while the reply_stall() counter
+        # stayed 0, with a normal GET_DESCRIPTOR as a reference arm moving
+        # neither. The request reaches handle_get_descriptor(), our code never
+        # stalls it, and the host still gets EPIPE. The UBM stalls it
+        # autonomously, after dispatch.
+        #
+        # #208 tried to fix it in firmware and could not, because there is
+        # nothing there to fix. Recorded as a silicon divergence so the suite
+        # stops reporting a bug nobody can close.
+        kind, data = p._xfer(D2H_STD_DEV, GET_DESCRIPTOR, DT_CONFIG << 8, 0, 0)
+        if kind == "stall":
+            p.silicon.append(
+                "GET_DESCRIPTOR(wLength 0) STALLs -- legal per §9.3.5 and "
+                "USB20CV would flag it. MEASURED as the UBM's own stall, not "
+                "ours (#209): wLen0 dispatch +1, reply_stall() +0. No firmware "
+                "change can alter it; see FINDING_208.")
+        elif kind == "ok" and len(data) == 0:
+            p.passes += 1
+            p.notes.append("GET_DESCRIPTOR(wLength 0) now SUCCEEDS -- the #209 "
+                           "silicon divergence is gone, which would mean this "
+                           "part behaves differently than measured. Re-read "
+                           "FINDING_208 before trusting anything else here.")
+        else:
+            p.failures.append(f"GET_DESCRIPTOR(config, wLength 0): {kind} "
+                              f"{data!r} -- neither the measured silicon stall "
+                              f"nor a clean empty reply")
 
     # --- wLength shorter and longer than the descriptor, on DEVICE too ----
     #
@@ -649,13 +699,19 @@ def main():
     for n in p.notes:
         print(f"  note   {n}")
     print()
+    for d in p.silicon:
+        print(f"  SILICON  {d}")
+    if p.silicon:
+        print()
     if p.failures:
-        print(f"CH9 FAIL: {p.passes} passed, {len(p.failures)} failed")
+        print(f"CH9 FAIL: {p.passes} passed, {len(p.failures)} failed, "
+              f"{len(p.silicon)} silicon divergence(s)")
         for f in p.failures:
             print(f"  - {f}")
         return 1
     print(f"CH9 PASS: all {p.passes} Chapter 9 checks behaved as USB 2.0 §9.4 "
-          f"requires")
+          f"requires, with {len(p.silicon)} divergence(s) attributed to the "
+          f"UBM rather than the firmware")
     print("This is NOT certification -- USB20CV remains the authority (#192).")
     return 0
 

@@ -837,9 +837,20 @@ def show(index, b, raw=False, device_build=None):
 
     retired = BLOCK_RETIRED.get(index)
     if retired is not None and device_build is not None and device_build >= retired[0]:
-        print("  RETIRED in build 0x%04X -- %s." % retired)
-        print("  The all-0xFF here is the sentinel, not a failed read.")
-        return
+        # ONLY if the device actually answered the sentinel. A retired index can
+        # be RESTORED behind a build flag -- #209 put block 4 back under
+        # MBOX_TLM_STALL -- and this check used to fire on the index alone, so a
+        # block full of live counters was reported as retired and its bytes were
+        # never decoded. The retirement table says what the DEFAULT build
+        # serves; the eight bytes say what THIS device served, and the bytes
+        # win.
+        if all(x == 0xFF for x in b):
+            print("  RETIRED in build 0x%04X -- %s." % retired)
+            print("  The all-0xFF here is the sentinel, not a failed read.")
+            return
+        print("  Retired in build 0x%04X, but this device is SERVING it -- so "
+              "the image was built with the flag that restores it. Decoding "
+              "the live bytes." % retired[0])
 
     need = BLOCK_FIRST_BUILD.get(index)
     if device_build is not None and need is not None and device_build < need:
