@@ -118,14 +118,43 @@ USB20CV Chapter 9 subjects -> ch9_probe coverage
                                    addresses vs code, UAC1 format fields,
                                    iSerialNumber vs the linked serial string
 
-  UNREACHABLE from Linux userspace -- these are what #192 is actually for
-    Set Address                    the host stack owns addressing; re-assigning
-                                   an address from userspace strands the device
-    Malformed packets / timing     libusb cannot emit a bad packet, a wrong
-                                   toggle, or a short inter-packet gap
-    Data toggle reset              SET_INTERFACE and CLEAR_FEATURE(HALT) must
-                                   reset the toggle; only an analyser sees it
-    Electrical / signalling        eye diagrams, rise times, EOP width
+  WHAT USB20CV REACHES AND THIS CANNOT -- the actual content of #192
+    Set Address                    §9.4.6, and the Default/Address state
+                                   behaviour around it. USB20CV drives
+                                   enumeration itself, so it can re-address the
+                                   device, check that out-of-range values stall,
+                                   and check the address survives
+                                   SET_CONFIGURATION. From Linux userspace the
+                                   kernel owns the address map: issuing
+                                   SET_ADDRESS moves the device while the host
+                                   still believes the old address, stranding it
+                                   until a replug.
+    Default-state behaviour        everything a device must do BEFORE it is
+                                   addressed. By the time libusb can see it,
+                                   that phase is over.
+    Class-spec rulebook            USB20CV encodes the Audio 1.0 document, not
+                                   just Chapter 9. verify_descriptors.py is our
+                                   reading of the same rules, which is one
+                                   reading by the same authors.
+
+  UNREACHABLE BY USB20CV EITHER -- these need an analyser or a scope
+    Malformed packets / timing     a bad CRC, a wrong PID, a SETUP shorter than
+                                   8 bytes, a short inter-packet gap. Neither
+                                   libusb nor a command-level verifier builds
+                                   packets; the host controller does. Needs an
+                                   exerciser.
+    Data toggle reset              §5.8.5: CLEAR_FEATURE(HALT) and SET_INTERFACE
+                                   must reset the toggle to DATA0. Toggle bits
+                                   live in host-controller queue heads and are
+                                   invisible to both tools. Indirectly visible:
+                                   a device that does not reset it drops every
+                                   later transfer as a retransmission, which the
+                                   --invasive halt cycle would expose as a hang.
+    Electrical / signalling        eye diagrams, rise and fall times, EOP width,
+                                   droop, inrush. A different USB-IF tool
+                                   entirely (USBET/HSET plus a scope and a
+                                   fixture) -- USB20CV is command-level only and
+                                   never touches this.
 
   KNOWN DIVERGENCE (open)
     GET_DESCRIPTOR wLength 0       the device STALLs it; legal per §9.3.5 and
