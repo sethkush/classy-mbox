@@ -826,7 +826,25 @@ def cmd_flash(args):
             except Exception as e2:
                 print("  uhubctl failed: %s" % e2)
         if not switched:
-            print("\n  DO NOT POWER-CYCLE / REPLUG: that discards the RAM image.")
+            # This used to read "DO NOT POWER-CYCLE / REPLUG: that discards the
+            # RAM image", unconditionally -- which is the exact mistake this
+            # module's docstring warns against, printed by this module. It is
+            # true only for DFU_TARGET_RAM, i.e. a genuinely unreadable EEPROM.
+            # After the normal checksum-zeroing trigger the target is
+            # DFU_TARGET_EEPROM, the download is PROGRAMMED, and a power cycle
+            # is harmless. On 2026-08-16 that line was read as evidence a flash
+            # had gone to RAM and nearly got reported as a failed flash; the
+            # unit was fine.
+            print("\n  The app switch was not delivered, so the image is "
+                  "downloaded but not running.")
+            print("  If the trigger was the usual checksum-zeroing one, the "
+                  "target was EEPROM:")
+            print("  the download is PROGRAMMED and a power cycle is safe. "
+                  "Only a genuinely")
+            print("  unreadable EEPROM (dataType 0xFE/0x02) targets RAM, where "
+                  "a power cycle")
+            print("  would discard it. The PID does not distinguish these -- "
+                  "see the module docstring.")
             print("  Deliver a bus reset instead, e.g.:")
             print("      sudo uhubctl -l <hub> -p <port> -a cycle")
 
