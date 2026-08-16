@@ -46,6 +46,7 @@
  */
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/usb.h>
 
 MODULE_LICENSE("GPL");
@@ -167,11 +168,52 @@ static int __init ch9addr_init(void)
 		goto done;
 
 	if (allow_risky) {
+		/*
+		 * §9.4.6: SET_ADDRESS(0) returns the device to the Default state.
+		 * Issuing it is not the test -- an ACK only proves the device
+		 * answered, not that it acted. The test is that it STOPS answering
+		 * at the address the host is still using, because that is what
+		 * "returned to Default state" means from out here.
+		 *
+		 * So the pass condition below is a FAILED transfer, which is the
+		 * one case where an error is the result rather than a problem.
+		 */
+		/* usb_control_msg() DMA-maps the buffer, so it must be kmalloc'd.
+		 * The first version used `unsigned char probe[18]` on the stack and
+		 * tripped WARNING at drivers/usb/core/hcd.c:1487 in
+		 * usb_hcd_map_urb_for_dma. It also returned -EAGAIN, which read
+		 * exactly like "the device stopped answering" -- i.e. it looked like
+		 * the PASS this test is looking for. A broken instrument that fails
+		 * in the shape of the expected result is the worst kind, so this is
+		 * a heap buffer and the warning is gone. */
+		unsigned char *probe = kmalloc(18, GFP_KERNEL);
+
+		if (!probe) {
+			ret = -ENOMEM;
+			goto done;
+		}
+
 		pr_warn("ch9addr: allow_risky=1, un-addressing the device\n");
 		ret = set_address(udev, 0);
-		report("SET_ADDRESS(0) returns to Default state", 0, ret, false);
-		pr_warn("ch9addr: the device is now unaddressed; a port reset is "
-			"required to bring it back\n");
+		report("SET_ADDRESS(0) accepted", 0, ret, false);
+
+		ret = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0),
+				      USB_REQ_GET_DESCRIPTOR,
+				      USB_DIR_IN | USB_TYPE_STANDARD |
+					      USB_RECIP_DEVICE,
+				      (USB_DT_DEVICE << 8), 0,
+				      probe, 18, 2000);
+		kfree(probe);
+		if (ret < 0)
+			pr_info("ch9addr: PASS device no longer answers at its old "
+				"address (%d) -- it really did return to Default "
+				"state\n", ret);
+		else
+			pr_warn("ch9addr: FAIL device still answered %d bytes at its "
+				"OLD address after SET_ADDRESS(0) -- it ACKed the "
+				"request and did not act on it\n", ret);
+
+		pr_warn("ch9addr: recover with: uhubctl -l <hub> -p <port> -a cycle\n");
 	} else {
 		pr_info("ch9addr: SET_ADDRESS(0) skipped (allow_risky=0)\n");
 	}
