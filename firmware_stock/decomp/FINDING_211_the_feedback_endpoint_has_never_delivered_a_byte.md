@@ -371,18 +371,33 @@ way to know and sent 48.000000 forever.
 Neither arm produced an underrun in five minutes, so this was never audible —
 which is exactly why it survived from #186 to now.
 
-### An open disagreement, stated rather than resolved
+### CORRECTION — there is no disagreement, and the loop is accurate to 0.2 ppm
 
-The feedback VALUE the device reports reads slightly **above** nominal
-(0x0BFFF7 = 48.0001), which should make the host insert extra samples. The
-correction it actually applies is **negative**, -7 ppm. Those disagree in sign.
+An earlier revision of this finding recorded the reported value as **48.0001**,
+slightly ABOVE nominal, and called the negative correction a sign disagreement
+that needed the host's view to resolve. **That was an arithmetic error of mine,
+not a device behaviour.**
 
-101 corrections over 300,003 frames is far too consistent to be noise, so the
-disagreement is real. It is not resolved here, and two candidates are open:
-`snd-usb-audio` runs its own buffer-level correction on top of the feedback
-value and may simply dominate it, or our 10.14 value is scaled or signed in a
-way that does not mean what we read it to mean. Distinguishing them needs the
-host's own view of the endpoint, not the device's.
+Nominal is `48 x 16384 = 786432`. The reported `0x0BFFF7` is **786423**, which
+is 9 *below* nominal, not above. I divided correctly and then compared against
+the wrong reference.
 
-Nothing about the fix depends on it: the endpoint now delivers a legal 3-byte
-packet the host accepts and acts on, where before it delivered nothing at all.
+Sampled properly, twelve readings across four distinct values:
+
+| reported | samples/frame | offset |
+|---|---|---|
+| `0x0BFFF9` | 47.999573 | -8.9 ppm |
+| `0x0BFFFA` | 47.999634 | -7.6 ppm |
+| `0x0BFFFC` | 47.999756 | -5.1 ppm |
+| `0x0BFFFD` | 47.999817 | -3.8 ppm |
+
+Weighted mean **-6.8 ppm**, against the **-7.0 ppm** the host actually applied
+over 300,003 frames.
+
+**They agree to 0.2 ppm.** The device measures its own playback consumption
+rate, reports it, and the host tracks it — which is the entire contract of an
+asynchronous sink's feedback endpoint, working end to end.
+
+The lesson is the ordinary one: a derived number compared against a
+misremembered constant produced a confident wrong story about the hardware, and
+the fix was to recompute the constant rather than to investigate the device.
