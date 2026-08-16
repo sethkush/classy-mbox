@@ -84,7 +84,7 @@ None of these is a defect. Each is a documented trade with a reason.
 |---|---|---|
 | **Vendor requests at `bmRequestType = 0x40`** (telemetry read/reset, set-mux, set-clock, enter-DFU) | vendor space is *reserved* for exactly this; DEVICE recipient so `snd-usb-audio` cannot intercept it | none — a compliant host never sends these |
 | **Digi enter-DFU accepted at device recipient, and with any wIndex** | the class-request form becomes undeliverable once a host claims the interface; being strict costs a screwdriver (`BRICK_LOG`) | a host sending class-request 0x00/wValue 0x000A would trip it. No host does |
-| **SET_FEATURE / CLEAR_FEATURE always ACK** | a STALL here makes some hosts abandon the device; no features exist to set | spec-legal for iso endpoints (USB 2.0 §5.6.4 — iso endpoints cannot halt) |
+| ~~**SET_FEATURE / CLEAR_FEATURE always ACK**~~ **— GONE, twice over** | This row described the firmware as of #188 and was wrong in both halves by 0x0057. #188 replaced "always ACK" with stalling unsupported selectors. #214 then found the remaining justification had EXPIRED: it reasoned that no feature exists to set because every endpoint is isochronous, which was true when written and stopped being true when #207 added EP 0x83, an **interrupt** endpoint. §9.4.5 requires the Halt feature of all interrupt and bulk endpoints, so it is now implemented per-endpoint — halt works on 0x83, and 0x81/0x02/0x82 still stall it correctly. `tools/check_endpoint_manifest.py` now fails the build if the endpoint set changes without this being re-read. | none — this is the conforming behaviour, verified by `ch9_probe --invasive` on both units |
 | **GET_MIN / GET_MAX / GET_RES stall** | `bSamFreqType = 2` publishes discrete rates, so the host reads the list; UAC1 §5.2.2.1.1 doesn't require the range trio for discrete controls. Answering MIN=44100/MAX=48000 would imply 45000 is selectable, and SET_CUR rejects it | Windows has been seen to probe these. #191 closed this as NOT APPLICABLE with four independent lines of agreement, including that TI's own reference defines the three and implements none. `FINDING_191_min_max_res_do_not_apply.md` |
 | **`iSerialNumber = 0` in the DEFAULT build only** | a single universal image cannot carry a per-unit string; the serial lives behind `MBOX_UNIT=A/B` | macOS keys per-device settings on the serial, so a default image makes two units indistinguishable to the host and their settings collide. **The per-unit serial is a FEATURE, not bench scaffolding** — a shipped image should be built per unit, and the 42 bytes it costs are not a strip candidate. A universal image would need the serial read from EEPROM at boot, which needs flasher support to write it; nothing requires that today |
 | **PID 0x2000 rather than 0x1000** | at the stock PID the kernel's `mbox1` quirk claims the device and `snd-usb-audio` never binds | this is us dodging a host workaround written for stock firmware, not a compliance issue. Correct as-is |
@@ -240,8 +240,31 @@ continuous range, and the device already stalls all three -- which is the
 correct answer, not a gap. Measured on hardware, and corroborated by TI's own
 reference implementing none of them and neither stock image dispatching on them.
 
-So the remaining budget question is only about the stall counter block 4's
-retirement spent, which #192 may want back: one struct byte plus one TLM_INC8.
+~~So the remaining budget question is only about the stall counter block 4's
+retirement spent, which #192 may want back: one struct byte plus one TLM_INC8.~~
+
+**CLOSED (#209, 0x0056).** Block 4 came back behind `MBOX_TLM_STALL=1` — two
+struct bytes and two increments, not one, because a stall counter alone cannot
+separate "we stalled it" from "we never saw it". It answered the question it was
+restored for: across `GET_DESCRIPTOR(wLength = 0)` the dispatch counter went +1
+while `reply_stall()` stayed 0, with a normal descriptor read as a reference arm
+moving neither. The request reaches our handler, we never stall it, and the host
+still gets EPIPE — **the UBM stalls it autonomously**. That divergence is
+silicon and is closed as won't-fix; `ch9_probe` reports it in a separate SILICON
+bucket rather than as a failure.
+
+### A citation this repo does not agree with itself about
+
+The iso halt exemption is cited as **§5.6.4** in older material here and in
+`sim_ep0_requests.py`, and I wrote **§5.6.3** in #214's work on 2026-08-16
+without checking either. Neither has been verified against the spec text.
+
+Both were replaced with the sentence that is actually load-bearing and that I am
+confident of: **§9.4.5 — "the Halt feature is required to be implemented for all
+interrupt and bulk endpoint types."** That is what makes halt mandatory on
+0x83, and isochronous endpoints fall outside it by omission rather than by a
+separate exemption clause. The §5.6.x references that remain are unverified and
+should be treated as such until someone reads the section.
 
 ### Budget (original estimate)
 

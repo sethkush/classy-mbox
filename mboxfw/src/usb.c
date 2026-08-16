@@ -1183,7 +1183,8 @@ static void handle_setup(void)
                  * (usb_clear_halt on Linux), so refusing it would take away
                  * the host's recovery path — and on this device it is a
                  * genuine no-op: the iso streaming endpoints have no halt
-                 * feature to clear (§5.6.4), and EP0's stall is already
+                 * feature to clear -- §9.4.5 requires halt only of
+                 * interrupt and bulk endpoints -- and EP0's stall is already
                  * cleared at the top of handle_setup by the TI
                  * STALLClrInEp0/STALLClrOutEp0 prologue.
                  *
@@ -1217,7 +1218,8 @@ static void handle_setup(void)
                  * device has no settable feature at all —
                  *   DEVICE_REMOTE_WAKEUP: not advertised in bmAttributes;
                  *   ENDPOINT_HALT:        the streaming endpoints are
-                 *                         isochronous and have no halt (§5.6.4);
+                 *                         isochronous, and §9.4.5 requires halt
+                 *                         only of interrupt and bulk;
                  *   TEST_MODE:            high-speed only, and this is a
                  *                         full-speed device.
                  * So every SetFeature() is a Request Error. Unlike the
@@ -1227,7 +1229,7 @@ static void handle_setup(void)
                  *
                  * #214 — THE ENDPOINT_HALT LINE ABOVE EXPIRED. It was true when
                  * written: the device then had EP0 and three isochronous
-                 * endpoints, and §5.6.3 exempts every one of them. #207 added
+                 * endpoints, and §9.4.5 requires halt only of interrupt and bulk endpoints, so every one of them was outside it. #207 added
                  * EP 0x83, an INTERRUPT endpoint (bmAttributes 3 on the live
                  * device), and interrupt endpoints are not exempt — §9.4.9
                  * makes halt mandatory there, §9.4.1 makes clearing it

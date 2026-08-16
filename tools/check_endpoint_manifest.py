@@ -6,8 +6,9 @@ not a reasoning error.
 
 #188 made SET_FEATURE stall every selector, and justified ENDPOINT_HALT with a
 comment enumerating our endpoints: "the streaming endpoints are isochronous and
-have no halt (5.6.3)". That was TRUE when written. The device then had EP0 and
-three isochronous endpoints, and 5.6.3 genuinely exempts every one of them.
+have no halt". That was TRUE when written. The device then had EP0 and three
+isochronous endpoints, and 9.4.5 requires halt only of interrupt and bulk, so
+every one of them was genuinely outside it.
 
 Then #207 added EP 0x83, an INTERRUPT endpoint, and the premise silently stopped
 holding. Interrupt endpoints are not exempt: 9.4.9 makes halt mandatory there.
@@ -49,8 +50,10 @@ HEADER = """\
 # went stale silently. Before re-baselining, re-read each of these:
 #
 #   * usb.c REQ_SET_FEATURE / REQ_CLEAR_FEATURE -- ENDPOINT_HALT is MANDATORY on
-#     interrupt and bulk endpoints (9.4.9 / 9.4.1) and EXEMPT on isochronous
-#     ones (5.6.3). Adding a non-iso endpoint means implementing halt for it.
+#     interrupt and bulk endpoints -- 9.4.5 says the Halt feature 'is required
+#     to be implemented for all interrupt and bulk endpoint types', which is
+#     what leaves isochronous ones out. Adding a non-iso endpoint means
+#     implementing halt for it.
 #   * usb.c REQ_GET_STATUS -- 9.4.5 requires the halt bit to read back for any
 #     endpoint that has the feature.
 #   * regs.h endpoint buffer map -- EP_BBAX/EP_BSIZE work in 8-byte units and
@@ -136,7 +139,7 @@ def main():
         print("  + 0x%02X %s %dB  -- NEW" % e)
         if e[1] in ("interrupt", "bulk"):
             print("      %s endpoints are NOT exempt from ENDPOINT_HALT "
-                  "(§5.6.3 exempts only isochronous)." % e[1])
+                  "(§9.4.5 requires it of interrupt and bulk only)." % e[1])
             print("      §9.4.9 set, §9.4.1 clear, §9.4.5 report -- all "
                   "mandatory. This is exactly #214.")
     for e in gone:

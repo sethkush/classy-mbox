@@ -245,7 +245,7 @@
                                    *       isochronous" was true when written
                                    *       and expired when #207 added EP 0x83.
                                    *       Per-endpoint: 0x81/0x02/0x82 keep
-                                   *       stalling it, correctly (§5.6.3).
+                                   *       stalling it, correctly (§9.4.5).
                                    *       6011 of 6016 -- which is why
                                    *       MBOX_TLM_STALL=1 does NOT build in
                                    *       this tree. #209's counter and #214
