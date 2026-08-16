@@ -124,6 +124,12 @@ static __data unsigned long g_internal_rate = 48000UL;
  * way on 2026-07-18). 0xFF = no pending assignment. */
 static __data unsigned char g_pending_address = 0xFF;
 
+/* #214: halt state for EP 0x83, the interrupt endpoint #207 added. Held in
+ * RAM rather than read back from IEPCNF3 because GET_STATUS must report what
+ * the HOST set, and the UBM also raises that bit on its own during EP0 error
+ * handling -- reading the register would conflate the two. */
+static __data unsigned char g_ep3_halted = 0;
+
 /* EP0 IN reply staging.
  * Rev 20's EP0 IN buffer sits at 0xFA10; we mirror that here. On a real
  * transfer larger than the 8-byte EP0 MaxPacketSize we'll need to chunk
@@ -1107,12 +1113,22 @@ static void handle_setup(void)
                 reply_zero_length();
                 break;
             case REQ_GET_STATUS: {
-                /* USB 2.0 §9.4.5: 2 bytes for every recipient. Bus-powered,
-                 * no remote wakeup, no halt support => both bytes zero.
+                /* USB 2.0 §9.4.5: 2 bytes for every recipient. Bus-powered and
+                 * no remote wakeup, so the DEVICE bytes are both zero, and
+                 * §9.4.5 reserves every interface byte as zero.
                  * macOS IOUSBFamily issues this during enumeration, so it
-                 * MUST be answered. */
+                 * MUST be answered.
+                 *
+                 * #214: the ENDPOINT recipient is no longer always zero. Bit 0
+                 * is Halt, and for the one endpoint that has a halt feature it
+                 * has to read back what SET_FEATURE did -- a device that
+                 * accepts a halt and then reports itself un-halted is worse
+                 * than one that refuses it. */
                 unsigned char st[2];
                 st[0] = 0; st[1] = 0;
+                if (recip == 0x02 && wIndexL == EP_STATUS_IN) {
+                    st[0] = g_ep3_halted;
+                }
                 stage_immediate(st, 2);
                 break;
             }
@@ -1142,6 +1158,22 @@ static void handle_setup(void)
                  * in bmAttributes, so clearing it is a request to change a
                  * feature that does not exist here. */
                 if (wValueH == 0x00 && wValueL == 0x00 && recip == 0x02) {
+                    /* #214: on EP 0x83 this is no longer a no-op. §5.8.5 also
+                     * requires the data toggle to reset to DATA0 when a halt is
+                     * cleared, so bit 5 (TOGGLE) goes down with bit 3 (STALL).
+                     * Clearing halt on any other endpoint stays the ACKed
+                     * no-op it has always been. */
+                    if (wIndexL == EP_STATUS_IN) {
+                        /* NOVEL — reason: #214. Clears STALL (bit 3) and
+                         * TOGGLE (bit 5) on EP3 IN. Stock ships no interrupt
+                         * endpoint at all, so there is no Rev 20 or Rev 22
+                         * address to cite; TI's UsbEng.c has no halt handler
+                         * either. §9.4.1 requires the clear, §5.8.5 requires
+                         * the toggle to reset to DATA0 with it. Same bit 3 the
+                         * TI STALLInEp0 macro uses, applied to EP3. */
+                        IEPCNF3 &= ~0x28;
+                        g_ep3_halted = 0;
+                    }
                     reply_zero_length();
                 } else {
                     reply_stall();
@@ -1158,8 +1190,38 @@ static void handle_setup(void)
                  * So every SetFeature() is a Request Error. Unlike the
                  * ClearFeature case there is no host-recovery path to
                  * preserve: a host that cannot set a feature simply does not
-                 * set it. */
-                reply_stall();
+                 * set it.
+                 *
+                 * #214 — THE ENDPOINT_HALT LINE ABOVE EXPIRED. It was true when
+                 * written: the device then had EP0 and three isochronous
+                 * endpoints, and §5.6.3 exempts every one of them. #207 added
+                 * EP 0x83, an INTERRUPT endpoint (bmAttributes 3 on the live
+                 * device), and interrupt endpoints are not exempt — §9.4.9
+                 * makes halt mandatory there, §9.4.1 makes clearing it
+                 * mandatory, §9.4.5 makes reporting it mandatory. Nothing
+                 * re-derived this when the endpoint was added, and
+                 * ch9_probe --invasive caught it.
+                 *
+                 * MEASURED: SET_FEATURE(ENDPOINT_HALT, EP 0x83) stalled.
+                 *
+                 * Deliberately per-endpoint. The stall stays correct for
+                 * 0x81/0x02/0x82 — they really are exempt — so this must not
+                 * become a blanket "halt is supported". */
+                if (wValueH == 0x00 && wValueL == 0x00 && recip == 0x02 &&
+                    wIndexL == EP_STATUS_IN) {
+                    /* NOVEL — reason: #214. Sets STALL (bit 3) on EP3 IN, the
+                     * interrupt endpoint #207 added. §9.4.9 makes halt
+                     * mandatory on an interrupt endpoint; stock has no such
+                     * endpoint, so nothing in Rev 20 or Rev 22 writes this
+                     * register and there is no stock address to cite. Bit 3 is
+                     * the same STALL bit TI's hwMacro.h STALLInEp0 sets on
+                     * EP0, and that reply_stall() uses here. */
+                    IEPCNF3 |= 0x08;
+                    g_ep3_halted = 1;
+                    reply_zero_length();
+                } else {
+                    reply_stall();
+                }
                 break;
             case REQ_GET_CONFIG:
                 stage_immediate(&g_configured, 1);
