@@ -199,7 +199,22 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0056   /* 0056: instruments, no behaviour change.
+#define TLM_BUILD_ID     0x0057   /* 0057: #211 FIXED -- the feedback endpoint
+                                   *       delivers. AUDIO_FEEDBACK_ARM = 1,
+                                   *       because the UBM emits THREE bytes per
+                                   *       unit armed (measured 1/2/3/4/6/8 ->
+                                   *       3/6/9/12/18/24). TI's SoftPll.c arms
+                                   *       3, we copied it, and that is why the
+                                   *       endpoint sent 9 bytes against a
+                                   *       wMaxPacketSize of 3 and babbled on
+                                   *       every packet since it was declared.
+                                   *       Verified before the change by arming
+                                   *       1 over the wire: 1005 packets, all
+                                   *       status 0, exactly 3 bytes, and the
+                                   *       host then VARIES its playback packet
+                                   *       sizes instead of sending a fixed
+                                   *       nominal -- the loop is closed.
+                                   * 0056: instruments, no behaviour change.
                                    *       #215: TLM_REQ_FB_TUNE sets the
                                    *       feedback endpoint's byte count at
                                    *       runtime, so #211's open question --

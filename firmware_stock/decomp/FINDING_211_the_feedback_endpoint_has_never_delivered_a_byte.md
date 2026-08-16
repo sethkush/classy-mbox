@@ -305,3 +305,26 @@ Three of my own errors were caught by control arms along the way — a missing
 `URB_DIR_IN`, a concurrent-submitter conflict, and a `sudo`-reset `$HOME` that
 reported a host path bug as a firmware one. Each was caught because the 3-byte
 reference arm failed in a way the device could not have caused.
+
+## The host ACTS on it — the loop is closed, not merely delivering
+
+Delivery is not the same as use. `snd-usb-audio` could have been ignoring the
+endpoint. Exact playback packet sizes, same unit, same session, 40 s each:
+
+| armed | 288 B (48 samples) | 282 B (47 samples) |
+|---|---|---|
+| 3 — feedback babbling | **10122** | 0 |
+| 1 — feedback working | 10118 | **4** |
+
+With the loop open the host sends a fixed nominal 288 bytes for every frame it
+ever sends. With it closed the host varies the packet size. That is the host
+adjusting its output rate to the device's reported one, and it is the entire
+purpose of an asynchronous sink's feedback endpoint.
+
+**The direction of those four corrections is NOT explained and is not claimed.**
+The reported value is consistently a shade ABOVE nominal (0x0BFFF7 = 48.0001),
+which should make the host occasionally send 49 samples, not 47. Four packets in
+10,122 is far too few to fit a rate to, and `snd-usb-audio` also runs its own
+buffer-level correction on top of the feedback value, so the sign here may not
+be the rate at all. Recorded as an open detail rather than reasoned into a
+story. The result that matters -- fixed versus varying -- does not depend on it.
