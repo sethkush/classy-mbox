@@ -175,7 +175,26 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0053   /* 0053: #202 and #202b REVERTED. Both attempts
+#define TLM_BUILD_ID     0x0054   /* 0054: FIVE FEATURES, first hardware run.
+                                   *       #203 Selector gains position 3 =
+                                   *            INSTRUMENT (Line 1, S/PDIF 2
+                                   *            unchanged -- appended, not
+                                   *            renumbered).
+                                   *       #204 terminal names on all five
+                                   *            terminals, strings 4..8.
+                                   *       #205 release keeps telemetry block 0.
+                                   *       #207 UAC1 status interrupt on EP3 IN,
+                                   *            raised by a front-panel press.
+                                   *            Capture buffer 640 -> 632 to pay
+                                   *            for its 8 bytes.
+                                   *       #208 wLength=0 arms no IN packet.
+                                   *            THE RISKIEST OF THE FIVE -- it is
+                                   *            the only one that can wedge
+                                   *            enumeration, so check EP0 first.
+                                   *       Block 11 retired; blocks 1/2 behind
+                                   *       MBOX_TLM_FULL, block 9 behind
+                                   *       MBOX_TLM_ROUTING.
+                                   * 0053: #202 and #202b REVERTED. Both attempts
                                    *       to spend the calibration without a
                                    *       host stream are refuted by
                                    *       measurement, so this is 0x004F's
