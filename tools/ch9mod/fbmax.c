@@ -30,19 +30,21 @@
  *
  * Either way this is worth a flash's worth of information without spending one.
  *
- * PRECONDITION: the endpoint must be in the ACTIVE alternate setting, so run a
- * playback stream first and load this while it plays:
+ * NO CONCURRENT STREAM. The module selects the altsetting itself, so nothing
+ * else is submitting to EP 0x82 while the test runs:
  *
- *     aplay -D hw:1,0 -f S24_3LE -r 48000 -c 2 /tmp/t.raw &
  *     sudo insmod fbmax.ko busnum=2 devnum=6 pktsize=8
  *     dmesg | tail -20
  *
- * CAVEAT, and it is the reason wMaxPacketSize is restored in the same function
- * that raises it: snd-usb-audio also submits URBs to this endpoint, and while
- * the cached value is raised its URBs would be sized by the new value too. The
- * window is one URB. Worst case is an audible glitch in the stream that is
- * already running; stopping and restarting aplay clears it. No device state
- * changes and no replug is involved.
+ * That is a correction, not a convenience. The first version required a running
+ * aplay so ALSA would select alt 1, which made snd-usb-audio a second submitter
+ * on the same isochronous stream -- the leading explanation for the -EINVAL in
+ * #213. It also meant the raised wMaxPacketSize would have sized ALSA's URBs
+ * too. Owning the altsetting removes both problems.
+ *
+ * State touched, all restored: the altsetting (back to 0 on the way out) and
+ * the cached wMaxPacketSize (restored in the same function that raises it). No
+ * device state changes and no replug is involved.
  */
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -84,31 +86,41 @@ static int match_dev(struct usb_device *udev, void *data)
 }
 
 /*
- * Find the endpoint in the CURRENT alternate setting only. Looking through all
- * altsettings would find a descriptor that is not active, and an URB submitted
- * against it fails in a way that looks like a device fault rather than an
- * operator error.
+ * Locate which interface and alternate setting DECLARE the endpoint, across
+ * every altsetting rather than only the active one.
+ *
+ * The first version searched only cur_altsetting and required the operator to
+ * start a playback stream so ALSA would select alt 1. That made snd-usb-audio a
+ * concurrent submitter on the same isochronous stream, which is the leading
+ * explanation for the -EINVAL in #213. Owning the altsetting ourselves means
+ * nothing else is submitting to EP 0x82 while the test runs.
  */
-static struct usb_host_endpoint *find_active_ep(struct usb_device *udev, int addr)
+static int find_ep_altsetting(struct usb_device *udev, int addr,
+			      int *ifnum, int *altnum)
 {
 	struct usb_host_config *cfg = udev->actconfig;
-	int i, j;
+	int i, j, k;
 
 	if (!cfg)
-		return NULL;
+		return -ENODEV;
 	for (i = 0; i < cfg->desc.bNumInterfaces; i++) {
 		struct usb_interface *intf = cfg->interface[i];
-		struct usb_host_interface *alt;
 
-		if (!intf || !intf->cur_altsetting)
+		if (!intf)
 			continue;
-		alt = intf->cur_altsetting;
-		for (j = 0; j < alt->desc.bNumEndpoints; j++) {
-			if (alt->endpoint[j].desc.bEndpointAddress == addr)
-				return &alt->endpoint[j];
+		for (j = 0; j < intf->num_altsetting; j++) {
+			struct usb_host_interface *alt = &intf->altsetting[j];
+
+			for (k = 0; k < alt->desc.bNumEndpoints; k++) {
+				if (alt->endpoint[k].desc.bEndpointAddress == addr) {
+					*ifnum = alt->desc.bInterfaceNumber;
+					*altnum = alt->desc.bAlternateSetting;
+					return 0;
+				}
+			}
 		}
 	}
-	return NULL;
+	return -ENODEV;
 }
 
 static void fb_complete(struct urb *urb)
@@ -126,6 +138,7 @@ static int __init fbmax_init(void)
 	unsigned char *buf = NULL;
 	__le16 saved_wmax;
 	int ret, i, nonzero = 0;
+	int ifnum = -1, altnum = -1, restore_alt = 0;
 
 	if (!busnum || !devnum) {
 		pr_err("fbmax: need busnum= and devnum=\n");
@@ -143,36 +156,37 @@ static int __init fbmax_init(void)
 		return -ENODEV;
 	}
 
-	ep = find_active_ep(udev, epaddr);
-	if (!ep) {
-		pr_err("fbmax: EP 0x%02x is not in any ACTIVE altsetting -- start a "
-		       "playback stream first\n", epaddr);
-		ret = -ENODEV;
+	ret = find_ep_altsetting(udev, epaddr, &ifnum, &altnum);
+	if (ret) {
+		pr_err("fbmax: EP 0x%02x is not declared in any altsetting\n", epaddr);
 		goto out_dev;
 	}
+	pr_info("fbmax: EP 0x%02x is on interface %d alt %d\n",
+		epaddr, ifnum, altnum);
 
-	/* usb_submit_urb() does not use the endpoint we walked the config to
-	 * find -- it resolves udev->ep_in[n] from the pipe. If those are two
-	 * different structs then raising wMaxPacketSize on ours changes nothing
-	 * the submit path ever reads, and every result would be a null from an
-	 * instrument that was never connected to anything. */
-	{
-		struct usb_host_endpoint *live = udev->ep_in[usb_endpoint_num(&ep->desc)];
+	/* Activate it ourselves. No aplay, so no second submitter. */
+	ret = usb_set_interface(udev, ifnum, altnum);
+	if (ret) {
+		pr_err("fbmax: usb_set_interface(%d, %d) -> %d\n",
+		       ifnum, altnum, ret);
+		goto out_dev;
+	}
+	restore_alt = 1;
 
-		pr_info("fbmax: walked ep=%p, live udev->ep_in[%d]=%p, %s\n",
-			ep, usb_endpoint_num(&ep->desc), live,
-			live == ep ? "SAME (patch will be seen)"
-				   : "DIFFERENT (patch would be invisible)");
-		if (!live) {
-			pr_err("fbmax: udev->ep_in[%d] is NULL -- the endpoint is not "
-			       "active; start a playback stream first\n",
-			       usb_endpoint_num(&ep->desc));
-			ret = -ENODEV;
-			goto out_dev;
-		}
-		ep = live;	/* patch and submit against the same struct */
+	ep = udev->ep_in[usb_pipeendpoint(usb_rcvisocpipe(udev, epaddr & 0x0F))];
+	if (!ep) {
+		pr_err("fbmax: udev->ep_in[%d] is still NULL after set_interface\n",
+		       epaddr & 0x0F);
+		ret = -ENODEV;
+		goto out_alt;
 	}
 
+	/* ep is taken straight from udev->ep_in[], which is what
+	 * usb_submit_urb() resolves the pipe to -- so the wMaxPacketSize patch
+	 * below is guaranteed to be the one the submit path reads. An earlier
+	 * version patched the descriptor found by walking the config and checked
+	 * afterwards that the two matched; taking it from ep_in[] removes the
+	 * question rather than testing for it. */
 	saved_wmax = ep->desc.wMaxPacketSize;
 	pr_info("fbmax: EP 0x%02x declares wMaxPacketSize %d; scheduling %d x %dB\n",
 		epaddr, usb_endpoint_maxp(&ep->desc), npkts, pktsize);
@@ -238,7 +252,7 @@ static int __init fbmax_init(void)
 			nonzero++;
 			pr_info("fbmax:  pkt %2d: %d bytes, status %d, data %*ph\n",
 				i, d->actual_length, d->status,
-				min(d->actual_length, 8u), buf + d->offset);
+				min(d->actual_length, 16u), buf + d->offset);
 		} else {
 			pr_info("fbmax:  pkt %2d: 0 bytes, status %d\n",
 				i, d->status);
@@ -258,6 +272,19 @@ static int __init fbmax_init(void)
 out_free:
 	usb_free_urb(urb);
 	kfree(buf);
+out_alt:
+	/* Put the interface back to alt 0. snd-usb-audio selects its own
+	 * altsetting when a stream opens, so leaving alt 1 selected would not
+	 * break it -- but leaving the bus in a state this module chose, after
+	 * this module has unloaded, is how the next measurement gets a surprise
+	 * it cannot attribute. */
+	if (restore_alt) {
+		int r = usb_set_interface(udev, ifnum, 0);
+
+		if (r)
+			pr_warn("fbmax: could not restore interface %d to alt 0: %d\n",
+				ifnum, r);
+	}
 out_dev:
 	usb_put_dev(udev);
 	return ret ? ret : -EAGAIN;

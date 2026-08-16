@@ -157,3 +157,84 @@ The 9:7 split is not obviously 1-in-4, which is what `FB_ARM_EVERY = 4` and
 different phase relationship to the firmware's arming cycle than ALSA's
 continuous submission does, and inferring a duty cycle from one URB would be
 reading structure into 16 samples.
+
+---
+
+# RESOLVED, 2026-08-15 — the device emits NINE bytes, and the value inside is correct
+
+`tools/ch9mod/fbmax.ko` raised the cached `wMaxPacketSize` and submitted its own
+isochronous IN URB at a range of scheduled sizes:
+
+| scheduled | result |
+|---|---|
+| 3 (control arm) | 6 x -75, 2 x status 0, **0 bytes** |
+| 4 | 6 x -75, 2 x status 0, **0 bytes** |
+| 8 | 5 x -75, 3 x status 0, **0 bytes** |
+| 16 | **6 of 8 packets carried 9 bytes**, status 0, error_count 0 |
+| 32, 64 | same — 9 bytes, status 0 |
+
+**The endpoint emits 9 bytes per packet.** Not 3, and not the 8 the buffer-size
+hypothesis predicted. Anything scheduled below 9 babbles; 16 and above succeeds.
+
+## The feedback value was right the whole time
+
+```
+f7 ff 0b | 15 83 33 e4 50 50
+```
+
+The first three bytes are the payload the firmware actually wrote:
+`0x0BFFF7` = 786423, and 786423 / 16384 = **48.000 samples per frame** in 10.14
+format, which is exactly correct at 48 kHz. A later run read `fa ff 0b` =
+48.0002, the PLL tracking.
+
+So `feedback_arm()` computes and publishes the right number. Nothing about the
+measurement, the 10.14 conversion, or the arming cadence is wrong. **The only
+defect is the length of the transfer**, and the correct value has been sitting
+in the first three bytes of an oversized packet the host was obliged to reject.
+
+## Where the extra six bytes come from
+
+`EP_FEEDBACK_BUF_ADDR` is 0xFF20 and `EP_FEEDBACK_BUF_SIZE` is 8, so the buffer
+is 0xFF20-0xFF27. Nine bytes from the base runs to **0xFF28, which is the setup
+packet buffer** — the very next thing in the endpoint data region.
+
+The device is therefore emitting its entire 8-byte buffer plus one byte past the
+end, and `IEPDCNTX2 = IEPDCNTY2 = 3` is not governing the length at all. The
+trailing `50 50` is adjacent XDATA, not feedback.
+
+This corrects the hypothesis recorded above. It was right that the length is
+tied to the buffer rather than to the count, and wrong about the number: the
+prediction was 8 or 4, and the answer is 8 + 1.
+
+## What this does and does not settle
+
+**Settled:** the value is correct; the length is wrong; the length follows the
+buffer, not `IEPDCNTX`; the overshoot is one byte past the declared buffer.
+
+**Not settled:** why 9 rather than 8. An off-by-one in how the UBM derives the
+count from `IEPBSIZ` is the obvious reading, and it is still only a reading.
+`EP_BSIZE()` works in 8-byte units so 8 is the smallest buffer expressible,
+which means a 3-byte packet may not be reachable by shrinking the buffer at all.
+
+**Do not fix this by declaring `wMaxPacketSize = 9`.** It would work, and it
+would be wrong: UAC1 and USB 2.0 §5.12.4.2 both specify 3 bytes for a full-speed
+feedback endpoint, hosts read only the first three, and it would trade a visible
+failure for an invisible non-conformance. The next step is a firmware experiment
+varying `IEPDCNTX2` against `IEPBSIZ2`, which costs a flash — and now has a
+specific prediction to test rather than a guess.
+
+## The instrument, and two of my own errors it caught
+
+The control arm at 3 bytes earned its place twice. First it failed identically
+to the 8-byte arm with `-EINVAL`, which identified a missing `URB_DIR_IN` in a
+hand-built URB as MY bug rather than a device result. Then, once submitting, it
+reproduced ALSA's `-75` exactly, which is what makes the 16-byte row credible.
+
+The `-EINVAL` itself was the second error: the first design required a
+concurrent `aplay` so ALSA would select alt 1, which made `snd-usb-audio` a
+second submitter on the same isochronous stream. Having the module own the
+altsetting fixed it. A test that needs the system under test to be busy doing
+the same thing is not measuring what it thinks.
+
+Unit verified clean afterwards: altsetting restored to 0, 576,044 bytes
+captured, `aplay` rc=0.
