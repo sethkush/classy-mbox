@@ -74,12 +74,10 @@ extern const __code unsigned char AppConfigDesc[];
 extern const __code unsigned char AppStringLang[];
 extern const __code unsigned char AppStringMfr[];
 extern const __code unsigned char AppStringProduct[];
-extern const __code unsigned char AppStrStrLineIn[];
-extern const __code unsigned char AppStrStrInstIn[];
+extern const __code unsigned char AppStrStrAnalogIn[];
 extern const __code unsigned char AppStrStrSpdifIn[];
 extern const __code unsigned char AppStrStrLineOut[];
 extern const __code unsigned char AppStrStrSpdifOut[];
-extern const __code unsigned char AppStrStrMicIn[];
 #ifdef MBOX_SERIAL_NCHAR
 extern const __code unsigned char AppStringSerial[];
 #endif
@@ -178,12 +176,6 @@ static __data unsigned long g_internal_rate = 48000UL;
  * VID only, no PID/bcdDevice (empirically bricked mboxfw v1 the same
  * way on 2026-07-18). 0xFF = no pending assignment. */
 static __data unsigned char g_pending_address = 0xFF;
-
-/* #214: halt state for EP 0x83, the interrupt endpoint #207 added. Held in
- * RAM rather than read back from IEPCNF3 because GET_STATUS must report what
- * the HOST set, and the UBM also raises that bit on its own during EP0 error
- * handling -- reading the register would conflate the two. */
-static __data unsigned char g_ep3_halted = 0;
 
 /* EP0 IN reply staging.
  * Rev 20's EP0 IN buffer sits at 0xFA10; we mirror that here. On a real
@@ -463,14 +455,19 @@ static void handle_get_descriptor(void)
                  * would have got before. */
                 case 3:  stage_reply(AppStringSerial,  APP_STRING_SERIAL_LEN); break;
 #endif
-                /* #204 terminal names -- what makes the Selector's three
-                 * positions legible in a host UI instead of numbered. */
-                case 4:  stage_reply(AppStrStrLineIn, STR_LINE_IN_LEN); break;
-                case 5:  stage_reply(AppStrStrInstIn, STR_INST_IN_LEN); break;
+                /* #204 terminal names -- what makes the Selector's two
+                 * positions legible in a host UI instead of numbered.
+                 *
+                 * 5 and 9 were "Instrument" and "Microphone" and are GONE with
+                 * the terminals they named (#228). The gap is deliberate: 6, 7
+                 * and 8 keep their numbers, because a string index is what an
+                 * already-parsed descriptor points at, and renumbering would
+                 * silently relabel the S/PDIF and output terminals. Nothing
+                 * references 5 or 9, so nothing asks for them. */
+                case 4:  stage_reply(AppStrStrAnalogIn, STR_ANALOG_IN_LEN); break;
                 case 6:  stage_reply(AppStrStrSpdifIn, STR_SPDIF_IN_LEN); break;
                 case 7:  stage_reply(AppStrStrLineOut, STR_LINE_OUT_LEN); break;
                 case 8:  stage_reply(AppStrStrSpdifOut, STR_SPDIF_OUT_LEN); break;
-                case 9:  stage_reply(AppStrStrMicIn, STR_MIC_IN_LEN); break;   /* #224 */
                 default: reply_stall(); break;
             }
             break;
@@ -789,10 +786,8 @@ static void selector_set_source(unsigned char spdif)
  * numbers the AC interface differently is not a reason to refuse.
  */
 #define UAC_SELECTOR_UNIT_ID   0x05
-#define SELECTOR_ANALOG        0x01   /* LINE  — position 1, unchanged */
+#define SELECTOR_ANALOG        0x01   /* ANALOG — position 1, unchanged */
 #define SELECTOR_SPDIF         0x02   /* S/PDIF — position 2, unchanged */
-#define SELECTOR_INST          0x03   /* INSTRUMENT — appended by #203 */
-#define SELECTOR_MIC           0x04   /* MICROPHONE — appended by #224 */
 
 /* #203. Apply a Selector position, including the analog front end it names.
  *
@@ -809,22 +804,30 @@ static void selector_set_source(unsigned char spdif)
  * inconsistency #159 was removed for. */
 static void selector_apply_position(unsigned char pos)
 {
-    if (pos == SELECTOR_SPDIF) {
-        selector_set_source(1);
-        return;
-    }
-    /* Analog. Pick the front end first, then route, so the mux is settled
-     * before anything downstream samples it. */
-    {
-        unsigned char pat = (pos == SELECTOR_INST) ? MUX_PAT_INST
-                          : (pos == SELECTOR_MIC)  ? MUX_PAT_MIC
-                                                   : MUX_PAT_LINE;
-        g_mux_state = (unsigned char)((g_mux_state & 0xC0) | (pat << 3) | pat);
-        codec_source_changed();
-        mux_write(g_mux_state);
-        codec_write_word();   /* Rev 20 @ 0x0733, Rev 22 @ 0x071a */
-    }
-    selector_set_source(0);
+    /* #228: TWO POSITIONS, AND THE ANALOG ONE DOES NOT TOUCH THE MUX.
+     *
+     * The hardware has two independent things and this control used to conflate
+     * them. S/PDIF-vs-analog is GLOBAL: one bit, 0x25.4, swapping the whole
+     * capture stream between the CS8427 and the ADC. Which analog front end
+     * feeds that ADC -- mic, line or instrument -- is PER CHANNEL, set by the
+     * 74HC157 muxes from the front-panel buttons, and there is no S/PDIF button
+     * because S/PDIF is not one of those choices.
+     *
+     * Declaring four positions made the host's control do both jobs, and doing
+     * the second one badly: selecting "line" from a host forced BOTH channels to
+     * line, silently discarding a per-channel setting the user had made
+     * physically. Now the panel owns the analog front end outright and the host
+     * owns only the choice the hardware actually makes globally.
+     *
+     * Consequences, all of them good:
+     *   - nothing the panel does changes a host-visible control, so the stale
+     *     Core Audio reading of #227 cannot arise: there is nothing to go stale;
+     *   - macOS's one-selector-per-engine limit stops mattering, because one
+     *     selector is now exactly the right number (FINDING_macos_one_input_
+     *     selector.md);
+     *   - the host is never told which analog source is live, which is honest,
+     *     because it is not the host's to know or to set. */
+    selector_set_source(pos == SELECTOR_SPDIF ? 1 : 0);
 }
 
 /* #207 is NOT raised from selector_apply_position(): that path runs because the
@@ -895,27 +898,11 @@ static void handle_selector_unit_request(void)
          * the analog case splits on which front end the mux currently selects.
          * Reported from the PUBLISHED mux state rather than from a shadow of
          * the last request, so a front-panel button press is reflected too. */
-        unsigned char pos;
-        if (g_codec_state_25 & CODEC25_SEL_SPDIF) {
-            pos = SELECTOR_SPDIF;
-        } else if ((g_mux_state & 0x07) == MUX_PAT_INST) {
-            pos = SELECTOR_INST;
-        } else if ((g_mux_state & 0x07) == MUX_PAT_MIC) {
-            /* #224. THIS CASE WAS THE BUG, and it fired on every boot. hw_init
-             * leaves the mux at 0xF6 -- mic on both channels, mirroring stock
-             * at Rev 20 @ 0x0941/0x0962 -- and until microphone was a declared
-             * position there was nothing truthful to report for it, so it fell
-             * through to the else and the device answered POSITION 1, LINE.
-             *
-             * A host was therefore told "line" while the hardware was on the
-             * XLR, from power-on until something moved the selector, and the
-             * same lie applied whenever the front-panel button landed on mic.
-             * Declaring position 4 is what makes an honest answer possible;
-             * this is where it gets given. */
-            pos = SELECTOR_MIC;
-        } else {
-            pos = SELECTOR_ANALOG;
-        }
+        /* #228: two positions. The mux is no longer consulted -- which analog
+         * front end the panel selected is not what this control reports, and
+         * reporting it was what made #225 possible in the first place. */
+        unsigned char pos = (g_codec_state_25 & CODEC25_SEL_SPDIF)
+                          ? SELECTOR_SPDIF : SELECTOR_ANALOG;
         stage_immediate(&pos, 1);
     } else {
         reply_stall();
@@ -1320,11 +1307,13 @@ static void handle_setup(void)
                  * has to read back what SET_FEATURE did -- a device that
                  * accepts a halt and then reports itself un-halted is worse
                  * than one that refuses it. */
+                /* #228: with EP 0x83 retired, NO endpoint on this device has
+                 * a halt feature -- the three that remain are isochronous, and
+                 * §9.4.5 requires halt only of interrupt and bulk endpoints. So
+                 * the halt bit is always 0, which is what it reported for every
+                 * endpoint but 0x83 before. */
                 unsigned char st[2];
                 st[0] = 0; st[1] = 0;
-                if (recip == 0x02 && wIndexL == EP_STATUS_IN) {
-                    st[0] = g_ep3_halted;
-                }
                 stage_immediate(st, 2);
                 break;
             }
@@ -1355,22 +1344,6 @@ static void handle_setup(void)
                  * in bmAttributes, so clearing it is a request to change a
                  * feature that does not exist here. */
                 if (wValueH == 0x00 && wValueL == 0x00 && recip == 0x02) {
-                    /* #214: on EP 0x83 this is no longer a no-op. §5.8.5 also
-                     * requires the data toggle to reset to DATA0 when a halt is
-                     * cleared, so bit 5 (TOGGLE) goes down with bit 3 (STALL).
-                     * Clearing halt on any other endpoint stays the ACKed
-                     * no-op it has always been. */
-                    if (wIndexL == EP_STATUS_IN) {
-                        /* NOVEL — reason: #214. Clears STALL (bit 3) and
-                         * TOGGLE (bit 5) on EP3 IN. Stock ships no interrupt
-                         * endpoint at all, so there is no Rev 20 or Rev 22
-                         * address to cite; TI's UsbEng.c has no halt handler
-                         * either. §9.4.1 requires the clear, §5.8.5 requires
-                         * the toggle to reset to DATA0 with it. Same bit 3 the
-                         * TI STALLInEp0 macro uses, applied to EP3. */
-                        IEPCNF3 &= ~0x28;
-                        g_ep3_halted = 0;
-                    }
                     reply_zero_length();
                 } else {
                     reply_stall();
@@ -1400,26 +1373,11 @@ static void handle_setup(void)
                  * re-derived this when the endpoint was added, and
                  * ch9_probe --invasive caught it.
                  *
-                 * MEASURED: SET_FEATURE(ENDPOINT_HALT, EP 0x83) stalled.
-                 *
-                 * Deliberately per-endpoint. The stall stays correct for
-                 * 0x81/0x02/0x82 — they really are exempt — so this must not
-                 * become a blanket "halt is supported". */
-                if (wValueH == 0x00 && wValueL == 0x00 && recip == 0x02 &&
-                    wIndexL == EP_STATUS_IN) {
-                    /* NOVEL — reason: #214. Sets STALL (bit 3) on EP3 IN, the
-                     * interrupt endpoint #207 added. §9.4.9 makes halt
-                     * mandatory on an interrupt endpoint; stock has no such
-                     * endpoint, so nothing in Rev 20 or Rev 22 writes this
-                     * register and there is no stock address to cite. Bit 3 is
-                     * the same STALL bit TI's hwMacro.h STALLInEp0 sets on
-                     * EP0, and that reply_stall() uses here. */
-                    IEPCNF3 |= 0x08;
-                    g_ep3_halted = 1;
-                    reply_zero_length();
-                } else {
-                    reply_stall();
-                }
+                 * #228: EP 0x83 is retired, so this is once again true of
+                 * EVERY endpoint here -- the three that remain are isochronous
+                 * and §9.4.5 exempts them. #214's accept branch went with the
+                 * endpoint it was written for. */
+                reply_stall();
                 break;
             case REQ_GET_CONFIG:
                 stage_immediate(&g_configured, 1);
@@ -1567,61 +1525,6 @@ void usb_ep0_setup(void)
     IEPBSIZ1 = EP_BSIZE(EP_AUDIO_CAPTURE_BUF_SIZE); /* Rev 20 fcn.0x0970 @ 0x09B4,
                                              * Rev 22 fcn.0x0891 @ 0x08D5 */
 
-    /* #207 status interrupt endpoint, EP3 IN. Configured here rather than at
-     * stream start because it is not a streaming endpoint: it must answer a
-     * host poll whenever the device is configured, including when nothing is
-     * streaming -- a front-panel press with no stream open is exactly the case
-     * it exists for.
-     *
-     * IEPCNF3 = 0x80: IEPEN with ISO clear, so §6.4.4.6.1's bit map applies and
-     * DBUF stays 0 -- single buffered, X only. Two bytes of the four.
-     *
-     * NOVEL — reason: stock ships no status endpoint, so there is no address to
-     * mirror. UAC1 §3.7.1.2 defines the endpoint and its two-byte status word. */
-    IEPBBAX3 = EP_BBAX(EP_STATUS_BUF_ADDR);
-    IEPBSIZ3 = EP_BSIZE(EP_STATUS_BUF_SIZE);
-    IEPCNF3  = 0x80;
-    /* START IN NAK STATE, exactly as EP0 IN does a few lines below and for the
-     * identical reason -- see the IEPDCNTX0 = 0x80 comment there, which this
-     * endpoint should have copied when #207 added it and did not.
-     *
-     * IEPDCNTX top bit is the NAK flag. Left at 0, this endpoint reports "zero
-     * bytes ready, not NAKing", so the UBM ships a ZERO-LENGTH PACKET in answer
-     * to every interrupt poll for the whole life of the device -- a host polling
-     * at the declared 8 ms interval gets an unbroken stream of empty status
-     * words instead of silence. Our own EP0 note calls that out as something
-     * that "could confuse strict hosts", and it was a real defect there.
-     *
-     * NAKing is what an interrupt IN endpoint with nothing to say is supposed to
-     * do; usb_status_notify() clears the flag by writing the byte count, which
-     * ships exactly one packet.
-     *
-     * WHETHER THIS CURES THE macOS STALENESS IS NOT YET KNOWN -- see
-     * FINDING_227. It is a defect on its own terms either way. */
-    IEPDCNTX3 = 0x80;
-}
-
-/* #207. Tell the host a control it can read has changed.
- *
- * UAC1 §3.7.1.2: a two-byte status word. bStatusType bit 6 (MEM_CHANGED is bit
- * 5; bit 6 is INTERFACE) — we send originator type 0 = AudioControl interface,
- * with bOriginator naming the unit. The host responds by issuing GET_CUR on
- * that unit, which is the path #203 already serves.
- *
- * Without this, a front-panel button press is invisible: the host keeps showing
- * whatever it last read until something makes it poll again. With it, ALSA and
- * Core Audio track the hardware.
- *
- * Fire-and-forget by design. If the endpoint is already armed with an
- * unconsumed packet this overwrites it, which is correct: the newest state is
- * the only one worth delivering, and the host reads the actual value with
- * GET_CUR anyway. */
-void usb_status_notify(unsigned char unit_id)
-{
-    __xdata unsigned char *buf = (__xdata unsigned char *)EP_STATUS_BUF_ADDR;
-    buf[0] = 0x00;          /* bStatusType: AudioControl interface, no pending */
-    buf[1] = unit_id;       /* bOriginator */
-    IEPDCNTX3 = EP_STATUS_PKT_LEN;
 }
 
 void usb_init(void)
@@ -1879,8 +1782,7 @@ void usb_service(void)
                  * rather than treating 0 or 7 as "S/PDIF" — a Selector Unit
                  * with two inputs has two legal positions, and stalling an
                  * illegal one is what tells the host it asked wrongly. */
-                if (pos == SELECTOR_ANALOG || pos == SELECTOR_SPDIF
-                        || pos == SELECTOR_INST || pos == SELECTOR_MIC) {
+                if (pos == SELECTOR_ANALOG || pos == SELECTOR_SPDIF) {
                     selector_apply_position(pos);
                     reply_zero_length();
                 } else {

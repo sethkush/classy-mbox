@@ -37,6 +37,11 @@
 #define UAC_TT_USB_STREAMING   0x0101   /* USB endpoint as terminal */
 #define UAC_TT_MIC             0x0201   /* generic microphone */
 #define UAC_TT_LINE_IN         0x0603   /* line connector */
+/* #228: the analog capture terminal is now "whatever the panel selected", so it
+ * is an ANALOG CONNECTOR rather than a line connector. Claiming 0x0603 would
+ * assert the panel is on line when it may be on mic or instrument -- the same
+ * class of lie #225 fixed. */
+#define UAC_TT_ANALOG_IN       0x0601   /* generic analog connector */
 #define UAC_TT_SPDIF           0x0605   /* S/PDIF interface */
 #define UAC_TT_LINE_OUT        0x0603
 #define UAC_TT_SPEAKER         0x0301
@@ -105,8 +110,22 @@
  * SoftPll.c writes INEP2_X and arms IEPDCNTX2. Its register block (IEPCNF2 =
  * 0xFF58) was free, and 0x81 was already taken by capture. */
 #define EP_AUDIO_FEEDBACK      0x82
-#define EP_STATUS_IN           0x83   /* EP3 IN = UAC1 status interrupt (#207) */
-#define EP_STATUS_PKT_LEN      2      /* UAC1 §3.7.1.2: bStatusType + bOriginator */
+/* EP 0x83, the UAC1 status interrupt endpoint, is RETIRED at #228.
+ *
+ * #207 added it so a front-panel press could tell the host its Selector value
+ * had moved. #228 took the analog front-end choice off the host's Selector
+ * entirely -- the panel owns it and the host's control now reports only analog
+ * vs S/PDIF, which no button can change. So nothing on this device changes a
+ * host-visible control behind the host's back, and the endpoint had no producer
+ * left: verify_reachability caught usb_status_notify() as an orphan the moment
+ * buttons.c stopped calling it.
+ *
+ * Removed rather than left declared-but-silent. An interrupt endpoint a host
+ * polls every 8 ms forever, that can never have anything to say, is a
+ * capability claim the device does not honour -- and it cost a descriptor, a
+ * buffer, four SFR writes and the ENDPOINT_HALT handling that #214 had to fix.
+ * If a control that changes asynchronously is ever added, this comes back with
+ * it, and FINDING_227 records the NAK-arming lesson it must not lose. */
 #ifndef USB_EP_INTERRUPT
 #define USB_EP_INTERRUPT       0x03   /* bmAttributes: interrupt transfer */
 #endif
@@ -217,7 +236,11 @@
  * circuits: measured 18.9 dB apart in sensitivity at an identical dial
  * position, interleaved, with both LINE arms agreeing to 0.01 dB.
  * FINDING_196_gain_curve_and_the_bad_TS_cable.md. */
-#define TERM_INST_IN           0x0A   /* instrument/Hi-Z analog capture source */
+/* 0x0A and 0x0B were TERM_INST_IN and TERM_MIC_IN. RETIRED at #228 -- the
+ * Selector no longer chooses between analog front ends, the front-panel
+ * buttons do, so a terminal per connector is topology no host can act on.
+ * The IDs are not reused; the measurements that justified them (#203, #224)
+ * still stand and are why the analog path is declared at all. */
                                       /* 0x08/0x09 are the two Feature Units */
 /* #224. The MICROPHONE (XLR) front end as its own capture source.
  *
@@ -241,7 +264,6 @@
  * /dev/null, so a stimulus that never fired looked exactly like a refuted
  * hypothesis. The result above is from the re-run, with the tone confirmed
  * audible. See FINDING_224. */
-#define TERM_MIC_IN            0x0B   /* microphone (XLR) capture source */
 /* #190. One Feature Unit per path, each carrying a single Mute control on the
  * master channel. Two units and not one because #189 measured the hardware to
  * BE two: 0x23.3 gates playback and 0x23.2 gates capture, each killing exactly
@@ -292,18 +314,19 @@
  *
  * These are what make the Selector Unit legible: #203 gave it three positions
  * and without iTerminal a host has nothing to label them with but numbers. */
-#define STR_LINE_IN_IDX        4    /* string 4: "Line In" */
-#define STR_LINE_IN_LEN        16   /* 2 + 2*7 */
-#define STR_INST_IN_IDX        5    /* string 5: "Instrument" */
-#define STR_INST_IN_LEN        22   /* 2 + 2*10 */
+#define STR_ANALOG_IN_IDX      4    /* string 4: "Analog In" (#228) */
+#define STR_ANALOG_IN_LEN      20   /* 2 + 2*9 */
+/* 5 and 9 were "Instrument" and "Microphone". RETIRED at #228 with the
+ * terminals they named. The numbers are NOT reused and the gap is deliberate:
+ * 6/7/8 keep their values, because renumbering a string index changes what an
+ * already-parsed descriptor points at. Nothing references 5 or 9 now, so no
+ * host will ask for them. */
 #define STR_SPDIF_IN_IDX       6    /* string 6: "S/PDIF In" */
 #define STR_SPDIF_IN_LEN       20   /* 2 + 2*9 */
 #define STR_LINE_OUT_IDX       7    /* string 7: "Line Out" */
 #define STR_LINE_OUT_LEN       18   /* 2 + 2*8 */
 #define STR_SPDIF_OUT_IDX      8    /* string 8: "S/PDIF Out" */
 #define STR_SPDIF_OUT_LEN      22   /* 2 + 2*10 */
-#define STR_MIC_IN_IDX         9    /* string 9: "Microphone" (#224) */
-#define STR_MIC_IN_LEN         22   /* 2 + 2*10 */
 
 /* iSerialNumber — string #3, optional, per-unit.
  *
@@ -363,7 +386,12 @@
  * source pin, which takes the Selector from 9 bytes to 10. Both numbers live
  * here and in the array in descriptors.c, and they are the same fact twice --
  * verify_descriptors.py exists because they once disagreed. */
-#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 12 + 12 + 9 + 9 + 9 + 10 \
+/* #228 SHRANK THIS. Two Input Terminals went (instrument and microphone, 12
+ * bytes each) and the Selector went from four pins to two (10 -> 8). What is
+ * left: AC header 10, three 12-byte Input Terminals (analog, S/PDIF, USB-out
+ * stream), three 9-byte Output Terminals, the 8-byte Selector, two Feature
+ * Units. */
+#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 9 + 9 + 9 + 8 \
                              + FU_DESC_LEN + FU_DESC_LEN)
 
 /* Per streaming interface: alt 0 (9) + alt 1 (9 + 7 + 14 + 9 + 7).
@@ -378,7 +406,7 @@
 #define AS_IFACE_CAPTURE_LEN   (9 + (9 + 7 + 14 + 9 + 7))
 #define AS_IFACE_PLAYBACK_LEN  (AS_IFACE_CAPTURE_LEN + 9)
 
-#define APP_CFG_TOTAL_LEN   (9 + 9 + 9 + AC_BLOCK_LEN \
+#define APP_CFG_TOTAL_LEN   (9 + 9 + AC_BLOCK_LEN \
                              + AS_IFACE_PLAYBACK_LEN + AS_IFACE_CAPTURE_LEN)
 
 /* Set by the Digi enter-DFU class request handler, consumed by main().
@@ -406,6 +434,5 @@ unsigned char usb_is_configured(void);
 void usb_ep0_setup(void);
 
 /* #207. Raise the UAC1 status interrupt for a unit whose value changed. */
-void usb_status_notify(unsigned char unit_id);
 
 #endif /* MBOXFW_USB_H */

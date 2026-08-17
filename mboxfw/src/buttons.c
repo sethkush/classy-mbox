@@ -153,6 +153,11 @@ void buttons_poll(void)
          * Names the Selector Unit, because that is the control whose value
          * changed as far as a host is concerned: #203 made its GET_CUR report
          * the PUBLISHED mux state, so the host reads the truth when it asks. */
-        usb_status_notify(UNIT_SELECTOR);
+        /* #228: REMOVED. The panel selects the analog front end, which the
+         * host's Selector Unit no longer reports -- it reports analog vs
+         * S/PDIF, and a button cannot change that. Notifying here would prompt
+         * a GET_CUR for a value that has not moved. The status endpoint stays
+         * declared and armed for controls that CAN change behind the host's
+         * back; nothing on this device currently does. */
     }
 }

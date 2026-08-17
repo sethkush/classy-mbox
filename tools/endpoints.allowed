@@ -7,8 +7,10 @@
 # went stale silently. Before re-baselining, re-read each of these:
 #
 #   * usb.c REQ_SET_FEATURE / REQ_CLEAR_FEATURE -- ENDPOINT_HALT is MANDATORY on
-#     interrupt and bulk endpoints (9.4.9 / 9.4.1) and EXEMPT on isochronous
-#     ones (5.6.3). Adding a non-iso endpoint means implementing halt for it.
+#     interrupt and bulk endpoints -- 9.4.5 says the Halt feature 'is required
+#     to be implemented for all interrupt and bulk endpoint types', which is
+#     what leaves isochronous ones out. Adding a non-iso endpoint means
+#     implementing halt for it.
 #   * usb.c REQ_GET_STATUS -- 9.4.5 requires the halt bit to read back for any
 #     endpoint that has the feature.
 #   * regs.h endpoint buffer map -- EP_BBAX/EP_BSIZE work in 8-byte units and
@@ -20,4 +22,3 @@
 0x02  isochronous  294
 0x81  isochronous  294
 0x82  isochronous  3
-0x83  interrupt    2

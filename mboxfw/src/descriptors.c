@@ -101,7 +101,7 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     9, USB_DT_INTERFACE,
     0,                      /* bInterfaceNumber */
     0,                      /* bAlternateSetting */
-    1,                      /* bNumEndpoints — #207 status interrupt EP3 IN */
+    0,                      /* bNumEndpoints — #228 retired the status EP */
     0x01, UAC_SUBCLASS_CONTROL, 0x00,
     0,                      /* iInterface */
 
@@ -149,11 +149,11 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
      * with 6016 bytes of program RAM. */
     12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
     TERM_ANALOG_IN,
-    UAC_TT_LINE_IN & 0xFF, (UAC_TT_LINE_IN >> 8) & 0xFF,
+    UAC_TT_ANALOG_IN & 0xFF, (UAC_TT_ANALOG_IN >> 8) & 0xFF,
     0,                      /* bAssocTerminal */
     2,                      /* bNrChannels */
     0x03, 0x00,             /* wChannelConfig = FL + FR */
-    0, STR_LINE_IN_IDX,          /* iChannel, iTerminal (#204) */
+    0, STR_ANALOG_IN_IDX,          /* iChannel, iTerminal (#204) */
 
     /* ---- Input Terminal: S/PDIF receiver (12 bytes) ---- #160
      *
@@ -171,90 +171,56 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0x03, 0x00,             /* wChannelConfig = FL + FR */
     0, STR_SPDIF_IN_IDX,          /* iChannel, iTerminal (#204) */
 
-    /* ---- Input Terminal: instrument / Hi-Z (12 bytes) ---- #203
-     *
-     * The SAME physical 1/4" jack as TERM_ANALOG_IN. The 74HC157 muxes choose
-     * which front end feeds the shared gain stage, and they are genuinely
-     * different circuits rather than a relabelling: measured **18.9 dB apart**
-     * in sensitivity at one identical dial position, interleaved
-     * line/inst/line/inst, with the two LINE arms agreeing to 0.01 dB so the
-     * difference is the mux and not drift.
-     * FINDING_196_gain_curve_and_the_bad_TS_cable.md.
-     *
-     * Type 0x0603 (line connector) rather than a dedicated instrument type,
-     * because UAC1's Terminal Types document has none -- 0x0601..0x0606 offer
-     * analog/digital/line/legacy/SPDIF/1394 and nothing for Hi-Z. The distinct
-     * TERMINAL is what carries the meaning here, and iTerminal (#204) will
-     * carry the name. */
-    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
-    TERM_INST_IN,
-    UAC_TT_LINE_IN & 0xFF, (UAC_TT_LINE_IN >> 8) & 0xFF,
-    0,                      /* bAssocTerminal */
-    2,                      /* bNrChannels */
-    0x03, 0x00,             /* wChannelConfig = FL + FR */
-    0, STR_INST_IN_IDX,          /* iChannel, iTerminal (#204) */
-
-    /* ---- Input Terminal: MICROPHONE, XLR (12 bytes) ---- #224
-     *
-     * UAC_TT_MIC (0x0201) is the one input here with a terminal type that
-     * actually names it -- LINE and INST both have to share 0x0603 because the
-     * Terminal Types document has nothing for Hi-Z.
-     *
-     * MEASURED BEFORE DECLARED, per #194: SM58 in source 1 of unit A, 1234 Hz
-     * into the room, channel 1 lifted 69.9 dB at that exact bin (2.2 dB SNR ->
-     * 56.2 dB) while the un-miked channel 2 moved 10.7 dB. See usb.h at
-     * TERM_MIC_IN and FINDING_224 for why the first run of that test was void. */
-    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
-    TERM_MIC_IN,
-    UAC_TT_MIC & 0xFF, (UAC_TT_MIC >> 8) & 0xFF,
-    0,                      /* bAssocTerminal */
-    2,                      /* bNrChannels */
-    0x03, 0x00,             /* wChannelConfig = FL + FR */
-    0, STR_MIC_IN_IDX,      /* iChannel, iTerminal */
-
-    /* ---- Selector Unit: analog vs S/PDIF (8 bytes) ---- #160
+    /* ---- Selector Unit: analog vs S/PDIF (8 bytes) ---- #160, #228
      *
      * bLength = 6 + bNrInPins per UAC1 §4.3.2.4. Pin ORDER IS THE PROTOCOL:
-     * SET_CUR/GET_CUR carry a 1-based index into baSourceID, so pin 1 =
-     * analog and pin 2 = S/PDIF. That is exactly the encoding the handler in
-     * usb.c implements and the kernel quirk documents ("ANALOG Source -> 0x01,
-     * S/PDIF Source -> 0x02"). Swapping these two bytes would silently invert
-     * the control on every host.
+     * SET_CUR/GET_CUR carry a 1-based index into baSourceID, so pin 1 = analog
+     * and pin 2 = S/PDIF -- the encoding usb.c implements and the kernel quirk
+     * documents ("ANALOG Source -> 0x01, S/PDIF Source -> 0x02").
      *
-     * Why one selector and not two: mboxfw briefly declared a per-channel
-     * Selector Unit each (#159) and that was removed, because Apple's driver
-     * creates every input selector as kIOAudioControlChannelIDAll and cannot
-     * express per-channel source select at all — see
-     * FINDING_macos_one_input_selector.md. A SINGLE selector choosing between
-     * two whole signal paths is precisely the model that driver does have
-     * ("items are PATHS, not pins"), so this is the shape that suits both
-     * hosts rather than the one that suited only Linux. */
-    /* #203 took this from two pins to three, #224 takes it to four. POSITIONS
-     * 1-3 KEEP THEIR MEANING -- microphone is APPENDED as 4, exactly as
-     * instrument was appended as 3. Appending cannot renumber what a host
-     * already knows; inserting would, and pin order is the protocol.
+     * #228 TOOK THIS BACK TO TWO PINS, and that is a correction rather than a
+     * retreat. #203 added instrument as position 3 and #224 added microphone as
+     * position 4, which made this one control do two unrelated jobs:
      *
-     * THE SELECTOR IS WHY ONLY ONE INPUT CAN BE LIVE AT A TIME. A UAC1 Selector
-     * Unit has N input pins and exactly one output, and SET_CUR carries a
-     * single 1-based index -- so "line and mic together" is not expressible,
-     * and no host can ask for it. The construct that WOULD allow simultaneous
-     * inputs is a Mixer Unit, which this firmware deliberately does not declare.
-     * Adding a fourth pin inherits that mutual exclusion for free.
+     *   - S/PDIF vs analog is GLOBAL. One bit, 0x25.4, swings the whole capture
+     *     stream between the CS8427 and the ADC. There is no front-panel button
+     *     for it, so this control is the ONLY way to reach the S/PDIF input.
+     *   - mic / line / instrument is PER CHANNEL, set by the 74HC157 muxes from
+     *     the front-panel buttons, independently for each channel.
      *
-     * The old note here said microphone could not be declared because the only
-     * measurement was a null: interleaved line/mic through the 1/4" jack, where
-     * MIC sat at the analysis floor. That null was CORRECT and is now explained
-     * -- the 1/4" jack does not reach the mic front end, because the mic front
-     * end is the XLR connector. It never was evidence against the path; it was
-     * evidence about the cabling. #224 drove the XLR directly and the path
-     * carries audio. */
-    10, USB_DT_CS_INTERFACE, UAC_AC_SELECTOR_UNIT,
+     * A UAC1 Selector has one output and SET_CUR carries one index, so the
+     * four-position form could not express the per-channel state at all -- and
+     * selecting an analog position from a host FORCED BOTH CHANNELS to the same
+     * front end, silently destroying a setting made physically at the unit.
+     * Two positions describe exactly what the hardware makes global, and leave
+     * the per-channel choice with the only thing that can express it.
+     *
+     * This also removes the reason macOS's single-selector limit hurt: one
+     * selector is now the right number, not a compromise
+     * (FINDING_macos_one_input_selector.md). And nothing on the panel changes a
+     * host-visible control any more, so the stale Core Audio reading of #227
+     * has nothing left to go stale.
+     *
+     * ONLY ONE INPUT IS EVER LIVE. That property is unchanged and is the
+     * Selector's doing: N pins, one output, one index. "Line and S/PDIF
+     * together" is not expressible and no host can ask for it. The construct
+     * that WOULD allow simultaneous inputs is a Mixer Unit, which this firmware
+     * deliberately does not declare -- and the hardware could not honour one:
+     * 0x25.4 swaps the stream, it does not blend.
+     *
+     * The instrument and microphone INPUT TERMINALS went with the pins. They
+     * were declared (#203, #224) because each had been measured -- the XLR path
+     * carries audio, 69.9 dB at 1234 Hz -- and that measurement still stands;
+     * what changed is that the host no longer chooses between them, so a
+     * terminal per front end would be topology the host cannot act on. The
+     * remaining analog terminal is typed 0x0601, ANALOG CONNECTOR, rather than
+     * 0x0603 LINE: the panel decides which connector is live, and claiming
+     * "line" would be the same lie #225 fixed. */
+    8, USB_DT_CS_INTERFACE, UAC_AC_SELECTOR_UNIT,
     UNIT_SELECTOR,
-    4,                      /* bNrInPins */
-    TERM_ANALOG_IN,         /* baSourceID(1) — position 1 = LINE   (unchanged) */
+    2,                      /* bNrInPins */
+    TERM_ANALOG_IN,         /* baSourceID(1) — position 1 = ANALOG (unchanged) */
     TERM_SPDIF_IN,          /* baSourceID(2) — position 2 = S/PDIF (unchanged) */
-    TERM_INST_IN,           /* baSourceID(3) — position 3 = INSTRUMENT  (#203) */
-    TERM_MIC_IN,            /* baSourceID(4) — position 4 = MICROPHONE  (#224) */
     0,                      /* iSelector */
 
     /* ---- Feature Unit: playback Mute (10 bytes) ---- #190
@@ -358,30 +324,6 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
                             * which is itself fed by the selector. */
     0,
 
-    /* ---- Status interrupt endpoint, EP3 IN (9 bytes) ---- #207
-     *
-     * UAC1 §3.7.1.2. A standard endpoint descriptor and no class-specific
-     * companion -- the AudioControl status endpoint does not take one.
-     *
-     * Two bytes: bStatusType and bOriginator. The device raises it when a
-     * control the host can read has changed underneath it -- a front-panel
-     * source press -- and the host answers with GET_CUR on the named unit,
-     * which is the path #203 already serves. Without this, the host shows
-     * whatever it last read until something else makes it poll.
-     *
-     * bInterval 8: full-speed interrupt endpoints take bInterval in FRAMES, so
-     * this is 8 ms -- immediate to a finger, and free.
-     *
-     * Its buffer is 8 bytes given back by the capture allocation. See
-     * EP_STATUS_BUF_ADDR in regs.h for why the region had room after all: the
-     * first reading of the memory map said it did not. */
-    9, USB_DT_ENDPOINT,
-    EP_STATUS_IN,
-    USB_EP_INTERRUPT,
-    EP_STATUS_PKT_LEN, 0,   /* wMaxPacketSize = 2 */
-    8,                      /* bInterval = 8 ms */
-    0,                      /* bRefresh       — unused for an interrupt EP */
-    0,                      /* bSynchAddress  — none; this is not a data EP */
 
     /* ==================================================================
      * Interface 1: AudioStreaming — playback (host → device on EP2 OUT)
@@ -556,14 +498,9 @@ const unsigned char __code AppStringProduct[APP_STRING_PRODUCT_LEN] = {
 
 /* #204 terminal-name strings. */
 
-const unsigned char __code AppStrStrLineIn[STR_LINE_IN_LEN] = {
-    0x10, 0x03,
-    'L',0, 'i',0, 'n',0, 'e',0, ' ',0, 'I',0, 'n',0
-};
-
-const unsigned char __code AppStrStrInstIn[STR_INST_IN_LEN] = {
-    0x16, 0x03,
-    'I',0, 'n',0, 's',0, 't',0, 'r',0, 'u',0, 'm',0, 'e',0, 'n',0, 't',0
+const unsigned char __code AppStrStrAnalogIn[STR_ANALOG_IN_LEN] = {
+    STR_ANALOG_IN_LEN, 0x03,
+    'A',0, 'n',0, 'a',0, 'l',0, 'o',0, 'g',0, ' ',0, 'I',0, 'n',0
 };
 
 const unsigned char __code AppStrStrSpdifIn[STR_SPDIF_IN_LEN] = {
@@ -574,11 +511,6 @@ const unsigned char __code AppStrStrSpdifIn[STR_SPDIF_IN_LEN] = {
 const unsigned char __code AppStrStrLineOut[STR_LINE_OUT_LEN] = {
     0x12, 0x03,
     'L',0, 'i',0, 'n',0, 'e',0, ' ',0, 'O',0, 'u',0, 't',0
-};
-
-const unsigned char __code AppStrStrMicIn[STR_MIC_IN_LEN] = {
-    STR_MIC_IN_LEN, USB_DT_STRING,
-    'M',0,'i',0,'c',0,'r',0,'o',0,'p',0,'h',0,'o',0,'n',0,'e',0
 };
 
 const unsigned char __code AppStrStrSpdifOut[STR_SPDIF_OUT_LEN] = {

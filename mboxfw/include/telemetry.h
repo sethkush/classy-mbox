@@ -262,7 +262,44 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0060   /* 0060: #226 -- eeprom_read_seq() REWRITTEN
+#define TLM_BUILD_ID     0x0061   /* 0061: #228 -- the Selector Unit describes what
+                                   *       the hardware makes GLOBAL and nothing
+                                   *       else. Two positions, analog and
+                                   *       S/PDIF; the front-panel buttons own
+                                   *       which analog front end feeds the ADC,
+                                   *       per channel, which is the only place
+                                   *       that choice can honestly live.
+                                   *
+                                   *       #203's instrument and #224's
+                                   *       microphone positions are GONE, with
+                                   *       their Input Terminals and strings.
+                                   *       Their measurements stand and are why
+                                   *       the analog path is declared at all;
+                                   *       what was wrong was letting a host
+                                   *       SET them, which forced both channels
+                                   *       to one front end and silently threw
+                                   *       away a per-channel setting made at
+                                   *       the unit.
+                                   *
+                                   *       The analog terminal is retyped 0x0601
+                                   *       ANALOG CONNECTOR from 0x0603 LINE:
+                                   *       the panel decides which connector is
+                                   *       live and the host is not told, so
+                                   *       naming one would be the same class of
+                                   *       lie #225 fixed.
+                                   *
+                                   *       EP 0x83 RETIRED with it (#207/#214).
+                                   *       Its only producer was the button
+                                   *       notification, and no button can move
+                                   *       a two-position analog/SPDIF control.
+                                   *       #227's stale-Core-Audio problem is
+                                   *       dissolved rather than fixed: nothing
+                                   *       the panel does is host-visible, so
+                                   *       there is nothing to go stale.
+                                   *
+                                   *       5865 -> 5596 bytes.
+                                   *
+                                   * 0060: #226 -- eeprom_read_seq() REWRITTEN 0060: #226 -- eeprom_read_seq() REWRITTEN
                                    *       against TI's I2c.c. Every sequential
                                    *       read returned 0x00, including from
                                    *       EEPROM that had never been written
