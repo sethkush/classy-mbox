@@ -107,7 +107,25 @@ compiled out of release builds.
 
 ## Status
 
-Both units healthy. Unit A `RK10874600Q` on 0x0059 (compile-time serial), unit
-B `RK1672500M` on 0x0060 **from EEPROM**. Both ALSA cards up, both Selectors
-reporting Microphone. `TLM_REQ_PROV_DIAG`/`PROV_DIAGRD` and `eeprom_read_diag`
-are retired, having answered.
+**BOTH UNITS PROVISIONED.** Both on build 0x0060, both serving their serial from
+EEPROM on an image that contains no serial string:
+
+```
+2-1.3.1  bcd=0160  iSerial 3 RK1672500M
+2-1.3.2  bcd=0160  iSerial 3 RK10874600Q
+```
+
+Unit B's record additionally survived a genuine power cycle performed for an
+unrelated reason (unit A's DFU trigger), which is the persistence property
+tested without setting out to test it.
+
+Both ALSA cards up, both Selectors reporting Microphone, capture verified after
+provisioning: 96000 frames each for a 2 s request at 48 kHz -- exact -- unit B
+at -81.7 dBFS RMS (noise floor, no source) and unit A at -53.0 dBFS (an SM58
+hearing the room).
+
+`MBOX_UNIT=A/B` is now bench-only scaffolding rather than the way units are
+identified. It stays for builds made before a unit is provisioned.
+
+`TLM_REQ_PROV_DIAG`/`PROV_DIAGRD` and `eeprom_read_diag` are retired, having
+answered.
