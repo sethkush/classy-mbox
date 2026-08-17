@@ -45,7 +45,7 @@ through sysfs. A device that does not resume needs a physical power cycle, which
 on this bench is a 2 km round trip. It is off by default for that reason.
 """
 import argparse
-import ctypes
+import os
 import subprocess
 import sys
 import time
@@ -203,6 +203,33 @@ def run_suspend(dev):
     except OSError as e:
         print("  SKIP -- cannot read %s: %s" % (ctl, e))
         return []
+    # THE DRIVER MUST BE UNBOUND FIRST, or the device never suspends at all.
+    # snd-usb-audio holds a runtime-PM reference on every interface it claims,
+    # so writing power/control=auto leaves runtime_status at "active" forever.
+    # The first version of this function skipped the unbind and the run VOIDed
+    # itself on the known-answer arm -- which is the arm working, but it also
+    # meant the test could never pass. Unbinding makes the suspend real.
+    drv = "/sys/bus/usb/drivers/snd-usb-audio"
+    ifn = path.rsplit("/", 1)[1]
+    unbound = []
+    for i in range(4):
+        node = "%s:1.%d" % (ifn, i)
+        if os.path.exists(os.path.join(drv, node)):
+            try:
+                open(os.path.join(drv, "unbind"), "w").write(node + "\n")
+                unbound.append(node)
+            except OSError:
+                pass
+    if unbound:
+        print("  unbound snd-usb-audio from %s" % ", ".join(unbound))
+    # AND OUR OWN HANDLE MUST GO TOO. usbfs holds a runtime-PM reference for
+    # every open file descriptor, so the pyusb object this function was handed
+    # -- which has been issuing control transfers all through the timing tests
+    # -- pins the device "active" just as firmly as the kernel driver did.
+    # Unbinding the driver alone left runtime_status at "active" and VOIDed the
+    # run a second time. Same shape as FINDING_192's rebind failure: the tool
+    # blocking the thing the tool is trying to do.
+    usb.util.dispose_resources(dev)
     try:
         open(delay, "w").write("0\n")
         open(ctl, "w").write("auto\n")
@@ -214,8 +241,17 @@ def run_suspend(dev):
             print("  VOID -- the device never actually suspended, so anything")
             print("  observed after it is not a resume. Not a device result.")
             return []
+        # Re-acquire: the handle was disposed to let the suspend happen.
+        fresh = None
+        for c in usb.core.find(find_all=True, idVendor=VID):
+            if c.bus == dev.bus and c.port_numbers == dev.port_numbers:
+                fresh = c
+                break
+        if fresh is None:
+            print("  FAIL -- device vanished from the bus while suspended")
+            return [("suspend/resume", 0, 0)]
         dt, r, e = timed(
-            lambda: dev.ctrl_transfer(0x80, 0x06, 0x0100, 0, 18, 3000))
+            lambda: fresh.ctrl_transfer(0x80, 0x06, 0x0100, 0, 18, 3000))
         if e is not None or r is None or len(r) != 18:
             print("  FAIL -- device did not answer after resume: %s" % e)
             return [("suspend/resume", 0, 0)]
@@ -227,6 +263,19 @@ def run_suspend(dev):
             open(ctl, "w").write(prev + "\n")
         except OSError:
             print("  WARNING: could not restore %s to %r" % (ctl, prev))
+        # Rebind, and SAY SO if it fails. A teardown that can fail silently is
+        # not a teardown (FINDING_192) -- a unit left without its ALSA card
+        # still answers EP0, so it looks healthy from the instrument you would
+        # reach for first.
+        for node in unbound:
+            try:
+                open(os.path.join(drv, "bind"), "w").write(node + "\n")
+            except OSError as e:
+                print("  WARNING: could not rebind %s (%s) -- run: echo %s | "
+                      "sudo tee %s/bind" % (node, e, node, drv))
+        if unbound:
+            time.sleep(2.0)
+            print("  rebound snd-usb-audio to %s" % ", ".join(unbound))
 
 
 def main():
