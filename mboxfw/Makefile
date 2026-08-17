@@ -130,6 +130,21 @@ endif
 # so there is nothing left for it to measure. Passing MBOX_FB_TUNE=1 now does
 # nothing; see telemetry.h for the retired request number.
 
+# #221 WORK IN PROGRESS -- descriptors provisioned in EEPROM instead of compiled
+# into program RAM. `make MBOX_DESC_EEPROM=1` builds descblob.c and the EEPROM
+# read side. OFF BY DEFAULT AND NOT YET WIRED IN: the loader and the blob format
+# are done, the GET_DESCRIPTOR dispatch still serves the __code tables, and the
+# host-side blob builder does not exist. Enabling it today costs ~240 bytes and
+# saves nothing, because the tables it replaces are still linked.
+#
+# Left opt-in rather than half-applied on purpose. The remaining step rewires
+# every GET_DESCRIPTOR case at once, and a descriptor path that is half moved is
+# the failure this part is least survivable to.
+ifeq ($(MBOX_DESC_EEPROM),1)
+EXTRA_CFLAGS += -DMBOX_DESC_EEPROM
+SRCS += src/descblob.c
+endif
+
 ifeq ($(MBOX_TLM_STALL),1)
 EXTRA_CFLAGS += -DMBOX_TLM_STALL
 endif
