@@ -94,6 +94,7 @@ for sha in $commits; do
         python3 tools/check_endpoint_manifest.py >> /tmp/ci_gate.log 2>&1 || exit 40
         python3 tools/check_uac1_rulebook.py >> /tmp/ci_gate.log 2>&1 || exit 41
         python3 tools/check_uac1_rulebook.py --selftest >> /tmp/ci_gate.log 2>&1 || exit 42
+        python3 tools/mkserial.py --selftest >> /tmp/ci_gate.log 2>&1 || exit 43
         python3 tools/verify_usb_init.py    >> /tmp/ci_gate.log 2>&1 || exit 23
         python3 tools/verify_cs8427.py      >> /tmp/ci_gate.log 2>&1 || exit 24
         python3 tools/verify_setup_paths.py >> /tmp/ci_gate.log 2>&1 || exit 25

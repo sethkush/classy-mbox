@@ -30,7 +30,13 @@ unsigned char serialno_load(void)
         g_dev[i] = AppDevDesc[i];
     g_dev[16] = 0;                      /* iSerialNumber, until proven otherwise */
 
-    if (!eeprom_read_seq(EE_SERIAL_HI, EE_SERIAL_LO, g_raw, SERIAL_HDR_LEN))
+    /* ONE read of the whole maximum-size record, not a header read followed by
+     * a payload read. The two-call form cost 11 bytes more than the image had
+     * room for once #224 added the microphone terminal, and it bought nothing:
+     * reading 20 bytes that may be padding costs ~2 ms of I2C on a path that
+     * runs once at boot, and validating a buffer is the same work either way. */
+    if (!eeprom_read_seq(EE_SERIAL_HI, EE_SERIAL_LO, g_raw,
+                         SERIAL_HDR_LEN + SERIAL_MAX_CHARS))
         return 0;
 
     if (g_raw[0] != SERIAL_MAGIC0 || g_raw[1] != SERIAL_MAGIC1 ||
@@ -41,14 +47,6 @@ unsigned char serialno_load(void)
 
     n = g_raw[5];
     if (n == 0 || n > SERIAL_MAX_CHARS)
-        return 0;
-
-    /* Re-read header AND payload in one run. Reading the characters separately
-     * would leave a window where the length came from one transaction and the
-     * data from another -- harmless here, but the whole record is 27 bytes and
-     * one read is simpler to reason about than two. */
-    if (!eeprom_read_seq(EE_SERIAL_HI, EE_SERIAL_LO, g_raw,
-                         (unsigned int)(SERIAL_HDR_LEN + n)))
         return 0;
 
     /* XOR over the record with the checksum byte itself excluded. This is
