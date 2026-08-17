@@ -234,43 +234,70 @@ unsigned char eeprom_invalidate_signature(void)
  * out[7] bit0 MSB wait ok, bit1 LSB wait ok, bit2 RCV wait ok
  */
 void eeprom_read_diag(unsigned char addr_hi, unsigned char addr_lo,
-                      __data unsigned char *out)
+                      __data unsigned char *out, unsigned char style)
 {
     unsigned char f = 0;
+    unsigned int d;
 
-    /* TI I2c.c I2CAccess line 57 — clear stale flags, then the write address. */
-    I2C_STA &= I2C_CLEAR_ALL;
+    /* style 0 = TI I2c.c I2CAccess, which is what this driver has always done.
+     * style 1 = a byte-for-byte port of STOCK Rev 20 i2c_eeprom_read_byte at
+     * CODE:0cdd (Rev 22 same routine), which is the version that demonstrably
+     * runs on THIS board. Where the two disagree, stock wins by this project's
+     * own rule -- hardware outranks reference inference -- and they disagree in
+     * five places, all of them below. */
+
+    /* Rev 20 fcn.0x0cdd @ 0x0ce1 (ANL A,#0xfc) vs TI I2c.c I2CAccess line 57.
+     * Stock clears ONLY the two STOP bits; TI's CLEAR_ALL is 0x54. */
+    I2C_STA &= (style ? 0xFC : I2C_CLEAR_ALL);
     out[0] = I2C_STA;
+    /* Rev 20 fcn.0x0cdd @ 0x0cea — slave write address. */
     I2C_SADDR = EEPROM_ADDR_WRITE;
     out[1] = I2C_STA;
 
-    /* TI I2c.c I2CAccess line 63 — word-address MSB. */
+    /* Rev 20 fcn.0x0cdd @ 0x0cef — word-address MSB. */
     I2C_TX = addr_hi;
     if (wait_bit(I2C_XMIT_DATA_EMPTY)) f |= 0x01;
     out[2] = I2C_STA;
 
-    /* TI I2c.c I2CAccess line 76 — word-address LSB. */
+    /* Rev 20 fcn.0x0cdd @ 0x0cfb — word-address LSB. */
     I2C_TX = addr_lo;
     if (wait_bit(I2C_XMIT_DATA_EMPTY)) f |= 0x02;
 
-    /* TI I2c.c I2CAccess line 82 — CLEAR_ALL before the read address. */
-    I2C_STA &= I2C_CLEAR_ALL;
+    /* TI I2c.c I2CAccess line 82 — CLEAR_ALL before the read address. STOCK
+     * DOES NOT DO THIS: 0x0d00 falls straight from the LSB wait to 0x0d06. */
+    if (!style) I2C_STA &= I2C_CLEAR_ALL;
     out[3] = I2C_STA;
 
-    /* TI I2c.c I2CAccess line 96 — repeated START in READ mode. */
-    I2C_SADDR = EEPROM_ADDR_READ;
-    /* TI I2c.c I2CAccess line 101 — single byte, so STOP is armed up front. */
-    I2C_STA |= I2C_STOP_READ;
-    /* TI I2c.c I2CAccess line 102 — the dummy write that fires the read. */
-    I2C_TX = 0xFF;
+    /* THE HEADLINE DIFFERENCE. Rev 20 fcn.0x0cdd @ 0x0d09 writes R6, and R6
+     * was loaded with 0xA0 at 0x0ce4 and never changed -- so stock uses the
+     * WRITE address for the read phase too. TI's I2C_READ_ADDR(addr) is
+     * (addr | 0x01) = 0xA1, which is what this driver copied. */
+    I2C_SADDR = style ? EEPROM_ADDR_WRITE : EEPROM_ADDR_READ;
+
+    if (style) {
+        /* Rev 20 fcn.0x0cdd @ 0x0d0f — dummy is 0x00, and STOP_READ is armed
+         * AFTER it (0x0d14), not before. */
+        I2C_TX = 0x00;
+        I2C_STA |= I2C_STOP_READ;
+    } else {
+        /* TI I2c.c I2CAccess lines 101-102 — STOP first, dummy 0xFF. */
+        I2C_STA |= I2C_STOP_READ;
+        I2C_TX = 0xFF;
+    }
     out[4] = I2C_STA;
 
+    /* Rev 20 fcn.0x0cdd @ 0x0d1b — wait on RCV_DATA_FULL (JNB ACC.7). */
     if (wait_bit(I2C_RCV_DATA_FULL)) f |= 0x04;
     out[5] = I2C_STA;
-    /* TI I2c.c I2CAccess line 106 — the received byte. */
+    /* Rev 20 fcn.0x0cdd @ 0x0d21 — the received byte. */
     out[6] = I2C_RX;
     out[7] = f;
 
-    I2C_STA &= I2C_CLEAR_ALL;
+    /* Rev 20 fcn.0x0bee @ 0x0c01 — stock's WRITE routine delays here; kept out
+     * of the measured path and used only to let the bus settle afterwards. */
+    for (d = 0; d < 0x00FF; d++) { }
+
+    I2C_STA &= (style ? 0xFC : I2C_CLEAR_ALL);
 }
+
 #endif /* MBOX_PROVISION */

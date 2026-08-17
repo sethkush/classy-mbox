@@ -504,13 +504,14 @@ void main(void)
              * trigger does. Both arms in one image, against a known answer --
              * EEPROM 0x0001 is headerSize and is 0x12 in every image this
              * project builds. */
-            if (g_prov_diag_mask) EA = 0;
-            if (g_prov_diag_freq == 1)      I2C_STA &= ~0x10;  /* TI I2c.c I2CAccess line 44 */
-            else if (g_prov_diag_freq == 2) I2C_STA |=  0x10;  /* TI I2c.c I2CAccess line 44 */
-            eeprom_read_diag(g_prov_diag_hi, g_prov_diag_lo, g_prov_diag_buf);
-            /* Restored unconditionally to 1: the main loop always runs with
-             * interrupts enabled, and leaving them off would take USB down. */
-            if (g_prov_diag_mask) EA = 1;
+            /* g_prov_diag_mask now selects the ROUTINE STYLE: 0 = TI's
+             * I2CAccess (what this driver has always done), 1 = a port of
+             * stock Rev 20's own read at CODE:0cdd. The interrupt-masking and
+             * bus-frequency arms are GONE -- both were measured against a
+             * buffer in dead XDATA, so neither result meant anything, and
+             * re-running a void experiment is worse than not running it. */
+            eeprom_read_diag(g_prov_diag_hi, g_prov_diag_lo, g_prov_diag_buf,
+                             g_prov_diag_mask);
             g_prov_diag_pending = 0;
         }
 
