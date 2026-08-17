@@ -200,21 +200,37 @@
  *
  * WHY THIS FITS, since the first reading of the map said it did not.
  *
- * IEPBSIZx is the size of the PAIR of buffers, not of each one. The datasheet's
- * wording ("the size of the two data buffers") is ambiguous, but the feedback
- * endpoint settles it: 8 bytes at 0xFF20 with the endpoint-data-buffer region
- * ending at 0xFF27 only works if X and Y are 4 bytes each. Per-buffer would put
- * Y at 0xFF28, on top of the setup-packet buffer, and the device enumerates.
+ * CORRECTED BY #219. This block previously argued that IEPBSIZx sizes the PAIR
+ * of buffers, so that 640 meant 320 + 320 and 8 meant 4 + 4. That is wrong, and
+ * it contradicted the feedback-endpoint block twenty lines above, which has the
+ * datasheet right. The rule is per endpoint TYPE, §6.4.4.4:
  *
- * And isochronous endpoints have no DBUF bit -- §6.4.4.6.2 gives bits 4:0 to the
- * BPS field -- so the audio endpoints always use both halves. 640 is therefore
- * 320 + 320, against a 294-byte maximum packet: 26 bytes of slack per half.
+ *   - ISOCHRONOUS: "the buffer size sets the size of the single circular
+ *     buffer". There is no X/Y pair to divide. Capture's 640 (now 632) is ONE
+ *     circular buffer against a 294-byte maximum packet, not two halves of 320;
+ *     the feedback endpoint's 8 at 0xFF20 is one buffer of 8, not 4 + 4. The
+ *     X and Y that DO exist for an iso endpoint are the two DCNT registers,
+ *     which ping-pong by the LSB of USBFNL over that one buffer (§2.2.7) -- and
+ *     mistaking those count registers for a buffer pair is where the error came
+ *     from. Both allocations are correct; only the arithmetic behind them was.
  *
- * So the region is full, but not TIGHT. Giving 8 bytes back from capture leaves
- * 316 per half, still 22 clear of the largest packet this firmware declares, and
- * more than that at 44.1 kHz where packets are 264/270. Those 8 bytes are this
- * endpoint's X and Y, 4 each, of which it uses 2. */
-#define EP_AUDIO_CAPTURE_BUF_SIZE  0x0278   /* 632 = 316 + 316 (#207) */
+ *   - CONTROL / INTERRUPT / BULK: BSIZ programs the size of EACH of X and Y,
+ *     "both buffers programmed to the same size based on this value" -- so the
+ *     pair costs 2 x BSIZ, the opposite of what this block used to claim, and
+ *     it is DBUF (§6.4.4.6.1 bit 4) that decides whether Y is used at all.
+ *
+ * THIS ENDPOINT IS INTERRUPT, so the second rule applies and the pair would cost
+ * 16 bytes at 0xFF18-0xFF27 -- on top of the feedback buffer at 0xFF20. What
+ * makes the allocation safe is DBUF: usb.c writes IEPCNF3 = 0x80, IEPEN with
+ * DBUF clear, and "in the single buffer mode, only the X buffer is used". So
+ * this endpoint occupies 0xFF18-0xFF1F and nothing more.
+ *
+ * SETTING DBUF ON EP3 WOULD SILENTLY OVERWRITE THE FEEDBACK BUFFER. That is the
+ * live constraint this comment exists to carry; the old per-half arithmetic
+ * concealed it by making the region look like it had slack everywhere. */
+/* 632: one circular buffer (#219), 8 given back to the status endpoint from
+ * stock's 640. Max declared packet is 294 B at 48 kHz, 270 at 44.1. */
+#define EP_AUDIO_CAPTURE_BUF_SIZE  0x0278   /* 632 (#207, arithmetic per #219) */
 #define EP_STATUS_BUF_ADDR    0xFF18   /* 8 B freed from the capture buffer */
 #define EP_STATUS_BUF_SIZE    8
 

@@ -119,14 +119,41 @@
  * packets, every one status 0 and exactly 3 bytes, error_count 0, against
  * 100% -EOVERFLOW and zero bytes delivered beforehand.
  *
- * WHY three-per-unit is NOT explained. The datasheet describes IEPDCNTX as a
- * byte count and TI arms it as one. The 3x is measured and reproducible and the
- * mechanism behind it is not known -- so this is deliberately a separate
- * constant from AUDIO_FEEDBACK_LEN rather than the same 3 reused. They are
- * different quantities that happened to share a number, and collapsing them is
- * what hid the bug: the descriptor's 3 is bytes-on-the-wire and correct, this
- * one is whatever unit the UBM counts in. If the 3x is ever explained, this is
- * the line that changes. */
+ * WHY THREE PER UNIT, now explained -- #219. IEPDCNTX/Y is a BYTE count only
+ * for control, interrupt and bulk endpoints. For ISOCHRONOUS endpoints it is a
+ * SAMPLE count, and the sample width comes from the BPS field of the endpoint's
+ * own configuration byte. Datasheet §6.4.4.3, on DCNTX(6:0), says both halves
+ * in one sentence: "set to the number of bytes in the data packet for control,
+ * interrupt, or bulk endpoint transfers and is set to the number of samples in
+ * the data packet for isochronous endpoint transfers. To determine the number
+ * of samples ... the bytes per sample value in the configuration byte is used."
+ * The earlier reading of this register stopped at the first clause.
+ *
+ * §6.4.4.6.2 gives the isochronous IEPCNFx layout -- which is NOT the
+ * control/interrupt/bulk layout of §6.4.4.6.1 -- as IEPEN, ISO, OVF, BPS(4:0),
+ * with "00h = 1 byte, 01h = 2 bytes, ..., 1Fh = 32 bytes". So bytes per sample
+ * is BPS + 1. streaming.c writes IEPCNF2 = 0xC2, i.e. BPS = 2 = 3 bytes per
+ * sample, because one feedback value IS one 3-byte sample. Emitted bytes are
+ * therefore armed x (BPS + 1) = armed x 3, which is the table above with no
+ * residue.
+ *
+ * THE CONFIRMING ARM is the capture endpoint, which carries a different BPS and
+ * must therefore show a different multiplier. IEPCNF1 = 0xC5 is BPS = 5 = 6
+ * bytes per sample (stereo 24-bit); its DCNT is loaded by the DMA engine rather
+ * than by us, with 48 samples per frame at 48 kHz; and the wire measures 287.9
+ * bytes per packet against 48 x 6 = 288 (FINDING_211). Two endpoints, BPS 2 and
+ * BPS 5, multipliers 3 and 6. A rule of the form "the UBM triples the count"
+ * predicts 3 on both and is refuted; BPS + 1 predicts both.
+ *
+ * Arming 1 is therefore correct BY CONSTRUCTION, not empirically: one sample of
+ * three bytes is exactly one feedback value. This stays a separate constant from
+ * AUDIO_FEEDBACK_LEN because they remain different quantities -- that one is
+ * bytes on the wire, this one is samples -- and collapsing them is what hid the
+ * bug. They now differ in value as well as in meaning, which is the honest
+ * state: 1 sample, 3 bytes.
+ *
+ * A CHANGE TO EITHER MUST MOVE TOGETHER WITH IEPCNF2's BPS FIELD. Widening the
+ * feedback value without re-cutting BPS re-creates #211 exactly. */
 #define AUDIO_FEEDBACK_ARM     1
 
 /* Terminal IDs — arbitrary within one AC interface, must be unique */

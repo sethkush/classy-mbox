@@ -401,3 +401,24 @@ asynchronous sink's feedback endpoint, working end to end.
 The lesson is the ordinary one: a derived number compared against a
 misremembered constant produced a confident wrong story about the hardware, and
 the fix was to recompute the constant rather than to investigate the device.
+
+---
+
+## The 3× is explained — see FINDING_219
+
+This finding fixed the babble by arming 1 instead of TI's 3, and recorded that
+the three-bytes-per-unit-armed relationship was measured but **not understood**.
+
+It is understood now. `IEPDCNTX/Y` is a byte count only for control, interrupt
+and bulk endpoints; for an **isochronous** endpoint it is a **sample** count,
+and the sample width is the `BPS` field of the endpoint's own configuration byte
+(§6.4.4.3, §6.4.4.6.2). We write `IEPCNF2 = 0xC2` → BPS 2 → 3 bytes per sample,
+so emitted = armed × 3.
+
+The confirming arm is in this document already: **capture** carries `IEPCNF1 =
+0xC5` → BPS 5 → 6 bytes per sample, and the 287.9 B/packet measured above is
+48 samples × 6. Two endpoints, two BPS values, multipliers 3 and 6. "The UBM
+triples the count" predicts 3 on both and is refuted.
+
+`AUDIO_FEEDBACK_ARM` stays 1, but it is now correct by construction — one
+feedback value is exactly one 3-byte sample — rather than by measurement.
