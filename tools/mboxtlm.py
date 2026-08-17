@@ -547,7 +547,35 @@ def block9(b):
     loopback fed a line input, and that was only discovered afterwards, from
     the front-panel LEDs. A measurement that cannot state its own input routing
     cannot be trusted, and before this block there was no way to ask.
+
+    ALL-0xFF IS "NOT COMPILED IN", NOT A DEVICE FAULT. This block lives behind
+    MBOX_TLM_ROUTING, which is off by default because it does not fit -- a
+    diagnostic image carrying it is 6078 bytes against the 6016 limit. Against
+    an image built without it, tlm_read_block() returns the same 0xFF sentinel
+    the RETIRED indices return.
+
+    This decoder used to run anyway, and every field decoded to its alarming
+    value at once: ILLEGAL source on both channels, a routing/clock MISMATCH,
+    and 255 rejected mux requests. All three are artefacts of the sentinel and
+    none describes the device. It was read as real state on 2026-08-16, on a
+    unit that was in fact perfectly healthy.
+
+    That is this project's own rule turned on its instrument: a null from a
+    block that was never compiled in looks exactly like a null from a device in
+    a bad state. The retired indices were already labelled; this one was not,
+    because it is absent by BUILD FLAG rather than by retirement -- so the
+    sentinel has to be recognised here too.
     """
+    if all(x == 0xFF for x in b[:8]):
+        return ["NOT COMPILED IN -- this block needs MBOX_TLM_ROUTING, which is",
+                "off by default because it does not fit (6078 B vs the 6016",
+                "limit). The all-0xFF is the sentinel, not panel state, and NOT",
+                "a fault: nothing here describes the device.",
+                "",
+                "SO THE ROUTING IS UNKNOWN, which for a capture measurement is",
+                "not the same as fine. Read the front panel, or flash an image",
+                "built with MBOX_TLM_ROUTING=1, before trusting any audio taken",
+                "on this unit."]
     mux = b[0]
     ch1, ch2 = mux & 0x07, (mux >> 3) & 0x07
     n1 = SOURCE_NAMES.get(ch1, "ILLEGAL")
