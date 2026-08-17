@@ -283,7 +283,7 @@
 #define APP_DEV_DESC_LEN        18
 #define APP_STRING_LANG_LEN     4
 #define APP_STRING_MFR_LEN      22   /* 2 + 2*10 "Digidesign"   */
-#define APP_STRING_PRODUCT_LEN  26   /* 2 + 2*12 "Mbox (classc" */
+#define APP_STRING_PRODUCT_LEN  46   /* 2 + 2*22 "Mbox (class-compliant)" */
 
 /* #204. Terminal names, so a host shows "Instrument" instead of a bare
  * terminal ID. Indices start at 4 because 3 is the per-unit serial and that

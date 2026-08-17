@@ -539,9 +539,19 @@ const unsigned char __code AppStringMfr[APP_STRING_MFR_LEN] = {
     'D',0,'i',0,'g',0,'i',0,'d',0,'e',0,'s',0,'i',0,'g',0,'n',0
 };
 
+/* THE NAME EVERY OPERATING SYSTEM SHOWS THE USER -- Audio MIDI Setup, Logic's
+ * device list, lsusb, Windows Device Manager. Worth getting right.
+ *
+ * It read "Mbox (classc" until 2026-08-16: an unclosed parenthesis, twelve
+ * characters, with bLength = 26 correctly describing all twelve. So nothing was
+ * ever truncated on the wire and no gate could have caught it -- the descriptor
+ * was self-consistent and simply said the wrong thing. It surfaced only when
+ * sox on macOS needed the literal device name to open the output, and the
+ * literal name was visibly wrong. */
 const unsigned char __code AppStringProduct[APP_STRING_PRODUCT_LEN] = {
-    26, USB_DT_STRING,
-    'M',0,'b',0,'o',0,'x',0,' ',0,'(',0,'c',0,'l',0,'a',0,'s',0,'s',0,'c',0
+    46, USB_DT_STRING,
+    'M',0,'b',0,'o',0,'x',0,' ',0,'(',0,'c',0,'l',0,'a',0,'s',0,'s',0,
+    '-',0,'c',0,'o',0,'m',0,'p',0,'l',0,'i',0,'a',0,'n',0,'t',0,')',0
 };
 
 /* #204 terminal-name strings. */
