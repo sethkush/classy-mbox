@@ -22,6 +22,9 @@
 #include "streaming.h"
 #include "eeprom.h"
 #include "telemetry.h"
+#ifdef MBOX_SERIAL_EEPROM
+#include "serialno.h"
+#endif
 #include "power.h"
 #include "mux.h"
 #include "codec.h"
@@ -135,6 +138,15 @@ static __data unsigned char g_ep3_halted = 0;
  * transfer larger than the 8-byte EP0 MaxPacketSize we'll need to chunk
  * across multiple SETUP→IN cycles — tracked with these pointers. */
 static __code const unsigned char *g_ep0_reply_src = 0;
+#ifdef MBOX_SERIAL_EEPROM
+/* #221: the device descriptor and the serial string are built in XDATA, so the
+ * reply cursor needs a second flavour. Two typed pointers and a bit, rather
+ * than one generic pointer: SDCC's generic pointers carry a storage-class tag
+ * and dispatch on it per byte, which on an 18-byte descriptor is 18 dispatches
+ * for no benefit. */
+static __xdata const unsigned char *g_ep0_reply_srcx = 0;
+static __bit g_reply_from_xdata = 0;
+#endif
 static __data unsigned int          g_ep0_reply_remaining = 0;
 
 
@@ -246,10 +258,16 @@ static void push_reply_chunk(void)
                           ? EP0_MAX_PACKET
                           : (unsigned char)g_ep0_reply_remaining;
     unsigned char i;
-    for (i = 0; i < n; i++) {
-        dst[i] = g_ep0_reply_src[i];
+#ifdef MBOX_SERIAL_EEPROM
+    if (g_reply_from_xdata) {
+        for (i = 0; i < n; i++) dst[i] = g_ep0_reply_srcx[i];
+        g_ep0_reply_srcx += n;
+    } else
+#endif
+    {
+        for (i = 0; i < n; i++) dst[i] = g_ep0_reply_src[i];
+        g_ep0_reply_src += n;
     }
-    g_ep0_reply_src       += n;
     g_ep0_reply_remaining -= n;
     TLM_INC16(tlm.chunks);
     if (g_ep0_reply_remaining == 0) { STAGE(19); TLM_INC16(tlm.drains); }
@@ -274,9 +292,29 @@ static void stage_reply(__code const unsigned char *src, unsigned int len)
      * again without the stall counter in hand. */
     if (len > wLen) len = wLen;
     g_ep0_reply_src = src;
+#ifdef MBOX_SERIAL_EEPROM
+    g_reply_from_xdata = 0;
+#endif
     g_ep0_reply_remaining = len;
     push_reply_chunk();   /* first chunk fires immediately */
 }
+
+#ifdef MBOX_SERIAL_EEPROM
+/* Same contract as stage_reply(), sourced from XDATA. A NULL src stalls, which
+ * is what an unprovisioned unit must do for string 3 -- an empty reply would
+ * hand the host a zero-length descriptor instead of a Request Error. */
+static void stage_reply_x(__xdata const unsigned char *src, unsigned int len)
+{
+    unsigned int wLen = ((unsigned int)wLenH << 8) | wLenL;
+
+    if (src == 0 || len == 0) { reply_stall(); return; }
+    if (len > wLen) len = wLen;
+    g_ep0_reply_srcx = src;
+    g_reply_from_xdata = 1;
+    g_ep0_reply_remaining = len;
+    push_reply_chunk();
+}
+#endif
 
 
 /* --- Standard request dispatchers --- */
@@ -322,7 +360,13 @@ static void handle_get_descriptor(void)
     switch (type) {
         case USB_DT_DEVICE:
             STAGE(14);
+#ifdef MBOX_SERIAL_EEPROM
+            /* #221: from XDATA, because iSerialNumber is decided at boot by
+             * whether the EEPROM record validated -- see serialno.c. */
+            stage_reply_x(serialno_devdesc(), APP_DEV_DESC_LEN);
+#else
             stage_reply(AppDevDesc, APP_DEV_DESC_LEN);
+#endif
             break;
         case USB_DT_CONFIG:
             /* 17 = config descriptor requested. This is the big one:
@@ -348,7 +392,17 @@ static void handle_get_descriptor(void)
                 case 0:  stage_reply(AppStringLang,    APP_STRING_LANG_LEN);  break;
                 case 1:  stage_reply(AppStringMfr,     APP_STRING_MFR_LEN); break;
                 case 2:  stage_reply(AppStringProduct, APP_STRING_PRODUCT_LEN); break;
-#ifdef MBOX_SERIAL_NCHAR
+#if defined(MBOX_SERIAL_EEPROM)
+                /* #221: the provisioned serial. serialno_string() returns 0 on
+                 * an unprovisioned unit and stage_reply_x() stalls -- matching
+                 * the iSerialNumber 0 that serialno_load() put in the device
+                 * descriptor, so the two can never disagree. */
+                case 3: {
+                    unsigned int sl = 0;
+                    stage_reply_x(serialno_string(&sl), sl);
+                    break;
+                }
+#elif defined(MBOX_SERIAL_NCHAR)
                 /* iSerialNumber. Only offered when the device descriptor
                  * actually points at it (APP_ISERIAL), so a host that asks for
                  * string 3 on a serial-less build still gets the stall it

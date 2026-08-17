@@ -13,7 +13,10 @@
 #include "mux.h"
 #include "eeprom.h"
 #include "telemetry.h"
-#include "usb.h"        /* g_dfu_request_pending */
+#include "usb.h"
+#ifdef MBOX_SERIAL_EEPROM
+#include "serialno.h"
+#endif        /* g_dfu_request_pending */
 #include "streaming.h"  /* streaming_set_rate() -- #197 boot clock bring-up */
 #include "power.h"      /* g_work_code, work_dispatch() */
 
@@ -253,6 +256,15 @@ void main(void)
      * entry and it that can halt or branch past it. The narrowed form that
      * verify_conn_reachable.py encoded -- "usb_init is always reached EXCEPT
      * after a confirmed header invalidate" -- is no longer needed. */
+
+#ifdef MBOX_SERIAL_EEPROM
+    /* #221: read the serial BEFORE usb_init(), because usb_init() brings the
+     * USB engine up and the host can issue GET_DESCRIPTOR the moment it does.
+     * Loading after that races enumeration against an I2C read, and the loser
+     * is the device descriptor -- the one request that must carry the right
+     * iSerialNumber. A failure here is not fatal: the index stays 0. */
+    (void)serialno_load();
+#endif
 
     /* usb_init() configures endpoints and buffers but does NOT attach.
      * Ordering below mirrors both stock firmwares exactly. */

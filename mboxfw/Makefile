@@ -130,19 +130,18 @@ endif
 # so there is nothing left for it to measure. Passing MBOX_FB_TUNE=1 now does
 # nothing; see telemetry.h for the retired request number.
 
-# #221 WORK IN PROGRESS -- descriptors provisioned in EEPROM instead of compiled
-# into program RAM. `make MBOX_DESC_EEPROM=1` builds descblob.c and the EEPROM
-# read side. OFF BY DEFAULT AND NOT YET WIRED IN: the loader and the blob format
-# are done, the GET_DESCRIPTOR dispatch still serves the __code tables, and the
-# host-side blob builder does not exist. Enabling it today costs ~240 bytes and
-# saves nothing, because the tables it replaces are still linked.
+# #221: iSerialNumber provisioned in EEPROM. `make MBOX_SERIAL_EEPROM=1`.
 #
-# Left opt-in rather than half-applied on purpose. The remaining step rewires
-# every GET_DESCRIPTOR case at once, and a descriptor path that is half moved is
-# the failure this part is least survivable to.
-ifeq ($(MBOX_DESC_EEPROM),1)
-EXTRA_CFLAGS += -DMBOX_DESC_EEPROM
-SRCS += src/descblob.c
+# The full descriptor move this started as was MEASURED and abandoned: putting
+# all descriptors in EEPROM made the image 658 bytes BIGGER, because the tables
+# are 426 bytes and the blob directory, validation, staging and fallback set
+# cost ~1084. The serial alone needs almost none of that.
+#
+# Mutually exclusive with MBOX_UNIT=: one serves the provisioned serial, the
+# other a compile-time constant, and having both would mean two answers to the
+# same question.
+ifeq ($(MBOX_SERIAL_EEPROM),1)
+EXTRA_CFLAGS += -DMBOX_SERIAL_EEPROM
 endif
 
 ifeq ($(MBOX_TLM_STALL),1)
@@ -176,6 +175,13 @@ CFLAGS  = $(if $(MBOX_PID),-DMBOX_PID=$(MBOX_PID)) -mmcs51 --model-small --std-c
 LDFLAGS = -mmcs51 --model-small --code-size 0x1780 --xram-size 0x1000
 
 SRCS = src/main.c src/hw_init.c src/mux.c src/cs8427.c src/codec.c src/buttons.c src/usb.c src/descriptors.c src/streaming.c src/isr.c src/eeprom.c src/telemetry.c src/power.c
+# MUST come after SRCS is assigned, not with the flag block above -- a `SRCS +=`
+# before the `SRCS =` on the previous line is silently discarded, and the only
+# symptom is three undefined globals at link time.
+ifeq ($(MBOX_SERIAL_EEPROM),1)
+SRCS += src/serialno.c
+endif
+
 RELS = $(SRCS:src/%.c=$(BUILD)/%.rel)
 
 .PHONY: all clean flasher

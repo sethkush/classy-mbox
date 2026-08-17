@@ -87,59 +87,7 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
     return 1;
 }
 
-#ifdef MBOX_DESC_EEPROM
-/* Read one byte from EEPROM offset (addr_hi << 8 | addr_lo). Returns 1 and
- * stores through `out` on success; returns 0 and leaves `out` untouched on any
- * failure. Sequence matches TI's I2CAccess for
- * I2C_START | I2C_READ | I2C_STOP | I2C_WORD_ADDR_TYPE with nLen = 1
- * (`reference/tas1020a/ti_uac_reference/ROM/I2c.c` lines 63-103).
- *
- * REMOVED 2026-08-05 with the boot-button DFU trigger, its only caller, and
- * RESTORED 2026-08-16 for the provisioned serial number (#221). The write side
- * never left: TLM_REQ_ENTER_DFU invalidates the header checksum through
- * eeprom_write_byte().
- *
- * THE DUMMY WRITE IS LOAD-BEARING. After the read-address load, `I2C_TX = 0xFF`
- * is what actually fires the read cycle -- TI does it at I2c.c:102, and the
- * version of this function deleted in 2026-08 omitted it. Without it the
- * peripheral never transfers, the wait for RCV_DATA_FULL times out, and the
- * caller sees a clean "no data" that is indistinguishable from an EEPROM with
- * nothing in it. That bug made both software recovery paths silently fail and
- * took an audit to find; it is not re-introducible by accident now only because
- * this comment is here.
- *
- * STOP_READ MUST BE SET BEFORE the dummy write, not after (I2c.c:101-102): for
- * a single-byte read the STOP condition has to be armed while the last -- here
- * only -- byte is being clocked in. */
-unsigned char eeprom_read_byte(unsigned char addr_hi,
-                               unsigned char addr_lo,
-                               unsigned char *out)
-{
-    /* TI I2c.c I2CAccess — clear stale flags, then the write address. */
-    I2C_STA   &= I2C_CLEAR_ALL;
-    I2C_SADDR  = EEPROM_ADDR_WRITE;
-
-    /* TI I2c.c I2CAccess line 63 — word-address MSB, in WRITE mode. */
-    I2C_TX = addr_hi;
-    if (!wait_bit(I2C_XMIT_DATA_EMPTY)) return 0;
-    /* TI I2c.c I2CAccess line 73 — word-address LSB. */
-    I2C_TX = addr_lo;
-    if (!wait_bit(I2C_XMIT_DATA_EMPTY)) return 0;
-
-    /* TI I2c.c I2CAccess line 96 — repeated START in READ mode. */
-    I2C_SADDR = EEPROM_ADDR_READ;
-    /* TI I2c.c I2CAccess line 101 — STOP armed before the only byte. */
-    I2C_STA  |= I2C_STOP_READ;
-    /* TI I2c.c I2CAccess line 102 — dummy write fires the read cycle. */
-    I2C_TX    = 0xFF;
-    if (!wait_bit(I2C_RCV_DATA_FULL)) return 0;
-
-    *out = I2C_RX;
-    /* TI I2c.c I2CAccess — leave the flags clean for the next transaction. */
-    I2C_STA &= I2C_CLEAR_ALL;
-    return 1;
-}
-
+#ifdef MBOX_SERIAL_EEPROM
 /* Sequential read: one START, one word-address load, then `len` bytes clocked
  * out back-to-back. Returns 1 on success, 0 on any failure (and the caller must
  * treat a partial read as a failure -- `dst` is left in an undefined state).
@@ -194,7 +142,7 @@ unsigned char eeprom_read_seq(unsigned char addr_hi,
     return 1;
 }
 
-#endif /* MBOX_DESC_EEPROM */
+#endif /* MBOX_SERIAL_EEPROM */
 
 unsigned char eeprom_invalidate_signature(void)
 {
