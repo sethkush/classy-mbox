@@ -394,6 +394,11 @@ extern volatile __data unsigned char g_dfu_request_pending;
 extern volatile __data unsigned char g_prov_pending;
 extern volatile __data unsigned char g_prov_offset;
 extern volatile __data unsigned char g_prov_value;
+extern volatile __data unsigned char g_prov_diag_pending;
+extern volatile __data unsigned char g_prov_diag_hi;
+extern volatile __data unsigned char g_prov_diag_lo;
+extern volatile __data unsigned char g_prov_diag_freq;
+extern __xdata unsigned char g_prov_diag_buf[];
 #endif
 
 /* Non-zero once SET_CONFIGURATION has selected a non-zero configuration.

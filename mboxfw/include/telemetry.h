@@ -183,6 +183,12 @@
  *   against offset + 8 rather than offset. */
 #define TLM_REQ_PROV_WRITE 0x19
 #define TLM_REQ_PROV_READ  0x1A
+/* 0x1B — instrumented single-byte read, provisioning builds only. Returns
+ * I2CSTA at each step of one transaction plus the byte, so a failing read
+ * says WHERE it failed. wIndex low forces the bus frequency first. See
+ * eeprom_read_diag() in eeprom.c. */
+#define TLM_REQ_PROV_DIAG  0x1B   /* OUT: latch an instrumented read */
+#define TLM_REQ_PROV_DIAGRD 0x1C  /* IN:  its 8 result bytes */
 
 /* 0x15 was TLM_REQ_SET_MUTE, the #189 bench control for the 0x23.2/0x23.3
  * pair. REMOVED in build 0x0036, when #190 declared the two UAC1 Feature Units

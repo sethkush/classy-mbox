@@ -97,6 +97,14 @@ volatile __data unsigned char g_prov_value   = 0;
  * and --model-small puts a local array in DATA -- passing one would compile,
  * with the generic pointer reading the wrong memory space. */
 static __xdata unsigned char g_prov_rb[TLM_BLOCK_SIZE];
+/* #226 main-loop diagnostic: request latched in the SETUP handler, performed
+ * by main(), read back with PROV_DIAGRD. See the dispatch for why context is
+ * the variable under test. */
+volatile __data unsigned char g_prov_diag_pending = 0;
+volatile __data unsigned char g_prov_diag_hi = 0;
+volatile __data unsigned char g_prov_diag_lo = 0;
+volatile __data unsigned char g_prov_diag_freq = 0;
+__xdata unsigned char g_prov_diag_buf[TLM_BLOCK_SIZE];
 #endif
 
 /* Pending EP0 control-OUT data stage.
@@ -1082,24 +1090,73 @@ static void handle_setup(void)
             }
             return;
         }
-        if (bReq == TLM_REQ_PROV_READ && (bmReq & 0x80)) {
-            /* Bounded against offset + the READ LENGTH, not the offset alone:
-             * a read starting one byte inside the record would otherwise run
-             * seven bytes past the end of it. */
-            if (wValueL + TLM_BLOCK_SIZE > SERIAL_HDR_LEN + SERIAL_MAX_CHARS ||
-                g_prov_pending) {
-                reply_stall();
-            /* EE_SERIAL_LO is 0 and the offset is < 27, so this cannot carry
-             * into the high byte -- the address is always 0x1Fxx.
+        if (bReq == TLM_REQ_PROV_DIAG && !(bmReq & 0x80)) {
+            /* #226 instrumented read, run FROM THE MAIN LOOP.
              *
-             * A FAILED READ STALLS rather than returning the buffer. Serving
-             * whatever happens to be in XDATA would let a stale byte pass for
-             * a successful roundtrip -- the hazard eeprom.h's contract note
-             * calls out -- and here the stale byte would be one the tool
-             * itself staged moments earlier, so it would verify. */
-            } else if (!eeprom_read_seq(EE_SERIAL_HI,
-                                        (unsigned char)(EE_SERIAL_LO + wValueL),
+             * THE CONTEXT IS THE EXPERIMENT. The first version of this ran the
+             * same eeprom_read_diag() inline here, in the SETUP handler, and
+             * every I2CSTA it reported was 0x00 -- including the FREQ_400KHZ
+             * bit the handler had just written, and including all three wait
+             * results. Read literally that says the I2C peripheral is dead.
+             *
+             * It cannot be dead, and that is what makes this worth testing
+             * rather than believing: eeprom_invalidate_signature() writes the
+             * header checksum through the SAME registers and demonstrably
+             * works -- it is the enter-DFU trigger, used repeatedly today, and
+             * the unit reaches DFU after every one. The difference between the
+             * two is not the code, it is WHERE IT RUNS. The trigger's write
+             * happens in main() after `USBCTL = 0; EA = 0`; this happened in an
+             * interrupt handler with the USB engine live.
+             *
+             * So: latch here, run in main(), read the result back with
+             * PROV_DIAGRD, and compare against the ISR-context numbers already
+             * measured. Same function, same address, same known answer
+             * (EEPROM 0x0001 = headerSize = 0x12), one variable changed. */
+            if (g_prov_pending || g_prov_diag_pending) {
+                reply_stall();
+            } else {
+                g_prov_diag_hi   = wValueH;
+                g_prov_diag_lo   = wValueL;
+                g_prov_diag_freq = wIndexL;
+                g_prov_diag_pending = 1;
+                reply_zero_length();
+            }
+            return;
+        }
+        if (bReq == TLM_REQ_PROV_DIAGRD && (bmReq & 0x80)) {
+            /* The 8 bytes the main-loop run produced. STALLs while the run is
+             * still outstanding, so a reader can never mistake the previous
+             * result for the current one. */
+            if (g_prov_diag_pending) reply_stall();
+            else stage_immediate(g_prov_diag_buf, TLM_BLOCK_SIZE);
+            return;
+        }
+        if (bReq == TLM_REQ_PROV_READ && (bmReq & 0x80)) {
+            /* wValue is a FULL 16-BIT EEPROM ADDRESS, not an offset into the
+             * record, and it is deliberately UNBOUNDED.
+             *
+             * The asymmetry with PROV_WRITE is the point. A write that can
+             * name any address can destroy the header and brick the unit from
+             * software, so writes take an offset and the firmware supplies the
+             * base. A READ cannot damage anything, so the bound there bought no
+             * safety -- and it cost the ability to diagnose. With reads pinned
+             * to 0x1F00 the only observable was "the record is zeros", which is
+             * equally consistent with a broken read and a broken write, and two
+             * flash cycles were spent failing to tell those apart.
+             *
+             * Unbounded, the tool can read a region whose contents are known in
+             * advance -- the 18-byte EEPROM header at 0x0000, which must begin
+             * 12 12 34 0d ba 10 01 -- so every reading carries its own
+             * known-answer arm. That is the rule this project already has
+             * (CLAUDE.md: "Put a known-answer arm in every run"), applied to
+             * the instrument rather than only to the experiment. */
+            if (g_prov_pending) {
+                reply_stall();
+            } else if (!eeprom_read_seq(wValueH, wValueL,
                                         g_prov_rb, TLM_BLOCK_SIZE)) {
+                /* A failed read STALLS rather than returning the buffer --
+                 * serving stale XDATA would let a byte the tool staged moments
+                 * earlier pass for a successful roundtrip. */
                 reply_stall();
             } else {
                 stage_immediate(g_prov_rb, TLM_BLOCK_SIZE);

@@ -28,3 +28,13 @@
 # same line scans as `runtime`, which is separately listed in the manifest.
 # Both classifications are the same source line at src/usb.c:297.
 0xff6b  rmw       -       # tier: MBOX_SERIAL_EEPROM only (codegen shape of IEPDCNTX0 = n)
+
+# The four I2C writes that exist ONLY on the EEPROM READ path, i.e. only in
+# builds carrying eeprom_read_seq() -- MBOX_SERIAL_EEPROM (#221) and
+# MBOX_PROVISION (#226). A compile-time-serial build (MBOX_UNIT=A/B) or a plain
+# release build has no reader and emits none of them. All four are cited to TI
+# I2c.c::I2CAccess in eeprom.c and justified in rev20_diff_justifications.md.
+0xffc0  or        0x02    # tier: read path only -- STOP_READ  (TI I2c.c line 136)
+0xffc1  assign    0xff    # tier: read path only -- dummy write (TI I2c.c line 111)
+0xffc2  rmw       -       # tier: read path only -- I2CDATI     (TI I2c.c line 140)
+0xffc3  assign    0xa1    # tier: read path only -- read address (TI I2c.c line 96)

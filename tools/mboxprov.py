@@ -70,6 +70,14 @@ HDR_LEN = 7                 # magic[4], version, nchar, xor
 XOR_OFFSET = 6
 RECORD_LEN = HDR_LEN + MAX_CHARS
 BLOCK = 8
+EE_SERIAL_BASE = 0x1F00     # must match EE_SERIAL_HI/LO in serialno.h
+
+# The first 18 bytes of the EEPROM are the boot-ROM header, and bytes 1..6
+# are FIXED for every image this project produces: headerSize 0x12,
+# signature 0x1234, VID 0x0DBA, PID high 0x10. Byte 0 is the checksum and
+# byte 7 is the PID low byte, both of which vary, so they are excluded.
+# Reading this is the known-answer arm for the I2C read path itself.
+HEADER_KNOWN = bytes([0x12, 0x12, 0x34, 0x0D, 0xBA, 0x10])
 
 # MEASURED on unit B, 2026-08-16: 1460 ms from ACK to the latch clearing,
 # five trials, 243 STALLs polled at 5 ms. NOT the ~5 ms the 24C64 needs.
@@ -182,8 +190,12 @@ def select_device(addr):
     return found[0][0]
 
 
-def prov_read(dev, offset, timeout=2000, deadline_s=WRITE_DEADLINE_S):
-    """8 bytes from the record region. The firmware bounds offset+8 <= 27.
+def prov_read(dev, addr, timeout=2000, deadline_s=WRITE_DEADLINE_S):
+    """8 bytes from ANY EEPROM address. wValue is the full 16-bit address.
+
+    Unbounded on purpose -- a read cannot damage the part, and pinning it to the
+    record region is what made "the record is zeros" indistinguishable from "the
+    read path is broken". Writes stay bounded; see the firmware comment.
 
     RETRIES ON STALL, for the same reason writes do: the firmware also refuses
     a READ while a write latch is pending, so that a readback can never race
@@ -197,7 +209,7 @@ def prov_read(dev, offset, timeout=2000, deadline_s=WRITE_DEADLINE_S):
     end = time.time() + deadline_s
     while True:
         try:
-            data = dev.ctrl_transfer(REQ_IN, TLM_REQ_PROV_READ, offset, 0,
+            data = dev.ctrl_transfer(REQ_IN, TLM_REQ_PROV_READ, addr, 0,
                                      BLOCK, timeout)
             break
         except usb.core.USBError as e:
@@ -205,8 +217,8 @@ def prov_read(dev, offset, timeout=2000, deadline_s=WRITE_DEADLINE_S):
                 raise
             time.sleep(WRITE_POLL_S)
     if len(data) != BLOCK:
-        sys.exit("PROV_READ at offset %d returned %d bytes, expected %d"
-                 % (offset, len(data), BLOCK))
+        sys.exit("PROV_READ at 0x%04X returned %d bytes, expected %d"
+                 % (addr, len(data), BLOCK))
     return bytes(data)
 
 
@@ -214,7 +226,7 @@ def read_record(dev):
     """The whole 27-byte region, from overlapping 8-byte reads."""
     out = bytearray(RECORD_LEN)
     for off in (0, 8, 16, RECORD_LEN - BLOCK):
-        out[off:off + BLOCK] = prov_read(dev, off)
+        out[off:off + BLOCK] = prov_read(dev, EE_SERIAL_BASE + off)
     return bytes(out)
 
 
@@ -253,7 +265,7 @@ def check_is_provisioning_image(dev):
     try:
         # Short deadline: this runs before any write, so nothing can be pending
         # and a STALL here can only mean the wrong image.
-        prov_read(dev, 0, deadline_s=0.5)
+        prov_read(dev, EE_SERIAL_BASE, deadline_s=0.5)
     except usb.core.USBError as e:
         if e.errno == 32:
             sys.exit("this unit STALLs TLM_REQ_PROV_READ, so it is NOT running "
@@ -274,9 +286,43 @@ def cmd_list(args):
     return 0
 
 
+def check_read_path(dev, verbose=True):
+    """KNOWN-ANSWER ARM for the I2C read path.
+
+    Reads the EEPROM header at 0x0000, whose bytes 1..6 are fixed for every
+    image this project builds. If those come back right, the read path is
+    genuinely clocking bytes off the part -- so a record region that then reads
+    as zeros is really zeros, and the fault is on the write side.
+
+    This exists because the read path was broken and undetectable: eeprom_read_seq
+    returned 0x00 for everything, and with reads pinned to the record region
+    there was no reading whose correct answer was known. Two flash cycles went
+    into telling "broken read" from "broken write" without one. See FINDING_226.
+    """
+    hdr = prov_read(dev, 0x0000)
+    ok = hdr[1:7] == HEADER_KNOWN
+    if verbose or not ok:
+        print("read-path check: header@0x0000 = %s" % hdr.hex())
+        print("                 bytes 1..6 = %s, expected %s -- %s"
+              % (hdr[1:7].hex(), HEADER_KNOWN.hex(), "OK" if ok else "MISMATCH"))
+    if not ok:
+        print("\nThe I2C read path is NOT returning EEPROM contents. Any record\n"
+              "read taken now is void -- it says nothing about what was written.",
+              file=sys.stderr)
+    return ok
+
+
+def cmd_check(args):
+    dev = select_device(args.addr)
+    check_is_provisioning_image(dev)
+    return 0 if check_read_path(dev) else 1
+
+
 def cmd_show(args):
     dev = select_device(args.addr)
     check_is_provisioning_image(dev)
+    if not check_read_path(dev):
+        return 1
     raw = read_record(dev)
     print("record at 0x1F00:", raw.hex())
     serial, why = decode_record(raw)
@@ -290,6 +336,9 @@ def cmd_show(args):
 def cmd_write(args):
     dev = select_device(args.addr)
     check_is_provisioning_image(dev)
+    if not check_read_path(dev):
+        sys.exit("refusing to write: the readback could not be trusted, so the "
+                 "verify step would prove nothing.")
 
     existing, _ = decode_record(read_record(dev))
     if existing is not None and existing != args.serial and not args.force:
@@ -405,6 +454,7 @@ def main():
     sub = p.add_subparsers(dest="cmd")
 
     sub.add_parser("list", help="show attached audio-mode Mboxes")
+    sub.add_parser("check", help="known-answer arm: prove the I2C read path works")
     sub.add_parser("show", help="read and decode the record at 0x1F00")
     w = sub.add_parser("write", help="write a serial into EEPROM")
     w.add_argument("serial")
@@ -416,6 +466,8 @@ def main():
         return selftest()
     if args.cmd == "list":
         return cmd_list(args)
+    if args.cmd == "check":
+        return cmd_check(args)
     if args.cmd == "show":
         return cmd_show(args)
     if args.cmd == "write":

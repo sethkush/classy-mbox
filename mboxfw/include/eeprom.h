@@ -44,6 +44,13 @@ unsigned char eeprom_read_seq(unsigned char addr_hi,
 
 #endif
 
+#ifdef MBOX_PROVISION
+/* #226 diagnostic: one instrumented byte read, 8 bytes of I2C status out.
+ * Provisioning builds only -- see the comment in eeprom.c. */
+void eeprom_read_diag(unsigned char addr_hi, unsigned char addr_lo,
+                      __xdata unsigned char *out);
+#endif
+
 unsigned char eeprom_invalidate_signature(void);
 
 #endif

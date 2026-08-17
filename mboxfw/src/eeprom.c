@@ -143,19 +143,22 @@ unsigned char eeprom_read_seq(unsigned char addr_hi,
 
     /* TI I2c.c I2CAccess line 111 — ONE dummy write, OUTSIDE the loop.
      *
-     * THIS IS THE BUG THAT MADE EVERY SEQUENTIAL READ RETURN ZEROS. The first
-     * version put this write inside the loop, citing this same line, on the
-     * reading that the dummy byte "fires each read cycle". It does not: it
-     * fires the FIRST one only. What advances the peripheral to the next byte
-     * is READING I2CDATI (line 140) -- TI's loop contains no write to I2CDATO
-     * on the read path at all. Re-writing it per iteration restarts the
-     * transfer each time, and the reads came back 0x00.
+     * A REAL DEFECT, BUT NOT THE ONE THAT BREAKS READS. The first version put
+     * this write inside the loop, citing this same line, on the reading that
+     * the dummy byte "fires each read cycle". It does not: it fires the FIRST
+     * one only, and what advances the peripheral is READING I2CDATI (line 140)
+     * -- TI's read loop contains no write to I2CDATO at all. So this is now
+     * correct where it was not before.
      *
-     * The symptom was diagnostic and nearly missed: an UNWRITTEN 24C64 reads
-     * 0xFF, so a region reading 0x00 before anything had ever been written to
-     * it was already saying the read path was wrong. It was briefly read as
-     * "the writes are failing" instead, which fits the after-write evidence
-     * and not the before-write evidence. */
+     * IT DID NOT FIX ANYTHING. With this, the CLEAR_ALL at line 82 and the
+     * STOP_READ timing all matched TI exactly, reads STILL returned 0x00 --
+     * including from the 18-byte EEPROM header at 0x0000, which is known to
+     * contain 12 12 34 0d ba 10. That known-answer read is what proved the
+     * fault is in the read path rather than in the writes, and that it is
+     * lower down than this function's control flow.
+     *
+     * eeprom_read_diag() below exists to find it. Do not write a cause here
+     * until it has answered. */
     I2C_TX = 0xFF;
 
     /* TI I2c.c I2CAccess lines 116-140. STOP_READ is armed when TWO bytes
@@ -209,3 +212,65 @@ unsigned char eeprom_invalidate_signature(void)
     if (!eeprom_write_byte(0x00, 0x00, 0x00)) return 0;
     return 1;
 }
+
+#ifdef MBOX_PROVISION
+/* #226 — instrumented single-byte read. Returns the I2C status register at
+ * every step of one transaction, so a failing read says WHERE it failed
+ * instead of only that it produced zeros.
+ *
+ * This exists because two flash cycles were spent unable to tell a broken read
+ * from a broken write, and because the fix that "matched TI exactly" did not
+ * work either -- at which point more source-reading was not going to settle it.
+ * The device answers the question over the wire; that is the same reason
+ * telemetry.c exists (TELEMETRY.md, "one power cycle buys exactly one image").
+ *
+ * out[0] I2CSTA after the opening CLEAR_ALL
+ * out[1] I2CSTA after the slave write-address, before the sub-address
+ * out[2] I2CSTA after the sub-address MSB wait
+ * out[3] I2CSTA after the CLEAR_ALL that precedes the read address
+ * out[4] I2CSTA after the dummy I2CDATO write, before waiting for data
+ * out[5] I2CSTA once the RCV_DATA_FULL wait has finished (or timed out)
+ * out[6] I2CDATI -- the byte itself
+ * out[7] bit0 MSB wait ok, bit1 LSB wait ok, bit2 RCV wait ok
+ */
+void eeprom_read_diag(unsigned char addr_hi, unsigned char addr_lo,
+                      __xdata unsigned char *out)
+{
+    unsigned char f = 0;
+
+    /* TI I2c.c I2CAccess line 57 — clear stale flags, then the write address. */
+    I2C_STA &= I2C_CLEAR_ALL;
+    out[0] = I2C_STA;
+    I2C_SADDR = EEPROM_ADDR_WRITE;
+    out[1] = I2C_STA;
+
+    /* TI I2c.c I2CAccess line 63 — word-address MSB. */
+    I2C_TX = addr_hi;
+    if (wait_bit(I2C_XMIT_DATA_EMPTY)) f |= 0x01;
+    out[2] = I2C_STA;
+
+    /* TI I2c.c I2CAccess line 76 — word-address LSB. */
+    I2C_TX = addr_lo;
+    if (wait_bit(I2C_XMIT_DATA_EMPTY)) f |= 0x02;
+
+    /* TI I2c.c I2CAccess line 82 — CLEAR_ALL before the read address. */
+    I2C_STA &= I2C_CLEAR_ALL;
+    out[3] = I2C_STA;
+
+    /* TI I2c.c I2CAccess line 96 — repeated START in READ mode. */
+    I2C_SADDR = EEPROM_ADDR_READ;
+    /* TI I2c.c I2CAccess line 101 — single byte, so STOP is armed up front. */
+    I2C_STA |= I2C_STOP_READ;
+    /* TI I2c.c I2CAccess line 102 — the dummy write that fires the read. */
+    I2C_TX = 0xFF;
+    out[4] = I2C_STA;
+
+    if (wait_bit(I2C_RCV_DATA_FULL)) f |= 0x04;
+    out[5] = I2C_STA;
+    /* TI I2c.c I2CAccess line 106 — the received byte. */
+    out[6] = I2C_RX;
+    out[7] = f;
+
+    I2C_STA &= I2C_CLEAR_ALL;
+}
+#endif /* MBOX_PROVISION */

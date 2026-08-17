@@ -479,6 +479,16 @@ void main(void)
          * the offset is < 27, so the sum cannot carry and the high byte is
          * always EE_SERIAL_HI -- no host value can name an address outside
          * 0x1F00..0x1F1A. */
+        if (g_prov_diag_pending) {
+            /* #226: the same instrumented read the SETUP handler used to do
+             * inline, run here instead. Context is the only difference, and it
+             * is the thing being measured -- see the dispatch in usb.c. */
+            if (g_prov_diag_freq == 1)      I2C_STA &= ~0x10;  /* TI I2c.c I2CAccess line 44 */
+            else if (g_prov_diag_freq == 2) I2C_STA |=  0x10;  /* TI I2c.c I2CAccess line 44 */
+            eeprom_read_diag(g_prov_diag_hi, g_prov_diag_lo, g_prov_diag_buf);
+            g_prov_diag_pending = 0;
+        }
+
         if (g_prov_pending) {
             if (g_prov_offset < SERIAL_HDR_LEN + SERIAL_MAX_CHARS) {
                 (void)eeprom_write_byte(
