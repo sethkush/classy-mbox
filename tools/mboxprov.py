@@ -71,6 +71,28 @@ XOR_OFFSET = 6
 RECORD_LEN = HDR_LEN + MAX_CHARS
 BLOCK = 8
 
+# MEASURED on unit B, 2026-08-16: 1460 ms from ACK to the latch clearing,
+# five trials, 243 STALLs polled at 5 ms. NOT the ~5 ms the 24C64 needs.
+#
+# eeprom_write_hold() spins `for (i = 0; i < 0xFF00; i++)` on a volatile int:
+# 65280 iterations at roughly 22 machine cycles each is ~1.4 M cycles, which at
+# 1 MHz is the 1.46 s observed. So the hold overshoots the part's requirement by
+# about 290x.
+#
+# THAT LOOP IS NOT BEING SHORTENED. Its only other caller is
+# eeprom_invalidate_signature(), which writes one byte and halts -- the DFU
+# escape, the most safety-critical path in the firmware, where an
+# under-long hold risks a header write that did not finish. Provisioning runs
+# once per unit at the desk, so 17 bytes x 1.46 s = ~25 s, and the correct
+# response to that is patience in this tool, not surgery on the escape path.
+#
+# The first version of this function allowed 20 retries at 10 ms = 200 ms, i.e.
+# 7x too short, and reported it as "the device is not running a provisioning
+# image" -- a wrong diagnosis of a working device, from a number assumed
+# instead of measured.
+WRITE_DEADLINE_S = 6.0      # ~4x the measured 1.46 s
+WRITE_POLL_S = 0.025
+
 
 def build_record(serial):
     """The exact bytes serialno_load() validates. Mirrors it field for field."""
@@ -160,9 +182,28 @@ def select_device(addr):
     return found[0][0]
 
 
-def prov_read(dev, offset, timeout=2000):
-    """8 bytes from the record region. The firmware bounds offset+8 <= 27."""
-    data = dev.ctrl_transfer(REQ_IN, TLM_REQ_PROV_READ, offset, 0, BLOCK, timeout)
+def prov_read(dev, offset, timeout=2000, deadline_s=WRITE_DEADLINE_S):
+    """8 bytes from the record region. The firmware bounds offset+8 <= 27.
+
+    RETRIES ON STALL, for the same reason writes do: the firmware also refuses
+    a READ while a write latch is pending, so that a readback can never race
+    ahead of the byte it is meant to verify. A verify issued immediately after
+    the last write therefore lands in the ~1.5 s program hold and is STALLed --
+    which is the device being careful, not a failure.
+
+    A STALL that outlives the deadline means something else: an offset outside
+    the record, or an image with no provisioning requests at all.
+    """
+    end = time.time() + deadline_s
+    while True:
+        try:
+            data = dev.ctrl_transfer(REQ_IN, TLM_REQ_PROV_READ, offset, 0,
+                                     BLOCK, timeout)
+            break
+        except usb.core.USBError as e:
+            if e.errno != 32 or time.time() > end:
+                raise
+            time.sleep(WRITE_POLL_S)
     if len(data) != BLOCK:
         sys.exit("PROV_READ at offset %d returned %d bytes, expected %d"
                  % (offset, len(data), BLOCK))
@@ -177,32 +218,42 @@ def read_record(dev):
     return bytes(out)
 
 
-def prov_write_byte(dev, offset, value, retries=20):
+
+
+def prov_write_byte(dev, offset, value):
     """One byte. A STALL means the previous program cycle is still running.
 
     The firmware STALLs rather than dropping the request precisely so this
     retry is possible: a silently-dropped byte would leave a record that fails
     its own checksum, which reads back as "no serial" with nothing to say why.
     """
-    for attempt in range(retries):
+    deadline = time.time() + WRITE_DEADLINE_S
+    stalls = 0
+    while True:
         try:
             dev.ctrl_transfer(REQ_OUT, TLM_REQ_PROV_WRITE, offset, value,
                               None, 2000)
             return
         except usb.core.USBError as e:
-            if e.errno == 32:           # EPIPE: a real STALL from the device
-                time.sleep(0.01)        # one program cycle is ~5 ms
-                continue
-            raise
-    sys.exit("offset %d still STALLing after %d attempts -- the device is "
-             "either not running a provisioning image, or its I2C write path "
-             "is failing. Read block 0 / check the build." % (offset, retries))
+            if e.errno != 32:           # not EPIPE: not a STALL, do not retry
+                raise
+            stalls += 1
+            if time.time() > deadline:
+                sys.exit(
+                    "offset %d still STALLing after %.1f s (%d attempts).\n"
+                    "The expected busy time is ~1.5 s per byte, so this is not "
+                    "simple slowness. Either the unit is not running a "
+                    "provisioning image (`show` would fail too), or its I2C "
+                    "write path is failing." % (offset, WRITE_DEADLINE_S, stalls))
+            time.sleep(WRITE_POLL_S)
 
 
 def check_is_provisioning_image(dev):
     """Fail early and by name, rather than 27 STALLs deep."""
     try:
-        prov_read(dev, 0)
+        # Short deadline: this runs before any write, so nothing can be pending
+        # and a STALL here can only mean the wrong image.
+        prov_read(dev, 0, deadline_s=0.5)
     except usb.core.USBError as e:
         if e.errno == 32:
             sys.exit("this unit STALLs TLM_REQ_PROV_READ, so it is NOT running "
@@ -247,10 +298,14 @@ def cmd_write(args):
                  "because that is what this usually means." % existing)
 
     rec = build_record(args.serial)
-    print("writing %d bytes to 0x1F00..0x%04X" % (len(rec), 0x1F00 + len(rec) - 1))
+    print("writing %d bytes to 0x1F00..0x%04X (~%.0f s -- the EEPROM program "
+          "hold is ~1.5 s per byte, measured)"
+          % (len(rec), 0x1F00 + len(rec) - 1, len(rec) * 1.5))
+    t0 = time.time()
     for i, b in enumerate(rec):
         prov_write_byte(dev, i, b)
-        print("\r  %d/%d" % (i + 1, len(rec)), end="", flush=True)
+        print("\r  %d/%d  (%.0f s)" % (i + 1, len(rec), time.time() - t0),
+              end="", flush=True)
     print()
 
     # VERIFY OFF THE PART, not against what we think we sent. Every byte went

@@ -99,45 +99,82 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
  * auto-increments its internal address pointer across reads, which is exactly
  * what makes the short form legal -- see the 24C64 datasheet's sequential read.
  *
- * Matches TI's I2CAccess with nLen > 1 (I2c.c:122-137): STOP_READ is armed when
- * the SECOND-TO-LAST byte has been read, so the STOP condition lands on the
- * last one. Arming it early truncates the transfer; arming it late runs the
- * bus on past the end. */
+ * REWRITTEN 2026-08-16 against I2c.c, after every read returned 0x00 -- see the
+ * comment on the dummy write below. The first version was written from a
+ * paraphrase of the reference rather than its control flow, which is the same
+ * root cause POLICY.md records for wrap_hex.py and #226 records for
+ * mkserial.py. It had never been exercised against known data: #221 shipped the
+ * read side months before any EEPROM record existed to read. */
 unsigned char eeprom_read_seq(unsigned char addr_hi,
                               unsigned char addr_lo,
                               __xdata unsigned char *dst,
-                              unsigned int len)
+                              unsigned char len)
 {
-    unsigned int i;
+    unsigned char i;
 
-    if (len == 0) return 1;
+    /* len is `unsigned char`, and the single-byte case TI carries is NOT
+     * reproduced: both callers read the serial record, 8 bytes (the
+     * provisioning readback) or 27 (serialno_load), so neither the 16-bit
+     * counter nor the len==1 branch ever ran. Together they cost 63 bytes
+     * against 27 of headroom in the shipping image. A caller asking for fewer
+     * than 2 gets a FAILURE, not a short read -- callers already treat 0 as
+     * "no serial", which is the safe answer, and a silent partial read is the
+     * thing eeprom.h's contract warns against. */
+    if (len < 2) return 0;
 
-    /* TI I2c.c I2CAccess — clear stale flags, then the write address. */
+    /* TI I2c.c I2CAccess line 57 — clear stale flags, then the write address. */
     I2C_STA   &= I2C_CLEAR_ALL;
     I2C_SADDR  = EEPROM_ADDR_WRITE;
 
     /* TI I2c.c I2CAccess line 63 — word-address MSB. */
     I2C_TX = addr_hi;
     if (!wait_bit(I2C_XMIT_DATA_EMPTY)) return 0;
-    /* TI I2c.c I2CAccess line 73 — word-address LSB. */
+    /* TI I2c.c I2CAccess line 76 — word-address LSB. */
     I2C_TX = addr_lo;
     if (!wait_bit(I2C_XMIT_DATA_EMPTY)) return 0;
+
+    /* TI I2c.c I2CAccess line 82 — CLEAR_ALL between the sub-address and the
+     * read address. Omitted in the first version of this function. */
+    I2C_STA &= I2C_CLEAR_ALL;
 
     /* TI I2c.c I2CAccess line 96 — repeated START in READ mode. The 24C64
      * auto-increments from here, which is what makes the run below legal. */
     I2C_SADDR = EEPROM_ADDR_READ;
 
-    for (i = 0; i < len; i++) {
-        /* TI I2c.c I2CAccess line 136 — STOP armed so it lands on the last
-         * byte. Early truncates the transfer; late overruns the end. */
-        if (i + 1 == len) I2C_STA |= I2C_STOP_READ;
-        /* TI I2c.c I2CAccess line 111 — dummy write fires each read cycle. */
-        I2C_TX = 0xFF;
+    /* TI I2c.c I2CAccess line 111 — ONE dummy write, OUTSIDE the loop.
+     *
+     * THIS IS THE BUG THAT MADE EVERY SEQUENTIAL READ RETURN ZEROS. The first
+     * version put this write inside the loop, citing this same line, on the
+     * reading that the dummy byte "fires each read cycle". It does not: it
+     * fires the FIRST one only. What advances the peripheral to the next byte
+     * is READING I2CDATI (line 140) -- TI's loop contains no write to I2CDATO
+     * on the read path at all. Re-writing it per iteration restarts the
+     * transfer each time, and the reads came back 0x00.
+     *
+     * The symptom was diagnostic and nearly missed: an UNWRITTEN 24C64 reads
+     * 0xFF, so a region reading 0x00 before anything had ever been written to
+     * it was already saying the read path was wrong. It was briefly read as
+     * "the writes are failing" instead, which fits the after-write evidence
+     * and not the before-write evidence. */
+    I2C_TX = 0xFF;
+
+    /* TI I2c.c I2CAccess lines 116-140. STOP_READ is armed when TWO bytes
+     * remain, AFTER the wait and BEFORE reading I2CDATI, so the STOP lands on
+     * the last byte -- TI's comment at line 131 is explicit about this. The
+     * first version armed it when ONE remained and before the wait, i.e. a
+     * byte late and on the wrong side of the handshake. */
+    for (i = len; i != 0; i--) {
         if (!wait_bit(I2C_RCV_DATA_FULL)) return 0;
-        dst[i] = I2C_RX;
+        /* TI I2c.c I2CAccess line 136 — armed with TWO bytes left, so the STOP
+         * lands on the last one. */
+        if (i == 2) I2C_STA |= I2C_STOP_READ;
+        /* TI I2c.c I2CAccess line 140 — this read is what clocks the next
+         * byte; there is no write to I2CDATO anywhere in TI's read loop. */
+        *dst++ = I2C_RX;
     }
 
-    /* TI I2c.c I2CAccess — leave the flags clean for the next transaction. */
+    /* TI I2c.c I2CAccess line 163 — leave the flags clean for the next
+     * transaction. */
     I2C_STA &= I2C_CLEAR_ALL;
     return 1;
 }

@@ -242,7 +242,36 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0059   /* 0059: #224 declares the MICROPHONE input
+#define TLM_BUILD_ID     0x0060   /* 0060: #226 -- eeprom_read_seq() REWRITTEN
+                                   *       against TI's I2c.c. Every sequential
+                                   *       read returned 0x00, including from
+                                   *       EEPROM that had never been written
+                                   *       (a blank 24C64 reads 0xFF, which is
+                                   *       what said the READ path was at fault
+                                   *       and not the writes). Cause: the dummy
+                                   *       I2CDATO write was issued once per
+                                   *       iteration; TI issues it ONCE, before
+                                   *       the loop, and it is READING I2CDATI
+                                   *       that clocks each further byte. Also
+                                   *       restores TI's CLEAR_ALL between the
+                                   *       sub-address and the read address, and
+                                   *       arms STOP_READ when TWO bytes remain
+                                   *       rather than one.
+                                   *
+                                   *       This had never been exercised: #221
+                                   *       shipped the read side before any
+                                   *       record existed to read, so the
+                                   *       boot-time serial read has never once
+                                   *       worked on hardware.
+                                   *
+                                   *       Also adds the provisioning requests
+                                   *       (0x19/0x1A) in MBOX_PROVISION builds.
+                                   *
+                                   *       NOTE 0x0059 -> 0x0060: the id must
+                                   *       stay valid BCD, because bcdDevice
+                                   *       carries it (#222). 0x005A is not.
+                                   *
+                                   * 0059: #224 declares the MICROPHONE input
                                    *       (Selector position 4, terminal type
                                    *       0x0201) after the XLR path was
                                    *       measured -- 69.9 dB at 1234 Hz

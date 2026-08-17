@@ -35,10 +35,12 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
 #if defined(MBOX_SERIAL_EEPROM) || defined(MBOX_PROVISION)
 /* #221: sequential read for the descriptor blob. One START for the whole run;
  * see the note in eeprom.c on why this is not a loop of eeprom_read_byte(). */
+/* len >= 2 required; anything less returns 0 (failure), not a short read.
+ * See the note in eeprom.c -- the record is 27 bytes and no caller wants one. */
 unsigned char eeprom_read_seq(unsigned char addr_hi,
                               unsigned char addr_lo,
                               __xdata unsigned char *dst,
-                              unsigned int len);
+                              unsigned char len);
 
 #endif
 
