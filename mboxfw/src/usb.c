@@ -1024,6 +1024,7 @@ static void handle_setup(void)
          * so a host driver claiming the interface makes it undeliverable --
          * which on a release build is always. Strip this and the device can
          * never be reflashed without opening the case. */
+#ifdef MBOX_TLM_STALL
         if (bReq == TLM_REQ_READ && (bmReq & 0x80)) {
             /* #205: block 0 only in release -- build id and boot phases, so a
              * field unit can still say what it is running. Every other index
@@ -1031,7 +1032,15 @@ static void handle_setup(void)
             unsigned char blk[TLM_BLOCK_SIZE];
             (void)tlm_read_block(wValueL, blk);
             stage_immediate(blk, TLM_BLOCK_SIZE);
-        } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
+        } else
+#endif
+        /* #223: TLM_REQ_ENTER_DFU is the one vendor request the release tier
+         * keeps, and it is a PRODUCT feature rather than instrumentation: it is
+         * the only software path into DFU, because the Digi class-request form
+         * is interface-recipient and undeliverable the moment a host driver
+         * binds -- which on a shipping image is always. Without it the unit
+         * cannot be reflashed without opening the case. */
+        if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             reply_zero_length();
             g_dfu_request_pending = 1;
         } else {

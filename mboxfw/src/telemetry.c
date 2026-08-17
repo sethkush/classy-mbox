@@ -58,7 +58,24 @@ volatile __data unsigned int  tlm_last_wlength = 0;
  * counter going DOWN -- and without it every future power-cycle question would
  * need a diagnostic build flashed first, spending a power cycle to ask a
  * question about power cycles. 28 bytes. */
-#ifdef MBOX_RELEASE
+/* #223: the RELEASE tier serves NO telemetry blocks.
+ *
+ * Block 0 cost a MEASURED 116 bytes (5354 -> 5238 on the shipping image) and
+ * its only unique job was answering "which image is this and how far did it
+ * boot". #222 moved the first half of that into bcdDevice, which every host
+ * displays with no tool at all and which costs nothing, so what remained was
+ * the boot phases and the bus-reset count -- diagnostics, on a tier whose whole
+ * point is that it carries none.
+ *
+ * MBOX_TLM_STALL is the exception: it exists to make #209's counters readable
+ * in the shipping tier, so asking for it re-enables the reader that serves them.
+ *
+ * WHAT THIS GIVES UP, stated because it is not nothing: `phases` distinguished
+ * "the CS8427 never came up" from "the codec didn't" on a unit that enumerates
+ * but misbehaves, and `rstr_count` is how a genuine cold boot is told from a bus
+ * reset -- the measurement that proved uhubctl never drops VBUS. Both are still
+ * available: build the diagnostic tier. They are simply not in what ships. */
+#if defined(MBOX_RELEASE) && defined(MBOX_TLM_STALL)
 #ifdef MBOX_TLM_STALL
 static unsigned char tlm_read_block_stall(unsigned char __data *out);
 #endif
