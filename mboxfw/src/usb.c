@@ -739,6 +739,7 @@ static void selector_set_source(unsigned char spdif)
 #define SELECTOR_ANALOG        0x01   /* LINE  — position 1, unchanged */
 #define SELECTOR_SPDIF         0x02   /* S/PDIF — position 2, unchanged */
 #define SELECTOR_INST          0x03   /* INSTRUMENT — appended by #203 */
+#define SELECTOR_MIC           0x04   /* MICROPHONE — appended by #224 */
 
 /* #203. Apply a Selector position, including the analog front end it names.
  *
@@ -762,7 +763,9 @@ static void selector_apply_position(unsigned char pos)
     /* Analog. Pick the front end first, then route, so the mux is settled
      * before anything downstream samples it. */
     {
-        unsigned char pat = (pos == SELECTOR_INST) ? MUX_PAT_INST : MUX_PAT_LINE;
+        unsigned char pat = (pos == SELECTOR_INST) ? MUX_PAT_INST
+                          : (pos == SELECTOR_MIC)  ? MUX_PAT_MIC
+                                                   : MUX_PAT_LINE;
         g_mux_state = (unsigned char)((g_mux_state & 0xC0) | (pat << 3) | pat);
         codec_source_changed();
         mux_write(g_mux_state);
@@ -844,6 +847,19 @@ static void handle_selector_unit_request(void)
             pos = SELECTOR_SPDIF;
         } else if ((g_mux_state & 0x07) == MUX_PAT_INST) {
             pos = SELECTOR_INST;
+        } else if ((g_mux_state & 0x07) == MUX_PAT_MIC) {
+            /* #224. THIS CASE WAS THE BUG, and it fired on every boot. hw_init
+             * leaves the mux at 0xF6 -- mic on both channels, mirroring stock
+             * at Rev 20 @ 0x0941/0x0962 -- and until microphone was a declared
+             * position there was nothing truthful to report for it, so it fell
+             * through to the else and the device answered POSITION 1, LINE.
+             *
+             * A host was therefore told "line" while the hardware was on the
+             * XLR, from power-on until something moved the selector, and the
+             * same lie applied whenever the front-panel button landed on mic.
+             * Declaring position 4 is what makes an honest answer possible;
+             * this is where it gets given. */
+            pos = SELECTOR_MIC;
         } else {
             pos = SELECTOR_ANALOG;
         }
@@ -1731,7 +1747,7 @@ void usb_service(void)
                  * with two inputs has two legal positions, and stalling an
                  * illegal one is what tells the host it asked wrongly. */
                 if (pos == SELECTOR_ANALOG || pos == SELECTOR_SPDIF
-                        || pos == SELECTOR_INST) {
+                        || pos == SELECTOR_INST || pos == SELECTOR_MIC) {
                     selector_apply_position(pos);
                     reply_zero_length();
                 } else {
