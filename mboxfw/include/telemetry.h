@@ -187,8 +187,22 @@
  * I2CSTA at each step of one transaction plus the byte, so a failing read
  * says WHERE it failed. wIndex low forces the bus frequency first. See
  * eeprom_read_diag() in eeprom.c. */
-#define TLM_REQ_PROV_DIAG  0x1B   /* OUT: latch an instrumented read */
-#define TLM_REQ_PROV_DIAGRD 0x1C  /* IN:  its 8 result bytes */
+/* 0x1B/0x1C were TLM_REQ_PROV_DIAG / PROV_DIAGRD, the #226 instrument that
+ * returned I2CSTA at every step of one EEPROM read. RETIRED in build 0x0060,
+ * having answered. Numbers recorded so they are not reused.
+ *
+ * IT EXISTED FOR ONE QUESTION -- why did every EEPROM read return 0x00? -- and
+ * the answer was not in the I2C code at all: the destination buffer was an
+ * __xdata global, which SDCC places at XDATA 0x0001, an address this board does
+ * not implement. With the buffer in internal RAM the existing TI-derived
+ * sequence read the header correctly on the first attempt (0x0001..0x0004 ->
+ * 12 12 34 0D). It also settled a second question: a byte-for-byte port of
+ * stock Rev 20 i2c_eeprom_read_byte (CODE:0cdd) does NOT work here -- it never
+ * gets RCV_DATA_FULL -- so TI's version is the right one to keep.
+ *
+ * Both answers are recorded in eeprom.c and serialno.c, so the instrument has
+ * no remaining job, and its style-switch cost four SFR-write patterns that only
+ * ever existed in a bench image. */
 
 /* 0x15 was TLM_REQ_SET_MUTE, the #189 bench control for the 0x23.2/0x23.3
  * pair. REMOVED in build 0x0036, when #190 declared the two UAC1 Feature Units

@@ -67,6 +67,9 @@ extern volatile __data unsigned char g_chunks;
 
 /* Descriptor tables from descriptors.c */
 extern const __code unsigned char AppDevDesc[];
+#ifdef MBOX_SERIAL_EEPROM
+extern const __code unsigned char AppDevDescSN[];
+#endif
 extern const __code unsigned char AppConfigDesc[];
 extern const __code unsigned char AppStringLang[];
 extern const __code unsigned char AppStringMfr[];
@@ -122,16 +125,7 @@ volatile __data unsigned char g_prov_value   = 0;
  * ANY OTHER __xdata GLOBAL IN THIS FIRMWARE HAS THE SAME DEFECT -- see
  * serialno.c, whose g_raw/g_str/g_dev are the reason #221's boot-time serial
  * read has never worked. */
-static __xdata __at (0xFA00) unsigned char g_prov_rb[TLM_BLOCK_SIZE];
-/* #226 main-loop diagnostic: request latched in the SETUP handler, performed
- * by main(), read back with PROV_DIAGRD. See the dispatch for why context is
- * the variable under test. */
-volatile __data unsigned char g_prov_diag_pending = 0;
-volatile __data unsigned char g_prov_diag_hi = 0;
-volatile __data unsigned char g_prov_diag_lo = 0;
-volatile __data unsigned char g_prov_diag_freq = 0;
-volatile __data unsigned char g_prov_diag_mask = 0;
-__data unsigned char g_prov_diag_buf[TLM_BLOCK_SIZE];
+static __idata unsigned char g_prov_rb[TLM_BLOCK_SIZE];
 #endif
 
 /* Pending EP0 control-OUT data stage.
@@ -202,7 +196,7 @@ static __code const unsigned char *g_ep0_reply_src = 0;
  * than one generic pointer: SDCC's generic pointers carry a storage-class tag
  * and dispatch on it per byte, which on an 18-byte descriptor is 18 dispatches
  * for no benefit. */
-static __xdata const unsigned char *g_ep0_reply_srcx = 0;
+static __idata const unsigned char *g_ep0_reply_srcx = 0;
 static __bit g_reply_from_xdata = 0;
 #endif
 static __data unsigned int          g_ep0_reply_remaining = 0;
@@ -317,7 +311,7 @@ static void push_reply_chunk(void)
                           : (unsigned char)g_ep0_reply_remaining;
     unsigned char i;
 #ifdef MBOX_SERIAL_EEPROM
-    if (g_reply_from_xdata) {
+    if (g_reply_from_xdata) {   /* misnomer kept: the source is now __data */
         for (i = 0; i < n; i++) dst[i] = g_ep0_reply_srcx[i];
         g_ep0_reply_srcx += n;
     } else
@@ -361,7 +355,7 @@ static void stage_reply(__code const unsigned char *src, unsigned int len)
 /* Same contract as stage_reply(), sourced from XDATA. A NULL src stalls, which
  * is what an unprovisioned unit must do for string 3 -- an empty reply would
  * hand the host a zero-length descriptor instead of a Request Error. */
-static void stage_reply_x(__xdata const unsigned char *src, unsigned int len)
+static void stage_reply_x(__idata const unsigned char *src, unsigned int len)
 {
     unsigned int wLen = ((unsigned int)wLenH << 8) | wLenL;
 
@@ -419,9 +413,11 @@ static void handle_get_descriptor(void)
         case USB_DT_DEVICE:
             STAGE(14);
 #ifdef MBOX_SERIAL_EEPROM
-            /* #221: from XDATA, because iSerialNumber is decided at boot by
-             * whether the EEPROM record validated -- see serialno.c. */
-            stage_reply_x(serialno_devdesc(), APP_DEV_DESC_LEN);
+            /* #221/#226: iSerialNumber is decided at boot by whether the
+             * EEPROM record validated. Two __code variants rather than one
+             * patched RAM copy -- see the note in descriptors.c. */
+            stage_reply(g_serial_ok ? AppDevDescSN : AppDevDesc,
+                        APP_DEV_DESC_LEN);
 #else
             stage_reply(AppDevDesc, APP_DEV_DESC_LEN);
 #endif
@@ -1117,48 +1113,6 @@ static void handle_setup(void)
             }
             return;
         }
-        if (bReq == TLM_REQ_PROV_DIAG && !(bmReq & 0x80)) {
-            /* #226 instrumented read, run FROM THE MAIN LOOP.
-             *
-             * THE CONTEXT IS THE EXPERIMENT. The first version of this ran the
-             * same eeprom_read_diag() inline here, in the SETUP handler, and
-             * every I2CSTA it reported was 0x00 -- including the FREQ_400KHZ
-             * bit the handler had just written, and including all three wait
-             * results. Read literally that says the I2C peripheral is dead.
-             *
-             * It cannot be dead, and that is what makes this worth testing
-             * rather than believing: eeprom_invalidate_signature() writes the
-             * header checksum through the SAME registers and demonstrably
-             * works -- it is the enter-DFU trigger, used repeatedly today, and
-             * the unit reaches DFU after every one. The difference between the
-             * two is not the code, it is WHERE IT RUNS. The trigger's write
-             * happens in main() after `USBCTL = 0; EA = 0`; this happened in an
-             * interrupt handler with the USB engine live.
-             *
-             * So: latch here, run in main(), read the result back with
-             * PROV_DIAGRD, and compare against the ISR-context numbers already
-             * measured. Same function, same address, same known answer
-             * (EEPROM 0x0001 = headerSize = 0x12), one variable changed. */
-            if (g_prov_pending || g_prov_diag_pending) {
-                reply_stall();
-            } else {
-                g_prov_diag_hi   = wValueH;
-                g_prov_diag_lo   = wValueL;
-                g_prov_diag_freq = wIndexL;
-                g_prov_diag_mask = wIndexH;   /* 1 = run with EA = 0 */
-                g_prov_diag_pending = 1;
-                reply_zero_length();
-            }
-            return;
-        }
-        if (bReq == TLM_REQ_PROV_DIAGRD && (bmReq & 0x80)) {
-            /* The 8 bytes the main-loop run produced. STALLs while the run is
-             * still outstanding, so a reader can never mistake the previous
-             * result for the current one. */
-            if (g_prov_diag_pending) reply_stall();
-            else stage_immediate(g_prov_diag_buf, TLM_BLOCK_SIZE);
-            return;
-        }
         if (bReq == TLM_REQ_PROV_READ && (bmReq & 0x80)) {
             /* wValue is a FULL 16-BIT EEPROM ADDRESS, not an offset into the
              * record, and it is deliberately UNBOUNDED.
@@ -1183,8 +1137,8 @@ static void handle_setup(void)
             } else if (!eeprom_read_seq(wValueH, wValueL,
                                         g_prov_rb, TLM_BLOCK_SIZE)) {
                 /* A failed read STALLS rather than returning the buffer --
-                 * serving stale XDATA would let a byte the tool staged moments
-                 * earlier pass for a successful roundtrip. */
+                 * serving a stale buffer would let a byte the tool staged
+                 * moments earlier pass for a successful roundtrip. */
                 reply_stall();
             } else {
                 stage_immediate(g_prov_rb, TLM_BLOCK_SIZE);

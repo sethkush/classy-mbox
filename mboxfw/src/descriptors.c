@@ -35,6 +35,41 @@ const unsigned char __code AppDevDesc[APP_DEV_DESC_LEN] = {
     0x01                    /* bNumConfigurations */
 };
 
+#ifdef MBOX_SERIAL_EEPROM
+/* #226: the SAME device descriptor with iSerialNumber = 3 instead of 0.
+ *
+ * WHY A SECOND __code COPY AND NOT A PATCHED RAM COPY. serialno.c used to hold
+ * an 18-byte RAM duplicate for exactly this one byte. Every persistent byte
+ * there is now internal RAM (XDATA does not exist on this board -- see the #226
+ * note in eeprom.c), and internal RAM is shared with the stack: holding this
+ * descriptor cost 18 bytes of stack, which fell to 55 and is not a margin worth
+ * having on a part whose stack corruption would show up as an intermittent hang
+ * 2 km away. CODE space is the cheap resource here, so the variant lives there.
+ *
+ * The index and the string are still decided together from g_serial_ok, which
+ * is the property serialno.h insists on: a descriptor advertising string 3 when
+ * no string 3 exists makes some hosts abandon enumeration. */
+const unsigned char __code AppDevDescSN[APP_DEV_DESC_LEN] = {
+    18,                     /* bLength */
+    USB_DT_DEVICE,          /* bDescriptorType */
+    0x10, 0x01,             /* bcdUSB = 1.10 */
+    0x00,                   /* bDeviceClass — deferred to interface */
+    0x00,                   /* bDeviceSubClass */
+    0x00,                   /* bDeviceProtocol */
+    8,                      /* bMaxPacketSize0 = 8 (matches Rev 20) */
+    MBOX_VID & 0xFF, (MBOX_VID >> 8) & 0xFF,
+    MBOX_PID & 0xFF, (MBOX_PID >> 8) & 0xFF,
+    MBOX_BCD_DEVICE & 0xFF, (MBOX_BCD_DEVICE >> 8) & 0xFF,
+    0x01,                   /* iManufacturer  = string #1 */
+    0x02,                   /* iProduct       = string #2 */
+    3,                      /* iSerialNumber — ALWAYS 3: this variant is
+                             * served only when g_serial_ok, i.e. only when
+                             * string 3 exists. NOT APP_ISERIAL, which is the
+                             * compile-time MBOX_UNIT= path and is 0 here. */
+    0x01                    /* bNumConfigurations */
+};
+#endif
+
 /* --- Configuration descriptor bundle --------------------------------- */
 /*
  * A single "configuration" holds every interface and its endpoints, plus

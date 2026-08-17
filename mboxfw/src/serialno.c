@@ -1,5 +1,12 @@
 /*
  * #221 — iSerialNumber from EEPROM. See serialno.h for why.
+ *
+ * EVERY BUFFER HERE IS INTERNAL RAM (__data), AND THAT IS #226. As __xdata
+ * globals these three arrays were allocated at XDATA 0x0001 -- 87 bytes of
+ * address space this board does not implement -- so serialno_load() read the
+ * EEPROM correctly and stored the result into a hole. iSerialNumber was
+ * therefore never served, from the day #221 shipped, with no I2C fault
+ * involved at all. See the note in eeprom.c.
  */
 #include "regs.h"
 #include "eeprom.h"
@@ -8,27 +15,23 @@
 
 __bit g_serial_ok;
 
-extern const __code unsigned char AppDevDesc[];
 
 /* 2-byte prefix + UTF-16LE. A USB string descriptor is 16-bit, so the ASCII in
  * EEPROM is expanded here rather than stored wide -- half the EEPROM bytes and
  * half the I2C time, for one shift per character. */
-static __xdata unsigned char g_str[2 + 2 * SERIAL_MAX_CHARS];
-static __xdata unsigned char g_dev[APP_DEV_DESC_LEN];
-static __xdata unsigned char g_raw[SERIAL_HDR_LEN + SERIAL_MAX_CHARS];
+static __idata unsigned char g_str[2 + 2 * SERIAL_MAX_CHARS];
+/* g_raw is live only inside serialno_load(), which runs once at boot, so it is
+ * a local rather than a static -- SDCC overlays non-reentrant locals, so those
+ * bytes are reused by every other function instead of being held for the life
+ * of the program. Internal RAM is scarce enough that this matters. */
 
 unsigned char serialno_load(void)
 {
     unsigned char n, sum, i;
+    __idata unsigned char g_raw[SERIAL_HDR_LEN + SERIAL_MAX_CHARS];
 
     g_serial_ok = 0;
 
-    /* Copy the device descriptor up front, whatever happens to the record.
-     * Serving it from XDATA in BOTH cases keeps one path through the dispatch
-     * instead of two, and the only difference between them is one byte. */
-    for (i = 0; i < APP_DEV_DESC_LEN; i++)
-        g_dev[i] = AppDevDesc[i];
-    g_dev[16] = 0;                      /* iSerialNumber, until proven otherwise */
 
     /* ONE read of the whole maximum-size record, not a header read followed by
      * a payload read. The two-call form cost 11 bytes more than the image had
@@ -77,19 +80,14 @@ unsigned char serialno_load(void)
 
     /* Index and string are set together, from this one point, so they cannot
      * disagree -- see serialno.h on why a dangling index is worse than none. */
-    g_dev[16] = 3;
     g_serial_ok = 1;
     return 1;
 }
 
-__xdata unsigned char *serialno_string(unsigned int *len)
+__idata unsigned char *serialno_string(unsigned int *len)
 {
     if (!g_serial_ok) return 0;
     *len = g_str[0];
     return g_str;
 }
 
-__xdata unsigned char *serialno_devdesc(void)
-{
-    return g_dev;
-}

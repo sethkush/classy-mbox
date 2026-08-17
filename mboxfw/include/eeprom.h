@@ -39,16 +39,9 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
  * See the note in eeprom.c -- the record is 27 bytes and no caller wants one. */
 unsigned char eeprom_read_seq(unsigned char addr_hi,
                               unsigned char addr_lo,
-                              __xdata unsigned char *dst,
+                              __idata unsigned char *dst,
                               unsigned char len);
 
-#endif
-
-#ifdef MBOX_PROVISION
-/* #226 diagnostic: one instrumented byte read, 8 bytes of I2C status out.
- * Provisioning builds only -- see the comment in eeprom.c. */
-void eeprom_read_diag(unsigned char addr_hi, unsigned char addr_lo,
-                      __data unsigned char *out, unsigned char style);
 #endif
 
 unsigned char eeprom_invalidate_signature(void);

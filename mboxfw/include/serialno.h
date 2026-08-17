@@ -43,18 +43,28 @@
 #define SERIAL_MAGIC2     'S'
 #define SERIAL_MAGIC3     'N'
 #define SERIAL_VERSION    0x01
-#define SERIAL_MAX_CHARS  20
+/* 12, not 20. Every persistent byte here is internal RAM now (see the #226
+ * note in eeprom.c on why __xdata is unusable), and internal RAM is shared with
+ * the stack. The string descriptor costs 2 + 2*N bytes, so 20 chars is 42 and
+ * 12 is 26. Both real unit serials are 11 and 10 characters -- RK10874600Q and
+ * RK1672500M -- so 12 keeps headroom without spending it on capacity nothing
+ * uses. A longer serial is REJECTED at provisioning time by mboxprov.py, which
+ * reads this constant, rather than silently truncated. */
+#define SERIAL_MAX_CHARS  12
 #define SERIAL_HDR_LEN    7      /* magic[4], version, nchar, xor */
 
 /* Read and validate the record; build the USB string descriptor. Returns 1 if
  * a serial is being served. Call once, before usb_init(). */
 unsigned char serialno_load(void);
 
-/* The built string descriptor, or 0 if none. Sets *len when it returns non-0. */
-__xdata unsigned char *serialno_string(unsigned int *len);
+/* The built string descriptor, or 0 if none. Sets *len when it returns non-0.
+ * INTERNAL RAM -- see the #226 note in eeprom.c. */
+__idata unsigned char *serialno_string(unsigned int *len);
 
-/* The 18-byte device descriptor with iSerialNumber patched to match. */
-__xdata unsigned char *serialno_devdesc(void);
+/* #226: serialno_devdesc() is GONE. The two device-descriptor variants live in
+ * __code (descriptors.c, AppDevDesc / AppDevDescSN) and usb.c picks between
+ * them on g_serial_ok. An 18-byte RAM duplicate for one differing byte cost
+ * stack this part cannot spare. */
 
 extern __bit g_serial_ok;
 

@@ -65,7 +65,7 @@ REQ_OUT = 0x40
 # silently refuses to read.
 MAGIC = b"MBSN"
 VERSION = 1
-MAX_CHARS = 20
+MAX_CHARS = 12   # must match SERIAL_MAX_CHARS in serialno.h (#226 cut 20->12)
 HDR_LEN = 7                 # magic[4], version, nchar, xor
 XOR_OFFSET = 6
 RECORD_LEN = HDR_LEN + MAX_CHARS
@@ -225,7 +225,11 @@ def prov_read(dev, addr, timeout=2000, deadline_s=WRITE_DEADLINE_S):
 def read_record(dev):
     """The whole 27-byte region, from overlapping 8-byte reads."""
     out = bytearray(RECORD_LEN)
-    for off in (0, 8, 16, RECORD_LEN - BLOCK):
+    # Overlapping 8-byte reads covering RECORD_LEN, generated rather than
+    # hardcoded: RECORD_LEN follows SERIAL_MAX_CHARS and a stale offset list
+    # would silently stop covering the tail.
+    offs = list(range(0, max(RECORD_LEN - BLOCK, 0), BLOCK)) + [RECORD_LEN - BLOCK]
+    for off in sorted(set(offs)):
         out[off:off + BLOCK] = prov_read(dev, EE_SERIAL_BASE + off)
     return bytes(out)
 
