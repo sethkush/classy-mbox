@@ -1,0 +1,30 @@
+# SFR writes that legitimately appear in SOME build tiers and not others.
+#
+# WHY THIS FILE EXISTS. audit_sfr_writes.py scans mboxfw/build/*.rst -- the
+# LAST BUILD, whatever it was -- and fails on any entry in sfr_writes.allowed
+# that the build does not emit. That check is worth keeping: a write that
+# silently disappears is exactly how a delay loop or an endpoint arm goes
+# missing. But the manifest is baselined against ONE image, and mboxfw has
+# several tiers that differ by design (release / diagnostic, MBOX_SERIAL_EEPROM,
+# MBOX_PROVISION). Before this file, building any tier other than the baselined
+# one turned the gate red for a reason that was not a defect, and the only way
+# to get it green was `--update`, which quietly re-baselines onto whatever
+# happens to be in build/ -- the failure mode this gate exists to prevent.
+#
+# So: entries listed here are exempt from the REMOVED check only. They are
+# still subject to the NEW check -- an address appearing that is in neither
+# file still fails. Absence is forgiven; presence is not.
+#
+# --update does not write this file. Add rows by hand, with a reason.
+#
+# Format matches sfr_writes.allowed: ADDR  PATTERN  IMMEDIATE  # reason
+
+# IEPDCNTX0, the EP0 IN byte count, armed by push_reply_chunk() with the
+# packet length. The write is `IEPDCNTX0 = n` and exists in EVERY tier -- what
+# is tier-dependent is only how SDCC codes it. With MBOX_SERIAL_EEPROM the
+# function carries a second copy loop for the XDATA reply source (the EEPROM
+# serial string), and the extra branch leaves a `movx a,@dptr` on the same DPTR
+# ahead of the store, so the scanner reads it as rmw. Without that branch the
+# same line scans as `runtime`, which is separately listed in the manifest.
+# Both classifications are the same source line at src/usb.c:297.
+0xff6b  rmw       -       # tier: MBOX_SERIAL_EEPROM only (codegen shape of IEPDCNTX0 = n)

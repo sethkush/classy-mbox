@@ -144,6 +144,37 @@ ifeq ($(MBOX_SERIAL_EEPROM),1)
 EXTRA_CFLAGS += -DMBOX_SERIAL_EEPROM
 endif
 
+# #226: PROVISIONING BUILD. `make MBOX_PROVISION=1 MBOX_PID=0x2000`.
+#
+# Adds two vendor requests that write and read back the serial record at
+# 0x1F00. It does NOT serve the serial -- MBOX_SERIAL_EEPROM is deliberately
+# NOT implied, and usb.c #errors if both are set.
+#
+# WHY THE PROVISIONING IMAGE DOES NOT READ ITS OWN SERIAL. First, MEASURED:
+# the two together link at 6023 bytes, seven over the 6016-byte program RAM.
+# But the reason it is not worth shaving for is that the boot-time read is the
+# SHIPPING image's job, and testing it there tests the thing that actually
+# ships instead of a proxy for it. The provisioning image proves the BYTES --
+# read them straight back off the part with PROV_READ, no power cycle needed --
+# and the shipping image then proves the DESCRIPTOR, which is the production
+# sequence anyway. Splitting them means neither build has to carry the other's
+# code, and the shipping image stays at 5989.
+#
+# NEVER SHIP THIS IMAGE, and never leave it on a unit. It is the only build in
+# which the host can cause an EEPROM write to an address of its choosing, even
+# though that choice is bounded to 27 bytes. The shipping image has no write
+# path at all, which is why the shipping image is also the smaller one.
+#
+# THIS IS NOT HOW THE RECORD USED TO BE WRITTEN. tools/mkserial.py appended it
+# to the flash image; #226 refuted that from UsbDfu.c -- dfuDnloadData() seeds
+# dataRemain from payloadSize and answers the next byte with errFILE, which is
+# the 2026-07-22 brick pattern, and it cost two flashes on 2026-08-16. The same
+# code is why THIS approach works: a flash cannot reach 0x1F00, so the record
+# survives every future reflash.
+ifeq ($(MBOX_PROVISION),1)
+EXTRA_CFLAGS += -DMBOX_PROVISION
+endif
+
 ifeq ($(MBOX_TLM_STALL),1)
 EXTRA_CFLAGS += -DMBOX_TLM_STALL
 endif
@@ -178,6 +209,8 @@ SRCS = src/main.c src/hw_init.c src/mux.c src/cs8427.c src/codec.c src/buttons.c
 # MUST come after SRCS is assigned, not with the flag block above -- a `SRCS +=`
 # before the `SRCS =` on the previous line is silently discarded, and the only
 # symptom is three undefined globals at link time.
+# serialno.c is the READ side only. A provisioning build does not link it --
+# it uses serialno.h for the record geometry and nothing else.
 ifeq ($(MBOX_SERIAL_EEPROM),1)
 SRCS += src/serialno.c
 endif

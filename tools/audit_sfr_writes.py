@@ -36,6 +36,9 @@ from typing import NamedTuple
 REPO = Path(__file__).parent.parent
 BUILD = REPO / "mboxfw" / "build"
 MANIFEST = Path(__file__).parent / "sfr_writes.allowed"
+# Writes that some build tiers legitimately do not emit. Exempt from the
+# REMOVED check ONLY -- see the header of the file itself.
+TIER_OPTIONAL = Path(__file__).parent / "sfr_writes.tier_optional"
 
 
 class Write(NamedTuple):
@@ -179,11 +182,12 @@ def scan_rst(path: Path) -> list[Write]:
     return writes
 
 
-def load_manifest() -> set[tuple[str, str, str]]:
-    if not MANIFEST.exists():
+def load_manifest(path: Path = None) -> set[tuple[str, str, str]]:
+    path = MANIFEST if path is None else path
+    if not path.exists():
         return set()
     out: set[tuple[str, str, str]] = set()
-    for raw in MANIFEST.read_text().splitlines():
+    for raw in path.read_text().splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue
@@ -243,7 +247,11 @@ def main() -> int:
 
     # Also detect entries in the manifest that are NO LONGER produced by
     # the build — a removed write is also a drift worth surfacing.
-    removed = allowed - {k for k in unique}
+    # A write the build does not emit is drift worth surfacing -- EXCEPT for
+    # entries that are known to be tier-conditional. Without this exemption the
+    # only way to green the gate on a non-baselined tier is `--update`, which
+    # re-baselines onto whatever is in build/ and would erase a real removal.
+    removed = allowed - {k for k in unique} - load_manifest(TIER_OPTIONAL)
 
     if not unauthorized and not removed:
         print(f"SFR AUDIT PASS: {len(unique)} unique writes, all match manifest"

@@ -25,6 +25,15 @@
 #ifdef MBOX_SERIAL_EEPROM
 #include "serialno.h"
 #endif
+#if defined(MBOX_PROVISION) && defined(MBOX_SERIAL_EEPROM)
+/* MEASURED, not assumed: the two together link at 6023 bytes, seven over the
+ * 6016-byte program RAM. They are also redundant -- see the Makefile on why
+ * the provisioning image deliberately does NOT serve the serial it writes. */
+#error "MBOX_PROVISION and MBOX_SERIAL_EEPROM do not fit together (6023 > 6016)"
+#endif
+#ifdef MBOX_PROVISION
+#include "serialno.h"   /* record geometry only; serialno.c is not linked in */
+#endif
 #include "power.h"
 #include "mux.h"
 #include "codec.h"
@@ -76,6 +85,19 @@ extern const __code unsigned char AppStringSerial[];
  * read and cleared by main(); volatile so SDCC cannot cache the main-loop
  * test across iterations. */
 volatile __data unsigned char g_dfu_request_pending = 0;
+
+#ifdef MBOX_PROVISION
+/* #226 provisioning latch. Same shape and same reason as the DFU latch above:
+ * the 24C64's program cycle is a ~5 ms busy-wait and this is set from the
+ * SETUP handler, which runs in interrupt context. main() does the write. */
+volatile __data unsigned char g_prov_pending = 0;   /* 1 = a write is queued */
+volatile __data unsigned char g_prov_offset  = 0;
+volatile __data unsigned char g_prov_value   = 0;
+/* Readback staging. XDATA because eeprom_read_seq() takes an __xdata pointer,
+ * and --model-small puts a local array in DATA -- passing one would compile,
+ * with the generic pointer reading the wrong memory space. */
+static __xdata unsigned char g_prov_rb[TLM_BLOCK_SIZE];
+#endif
 
 /* Pending EP0 control-OUT data stage.
  *
@@ -1031,6 +1053,60 @@ static void handle_setup(void)
      * their entire purpose. DEVICE recipient, so no interface claim is
      * needed and snd-usb-audio cannot intercept them. */
     if (reqtype == 0x40) {
+#ifdef MBOX_PROVISION
+        /* #226 PROVISIONING. Hoisted ABOVE the release/diagnostic split, and
+         * that placement is load-bearing: the provisioning image is a RELEASE
+         * build, because the diagnostic tier does not fit -- it links at 6086
+         * against a 6016-byte ceiling before provisioning is added at all.
+         * Written first into the diagnostic branch below, these two cases
+         * compiled away to nothing and left main()'s write path unreachable:
+         * the image built, grew by 199 bytes of dead code, and would have
+         * answered every provisioning request at the desk with a STALL. Caught
+         * by asking which tier the bytes had landed in, not by any gate.
+         *
+         * See telemetry.h for the request contract, and for why wValue is an
+         * offset into the record rather than an address. */
+        if (bReq == TLM_REQ_PROV_WRITE && !(bmReq & 0x80)) {
+            if (wValueL >= SERIAL_HDR_LEN + SERIAL_MAX_CHARS) {
+                reply_stall();          /* outside the record: refuse */
+            } else if (g_prov_pending) {
+                /* The previous byte has not reached the part yet. STALL rather
+                 * than overwrite the latch, so the tool retries that byte
+                 * instead of silently losing it. */
+                reply_stall();
+            } else {
+                g_prov_offset  = wValueL;
+                g_prov_value   = wIndexL;
+                g_prov_pending = 1;     /* main() does the ~5 ms write */
+                reply_zero_length();
+            }
+            return;
+        }
+        if (bReq == TLM_REQ_PROV_READ && (bmReq & 0x80)) {
+            /* Bounded against offset + the READ LENGTH, not the offset alone:
+             * a read starting one byte inside the record would otherwise run
+             * seven bytes past the end of it. */
+            if (wValueL + TLM_BLOCK_SIZE > SERIAL_HDR_LEN + SERIAL_MAX_CHARS ||
+                g_prov_pending) {
+                reply_stall();
+            /* EE_SERIAL_LO is 0 and the offset is < 27, so this cannot carry
+             * into the high byte -- the address is always 0x1Fxx.
+             *
+             * A FAILED READ STALLS rather than returning the buffer. Serving
+             * whatever happens to be in XDATA would let a stale byte pass for
+             * a successful roundtrip -- the hazard eeprom.h's contract note
+             * calls out -- and here the stale byte would be one the tool
+             * itself staged moments earlier, so it would verify. */
+            } else if (!eeprom_read_seq(EE_SERIAL_HI,
+                                        (unsigned char)(EE_SERIAL_LO + wValueL),
+                                        g_prov_rb, TLM_BLOCK_SIZE)) {
+                reply_stall();
+            } else {
+                stage_immediate(g_prov_rb, TLM_BLOCK_SIZE);
+            }
+            return;
+        }
+#endif
 #ifdef MBOX_RELEASE
         /* RELEASE BUILD -- the diagnostic vendor requests are compiled out:
          * telemetry read/reset, the mux and clock aliases, and the recalibrate

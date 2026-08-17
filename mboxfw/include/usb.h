@@ -385,6 +385,17 @@
  * See handle_digi_enter_dfu() in usb.c for why the work is deferred. */
 extern volatile __data unsigned char g_dfu_request_pending;
 
+#ifdef MBOX_PROVISION
+/* #226 provisioning latch, set by the SETUP handler and consumed by main().
+ * g_prov_offset is an offset into the serial record and has ALREADY been
+ * bounds-checked at the point it was latched; main() adds the 0x1F00 base and
+ * re-checks anyway, because the cost is two instructions and the failure mode
+ * is a unit that cannot be recovered without opening the case. */
+extern volatile __data unsigned char g_prov_pending;
+extern volatile __data unsigned char g_prov_offset;
+extern volatile __data unsigned char g_prov_value;
+#endif
+
 /* Non-zero once SET_CONFIGURATION has selected a non-zero configuration.
  * The suspend path in power.c gates on this, mirroring stock's test of
  * RAM[0x21].6 at Rev 20 0x0526 / Rev 22 0x0525. */

@@ -87,7 +87,7 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
     return 1;
 }
 
-#ifdef MBOX_SERIAL_EEPROM
+#if defined(MBOX_SERIAL_EEPROM) || defined(MBOX_PROVISION)
 /* Sequential read: one START, one word-address load, then `len` bytes clocked
  * out back-to-back. Returns 1 on success, 0 on any failure (and the caller must
  * treat a partial read as a failure -- `dst` is left in an undefined state).
@@ -142,7 +142,7 @@ unsigned char eeprom_read_seq(unsigned char addr_hi,
     return 1;
 }
 
-#endif /* MBOX_SERIAL_EEPROM */
+#endif /* MBOX_SERIAL_EEPROM || MBOX_PROVISION */
 
 unsigned char eeprom_invalidate_signature(void)
 {

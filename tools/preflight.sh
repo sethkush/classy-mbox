@@ -136,7 +136,7 @@ else
     check "endpoint set matches manifest"     python3 tools/check_endpoint_manifest.py
     check "UAC1 class rulebook"               python3 tools/check_uac1_rulebook.py
     check "UAC1 rulebook selftest"            python3 tools/check_uac1_rulebook.py --selftest
-    check "serial record host/fw agree"       python3 tools/mkserial.py --selftest
+    check "serial record host/fw agree"       python3 tools/mboxprov.py --selftest
     check "verify_usb_init"           python3 tools/verify_usb_init.py
     check "verify_cs8427"             python3 tools/verify_cs8427.py
     # verify_cs8427 checks the ten register VALUES. This runs the image and

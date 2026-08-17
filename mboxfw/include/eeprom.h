@@ -32,7 +32,7 @@ unsigned char eeprom_write_byte(unsigned char addr_hi,
  * ONLY call this AFTER eeprom_smoke_test() returns 1 — otherwise a
  * partial-write could half-corrupt the header in an unrecoverable way.
  */
-#ifdef MBOX_SERIAL_EEPROM
+#if defined(MBOX_SERIAL_EEPROM) || defined(MBOX_PROVISION)
 /* #221: sequential read for the descriptor blob. One START for the whole run;
  * see the note in eeprom.c on why this is not a loop of eeprom_read_byte(). */
 unsigned char eeprom_read_seq(unsigned char addr_hi,

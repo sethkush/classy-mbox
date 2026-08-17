@@ -142,6 +142,48 @@
  *
  * tools/fbsweep.sh is kept, with a header saying what to restore to run it. */
 
+/* #226 -- PROVISIONING. Present ONLY in `make MBOX_PROVISION=1` builds, which
+ * are never shipped and never left on a unit. Both requests are DEVICE
+ * recipient, like every other vendor request here and for the same reason.
+ *
+ * WHY THESE EXIST AT ALL. #221 wants each unit to serve the serial printed on
+ * its case, from one image, so the record has to be written per-unit and has to
+ * SURVIVE reflashing. It does: dfuDnloadData() seeds dataRemain from the
+ * header's payloadSize and refuses the byte after it (errFILE), so a flash
+ * touches offsets 18..payloadSize and nothing above -- 0x1F00 is unreachable
+ * BY a flash, which is exactly the property provisioning needs. The route
+ * mkserial.py took -- append the record to the image and let DFU write it --
+ * is refuted by the same code; see FINDING_226.
+ *
+ * WHY THE HOST CANNOT NAME AN ADDRESS. wValue carries an OFFSET INTO THE
+ * RECORD, not an EEPROM address. The firmware rejects offset >= the record
+ * length and supplies the 0x1F00 base itself, so no value any host can send
+ * reaches the header at 0x0000 or the payload below 0x1792. That check is here
+ * and not in the host tool deliberately: the host tool is the component most
+ * likely to be wrong, and tonight's errFILE is what that looks like when the
+ * boot ROM is there to refuse. From the running app nothing would refuse it --
+ * an unbounded write is a real brick, from software, with no bench visit
+ * possible (FINDING_226, "The one thing that must not be got wrong").
+ *
+ * TLM_REQ_PROV_WRITE  bmRequestType 0x40
+ *   wValue low  = offset into the record, 0 .. SERIAL_HDR_LEN+SERIAL_MAX_CHARS-1
+ *   wIndex low  = byte to write
+ *   Stalls on an out-of-range offset, and stalls if a write is still pending.
+ *
+ * The write itself runs in the MAIN LOOP, not in the SETUP handler, because
+ * the 24C64 program cycle is a ~5 ms busy-wait and the handler runs in
+ * interrupt context -- the same reason TLM_REQ_ENTER_DFU latches rather than
+ * writing inline. The busy latch is what makes the host's pacing safe: a
+ * second request arriving before the first has landed is STALLed, not
+ * silently dropped, so the tool retries instead of losing a byte.
+ *
+ * TLM_REQ_PROV_READ   bmRequestType 0xC0, wValue low = offset, returns 8 bytes
+ *   Reads back TLM_BLOCK_SIZE bytes from the record region so the tool can
+ *   verify what actually landed without a power cycle. Bounded the same way,
+ *   against offset + 8 rather than offset. */
+#define TLM_REQ_PROV_WRITE 0x19
+#define TLM_REQ_PROV_READ  0x1A
+
 /* 0x15 was TLM_REQ_SET_MUTE, the #189 bench control for the 0x23.2/0x23.3
  * pair. REMOVED in build 0x0036, when #190 declared the two UAC1 Feature Units
  * that carry the same control as a class request.

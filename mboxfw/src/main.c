@@ -14,7 +14,10 @@
 #include "eeprom.h"
 #include "telemetry.h"
 #include "usb.h"
-#ifdef MBOX_SERIAL_EEPROM
+#if defined(MBOX_SERIAL_EEPROM) || defined(MBOX_PROVISION)
+/* Provisioning builds take the record GEOMETRY from this header (base address,
+ * lengths) without linking serialno.c -- they write the record, they do not
+ * serve it. See the Makefile. */
 #include "serialno.h"
 #endif        /* g_dfu_request_pending */
 #include "streaming.h"  /* streaming_set_rate() -- #197 boot clock bring-up */
@@ -457,6 +460,37 @@ void main(void)
             buttons_poll();
             g_timer0_pending = 0;
         }
+
+#ifdef MBOX_PROVISION
+        /* #226 provisioning write, deferred here for the same reason the
+         * enter-DFU write below is: the 24C64 program cycle is a ~5 ms
+         * busy-wait and the SETUP handler runs in interrupt context.
+         *
+         * THE BOUNDS CHECK IS REPEATED HERE, having already been made when the
+         * request was latched. That is not belt-and-braces for its own sake:
+         * this is the ONLY eeprom_write_byte() call in the firmware whose
+         * address comes from the host at all, and the byte it could otherwise
+         * reach is the EEPROM header checksum at 0x0000 -- the exact byte
+         * enter-DFU deliberately destroys. Getting it wrong does not produce a
+         * bad serial, it produces a unit that boots to DFU forever. Two
+         * instructions against a bench visit that cannot be made remotely.
+         *
+         * The base is added HERE, from a constant. EE_SERIAL_LO is 0x00 and
+         * the offset is < 27, so the sum cannot carry and the high byte is
+         * always EE_SERIAL_HI -- no host value can name an address outside
+         * 0x1F00..0x1F1A. */
+        if (g_prov_pending) {
+            if (g_prov_offset < SERIAL_HDR_LEN + SERIAL_MAX_CHARS) {
+                (void)eeprom_write_byte(
+                        EE_SERIAL_HI,
+                        (unsigned char)(EE_SERIAL_LO + g_prov_offset),
+                        g_prov_value);
+            }
+            /* Cleared LAST, so the STALL-if-busy test in the SETUP handler
+             * covers the whole program cycle and not just the latch. */
+            g_prov_pending = 0;
+        }
+#endif
 
         /* Enter-DFU, deferred here from the class-request handler so the
          * zero-length status packet drains before we spend ~30 ms in I2C
