@@ -14,8 +14,21 @@
 #       smaller than 8 the fix cannot come from either register. The buffer has
 #       to move, or the endpoint has to be rethought.
 #
-# Needs a 0x0056+ image built with MBOX_FB_TUNE=1; older builds stall the
-# request, which shows up below as "poke FAILED" rather than as a silent no-op.
+# ANSWERED, AND THIS SCRIPT NO LONGER RUNS AS SHIPPED. The sweep ran on build
+# 0x0057 and the emitted length TRACKED the armed count exactly -- 1/2/3/4/6/8
+# armed gave 3/6/9/12/18/24 emitted, the first branch above. #219 then explained
+# the factor from the datasheet: IEPDCNTX/Y counts SAMPLES on an isochronous
+# endpoint, not bytes, and IEPCNF2's BPS field sets the sample width (0xC2 =
+# BPS 2 = 3 bytes). So arming 1 is one 3-byte sample and is correct by
+# construction. TLM_REQ_FB_TUNE (0x18) and MBOX_FB_TUNE were retired in 0x0058.
+#
+# KEPT because it is the instrument behind FINDING_211's table, and because the
+# next person to widen the feedback packet will need it. TO RUN IT AGAIN: restore
+# streaming_set_feedback_count() and g_fb_count in streaming.c, the two dispatch
+# arms in usb.c, TLM_REQ_FB_TUNE in telemetry.h and the tier in the Makefile --
+# all four are in the #219 commit -- then build with MBOX_FB_TUNE=1. Against any
+# image without it, every row below reports "poke FAILED" rather than a silent
+# no-op, which is the intended failure and not a device fault.
 #
 # Usage:  sudo fbsweep.sh <busnum> <devnum> [counts...]
 #         sudo fbsweep.sh 2 10 1 2 3 4 5 6 7 8

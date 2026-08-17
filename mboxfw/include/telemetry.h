@@ -117,29 +117,30 @@
  * measurement that justifies the shipping behaviour. */
 #define TLM_REQ_DIAG_MODE 0x17
 
-/* #215 — set IEPDCNTX2/IEPDCNTY2 at runtime, for the #211 experiment.
- * bmRequestType 0x40, wValue = the byte count to arm (1..8).
+/* 0x18 was TLM_REQ_FB_TUNE, the #215 bench knob that set IEPDCNTX2/IEPDCNTY2 at
+ * runtime. RETIRED at #219, in build 0x0058. Its number is recorded here so it
+ * is not reused, and so a reader of the 0x0056/0x0057 measurements can still
+ * find what produced them.
  *
- * WHY A RUNTIME KNOB RATHER THAN A CONSTANT. #211 is now precise: the feedback
- * endpoint emits NINE bytes per packet, the 10.14 value in the first three is
- * correct, and IEPDCNTX2 = 3 governs nothing. What is unknown is whether the
- * count register governs the length AT ALL. Testing that with a compile-time
- * constant costs one flash and one 2 km round trip PER VALUE. This costs one
- * flash for the whole sweep: `fbmax.ko` reads back what the device actually
- * emits after each poke.
+ * IT EXISTED FOR ONE QUESTION: does IEPDCNTX2 govern the emitted length at all,
+ * given the device sent 9 bytes while the register said 3? Answering that with
+ * a compile-time constant costs one flash and one 2 km round trip per value, so
+ * the knob bought the whole sweep for one flash. It did its job -- the sweep is
+ * the six-point table in FINDING_211 -- and #219 then explained the result from
+ * the datasheet: IEPDCNTX/Y counts SAMPLES on an isochronous endpoint, and the
+ * sample width is the BPS field of IEPCNF2 (§6.4.4.3, §6.4.4.6.2). Arming 1 is
+ * one 3-byte sample, which is correct by construction. There is no remaining
+ * question for a sweep to answer.
  *
- * WHAT IT DELIBERATELY DOES NOT TOUCH: IEPBSIZ2. The feedback buffer is 8 bytes
- * at 0xFF20, and EP_BSIZE() works in 8-byte units, so the next size up is 16 --
- * which runs 0xFF20-0xFF2F and OVERLAPS THE SETUP PACKET BUFFER AT 0xFF28.
- * Corrupting the setup buffer breaks every control transfer, i.e. the device
- * stops answering entirely and needs a bench visit. If the count turns out not
- * to govern, the buffer has to be RELOCATED first, and that is a separate
- * change designed on its own rather than bolted to this one.
+ * WHAT IT NEVER TOUCHED, AND WHY THAT STILL STANDS: IEPBSIZ2. The feedback
+ * buffer is 8 bytes at 0xFF20, EP_BSIZE() works in 8-byte units, so the next
+ * size up is 16 -- which runs 0xFF20-0xFF2F and OVERLAPS THE SETUP PACKET
+ * BUFFER AT 0xFF28. Corrupting that breaks every control transfer, i.e. the
+ * device stops answering and needs a bench visit. Anything that wants a wider
+ * feedback packet must RELOCATE the buffer first, and must re-cut IEPCNF2's BPS
+ * with it (#219). That is a change designed on its own, not bolted to a knob.
  *
- * Clamped to 1..8 in the handler: 0 would arm a zero-length packet forever and
- * anything above 8 would claim bytes past the declared buffer, which is the
- * defect under investigation rather than a test of it. */
-#define TLM_REQ_FB_TUNE  0x18
+ * tools/fbsweep.sh is kept, with a header saying what to restore to run it. */
 
 /* 0x15 was TLM_REQ_SET_MUTE, the #189 bench control for the 0x23.2/0x23.3
  * pair. REMOVED in build 0x0036, when #190 declared the two UAC1 Feature Units
@@ -199,7 +200,23 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0057   /* 0057: #211 FIXED -- the feedback endpoint
+#define TLM_BUILD_ID     0x0058   /* 0058: #219 -- the 3x is EXPLAINED, and the
+                                   *       scaffolding built to chase it is
+                                   *       gone. IEPDCNTX/Y counts SAMPLES on an
+                                   *       isochronous endpoint, not bytes, and
+                                   *       IEPCNF2's BPS field sets the width:
+                                   *       0xC2 is BPS 2 = 3 bytes per sample,
+                                   *       so emitted = armed x 3. Confirmed on
+                                   *       a second endpoint with a different
+                                   *       BPS -- capture is 0xC5, BPS 5, and
+                                   *       measures 48 x 6 = 288 B/frame.
+                                   *       AUDIO_FEEDBACK_ARM stays 1, now
+                                   *       correct by construction rather than
+                                   *       by measurement. TLM_REQ_FB_TUNE and
+                                   *       MBOX_FB_TUNE are RETIRED with the
+                                   *       question they existed to answer.
+                                   *       NO BEHAVIOUR CHANGE ON THE WIRE.
+                                   * 0057: #211 FIXED -- the feedback endpoint
                                    *       delivers. AUDIO_FEEDBACK_ARM = 1,
                                    *       because the UBM emits THREE bytes per
                                    *       unit armed (measured 1/2/3/4/6/8 ->

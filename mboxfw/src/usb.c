@@ -980,23 +980,6 @@ static void handle_setup(void)
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             reply_zero_length();
             g_dfu_request_pending = 1;
-#ifdef MBOX_FB_TUNE
-        } else if (bReq == TLM_REQ_FB_TUNE && !(bmReq & 0x80)) {
-            /* #215/#211. Present in the RELEASE arm as well as the diagnostic
-             * one, because the release tier is what ships and therefore what
-             * gets flashed -- a bench knob that exists only in the build nobody
-             * flashes cannot be used. Behind MBOX_FB_TUNE so a real release
-             * still has no such request; see telemetry.h.
-             *
-             * The reachability gate caught this: with the branch on the
-             * non-release side only, streaming_set_feedback_count() was emitted
-             * and never called in the build actually being flashed. */
-            unsigned char n = wValueL;
-            if (n == 0) n = 1;
-            if (n > 8)  n = 8;
-            streaming_set_feedback_count(n);
-            reply_zero_length();
-#endif
         } else {
             reply_stall();
         }
@@ -1026,22 +1009,6 @@ static void handle_setup(void)
              * 2.2 dB and costs 183 ms per capture). Keep it for that. */
             g_cal_done = 0;
             reply_zero_length();
-#ifdef MBOX_FB_TUNE
-        } else if (bReq == TLM_REQ_FB_TUNE && !(bmReq & 0x80)) {
-            /* #215/#211: re-arm the feedback endpoint's byte count from wValue,
-             * so the count can be swept without a flash per value. See
-             * TLM_REQ_FB_TUNE in telemetry.h for why IEPBSIZ2 is NOT exposed.
-             *
-             * Clamped rather than validated-and-stalled: this is a bench knob,
-             * and a rejected poke that looked like an accepted one would waste
-             * the round trip it exists to save. fbmax reads back what the
-             * device actually emits, so the clamp shows up in the result. */
-            unsigned char n = wValueL;
-            if (n == 0) n = 1;
-            if (n > 8)  n = 8;
-            streaming_set_feedback_count(n);
-            reply_zero_length();
-#endif
         } else if (bReq == TLM_REQ_ENTER_DFU && !(bmReq & 0x80)) {
             /* Same latch as the Digi class request; see
              * handle_digi_enter_dfu(). This alias exists because the class

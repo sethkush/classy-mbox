@@ -28,8 +28,11 @@ void streaming_sof(void);
  * playback-only watchdog, so the clock is measured even with no stream. */
 void streaming_acg_sample(void);
 
-/* #215/#211 bench knob: re-arm the feedback endpoint with a different byte
- * count, so the count can be swept without one flash per value. */
-void streaming_set_feedback_count(unsigned char n);
+/* #215's streaming_set_feedback_count() is RETIRED at #219. It existed to sweep
+ * the armed count against the emitted length from a bench host, because nothing
+ * explained why the UBM emitted three bytes per unit armed. §6.4.4.3 explains
+ * it -- IEPDCNTX/Y counts samples on an isochronous endpoint, and IEPCNF2's BPS
+ * field sets the width -- so the sweep has no remaining question to answer.
+ * tools/fbsweep.sh records how to bring it back if one appears. */
 
 #endif

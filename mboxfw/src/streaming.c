@@ -138,35 +138,32 @@ static __idata unsigned long fb_nominal;      /* 10.14 nominal for the rate */
 static __idata unsigned long fb_sum;          /* current 64-frame window    */
 static __idata unsigned char fb_frames;
 static __idata unsigned char fb_arm;
-static __idata unsigned char g_fb_count = AUDIO_FEEDBACK_ARM;   /* #215/#211 */
 
 /* Publish the standing value and hand the packet to the UBM. TI arms both the
  * X and Y counts (SoftPll.c: `IEPDCNTX2 = 3; IEPDCNTY2 = 3;`) and this does
- * the same. */
+ * the same.
+ *
+ * AUDIO_FEEDBACK_ARM IS A SAMPLE COUNT, NOT A BYTE COUNT (#219). This endpoint
+ * is isochronous, so IEPDCNTX/Y counts samples and the sample width is the BPS
+ * field of IEPCNF2 -- which stream_playback_enable() sets to 0xC2, BPS 2, three
+ * bytes per sample. One feedback value is one sample. Arming 1 emits 3 bytes.
+ *
+ * So this must move together with IEPCNF2's BPS field: widening the feedback
+ * value without re-cutting BPS re-creates #211, where the endpoint emitted 9
+ * bytes against a wMaxPacketSize of 3 and babbled on every packet.
+ *
+ * The variable this used to be, and the TLM_REQ_FB_TUNE knob that wrote it, are
+ * retired -- they existed to sweep the armed count against the emitted length
+ * from a bench host, and #219 answered that from the datasheet. */
 static void feedback_arm(void)
 {
     __xdata unsigned char *fb = (__xdata unsigned char *)EP_FEEDBACK_BUF_ADDR;
     fb[0] = (unsigned char)(fb_value & 0xFF);
     fb[1] = (unsigned char)((fb_value >> 8) & 0xFF);
     fb[2] = (unsigned char)((fb_value >> 16) & 0xFF);
-    IEPDCNTX2 = g_fb_count;   /* TI SoftPll.c::softPll */
-    IEPDCNTY2 = g_fb_count;   /* TI SoftPll.c::softPll */
+    IEPDCNTX2 = AUDIO_FEEDBACK_ARM;   /* TI SoftPll.c::softPll */
+    IEPDCNTY2 = AUDIO_FEEDBACK_ARM;   /* TI SoftPll.c::softPll */
 }
-
-/* #215/#211. The count feedback_arm() arms, normally AUDIO_FEEDBACK_LEN.
- *
- * A variable rather than the constant because #211 needs to know whether this
- * register governs the emitted length AT ALL -- the device emits 9 bytes while
- * this says 3 -- and answering that with a compile-time constant costs one
- * flash and one 2 km round trip per value tried. It is written only by
- * TLM_REQ_FB_TUNE from a bench host and takes effect at the next arm. */
-#ifdef MBOX_FB_TUNE
-void streaming_set_feedback_count(unsigned char n)
-{
-    g_fb_count = n;
-    feedback_arm();          /* take effect now, not at the next refresh */
-}
-#endif
 
 static __idata unsigned int  acg_prev;        /* last raw capture           */
 static __idata unsigned int  acg_frames;      /* frames into the window     */

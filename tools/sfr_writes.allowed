@@ -25,7 +25,7 @@
 0xff58  runtime   -       # streaming
 0xff59  assign    0xe4    # streaming
 0xff5a  assign    0x01    # streaming
-0xff5b  runtime   -       # streaming
+0xff5b  assign    0x01    # streaming
 0xff5f  runtime   -       # streaming
 0xff60  assign    0x00    # streaming,usb
 0xff60  assign    0xc5    # streaming
