@@ -59,6 +59,8 @@
 #define USB_CFG_REMOTE_WAKE    0xA0
 
 /* Device / vendor IDs — reuse Digi's so macOS still identifies as Mbox */
+#include "telemetry.h"
+
 #define MBOX_VID               0x0DBA
 /* Overridable at build time: `make MBOX_PID=0x2000`.
  *
@@ -76,7 +78,24 @@
 #ifndef MBOX_PID
 #define MBOX_PID               0x1000
 #endif
-#define MBOX_BCD_DEVICE        0x0100  /* our custom-fw v1.0 */
+/* bcdDevice CARRIES THE BUILD ID -- #222.
+ *
+ * "Which image is this unit running" was previously answerable only through
+ * telemetry block 0, a vendor request. bcdDevice already exists in the device
+ * descriptor, costs ZERO additional bytes, and every host displays it without
+ * any tool: `lsusb` prints bcdDevice, macOS system_profiler shows it as
+ * "Version", Windows Device Manager shows it in the hardware ID. It also
+ * survives the thing that breaks vendor requests -- it is readable when a class
+ * driver owns every interface, and it is visible in DFU-adjacent tooling.
+ *
+ * Format 1.NN, where NN is TLM_BUILD_ID. Build 0x0058 reads as 1.58.
+ *
+ * THIS CONSTRAINS BUILD IDS TO VALID BCD. §9.6.1 gives bcdDevice as "device
+ * release number in binary-coded decimal", so a nibble above 9 is malformed --
+ * 0x005A would be, and the next ids after 0x0059 must therefore be 0x0060, not
+ * 0x005A. That is a real cost of this scheme and the reason it is written here
+ * rather than inferred: the next person to bump the build id has to skip A-F. */
+#define MBOX_BCD_DEVICE        (0x0100 | (TLM_BUILD_ID & 0x00FF))
 
 /* Endpoint addresses */
 #define EP_AUDIO_IN            0x81    /* EP1 IN  = capture  (device → host) */
