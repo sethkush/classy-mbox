@@ -219,6 +219,29 @@
  * FINDING_196_gain_curve_and_the_bad_TS_cable.md. */
 #define TERM_INST_IN           0x0A   /* instrument/Hi-Z analog capture source */
                                       /* 0x08/0x09 are the two Feature Units */
+/* #224. The MICROPHONE (XLR) front end as its own capture source.
+ *
+ * A SEPARATE PHYSICAL CONNECTOR, which is why this was the last input to be
+ * declared and why it took so long: LINE and INST share one 1/4" jack, so both
+ * were measurable with the TS cabling already on the bench, and the XLR jacks
+ * had nothing driving them. Nothing exotic about the path -- to the firmware it
+ * is one more 74HC157 pattern -- it simply could not be proven.
+ *
+ * MEASURED 2026-08-16 before being declared, per #194. An SM58 in source 1 of
+ * unit A, a 1234 Hz tone played into the room: channel 1 lifted 69.9 dB at that
+ * exact frequency, from a 2.2 dB SNR (indistinguishable from noise) to 56.2 dB.
+ * The un-miked channel 2 of the same unit moved 10.7 dB, which is acoustic
+ * bleed into an open input and is 45 dB below the miked channel -- that channel
+ * is the control that makes the number mean something.
+ *
+ * 1234 Hz was chosen so nothing ambient could fake it: it is not a mains
+ * harmonic and no room noise puts a peak in those bins. The FIRST run of this
+ * test was VOID -- the tone file was mono, the device rejected it with
+ * "Channels count non available", and the failure was hidden by a redirect to
+ * /dev/null, so a stimulus that never fired looked exactly like a refuted
+ * hypothesis. The result above is from the re-run, with the tone confirmed
+ * audible. See FINDING_224. */
+#define TERM_MIC_IN            0x0B   /* microphone (XLR) capture source */
 /* #190. One Feature Unit per path, each carrying a single Mute control on the
  * master channel. Two units and not one because #189 measured the hardware to
  * BE two: 0x23.3 gates playback and 0x23.2 gates capture, each killing exactly
@@ -279,6 +302,8 @@
 #define STR_LINE_OUT_LEN       18   /* 2 + 2*8 */
 #define STR_SPDIF_OUT_IDX      8    /* string 8: "S/PDIF Out" */
 #define STR_SPDIF_OUT_LEN      22   /* 2 + 2*10 */
+#define STR_MIC_IN_IDX         9    /* string 9: "Microphone" (#224) */
+#define STR_MIC_IN_LEN         22   /* 2 + 2*10 */
 
 /* iSerialNumber — string #3, optional, per-unit.
  *
@@ -334,7 +359,11 @@
  * descriptor error — so this and the array below are the same fact twice and
  * have to move together. verify_descriptors.py caught exactly that here: the
  * declared 101 against 114 bytes actually emitted. */
-#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 12 + 9 + 9 + 9 + 9 \
+/* #224 grew this twice over: a fourth Input Terminal (12) and a fourth Selector
+ * source pin, which takes the Selector from 9 bytes to 10. Both numbers live
+ * here and in the array in descriptors.c, and they are the same fact twice --
+ * verify_descriptors.py exists because they once disagreed. */
+#define AC_BLOCK_LEN        (10 + 12 + 12 + 12 + 12 + 12 + 9 + 9 + 9 + 10 \
                              + FU_DESC_LEN + FU_DESC_LEN)
 
 /* Per streaming interface: alt 0 (9) + alt 1 (9 + 7 + 14 + 9 + 7).

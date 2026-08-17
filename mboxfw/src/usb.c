@@ -67,6 +67,7 @@ extern const __code unsigned char AppStrStrInstIn[];
 extern const __code unsigned char AppStrStrSpdifIn[];
 extern const __code unsigned char AppStrStrLineOut[];
 extern const __code unsigned char AppStrStrSpdifOut[];
+extern const __code unsigned char AppStrStrMicIn[];
 #ifdef MBOX_SERIAL_NCHAR
 extern const __code unsigned char AppStringSerial[];
 #endif
@@ -416,6 +417,7 @@ static void handle_get_descriptor(void)
                 case 6:  stage_reply(AppStrStrSpdifIn, STR_SPDIF_IN_LEN); break;
                 case 7:  stage_reply(AppStrStrLineOut, STR_LINE_OUT_LEN); break;
                 case 8:  stage_reply(AppStrStrSpdifOut, STR_SPDIF_OUT_LEN); break;
+                case 9:  stage_reply(AppStrStrMicIn, STR_MIC_IN_LEN); break;   /* #224 */
                 default: reply_stall(); break;
             }
             break;

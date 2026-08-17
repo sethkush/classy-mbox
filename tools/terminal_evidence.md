@@ -42,7 +42,8 @@ proves them is that the stream carries audio at all.
 | 2 | IT | 0x0603 | `FINDING_170_audio_works.md` | 1 kHz tone through the LINE input appears in capture, and moves when the cable moves |
 | 10 | IT | 0x0603 | `FINDING_196_gain_curve_and_the_bad_TS_cable.md` | the instrument front end carries the signal 18.9 dB hotter than LINE at an identical gain position — interleaved line/inst/line/inst, both LINE arms agreeing to 0.01 dB, so the difference is the mux and not drift |
 | 6 | IT | 0x0605 | `FINDING_spdif_input_works.md` | the CS8427 receiver locks to an external carrier and the recovered audio reaches capture |
-| 5 | SU | — | `FINDING_spdif_input_works.md` | SET_CUR moves the capture source between analog and S/PDIF; macOS names both items |
+| 11 | IT | 0x0201 | `FINDING_224_the_xlr_input_carries_audio.md` | SM58 in source 1 of unit A, 1234 Hz played into the room: ch1 lifted 69.9 dB at that exact bin (SNR 2.2 -> 56.2 dB) while the un-miked ch2 of the same unit moved 10.7 dB. Frequency chosen so nothing ambient could fake it; the un-miked channel is the control. First run VOID -- mono tone rejected by the device, failure hidden by a redirect |
+| 5 | SU | — | `FINDING_224_the_xlr_input_carries_audio.md` | SET_CUR moves the capture source between analog and S/PDIF; macOS names both items. #224 appends position 4 = MICROPHONE, measured before declaring |
 | 8 | FU | — | `FINDING_189_the_mute_pair_separates.md` | 0x23.3 kills playback and leaves capture intact, on both units, bracketed |
 | 9 | FU | — | `FINDING_189_the_mute_pair_separates.md` | 0x23.2 kills capture (exact digital zeros) and leaves playback intact |
 | 3 | OT | 0x0603 | `FINDING_170_audio_works.md` | playback reaches the analog line output; measured at the far unit over the crossed TS pair |

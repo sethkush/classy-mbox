@@ -159,6 +159,24 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
     0x03, 0x00,             /* wChannelConfig = FL + FR */
     0, STR_INST_IN_IDX,          /* iChannel, iTerminal (#204) */
 
+    /* ---- Input Terminal: MICROPHONE, XLR (12 bytes) ---- #224
+     *
+     * UAC_TT_MIC (0x0201) is the one input here with a terminal type that
+     * actually names it -- LINE and INST both have to share 0x0603 because the
+     * Terminal Types document has nothing for Hi-Z.
+     *
+     * MEASURED BEFORE DECLARED, per #194: SM58 in source 1 of unit A, 1234 Hz
+     * into the room, channel 1 lifted 69.9 dB at that exact bin (2.2 dB SNR ->
+     * 56.2 dB) while the un-miked channel 2 moved 10.7 dB. See usb.h at
+     * TERM_MIC_IN and FINDING_224 for why the first run of that test was void. */
+    12, USB_DT_CS_INTERFACE, UAC_AC_INPUT_TERMINAL,
+    TERM_MIC_IN,
+    UAC_TT_MIC & 0xFF, (UAC_TT_MIC >> 8) & 0xFF,
+    0,                      /* bAssocTerminal */
+    2,                      /* bNrChannels */
+    0x03, 0x00,             /* wChannelConfig = FL + FR */
+    0, STR_MIC_IN_IDX,      /* iChannel, iTerminal */
+
     /* ---- Selector Unit: analog vs S/PDIF (8 bytes) ---- #160
      *
      * bLength = 6 + bNrInPins per UAC1 §4.3.2.4. Pin ORDER IS THE PROTOCOL:
@@ -176,23 +194,32 @@ const unsigned char __code AppConfigDesc[CFG_TOTAL_LEN] = {
      * two whole signal paths is precisely the model that driver does have
      * ("items are PATHS, not pins"), so this is the shape that suits both
      * hosts rather than the one that suited only Linux. */
-    /* #203 extends this from two pins to three. POSITIONS 1 AND 2 KEEP THEIR
-     * MEANING -- instrument is APPENDED as 3, and microphone will append as 4
-     * once there is a measurement behind it. Appending cannot renumber what a
-     * host already knows; inserting would, and pin order is the protocol.
+    /* #203 took this from two pins to three, #224 takes it to four. POSITIONS
+     * 1-3 KEEP THEIR MEANING -- microphone is APPENDED as 4, exactly as
+     * instrument was appended as 3. Appending cannot renumber what a host
+     * already knows; inserting would, and pin order is the protocol.
      *
-     * Microphone is NOT declared yet, deliberately. All that has been measured
-     * of that path is that the 1/4" jack does NOT reach it (interleaved
-     * line/mic, MIC read the analysis floor at every source level while LINE
-     * read normally), which proves the mux switches but not that the preamp
-     * carries audio. check_terminal_evidence.py would reject it, correctly.
-     * It needs an XLR source. */
-    9, USB_DT_CS_INTERFACE, UAC_AC_SELECTOR_UNIT,
+     * THE SELECTOR IS WHY ONLY ONE INPUT CAN BE LIVE AT A TIME. A UAC1 Selector
+     * Unit has N input pins and exactly one output, and SET_CUR carries a
+     * single 1-based index -- so "line and mic together" is not expressible,
+     * and no host can ask for it. The construct that WOULD allow simultaneous
+     * inputs is a Mixer Unit, which this firmware deliberately does not declare.
+     * Adding a fourth pin inherits that mutual exclusion for free.
+     *
+     * The old note here said microphone could not be declared because the only
+     * measurement was a null: interleaved line/mic through the 1/4" jack, where
+     * MIC sat at the analysis floor. That null was CORRECT and is now explained
+     * -- the 1/4" jack does not reach the mic front end, because the mic front
+     * end is the XLR connector. It never was evidence against the path; it was
+     * evidence about the cabling. #224 drove the XLR directly and the path
+     * carries audio. */
+    10, USB_DT_CS_INTERFACE, UAC_AC_SELECTOR_UNIT,
     UNIT_SELECTOR,
-    3,                      /* bNrInPins */
+    4,                      /* bNrInPins */
     TERM_ANALOG_IN,         /* baSourceID(1) — position 1 = LINE   (unchanged) */
     TERM_SPDIF_IN,          /* baSourceID(2) — position 2 = S/PDIF (unchanged) */
     TERM_INST_IN,           /* baSourceID(3) — position 3 = INSTRUMENT  (#203) */
+    TERM_MIC_IN,            /* baSourceID(4) — position 4 = MICROPHONE  (#224) */
     0,                      /* iSelector */
 
     /* ---- Feature Unit: playback Mute (10 bytes) ---- #190
@@ -502,6 +529,11 @@ const unsigned char __code AppStrStrSpdifIn[STR_SPDIF_IN_LEN] = {
 const unsigned char __code AppStrStrLineOut[STR_LINE_OUT_LEN] = {
     0x12, 0x03,
     'L',0, 'i',0, 'n',0, 'e',0, ' ',0, 'O',0, 'u',0, 't',0
+};
+
+const unsigned char __code AppStrStrMicIn[STR_MIC_IN_LEN] = {
+    STR_MIC_IN_LEN, USB_DT_STRING,
+    'M',0,'i',0,'c',0,'r',0,'o',0,'p',0,'h',0,'o',0,'n',0,'e',0
 };
 
 const unsigned char __code AppStrStrSpdifOut[STR_SPDIF_OUT_LEN] = {
