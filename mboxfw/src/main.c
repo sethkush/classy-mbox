@@ -480,12 +480,37 @@ void main(void)
          * always EE_SERIAL_HI -- no host value can name an address outside
          * 0x1F00..0x1F1A. */
         if (g_prov_diag_pending) {
-            /* #226: the same instrumented read the SETUP handler used to do
-             * inline, run here instead. Context is the only difference, and it
-             * is the thing being measured -- see the dispatch in usb.c. */
+            /* #226: the instrumented read, run from the main loop, with
+             * INTERRUPTS AS THE VARIABLE UNDER TEST (g_prov_diag_mask).
+             *
+             * WHY THIS IS THE EXPERIMENT. eeprom_invalidate_signature() is the
+             * ONLY I2C access a shipping mboxfw makes -- eeprom_smoke_test()
+             * and eeprom_read_byte() were deleted 2026-08-05 -- and it is
+             * reached from exactly one place, a few lines below this, AFTER
+             * `EA = 0`. It demonstrably works: it is the enter-DFU trigger, and
+             * a unit that gets it comes up in DFU while a unit that does not
+             * boots the app. So I2C is healthy with interrupts masked, and no
+             * I2C access with interrupts ENABLED has ever been shown to work,
+             * because until now none has ever been attempted.
+             *
+             * Every I2CSTA sample the previous build returned was 0x00,
+             * including a bit written moments earlier. With the USB ISR firing
+             * continuously, that is what a clobbered DPTR looks like: the
+             * `movx` lands on whatever address the interrupt left behind
+             * rather than on 0xFFC0.
+             *
+             * mask = 0 runs with interrupts on (the previous build's
+             * behaviour, the control); mask = 1 masks them exactly as the DFU
+             * trigger does. Both arms in one image, against a known answer --
+             * EEPROM 0x0001 is headerSize and is 0x12 in every image this
+             * project builds. */
+            if (g_prov_diag_mask) EA = 0;
             if (g_prov_diag_freq == 1)      I2C_STA &= ~0x10;  /* TI I2c.c I2CAccess line 44 */
             else if (g_prov_diag_freq == 2) I2C_STA |=  0x10;  /* TI I2c.c I2CAccess line 44 */
             eeprom_read_diag(g_prov_diag_hi, g_prov_diag_lo, g_prov_diag_buf);
+            /* Restored unconditionally to 1: the main loop always runs with
+             * interrupts enabled, and leaving them off would take USB down. */
+            if (g_prov_diag_mask) EA = 1;
             g_prov_diag_pending = 0;
         }
 

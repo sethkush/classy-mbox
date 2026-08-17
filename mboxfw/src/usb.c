@@ -96,7 +96,33 @@ volatile __data unsigned char g_prov_value   = 0;
 /* Readback staging. XDATA because eeprom_read_seq() takes an __xdata pointer,
  * and --model-small puts a local array in DATA -- passing one would compile,
  * with the generic pointer reading the wrong memory space. */
-static __xdata unsigned char g_prov_rb[TLM_BLOCK_SIZE];
+/* PINNED TO AN ABSOLUTE ADDRESS, and this is the whole bug of 2026-08-16.
+ *
+ * Declared as a plain __xdata global, SDCC put this at XDATA 0x0001 -- the
+ * linker is told `--xram-size 0x1000`, so it believes 4 KB of external RAM
+ * exists starting at 0. IT DOES NOT. This board has no external RAM at all;
+ * XDATA is backed only in the 0xF800-0xFFFF shared-memory/USB window, which is
+ * exactly why every register in regs.h is an absolute constant and why the boot
+ * canaries use explicit 0xFA00 addresses. A buffer at 0x0001 is dead space:
+ * writes vanish and reads return 0x00.
+ *
+ * That single fact produced an entire evening of false results. Every
+ * instrumented EEPROM read returned all-zero -- from the record, from the
+ * 18-byte header whose contents are known, and for I2CSTA itself -- across
+ * ISR vs main-loop context, three bus frequencies, and interrupts on vs off.
+ * All of it was the reporting buffer, never the I2C peripheral, which has been
+ * healthy throughout: eeprom_write_byte is the enter-DFU trigger and works.
+ * The tell was that every arm returned BYTE-IDENTICAL zeros; a real hardware
+ * fault does not reproduce that exactly.
+ *
+ * 0xFA00-0xFA0F is free: the boot canaries that use it are compiled out of
+ * release builds (main.c, CANARY_BASE), and the EP0 IN buffer does not start
+ * until 0xFA10.
+ *
+ * ANY OTHER __xdata GLOBAL IN THIS FIRMWARE HAS THE SAME DEFECT -- see
+ * serialno.c, whose g_raw/g_str/g_dev are the reason #221's boot-time serial
+ * read has never worked. */
+static __xdata __at (0xFA00) unsigned char g_prov_rb[TLM_BLOCK_SIZE];
 /* #226 main-loop diagnostic: request latched in the SETUP handler, performed
  * by main(), read back with PROV_DIAGRD. See the dispatch for why context is
  * the variable under test. */
@@ -104,7 +130,8 @@ volatile __data unsigned char g_prov_diag_pending = 0;
 volatile __data unsigned char g_prov_diag_hi = 0;
 volatile __data unsigned char g_prov_diag_lo = 0;
 volatile __data unsigned char g_prov_diag_freq = 0;
-__xdata unsigned char g_prov_diag_buf[TLM_BLOCK_SIZE];
+volatile __data unsigned char g_prov_diag_mask = 0;
+__data unsigned char g_prov_diag_buf[TLM_BLOCK_SIZE];
 #endif
 
 /* Pending EP0 control-OUT data stage.
@@ -1118,6 +1145,7 @@ static void handle_setup(void)
                 g_prov_diag_hi   = wValueH;
                 g_prov_diag_lo   = wValueL;
                 g_prov_diag_freq = wIndexL;
+                g_prov_diag_mask = wIndexH;   /* 1 = run with EA = 0 */
                 g_prov_diag_pending = 1;
                 reply_zero_length();
             }

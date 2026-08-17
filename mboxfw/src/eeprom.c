@@ -234,7 +234,7 @@ unsigned char eeprom_invalidate_signature(void)
  * out[7] bit0 MSB wait ok, bit1 LSB wait ok, bit2 RCV wait ok
  */
 void eeprom_read_diag(unsigned char addr_hi, unsigned char addr_lo,
-                      __xdata unsigned char *out)
+                      __data unsigned char *out)
 {
     unsigned char f = 0;
 
