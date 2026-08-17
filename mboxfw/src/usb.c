@@ -1581,6 +1581,24 @@ void usb_ep0_setup(void)
     IEPBBAX3 = EP_BBAX(EP_STATUS_BUF_ADDR);
     IEPBSIZ3 = EP_BSIZE(EP_STATUS_BUF_SIZE);
     IEPCNF3  = 0x80;
+    /* START IN NAK STATE, exactly as EP0 IN does a few lines below and for the
+     * identical reason -- see the IEPDCNTX0 = 0x80 comment there, which this
+     * endpoint should have copied when #207 added it and did not.
+     *
+     * IEPDCNTX top bit is the NAK flag. Left at 0, this endpoint reports "zero
+     * bytes ready, not NAKing", so the UBM ships a ZERO-LENGTH PACKET in answer
+     * to every interrupt poll for the whole life of the device -- a host polling
+     * at the declared 8 ms interval gets an unbroken stream of empty status
+     * words instead of silence. Our own EP0 note calls that out as something
+     * that "could confuse strict hosts", and it was a real defect there.
+     *
+     * NAKing is what an interrupt IN endpoint with nothing to say is supposed to
+     * do; usb_status_notify() clears the flag by writing the byte count, which
+     * ships exactly one packet.
+     *
+     * WHETHER THIS CURES THE macOS STALENESS IS NOT YET KNOWN -- see
+     * FINDING_227. It is a defect on its own terms either way. */
+    IEPDCNTX3 = 0x80;
 }
 
 /* #207. Tell the host a control it can read has changed.
