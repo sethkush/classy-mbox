@@ -200,7 +200,23 @@
  * against the wrong number. The guard, not a second #define, is what lets a
  * diagnostic build carry its own id. */
 #ifndef TLM_BUILD_ID
-#define TLM_BUILD_ID     0x0058   /* 0058: #219 -- the 3x is EXPLAINED, and the
+#define TLM_BUILD_ID     0x0059   /* 0059: #224 declares the MICROPHONE input
+                                   *       (Selector position 4, terminal type
+                                   *       0x0201) after the XLR path was
+                                   *       measured -- 69.9 dB at 1234 Hz
+                                   *       against an un-miked control channel.
+                                   *       #225 fixes a defect that fix exposed:
+                                   *       the Selector answered POSITION 1
+                                   *       (LINE) while hw_init leaves the mux
+                                   *       on MIC, so every host was told the
+                                   *       wrong capture source from power-on
+                                   *       until something moved the selector.
+                                   *       All four inputs are now declared and
+                                   *       reported honestly.
+                                   *       NOTE: bcdDevice carries this id
+                                   *       (#222), so it must stay valid BCD --
+                                   *       the id after 0x0059 is 0x0060.
+                                   * 0058: #219 -- the 3x is EXPLAINED, and the
                                    *       scaffolding built to chase it is
                                    *       gone. IEPDCNTX/Y counts SAMPLES on an
                                    *       isochronous endpoint, not bytes, and
