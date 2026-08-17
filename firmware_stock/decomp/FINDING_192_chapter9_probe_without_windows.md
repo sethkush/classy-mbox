@@ -86,14 +86,47 @@ This is the same trap `probe_feature_requests.py` documents: **classify by
 errno, never by message.** EPIPE (32) is a device stall; EIO and ENOENT are the
 host stack talking.
 
-## What still needs Windows
+## What still needs Windows — CORRECTED 2026-08-16
 
-- malformed packets and timing violations — libusb cannot emit them
-- `SET_ADDRESS` behaviour; the host stack owns addressing, and re-assigning it
-  from userspace would strand the device
-- electrical and signalling tests
-- the descriptor-vs-class-spec rulebook USB20CV encodes, which is wider than
-  Chapter 9
+**This section was wrong for weeks, and it kept being cited.** Three of its four
+bullets were dead or misfiled, and two of them were killed by work in this very
+repository after the list was written. It is the #214 failure shape in a
+document instead of in code: a correct-when-written conclusion left standing
+after its inputs changed, re-asserted every time someone read it.
+
+The original list, with what actually became of it:
+
+| original bullet | status |
+|---|---|
+| `SET_ADDRESS` behaviour; "re-assigning it from userspace would strand the device" | **REFUTED.** True of *userspace*, false of the machine. `tools/ch9mod/ch9addr.c` re-addresses from a kernel module, `FINDING_218` records that Default state is reachable from Linux, and **#212 — a real defect, an illegal address accepted — was found exactly this way.** |
+| malformed packets and timing violations | **MISFILED.** Windows does not buy these. USB20CV is a *command* verifier driving an ordinary host controller; it cannot emit a malformed packet either. This needs a Pico or a Cynthion, and it is not a Windows item at all. |
+| electrical and signalling tests | **MISFILED, same reason.** USB20CV does not do these. This is a scope-and-fixture job. |
+| the descriptor-vs-class-spec rulebook USB20CV encodes | **STANDS — and it is the only one.** |
+
+### And a claim this document should never have implied
+
+Nobody reverse-engineered USB20CV. **The tool was never in hand** — no binary, no
+test list, no documentation. What exists here is **Chapter 9 implemented from the
+USB 2.0 specification text**: `ch9_probe.py` covers §9.3.5, §9.4.1 through
+§9.4.11, and §9.6.2/§9.6.3, plus three kernel modules for what userspace cannot
+reach. That is a large overlap with what USB20CV tests and it is not the same
+claim, because the USB20CV list cannot be enumerated from here to check the
+match. Describing it as "USB20CV coverage" overstates it; describe it as
+Chapter 9 coverage, which is what it is and which is verifiable.
+
+### So the honest residue
+
+**One item genuinely wants a second implementation: the UAC1 class-descriptor
+rulebook.** Even that is not a capability limit — it is a finite set of
+descriptor checks that can be written as a gate here, and `check_uac1_rulebook.py`
+now does. What a locally-written validator cannot do is catch an error that lives
+in *our reading* of the Audio 1.0 document, because it encodes that same reading.
+That is an argument for an independent opinion, not for Windows specifically:
+**macOS/IOUSBFamily is a second independent implementation and is free.**
+
+Two Chapter 9 gaps were also found while auditing this list, both Linux-reachable
+and neither previously covered: **§9.2.6 request-processing time limits** and
+**suspend/resume behaviour**. See `tools/ch9_timing.py`.
 
 ## The probe disabled the thing it was probing
 
