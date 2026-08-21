@@ -82,9 +82,23 @@ is master-only: `0x23.3` gates the whole path.
 
 269 bytes back, 420 free. All 38 gates pass. `TLM_BUILD_ID` 0x0060 -> 0x0061.
 
-## CONFIRMED ON HARDWARE, 2026-08-20
+## CONFIRMED ON HARDWARE, 2026-08-20 — BOTH UNITS
 
-Unit A, flashed from macOS, `bcdDevice 0x0161`:
+Both flashed from macOS with the corrected `mboxflash`, both on `bcdDevice
+0x0161`, both serving their EEPROM serial through the flash that overwrote the
+image around it:
+
+| | unit A | unit B |
+|---|---|---|
+| serial (EEPROM) | `RK10874600Q` | `RK1672500M` |
+| product | `Mbox (class-compliant)` | `Mbox (class-compliant)` |
+| Input Source | `Analog In` | `Analog In` |
+| capture | 258304 smp / 2.69 s | 259328 smp / 2.70 s |
+
+Unit B reads a -101 dBFS RMS noise floor, which is correct: its loopbacks came
+off when it left the void box and nothing is patched in.
+
+Unit A detail, `bcdDevice 0x0161`:
 
 ```
 USB Product Name  = "Mbox (class-compliant)"
