@@ -1,157 +1,114 @@
 # mboxfw — Mbox 1 class-compliant firmware
 
-Custom class-compliant USB Audio Class 1 firmware for the Digidesign
-Mbox 1 (TAS1020A + CS8427 + audio codec), replacing Digi's vendor-specific
-Rev 20 / v22 firmware.
+USB Audio Class 1 firmware for the Digidesign Mbox 1, replacing Digi's
+vendor-specific Rev 20 / Rev 22 images. See the [top-level README](../README.md)
+for the project as a whole and [`POLICY.md`](../POLICY.md) for the process rules.
 
 ## Status
 
-**Full skeleton builds — 2064 bytes of code (~25% of the 8 KB EEPROM
-budget).** Every major module is in place, every SDCC compile is
-clean, and all four pre-flash checks pass.
+**Shipping `0x0061`. 5814 of 6016 bytes of program RAM, 41/41 preflight gates.**
 
-| Module                | What it does                                        |
-|-----------------------|-----------------------------------------------------|
-| `hw_init.c`           | 8051 SFRs, C-port, DMA — verbatim port of Rev 20's `fcn.0x08CB` |
-| `cs8427.c`            | Bit-banged I²C + 10-register boot sequence          |
-| `codec.c`             | 16-bit codec control-word shift (`fcn.0x0E62`) + the source-cycle tail that derives RAM[0x22].6 (Rev 20 0x0E52) + zero-and-publish init (Rev 20 hw_init tail @ 0x0967) |
-| `isr.c`               | Minimal INT0 + Timer 0 ISR stubs — reload TH0, count firings |
-| `mux.c`               | 74HC595 input-mux shift register                    |
-| `buttons.c`           | P3.3 / P3.4 source cycle + P3.5 mono toggle, on release |
-| `descriptors.c`       | Full UAC1 descriptor bundle (2ch × 24-bit × 44.1/48) |
-| `usb.c`               | EP0 SETUP dispatcher, VECINT poll, descriptor push  |
-| `streaming.c`         | EP1 IN + EP2 OUT activation on SET_INTERFACE        |
-| `main.c`              | Reset entry + main loop                             |
+Both units stream 2 ch x 24-bit at 44.1 and 48 kHz on Linux and macOS, with
+S/PDIF I/O, a UAC Selector for analog-vs-S/PDIF, Feature Units with mute,
+front-panel source and mono control, and serial numbers served from EEPROM.
 
-## What should happen when flashed
-
-1. TAS1020A boot ROM loads our firmware from EEPROM.
-2. `main()` runs `hw_init()` → `cs8427_boot_init()` → `usb_init()`.
-3. USB enumerates as VID:PID `0x0DBA:0x1000` with two AudioStreaming
-   interfaces + one AudioControl interface. macOS should recognise it
-   as a class-compliant audio device with no vendor driver.
-4. Pressing the front-panel source buttons cycles the mux state.
-5. Pressing the mono button (P3.5) toggles mono fold-down. There is no
-   firmware control over 48 V phantom power — it is a mechanical switch.
-
-## Pre-flash verification
-
-Six host-side checks catch the highest-frequency bug classes without
-touching hardware:
-
-```
-tools/sim_smoke.sh                # ucSim/s51 boot smoke — proves the init
-                                  # sequence reaches the main loop with no
-                                  # trap or infinite loop
-python3 tools/verify_descriptors.py   # walks the compiled UAC1 descriptor
-                                      # bundle: bLength / wTotalLength /
-                                      # cross-refs / channel & subframe sanity
-python3 tools/verify_usb_init.py      # confirms the enumeration-critical
-                                      # SFR writes (EP0 buffer addrs, CNF
-                                      # bytes) appear in the compiled image
-                                      # with the exact values Rev 20 uses
-python3 tools/verify_cs8427.py        # confirms the 10-register CS8427 boot
-                                      # sequence appears in the image
-python3 tools/verify_setup_paths.py   # confirms USBFADR is written from the
-                                      # deferred-address slot (SET_ADDRESS
-                                      # actually lands), Digi's enter-DFU
-                                      # class request is recognised, and
-                                      # reply_zero_length is present
-mboxflash --validate FILE             # static wire-format check on the
-                                      # wrapped .bin: record alignment,
-                                      # header chksum, VID/PID, size limits
-```
-
-**Never flash without all six green.** verify_setup_paths.py in
-particular guards against the exact class of enumeration bug that
-soft-bricked the device on 2026-07-18 (SET_ADDRESS ACKed but USBFADR
-never written).
-
-## Flash-morning safety net
-
-Before running `--flash`, dump the current EEPROM so a bad flash is
-recoverable:
-
-```
-# Enter DFU, then dump:
-mboxflash --enter-dfu
-# (wait for the device to re-enumerate as 0xFFFF:0xFFFE)
-mboxflash --dump backups/rev20-$(date +%s).bin
-# If mboxfw is broken, restore with:
-mboxflash --flash backups/rev20-YYYYMMDD-HHMMSS.bin
-```
-
-If enumeration fails after flashing, capture and diff the USB traffic
-against a known-good UAC1 device to see which SETUP is going wrong:
-
-```
-sudo tools/capture_enum.sh baseline 8   # capture a working UAC1 device
-sudo tools/capture_enum.sh mboxfw   8   # then the Mbox after flashing
-diff -u captures/baseline-*.setup.txt captures/mboxfw-*.setup.txt
-```
-
-## Realistic risks on first flash (ordered)
-
-| Risk | Likely cause | Where to look |
-|------|--------------|---------------|
-| Won't enumerate | EP0 buffer address encoding mismatch (was a real bug — EP0 IN/OUT bases had been swapped in an earlier draft; fixed 2026-07-18 after `verify_usb_init.py` caught OEPBBAX0 = 0x43 instead of 0x42). Now `verify_usb_init.py` pins all four critical writes to Rev 20's exact values. | Watch VECINT + USBSTA in `usb_service()`; verify with a USB analyser if enumeration hangs before SET_ADDRESS. |
-| Enumerates but silent/distorted | Candidates: (a) the 16-bit codec control word — stock shifts it via `fcn.0x0E62` from ten call sites, so the codec IS listening (the earlier "`fcn.0x0E74` is dead code, codec self-configures" claim is RETRACTED, see NOTES.md); (b) mux state @ RAM[0x22] not reaching the 74HC595; (c) CS8427 boot sequence misfiring; (d) wrong ACG frequency word for the reported rate; (e) C-port I²S clock misprogrammed. `verify_cs8427.py` covers (c); (a), (b) and (d) verify against Rev 20's exact bytes. (e) needs a scope. | Run `verify_cs8427.py`; inspect CPTCNF*/CPTRXCNF* writes in hw_init.c against fcn.0x08CB. |
-| Audio pitched wrong at 44.1 kHz | `dma_program_44k1()` uses Rev 20 mode-2 constants (0x20_4B_6A) — confirmed identical in v22 too, but "mode 2 = 44.1 kHz" is inferred, not fully traced | If pitched wrong, swap the two DMASRC value sets in `streaming.c` — that's the fastest falsification |
-| Random weirdness | ISR stubs (`isr.c`) now claim vectors 0x03 (INT0) and 0x0B (Timer 0) so `EA = 1` no longer risks jumping into random code memory. Handlers just reload TH0 and bump a counter — real USB SOF handling is still done by polling in `usb_service()`. | If the CPU hangs after ~1 s of run time, disable EA in `main()` and see if the hang goes away — that would implicate an ISR frequency issue. |
+| module | what |
+|---|---|
+| `main.c` | reset entry, init order, main loop |
+| `hw_init.c` | 8051 SFRs, C-port, DMA, ACG clock words |
+| `usb.c` | EP0 SETUP dispatch, class requests, the Selector and Feature Units |
+| `descriptors.c` | the UAC1 descriptor bundle and all string descriptors |
+| `streaming.c` | EP1 IN / EP2 OUT activation on SET_INTERFACE, feedback endpoint |
+| `codec.c` | the 16-bit control word shifted into the HEF4094 pair |
+| `cs8427.c` | CS8427 boot sequence (SPI, chip-select on the expander) |
+| `mux.c`, `buttons.c` | 74HC157 source muxes and the front-panel buttons |
+| `eeprom.c` | I2C reads, and the provisioning write path for serials |
+| `telemetry.c` | 9 diagnostic blocks, compiled out of release builds |
+| `isr.c`, `power.c` | interrupt vectors, suspend/resume |
 
 ## Build
 
-```
-brew install sdcc          # SDCC 4.6+ (mcs51 target)
-make                       # → build/mboxfw.ihx + build/mboxfw_flasher.bin
-```
-
-## Flash (untested end-to-end)
-
-```
-# 1. Put the Mbox into DFU mode: hold front-panel source button
-#    while plugging the USB cable in
-# 2. Verify with:
-../mboxflash/mboxflash --probe
-# 3. Push the firmware:
-../mboxflash/mboxflash --flash mboxfw/build/mboxfw_flasher.bin
-# 4. Power-cycle the Mbox
+```sh
+make MBOX_PID=0x2000      # -> build/mboxfw.ihx + build/mboxfw_flasher.bin
+make CANARY_LED=1         # LED progress-ladder diagnostic build
 ```
 
-## Build
+Needs SDCC 4.6+ with the mcs51 target (`brew install sdcc`). `wrap_hex.py`
+converts the Intel HEX into the TI record format the boot ROM expects; it runs
+as part of the build.
 
-```
-brew install sdcc          # SDCC 4.6+ (mcs51 target)
-make
-```
+**Always build with `MBOX_PID=0x2000`.** At the default `0x1000` the Linux
+kernel's `mbox1` quirk claims the device and `snd-usb-audio` never binds, so no
+ALSA card appears. EP0 telemetry still works, which makes this an easy trap to
+misdiagnose.
 
-Output: `build/mboxfw.ihx` (Intel HEX). Still needs to be re-wrapped in
-Digi's TI Intel-HEX record format (`{u32 length BE}{u32 addr BE}{u32
-type BE}{data}`) before `mboxflash --flash` can push it to EEPROM. That
-wrapper is TODO under `tools/`.
+## Before flashing
 
-## Layout
-
-```
-mboxfw/
-├── Makefile           # SDCC build
-├── include/
-│   ├── regs.h         # TAS1020A UIFR register subset + P1/P3 pin masks
-│   ├── mux.h
-│   ├── cs8427.h
-│   └── buttons.h
-└── src/
-    ├── main.c         # Reset entry + main loop
-    ├── hw_init.c      # Master hardware init (ports Rev 20 fcn.0x08CB)
-    ├── mux.c          # 74HC595 input-mux driver (ports fcn.0x0F0C)
-    ├── cs8427.c       # CS8427 bit-banged I²C + boot sequence
-    ├── buttons.c      # P3 button poller (ports fcn.0x0ED5)
-    └── usb.c          # STUB — descriptors + streaming TODO
+```sh
+../tools/preflight.sh build/mboxfw_flasher.bin
 ```
 
-## Where each hardware register/pin comes from
+That is **the** gate runner -- 41 gates covering descriptors, SFR writes against
+both stock images, citation targets, reachability, init order, code size and
+the flasher's own wire format. Run it rather than individual gates. Never flash
+without it green.
 
-Every register value and every P1/P3 pin binding in this firmware was
-verified against Rev 20's disassembly. See
-`firmware_stock/disasm/NOTES.md` for the register table, function map,
-and reasoning behind each choice.
+## Flashing, and how DFU is actually entered
+
+The button-hold trigger that earlier versions of this file recommended **does
+not work and was removed on 2026-08-05**, having never once succeeded --
+`main.c` records three attempts in `BRICK_LOG.md`.
+
+DFU is entered by invalidating the EEPROM header **checksum** and power-cycling:
+
+```sh
+mboxflash --enter-dfu      # or: tools/mboxflash_linux.py
+# then UNPLUG AND REPLUG. A bus reset is not enough.
+mboxflash --flash build/mboxfw_flasher.bin
+# then power-cycle again -- the post-manifest bus reset does not deliver the
+# app switch on either flasher.
+```
+
+With two units on one bus, select with `--serial <SN>`; both flashers refuse to
+guess, because the PID says which *product* this is and not which *unit*.
+
+**There is no backup to take.** Earlier text here recommended dumping the
+EEPROM first; `backups/` never held a genuine device dump, and the two stock
+payloads (`../firmware_stock/rev20_flasher_payload.bin` and
+`rev22_flasher_payload.bin`) restore the device completely, so a dump adds
+nothing. Both have been written back to this unit successfully.
+
+Flash `safety_net/` first on any device not already running mboxfw (POLICY §4).
+
+## Init order differs from stock deliberately
+
+Stock does hardware init and then brings USB up. mboxfw calls `usb_init()`
+**first**, so enumeration starts early. The consequence is not academic: any
+stock write copied into `hw_init()` now lands on a *live* USB engine, and
+mirroring a write without mirroring its ordering mirrors nothing.
+
+## Telemetry
+
+`TELEMETRY.md` documents 9 blocks read with `../tools/mboxtlm.py`. Every read is
+exactly 8 bytes (one EP0 packet) and every vendor request is **DEVICE
+recipient** -- an interface-recipient request is rejected with EBUSY once
+`snd-usb-audio` binds the device.
+
+Bump `TLM_BUILD_ID` when flashing and read block 0 to prove which build is
+running. The build id also rides in `bcdDevice` as `1.NN`, so it stays readable
+when a class driver owns every interface -- which constrains build ids to valid
+BCD (`0x0059` -> `0x0060`).
+
+**Release builds serve none of it.** `../tools/check_release_surface.py`
+enumerates what a shipping unit still answers; as of `0x0061` that is
+`TLM_REQ_ENTER_DFU` and nothing else. Any question phrased "read block N" needs
+a diagnostic build, and therefore a flash and a power cycle.
+
+## Citations are enforced
+
+Every SFR-touching line carries `/* Rev 20 fcn.0xXXXX @ 0xYYYY */`, a TI source
+reference, or `/* NOVEL -- reason: ... */`. A pre-commit hook and a preflight
+gate verify the cited address actually holds that write, in **both** stock
+images. `../tools/rev20_diff_justifications.md` is the machine-read table
+justifying every mboxfw-vs-stock difference -- a gate reads it, so a wrong row
+there is worse than no row.
