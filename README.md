@@ -165,11 +165,38 @@ previous answers were incomplete* rather than as a list of facts.
 3. Two parked items: the EP0 Y-count at boot-ROM handoff, and naming the vendor
    part behind the codec control word.
 
-## Credit and status
+## How this was built
 
-This is a personal project on hardware I own, developed against two units. The
-stock firmware RE exists to make the replacement defensible -- every divergence
-from stock is justified in a machine-read table that a gate checks -- and it
-turned out to be worth having on its own.
+A personal project on two units I own. The firmware, the reverse engineering,
+the flashers, the ~41 gates and these docs were written by **Claude** (Claude
+Code, Anthropic) across a long series of sessions, working to my direction.
+
+That division of labour is worth stating plainly, because it shaped the
+engineering. The model can read both 8 KB stock images end to end, hold the
+whole register map at once, and rebuild the ROMs byte-for-byte -- work that is
+tedious and error-prone by hand. What it cannot do is see an LED, hold a cable,
+power-cycle a unit 1 km away, or know that a thing was working last week.
+
+So the hard rule here is that **my observations of the hardware outrank the
+model's inferences from the documents**, and several of the entries in
+`firmware_stock/decomp/` exist because that rule fired:
+
+* A whole evening's findings concluded that mboxfw's I2C access "does not work
+  at all" and that the DFU trigger was broken. I pointed out that DFU had been
+  working for weeks. The instrument was reading dead memory; the findings were
+  retracted the same night and the real defect -- XDATA not being implemented
+  on this board -- was found the next day.
+* The 16-bit question was closed as unprovable until I mentioned that Sound On
+  Sound ran OS 9 screenshots of a driver offering 16 or 24 bit. That reopened
+  it, and the mechanism turned out to be sitting in the stock images.
+* The bench has two cross-wired units and a source mux that boots to MIC while
+  both wired inputs are LINE. Measurements were voided until that got written
+  down in `BENCH_WIRING.md`.
+
+The process rules in `POLICY.md` -- enforced citations, a known-answer arm in
+every measurement, "stock does it" never being sufficient on its own -- are not
+good practice imported from elsewhere. Each one was written after a specific
+failure, most of them the model's, and they are the reason the later work holds
+up. `BRICK_LOG.md` records the ones that reached the hardware.
 
 Header image: Digidesign Mbox press photo.
