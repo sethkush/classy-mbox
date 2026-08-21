@@ -82,4 +82,32 @@ is master-only: `0x23.3` gates the whole path.
 
 269 bytes back, 420 free. All 38 gates pass. `TLM_BUILD_ID` 0x0060 -> 0x0061.
 
-**Not yet flashed to any unit.**
+## CONFIRMED ON HARDWARE, 2026-08-20
+
+Unit A, flashed from macOS, `bcdDevice 0x0161`:
+
+```
+USB Product Name  = "Mbox (class-compliant)"
+USB Serial Number = "RK10874600Q"        <- still from EEPROM, survived the flash
+CoreAudio Input Source: Analog In
+```
+
+Then a front-panel source button was pressed:
+
+| | before | after |
+|---|---|---|
+| capture RMS | 0.000189 | 0.008028 (**+32.6 dB**) |
+| capture peak | 0.001208 | 0.028596 (+27.5 dB) |
+| Core Audio Input Source | `Analog In` | `Analog In` |
+
+**The mux moved and the host's view did not change -- and that is now correct
+rather than stale.** The control describes analog vs S/PDIF; the source is still
+analog, so the device is telling the truth the whole time. Before #228 the host
+said "Microphone" while the hardware sat on instrument, which was simply false.
+
+The staleness of #227 is therefore not merely fixed, it is unreachable: there is
+no longer any host-visible control a button can desynchronise.
+
+Also confirmed by the same power cycles: the mux boots to MIC (capture came back
+at the MIC level after every replug), matching `hw_init` and stock Rev 20
+@0x0941/0x0962.

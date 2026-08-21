@@ -90,9 +90,14 @@ static BOOL probeDFUMode(void) {
 
 static int cmd_probe(void) {
     if (probeDFUMode()) {
-        printf("Mbox connected in bulletproof-DFU mode (VID 0xFFFF PID 0xFFFE, class 0xFE)\n");
-        printf("  Boot-ROM DFU. Only header persists on flash — use safety_net_bootstrap.bin\n");
-        printf("  to transition to app-DFU (0x0DBA:0x1001), then flash real firmware.\n");
+        printf("Mbox in boot-ROM DFU (VID 0xFFFF PID 0xFFFE, class 0xFE)\n");
+        printf("  TARGET IS NOT IMPLIED BY THIS PID. The boot ROM shows the same descriptor\n");
+        printf("  set for both DFU targets; which is active comes from dataType, i.e. from\n");
+        printf("  HOW the EEPROM failed (RomBoot.c:60-66). After the normal --enter-dfu\n");
+        printf("  trigger the header checksum is zeroed, which is DFU_TARGET_EEPROM: a\n");
+        printf("  flash here IS programmed and survives a power cycle. Only a genuinely\n");
+        printf("  unreadable EEPROM (real SDA short, blank part) targets RAM.\n");
+        printf("  Flash with --flash PATH.\n");
         return 0;
     }
     int pid = 0, bcd = 0;
@@ -106,49 +111,44 @@ static int cmd_probe(void) {
         printf("  WILL persist to EEPROM. Use --flash PATH.\n");
         return 0;
     }
-    if (pid == 0x1000) {
-        fprintf(stdout, "Mbox 1 connected in audio mode (VID 0x0DBA PID 0x1000), bcdDevice = 0x%04x (firmware ", bcd);
+    if (pid == 0x1000 || (pid >= 0x2000 && pid <= 0x200F)) {
+        fprintf(stdout, "Mbox 1 in audio mode (VID 0x0DBA PID 0x%04x), bcdDevice = 0x%04x (firmware ", pid, bcd);
         if      (bcd == 0x0022) fprintf(stdout, "v22 — OK, no flash needed)\n");
         else if (bcd == 0x0020) fprintf(stdout, "Rev 20 — BUGGY, should flash to v22)\n");
         else if (bcd == 0x0016 || bcd == 0x0018 || bcd == 0x0019)
             fprintf(stdout, "very old, %u.%u — should flash to at least Rev 20)\n",
                 bcd >> 8, bcd & 0xff);
-        else if (bcd == 0x0100) fprintf(stdout, "mboxfw v1.0 — custom)\n");
+        // #222: mboxfw puts its BUILD ID in bcdDevice, formatted 1.NN, so the
+        // running build is readable without any vendor request -- and stays
+        // readable when a class driver owns every interface. Valid BCD only,
+        // which is why build ids skip A-F (0x0059 -> 0x0060).
+        else if ((bcd >> 8) == 0x01)
+            fprintf(stdout, "mboxfw build 0x%04x — bcdDevice %u.%02x)\n",
+                    bcd & 0xff, bcd >> 8, bcd & 0xff);
         else fprintf(stdout, "unknown 0x%04x)\n", bcd);
-        // ORDER MATTERS — this reflects what actually works on hardware,
-        // not what the docs imply.
+        // HOW TO GET INTO DFU. Every route the previous version of this text
+        // recommended has since been refuted, so it is replaced wholesale:
         //
-        // 1. BUTTON HOLD is the working path on stock firmware. Hold a
-        //    front-panel source button while plugging in. Confirmed
-        //    repeatedly on this unit by Seth; it is the primary way this
-        //    device gets into DFU.
-        //
-        // 2. --enter-dfu (Digi class request bmReq 0x21 / bReq 0x00 /
-        //    wValue 0x000A) has NEVER been made to work here. The request
-        //    is accepted but the device does not drop to DFU. Do not
-        //    present it as the normal route.
-        //
-        // 3. SDA short is the last resort, and lands in bulletproof DFU
-        //    (0xFFFF:0xFFFE) which persists headers only — hence the
-        //    two-stage bootstrap.
-        //
-        // Caveat worth keeping visible: the button-hold mechanism is NOT
-        // located in Rev 20's application code. rev20_STARTUP_TRACE.md
-        // shows its boot path only setting P3 = 0xFF for the input
-        // pull-ups, and p3_button_scan (0x0ED5) runs from the main loop
-        // for source cycling. So the trigger most likely lives in the
-        // boot ROM, which we have not traced for it. Our most-relied-on
-        // recovery path is the one we understand least — see
-        // rev20_boot_rom_audit.md.
-        //
-        // BRICK_LOG.md entries reporting "button-hold did nothing" are
-        // all about BRICKED mboxfw, whose broken I2C driver made every
-        // software recovery path fail. They say nothing about stock
-        // firmware. An earlier version of this hint got that backwards.
-        printf("\nTo flash: hold a front-panel source button while plugging the Mbox\n");
-        printf("in. Device re-enumerates in DFU mode. Then `mboxflash --probe`.\n");
-        printf("\nFallback if that fails: short EEPROM SDA during power-up to reach\n");
-        printf("bulletproof DFU (0xFFFF:0xFFFE), then use the two-stage bootstrap.\n");
+        //   * BUTTON HOLD does not work and is not a route. mboxfw's boot-time
+        //     button-hold trigger was REMOVED 2026-08-05 having never once
+        //     succeeded (main.c records three BRICK_LOG attempts).
+        //   * The SDA SHORT is retired as a normal path. It reaches boot-ROM
+        //     DFU with a genuinely unreadable EEPROM, which is the one case
+        //     that targets RAM and needs POLICY §4's safety_net bootstrap.
+        //     Keep it for a unit that will not enumerate at all.
+        //   * "--enter-dfu has NEVER been made to work here" was ALSO wrong,
+        //     and was disproved on 2026-08-17 against mboxfw on this Mac: the
+        //     request was accepted and the unit dropped off the bus. The
+        //     2026-07-27 stall behind that claim was against safety_net, which
+        //     publishes no audio interfaces -- so macOS had no interface to
+        //     address an interface-recipient class request to.
+        printf("\nTo flash: mboxflash --enter-dfu, then UNPLUG AND REPLUG.\n");
+        printf("The firmware acks, zeroes its EEPROM header checksum and halts, so it\n");
+        printf("drops off the bus while still physically plugged in; the boot ROM comes\n");
+        printf("up in DFU on the next power-up. A bus reset is NOT enough.\n");
+        printf("\nIf the unit does not enumerate at all, short EEPROM SDA during power-up\n");
+        printf("and use POLICY §4's safety_net bootstrap -- that is the only case that\n");
+        printf("really does target RAM.\n");
         return 0;
     }
     fprintf(stderr, "Digi device present but PID=0x%04x is unrecognized (bcdDevice=0x%04x)\n", pid, bcd);
@@ -404,41 +404,33 @@ static int cmd_flash(const char *path) {
     NSUInteger totalBytes = 0;
     for (MBoxPayloadRecord *r in recs) totalBytes += r.data.length;
 
-    // Detect the "flash 0x01 from bulletproof-DFU" trap. See POLICY §7
-    // and BRICK_LOG 2026-07-25 for the multi-hour hunt that led to this
-    // check. Bulletproof-DFU (VID 0xFFFF PID 0xFFFE, entered via
-    // SDA-short) only persists the EEPROM HEADER, not the code region.
-    // A dataType=0x01 flash from bulletproof leaves the chip with a
-    // valid header pointing at unwritten code → boot ROM validates on
-    // cold boot, fails, re-enters bulletproof → silent USB.
+    // THE "dataType 0x01 from bulletproof-DFU" ABORT THAT USED TO LIVE HERE IS
+    // GONE, because the belief under it was refuted on 2026-07-28 and this tool
+    // was never updated. tools/mboxflash_linux.py carries the correction in
+    // full; the short version:
     //
-    // The dataType byte lives at offset 14 of the 18-byte EEPROM header,
-    // which is the first ≥18 bytes of the first record we're about to
-    // send. Parse it and refuse if dataType=0x01 while in bulletproof.
-    if (probeDFUMode() && recs.count > 0 && recs.firstObject.data.length >= 15) {
-        const uint8_t *hdr = (const uint8_t *)recs.firstObject.data.bytes;
-        uint8_t dataType = hdr[14];
-        if (dataType == 0x01) {
-            fprintf(stderr,
-                "\nABORT: device is in bulletproof-DFU (0xFFFF:0xFFFE) but this\n"
-                "image has dataType = 0x01 (APPCODE). Bulletproof-DFU does NOT\n"
-                "persist the code region to EEPROM — only the header. Flashing\n"
-                "this directly WILL brick the device (silent USB on next boot).\n\n"
-                "Correct procedure per POLICY §7:\n"
-                "  1. Flash safety_net/build/safety_net_bootstrap.bin first\n"
-                "     (that image has dataType=0x03 = APPCODE_UPDATING, which\n"
-                "     tells the boot ROM to come up in app-DFU on next boot).\n"
-                "  2. Physically unplug/replug — device should re-enumerate as\n"
-                "     app-DFU (0x0DBA:0x1001). Verify with:\n"
-                "         ioreg -p IOUSB -l | grep 'idProduct.*4097'\n"
-                "  3. Re-run this --flash command from app-DFU. Code will\n"
-                "     persist to EEPROM.\n"
-                "  4. Physically unplug/replug — device boots the new firmware.\n\n"
-                "This check exists because we bricked ourselves this exact way\n"
-                "several times before understanding the bulletproof-DFU limit.\n");
-            return 1;
-        }
-    }
+    //   0xFFFF:0xFFFE DOES NOT MEAN "RAM LOADER". The boot ROM presents that
+    //   one descriptor set for BOTH DFU targets. Which is active comes from
+    //   dataType -- from HOW the EEPROM failed -- and never from the PID
+    //   (RomBoot.c:60-66). Only a genuinely unreadable EEPROM (a real SDA
+    //   short, a blank part) gives DFU_TARGET_RAM. A readable header whose
+    //   CHECKSUM was zeroed -- exactly what eeprom_invalidate_signature() does,
+    //   and what --enter-dfu triggers -- gives DFU_TARGET_EEPROM, and the
+    //   download is PROGRAMMED.
+    //
+    // So this check did not prevent a brick, it prevented a FLASH: it fired on
+    // every ordinary enter-DFU recovery. Confirmed end to end 2026-08-03, and
+    // again on 2026-08-16/17 when both units were flashed eight times from this
+    // exact PID state with the Linux tool -- every image persisted, and
+    // EEPROM-provisioned serials written through the running app survived those
+    // flashes untouched.
+    //
+    // What it was really guarding is still true: a dataType=0x01 image written
+    // to a RAM target leaves a valid header pointing at code that was never
+    // programmed, and the next cold boot is silent USB. That state is reachable
+    // only from a REAL SDA short, POLICY §4's safety_net bootstrap covers it,
+    // and it is NOT detectable from here -- so it is documented rather than
+    // guessed at from a PID that does not carry the answer.
     printf("=== ABOUT TO WRITE EEPROM ===\n");
     printf("payload: %lu records, %lu bytes\n", (unsigned long)recs.count, (unsigned long)totalBytes);
     printf("device: DFU-mode Mbox at 0xFFFF:0xFFFE\n");
@@ -831,9 +823,28 @@ int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc < 2) {
             fprintf(stderr,
-                "usage: mboxflash --probe | --enter-dfu | --dfu-status | --parse PATH | --scan PATH\n"
+                "usage: mboxflash [--serial SN] --probe | --enter-dfu | --dfu-status\n"
+                "        | --parse PATH | --scan PATH\n"
                 "        | --flash-check PATH | --flash PATH | --dump PATH | --validate PATH\n"
                 "        | --descdump\n");
+            return 2;
+        }
+        // --serial <SN> may appear anywhere; strip it before dispatch. With two
+        // units on one bus this is the difference between flashing the unit you
+        // meant and flashing the other one -- see openMboxDevice in dfu.m.
+        const char *av[16];
+        int ac = 0;
+        for (int i = 0; i < argc && ac < 16; i++) {
+            if (!strcmp(argv[i], "--serial") && i + 1 < argc) {
+                gMboxTargetSerial = @(argv[i + 1]);
+                i++;
+                continue;
+            }
+            av[ac++] = argv[i];
+        }
+        argv = av; argc = ac;
+        if (argc < 2) {
+            fprintf(stderr, "usage: mboxflash [--serial SN] <command>\n");
             return 2;
         }
         NSString *cmd = @(argv[1]);

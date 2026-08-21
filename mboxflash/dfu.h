@@ -4,6 +4,11 @@
 #define MBOXFLASH_DFU_H
 
 #import <Foundation/Foundation.h>
+
+// Unit selection. nil = no filter; set from --serial <SN>. See the
+// refuse-to-guess note on openMboxDevice in dfu.m.
+extern NSString *gMboxTargetSerial;
+BOOL MBox_IsOurDevice(int vid, int pid);
 #import <IOKit/usb/IOUSBLib.h>
 
 // DFU 1.0 spec: https://www.usb.org/sites/default/files/DFU_1.1.pdf §6.1

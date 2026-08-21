@@ -10,31 +10,95 @@ static NSError *usbError(NSString *op, IOReturn rc) {
     }];
 }
 
-// Find & open the Mbox runtime device (VID 0x0DBA). Accepts any Digi PID
-// that's currently on the bus — 0x1000 is Rev 20 / v22 audio mode, 0x1001
-// is what a half-brick or a boot-ROM-loaded firmware advertises before
-// re-enumerating. Both are worth trying enter-DFU against.
+NSString *gMboxTargetSerial = nil;   // set by --serial; nil = no filter
+
+// Is this a device this tool talks to? VID 0x0DBA in any mode, or the boot
+// ROM's 0xFFFF:0xFFFE. PIDs 0x2000-0x200F are audio-mode aliases -- mboxfw is
+// built with MBOX_PID=0x2000 so the kernel's mbox1 quirk does not claim it.
+// Keep in step with AUDIO_PID_ALIASES in tools/mboxflash_linux.py.
+BOOL MBox_IsOurDevice(int vid, int pid) {
+    if (vid == 0xFFFF && pid == 0xFFFE) return YES;      // boot-ROM DFU
+    if (vid != 0x0DBA) return NO;
+    if (pid == 0x1000 || pid == 0x1001) return YES;      // stock audio / app-DFU
+    return (pid >= 0x2000 && pid <= 0x200F);             // mboxfw audio aliases
+}
+
+static NSString *serialOf(io_service_t svc) {
+    CFStringRef sn = (CFStringRef)IORegistryEntrySearchCFProperty(svc,
+        kIOServicePlane, CFSTR("USB Serial Number"), NULL, kIORegistryIterateRecursively);
+    if (!sn) return nil;
+    NSString *out = [NSString stringWithString:(__bridge NSString *)sn];
+    CFRelease(sn);
+    return out;
+}
+
+static int intProp(io_service_t svc, CFStringRef key) {
+    CFNumberRef n = (CFNumberRef)IORegistryEntrySearchCFProperty(svc,
+        kIOServicePlane, key, NULL, kIORegistryIterateRecursively);
+    int v = 0;
+    if (n) { CFNumberGetValue(n, kCFNumberIntType, &v); CFRelease(n); }
+    return v;
+}
+
+// Find & open the Mbox. REFUSES TO GUESS when more than one candidate is
+// attached, exactly as mboxflash_linux.py and mboxtlm.py do, and for a sharper
+// reason than either: this tool WRITES FIRMWARE. Two units share the bench and
+// both may build at the same MBOX_PID -- the PID says which PRODUCT this is,
+// not which UNIT -- so picking whichever IOKit enumerated first would flash the
+// wrong device and look like success. Select with --serial <SN>.
 //
-// NB: IOKit device-matching with only a VendorID key silently returns 0
-// hits — matching wants VID+PID together — so we iterate all IOUSBDevice
-// services and filter on idVendor in code.
+// NB: IOKit device-matching with only a VendorID key silently returns 0 hits --
+// matching wants VID+PID together -- so we iterate all IOUSBDevice services and
+// filter in code.
 static IOUSBDeviceInterface **openMboxDevice(NSError **error) {
     CFMutableDictionaryRef match = IOServiceMatching(kIOUSBDeviceClassName);
     if (!match) { if (error) *error = usbError(@"IOServiceMatching", -1); return NULL; }
     io_iterator_t it = IO_OBJECT_NULL;
     if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) != KERN_SUCCESS) return NULL;
-    io_service_t svc = IO_OBJECT_NULL;
+
+    NSMutableArray *found = [NSMutableArray array];   // boxed io_service_t
+    NSMutableArray *descr = [NSMutableArray array];   // human labels, same order
     io_service_t cand;
     while ((cand = IOIteratorNext(it))) {
-        CFNumberRef vid = (CFNumberRef)IORegistryEntrySearchCFProperty(cand,
-            kIOServicePlane, CFSTR("idVendor"), NULL, kIORegistryIterateRecursively);
-        int v = 0;
-        if (vid) { CFNumberGetValue(vid, kCFNumberIntType, &v); CFRelease(vid); }
-        if (v == 0x0DBA) { svc = cand; break; }
-        IOObjectRelease(cand);
+        int v = intProp(cand, CFSTR("idVendor"));
+        int pd = intProp(cand, CFSTR("idProduct"));
+        if (!MBox_IsOurDevice(v, pd)) { IOObjectRelease(cand); continue; }
+        NSString *sn = serialOf(cand);
+        if (gMboxTargetSerial && !(sn && [sn isEqualToString:gMboxTargetSerial])) {
+            IOObjectRelease(cand);
+            continue;
+        }
+        [found addObject:@((unsigned long long)cand)];
+        [descr addObject:[NSString stringWithFormat:@"    %04x:%04x  bcdDevice %04x  serial %@",
+                          v, pd, intProp(cand, CFSTR("bcdDevice")), sn ?: @"(none)"]];
     }
     IOObjectRelease(it);
-    if (!svc) return NULL;
+
+    if (found.count == 0) {
+        if (error) {
+            NSString *m = gMboxTargetSerial
+                ? [NSString stringWithFormat:@"no Mbox with serial %@ attached", gMboxTargetSerial]
+                : @"no Mbox attached (0x0DBA:0x1000/0x1001/0x2000-0x200F or 0xFFFF:0xFFFE)";
+            *error = [NSError errorWithDomain:@"mboxflash" code:1
+                                     userInfo:@{NSLocalizedDescriptionKey: m}];
+        }
+        return NULL;
+    }
+    if (found.count > 1) {
+        for (NSNumber *n in found) IOObjectRelease((io_service_t)n.unsignedLongLongValue);
+        if (error) {
+            NSString *m = [NSString stringWithFormat:
+                @"%lu Mboxes attached and none was selected:\n%@\n"
+                 "Pick one with --serial <SN>. Refusing to guess: this command "
+                 "writes firmware, and a wrong guess flashes the other unit.",
+                (unsigned long)found.count, [descr componentsJoinedByString:@"\n"]];
+            *error = [NSError errorWithDomain:@"mboxflash" code:2
+                                     userInfo:@{NSLocalizedDescriptionKey: m}];
+        }
+        return NULL;
+    }
+
+    io_service_t svc = (io_service_t)((NSNumber *)found[0]).unsignedLongLongValue;
 
     IOCFPlugInInterface **plugin = NULL;
     SInt32 score = 0;
