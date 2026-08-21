@@ -2,106 +2,107 @@
 
 # classy-mbox
 
-Replacement **class-compliant USB Audio firmware** for the Digidesign Mbox 1,
-plus a byte-exact reverse engineering of the stock firmware it replaces.
+Class-compliant USB Audio firmware for the Digidesign Mbox 1, and a byte-exact
+reverse engineering of the stock firmware it replaces.
 
-The Mbox 1 (2002) is a good two-channel interface with a Focusrite front end
-that stopped being usable when Pro Tools LE moved on and the drivers stopped
-being built. It is not broken. It is stranded behind a vendor-specific USB
-protocol and a driver nobody ships any more.
+The Mbox 1 (2002) is a two-channel interface with a Focusrite front end. The
+hardware still works. The problem is that it speaks a vendor-specific USB
+protocol, and nobody has shipped a driver for it in years.
 
-This project replaces the firmware in the device's EEPROM with a USB Audio
-Class 1 implementation, so the hardware enumerates as a standard audio
-interface on **any** OS with no driver, no daemon, and no HAL plug-in.
+This project rewrites the firmware in the device's EEPROM as USB Audio Class 1,
+so the box enumerates as a standard audio interface on any OS.
 
-**Status: working.** Both units here run build `0x0061` and stream 2 ch x 24-bit
-at 44.1 and 48 kHz on Linux and macOS, with S/PDIF I/O, front-panel source
+Status: working. Both units here run build `0x0061` and stream 2 ch × 24-bit at
+44.1 and 48 kHz on Linux and macOS, with S/PDIF I/O, front-panel source
 selection, and serial numbers served from EEPROM.
 
 ---
 
-## The hardware
+## Hardware
 
 | part | role |
 |---|---|
-| **TI TAS1020B** | 8051 core + USB peripheral. Boots from EEPROM into 6016 bytes of program RAM. |
-| **AKM AK5383** | 24-bit ADC (capture) |
-| **AKM AK4393** | 24-bit DAC (playback) |
-| **Cirrus CS8427** | S/PDIF transceiver, on SPI with its chip-select on a GPIO expander |
-| **24C64** | 8 KB I2C EEPROM holding the firmware image |
+| TI TAS1020B | 8051 core + USB peripheral. Boots from EEPROM into 6016 bytes of program RAM. |
+| AKM AK5383 | 24-bit ADC (capture) |
+| AKM AK4393 | 24-bit DAC (playback) |
+| Cirrus CS8427 | S/PDIF transceiver, on SPI, chip-select on a GPIO expander |
+| 24C64 | 8 KB I²C EEPROM holding the firmware image |
 
-There is **no codec.** Capture and playback are two separate AKM chips. The
-name is entrenched in ~170 places across this repo's identifiers and docs
-(`codec_write_word`, `g_codec_state_23`) so it has not been mass-renamed --
-read it as "the analog front end". Likewise the 16-bit "codec control word" is
-two cascaded HEF4094 shift-and-store registers, i.e. a GPIO expander: every bit
-is a **pin**, not a register field, which is why it is write-only.
+There is no codec. Capture and playback are two separate AKM chips. The name is
+baked into about 170 identifiers and docs here (`codec_write_word`,
+`g_codec_state_23`), so read it as "the analog front end".
 
-## What works, measured on hardware
+The 16-bit "codec control word" is two cascaded HEF4094 shift-and-store
+registers. Every bit is a pin rather than a register field, which is why it is
+write-only and why the CS8427's chip-select rides on it. Input source select is
+74HC157 muxes.
 
-- **UAC1 capture and playback**, 2 ch x 24-bit, 44.1 and 48 kHz, both directions.
-- **S/PDIF in and out.** The UAC Selector switches analog vs S/PDIF; the front
-  panel owns mic/line/instrument, because the S/PDIF swap is a single global bit
-  with no panel button while the analog choice is per-channel.
-- **Feature Units** with mute, and `GET_MIN`/`MAX`/`RES` on the sample-rate control.
-- **Asynchronous endpoints with an explicit feedback endpoint on playback** --
-  not a guess. The clock generator free-runs from the crystal, confirmed
-  host-side (the two units differ by +4.263 +/- 0.989 ppm) and device-side
-  (ACGCAP agrees at +4.53 ppm).
-- **Serial numbers in EEPROM**, written over a vendor request at the desk. They
-  survive reflashing, because DFU writes exactly `payloadSize` bytes and the
-  record lives past the end.
-- **Byte-exact recompilation of BOTH stock images.** `link51.py rev20` and
-  `rev22` rebuild the original 8174-byte ROMs bit-for-bit from C source.
-- **DFU flashers** for macOS (IOKit, Obj-C) and Linux (pyusb), and **41
-  verification gates** that run before anything reaches the device.
+## What works
+
+UAC1 capture and playback, 2 ch × 24-bit, 44.1 and 48 kHz. S/PDIF in and out.
+Feature Units with mute, and `GET_MIN`/`MAX`/`RES` on the sample-rate control.
+
+The UAC Selector switches analog against S/PDIF. The front panel owns
+mic/line/instrument, because the S/PDIF swap is one global bit with no panel
+button, while the analog choice is per-channel.
+
+Endpoints are asynchronous, with a feedback endpoint on playback. The clock
+generator free-runs from the crystal: the two units differ by 4.263 ± 0.989 ppm
+measured host-side, and ACGCAP agrees at 4.53 ppm device-side.
+
+Serial numbers live in EEPROM, written over a vendor request. They survive
+reflashing, because DFU writes exactly `payloadSize` bytes and the record sits
+past the end.
+
+Both stock images recompile byte-for-byte. `link51.py rev20` and `rev22` rebuild
+the original 8174-byte ROMs bit-for-bit from C.
+
+There are DFU flashers for macOS (IOKit) and Linux (pyusb), and 41 verification
+gates.
 
 ## Quick start
 
 ```sh
 tools/setup.sh                        # pre-commit hook + toolchain check
 cd mboxfw && make MBOX_PID=0x2000     # -> build/mboxfw_flasher.bin
-tools/preflight.sh <image.bin>        # THE gate runner; run this, not individual gates
+tools/preflight.sh <image.bin>        # the gate runner; run this, not individual gates
 ```
 
-Flashing, Linux:
+Flashing:
 
 ```sh
 sudo tools/mboxflash_linux.py probe | validate | info | flash <img> [--yes]
+mboxflash [--serial SN] --probe | --enter-dfu | --flash PATH      # macOS
 ```
 
-Flashing, macOS:
-
-```sh
-mboxflash [--serial SN] --probe | --enter-dfu | --flash PATH
-```
-
-**Build with `MBOX_PID=0x2000`.** At the default `0x1000` the Linux kernel's
-`mbox1` quirk claims the device and `snd-usb-audio` never binds, so no ALSA card
+Build with `MBOX_PID=0x2000`. At the default `0x1000` the Linux kernel's `mbox1`
+quirk claims the device and `snd-usb-audio` never binds, so no ALSA card
 appears. `0x2000..0x200F` are audio-mode aliases the flashers understand.
 
-## How it boots, and how DFU works
+## Booting and DFU
 
-The TAS1020B boot ROM reads an 18-byte EEPROM header -- signature, checksum,
-`dataType`, VID/PID -- copies the image into RAM and jumps to it.
+The TAS1020B boot ROM reads an 18-byte EEPROM header (signature, checksum,
+`dataType`, VID/PID), copies the image into RAM and jumps to it.
 
-**`dataType` decides the DFU target, and the PID never does.** Both DFU modes
-advertise the same `ffff:fffe`-style descriptor set, so the PID alone cannot
-tell you which is active:
+`dataType` decides the DFU target. The PID does not, and both DFU modes
+advertise the same `ffff:fffe` descriptor set.
 
-- `APPCODE` -> run the application.
-- readable but not `APPCODE` -> **app-DFU**, which writes EEPROM.
-- unreadable EEPROM -> **bulletproof-DFU**, a RAM loader that never writes
-  EEPROM. Reachable only from a genuinely dead EEPROM (a real SDA short, a blank
-  part).
+| EEPROM state | target |
+|---|---|
+| `dataType` = APPCODE | run the app |
+| readable, not APPCODE | app-DFU, writes EEPROM |
+| unreadable | bulletproof-DFU, a RAM loader that never writes EEPROM |
 
-Entering DFU means invalidating the header **checksum** and power-cycling. A bus
-reset is not enough, and a power cycle with a valid image just boots the app.
+Reaching bulletproof-DFU takes a genuinely dead EEPROM: a real SDA short, or a
+blank part.
 
-**Recovery** is `firmware_stock/rev20_flasher_payload.bin` or
-`rev22_flasher_payload.bin` -- the stock images, both of which have been written
-back to this unit successfully. Flash `safety_net/` first on any device not
-already running mboxfw.
+To enter DFU, invalidate the header checksum and power-cycle. A bus reset will
+not do it, and a power cycle with a valid image just boots the app.
+
+To recover, flash `firmware_stock/rev20_flasher_payload.bin` or
+`rev22_flasher_payload.bin`. Both have been written back to this unit
+successfully. On any device not already running mboxfw, flash `safety_net/`
+first.
 
 ## Layout
 
@@ -113,90 +114,80 @@ already running mboxfw.
 | `firmware_stock/` | RE of stock Rev 20 and Rev 22 |
 | `firmware_stock/decomp/` | the byte-exact recompilation, and every `FINDING_*.md` |
 | `mboxflash/` | macOS flasher (IOKit, Obj-C) |
-| `tools/` | Linux flasher, telemetry reader, and ~41 verification gates |
-| `plan.md` | the endgame and phase status |
-| `POLICY.md` | process rules -- read before touching SFR writes, USB, EEPROM I/O |
+| `tools/` | Linux flasher, telemetry reader, 41 gates |
+| `plan.md` | phase status and what is left |
+| `POLICY.md` | process rules. Read before touching SFR writes, USB, or EEPROM I/O |
 | `BRICK_LOG.md` | every soft-brick and its cause |
 
-## Things that are hardware, not bugs
+## Hardware behaviour that looks like bugs
 
-- **The first capture after power-up carries 183 ms of digital silence.** That is
-  the AK5383's offset calibration, which costs 8960 LRCK edges and can only be
-  spent while a stream is running. Stock pays it on *every* capture.
-- **Every capture opens with a small transient** decaying to zero within 400 ms:
-  the ADC's high-pass re-converging, because the converter is not clocked
-  between streams. Skip the first 400 ms of any measurement.
-- **Clean audio about 15 s after power-up**, full behaviour at 30 s. The analog
-  reference needs time to settle, and a calibration taken before then latches a
-  constant that is wrong by up to 0.12 of full scale.
+The first capture after power-up starts with 183 ms of digital silence. That is
+the AK5383's offset calibration. It costs 8960 LRCK edges and can only be spent
+while a stream is running, so stock pays it on every capture.
 
-## How this project works
+Every capture opens with a small transient that is gone within 400 ms. The ADC's
+high-pass is re-converging, because the converter is not clocked between
+streams. Skip the first 400 ms of any measurement.
 
-Two rules do most of the work, and both were learned expensively.
+Audio is clean about 15 s after power-up and fully settled at 30 s. The analog
+reference needs that long, and a calibration taken early latches a constant that
+can be off by 0.12 of full scale.
 
-**Every SFR-touching line carries a citation** -- `/* Rev 20 fcn.0xXXXX @ 0xYYYY */`,
-a TI source reference, or `/* NOVEL -- reason: ... */`. A pre-commit hook and a
-preflight gate verify the cited address actually holds that write, in **both**
-stock images. "Stock does it" is a reason to investigate, never on its own a
-reason to ship: `GLOBCTL |= 0x02` was shipped on that argument alone and made
-the device completely silent on USB.
+## Two rules
 
-**Every measurement carries an arm whose answer is known in advance.** A null
-from an instrument that was never connected looks exactly like a null from a
-refuted hypothesis. Five measurements were voided in a single session because
-the stimulus never fired. If the reference arm shows no signal, the run is void,
-not interesting.
+Every SFR-touching line carries a citation: `/* Rev 20 fcn.0xXXXX @ 0xYYYY */`,
+a TI source reference, or `/* NOVEL — reason: ... */`. A pre-commit hook and a
+preflight gate check that the cited address really holds that write, in both
+stock images.
 
-The corollary is that this repo's `FINDING_*.md` files are dated records, not
-living documents, and several of them are superseded. The live inventory is
-`firmware_stock/decomp/WHAT_REMAINS_UNKNOWN.md`, which is organised by *why
-previous answers were incomplete* rather than as a list of facts.
+"Stock does it" is a reason to investigate, not a reason to ship. `GLOBCTL |= 0x02`
+went in on that argument alone and made the device silent on USB.
+
+Every measurement carries an arm whose answer is known in advance. A null from
+an instrument that was never connected looks exactly like a null from a refuted
+hypothesis. Five measurements died in one session because the stimulus never
+fired. If the reference arm shows nothing, the run is void.
+
+The `FINDING_*.md` files are dated records rather than live docs, and some are
+superseded. The current inventory is
+`firmware_stock/decomp/WHAT_REMAINS_UNKNOWN.md`.
 
 ## What is left
 
-1. **DAW validation.** macOS is confirmed at the CLI -- enumeration, serial,
-   Selector, exact-length capture, playback. Logic is untested, and it is the
-   actual use case. This is the only item on the critical path.
-2. **A 16-bit alternate setting.** No modern host wants it; Mac OS 9's Sound
-   Manager needs it. The mechanism is the DMA slot size (`DMATSL 0x03 -> 0x02`
-   plus the endpoint BPS field), with the C-port untouched. One bench
-   measurement gates it: whether the DMA takes the first two bytes of each slot
-   (the MSBs -- a clean truncation) or the last two.
-3. Two parked items: the EP0 Y-count at boot-ROM handoff, and naming the vendor
-   part behind the codec control word.
+1. DAW validation. macOS works at the CLI: enumeration, serial, Selector,
+   capture, playback. Logic is untested, and that is the real use case.
+2. A 16-bit alternate setting. No modern host needs it; Mac OS 9's Sound Manager
+   does. The mechanism is the DMA slot size (`DMATSL 0x03 -> 0x02`, plus the
+   endpoint BPS field), leaving the C-port untouched. One measurement gates it:
+   whether the DMA takes the first two bytes of each slot or the last two.
+3. Parked: the EP0 Y-count at boot-ROM handoff, and naming the vendor part
+   behind the codec control word.
 
 ## How this was built
 
-A personal project on two units I own. The firmware, the reverse engineering,
-the flashers, the ~41 gates and these docs were written by **Claude** (Claude
-Code, Anthropic) across a long series of sessions, working to my direction.
+Two units I own. The firmware, the reverse engineering, the flashers, the gates
+and the docs were written by Claude (Claude Code, Anthropic), working to my
+direction over a long series of sessions.
 
-That division of labour is worth stating plainly, because it shaped the
-engineering. The model can read both 8 KB stock images end to end, hold the
-whole register map at once, and rebuild the ROMs byte-for-byte -- work that is
-tedious and error-prone by hand. What it cannot do is see an LED, hold a cable,
-power-cycle a unit 1 km away, or know that a thing was working last week.
+Claude can read both 8 KB stock images end to end, hold the whole register map
+at once, and rebuild the ROMs byte-for-byte. It cannot see an LED, power-cycle a
+unit a kilometre away, or remember what was working last week. So the rule is
+that my observations of the hardware beat its inferences from the documents.
+Three times that changed the outcome:
 
-So the hard rule here is that **my observations of the hardware outrank the
-model's inferences from the documents**, and several of the entries in
-`firmware_stock/decomp/` exist because that rule fired:
+- An evening of findings concluded that mboxfw's I²C access "does not work at
+  all" and that the DFU trigger was broken. I said DFU had been working for
+  weeks. The instrument had been reading dead memory. The findings were
+  retracted that night, and the real bug, XDATA not being implemented on this
+  board, turned up the next day.
+- The 16-bit mode was written off as unprovable until I mentioned that Sound On
+  Sound had run OS 9 screenshots of a driver offering 16 or 24 bit. The
+  mechanism was sitting in the stock images.
+- The bench has two cross-wired units and a source mux that boots to MIC while
+  both wired inputs are LINE. Measurements kept dying until that went into
+  `BENCH_WIRING.md`.
 
-* A whole evening's findings concluded that mboxfw's I2C access "does not work
-  at all" and that the DFU trigger was broken. I pointed out that DFU had been
-  working for weeks. The instrument was reading dead memory; the findings were
-  retracted the same night and the real defect -- XDATA not being implemented
-  on this board -- was found the next day.
-* The 16-bit question was closed as unprovable until I mentioned that Sound On
-  Sound ran OS 9 screenshots of a driver offering 16 or 24 bit. That reopened
-  it, and the mechanism turned out to be sitting in the stock images.
-* The bench has two cross-wired units and a source mux that boots to MIC while
-  both wired inputs are LINE. Measurements were voided until that got written
-  down in `BENCH_WIRING.md`.
-
-The process rules in `POLICY.md` -- enforced citations, a known-answer arm in
-every measurement, "stock does it" never being sufficient on its own -- are not
-good practice imported from elsewhere. Each one was written after a specific
-failure, most of them the model's, and they are the reason the later work holds
-up. `BRICK_LOG.md` records the ones that reached the hardware.
+Each rule in `POLICY.md` was written after a specific failure, most of them
+Claude's. `BRICK_LOG.md` has the ones that reached the hardware.
 
 Header image: Digidesign Mbox press photo.
