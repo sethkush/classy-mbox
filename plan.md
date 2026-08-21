@@ -12,30 +12,45 @@
 
 ## 0. Status
 
-**Last updated 2026-08-11. Phases 1–5 are complete and Phase 6's items have
-shipped.** The paragraphs below used to describe 2026-07-16 and called Rev 20 a
+**Last updated 2026-08-21. Phases 1-6 are complete. The firmware side is done;
+what remains is validation in a DAW and two costed features nobody has asked
+for.** The paragraphs below used to describe 2026-07-16 and called Rev 20 a
 "blocker for Phase 2 onwards"; that blocker was cleared weeks ago and the
 sections further down are kept as the historical plan, not as current state.
 
 - **Repo:** initialized 2026-07-16, `~/projects/mbox`.
 - **Hardware in hand:** TWO Mbox 1 units — `RK10874600Q` (unit A) and
-  `RK1672500M` (unit B) — both on the void box `192.168.1.76`, ports 2-1.4 and
-  2-1.2. Serials are compiled in (`MBOX_UNIT=A`/`=B`), so they must go back into
-  the same ports. `BENCH_WIRING.md` before designing any loopback.
-- **Both units run mboxfw `0x0053`**, 5949/5947 bytes of the 6016-byte program
-  RAM, 37/37 preflight gates.
+  `RK1672500M` (unit B). **Serials now live in EEPROM, not in the build**
+  (#226), so the units no longer have to go back into the same ports and one
+  image serves both. `BENCH_WIRING.md` before designing any loopback.
+- **Both units run mboxfw `0x0061`**, 5814/6016 bytes of program RAM,
+  **41/41 preflight gates**.
 
 **What works, measured on hardware rather than inferred:**
 
 - Class-compliant UAC1 capture and playback, 2 ch × 24-bit, **44.1 and 48 kHz**
   (`bSamFreqType = 2`), on both units.
-- S/PDIF input and output, with UAC Selector Units for source and clock.
+- S/PDIF input and output. The UAC Selector switches **analog vs S/PDIF only**
+  (#228) — the front panel owns mic/line/instrument, because `0x25.4` is a
+  global swap with no panel button while the analog choice is per-channel via
+  74HC157 muxes. The control describes what the hardware actually makes global.
 - Feature Units with mute; `GET_MIN`/`MAX`/`RES` on the sampling-frequency
-  control; endpoint sync types corrected to match what the hardware does.
-- Front-panel sources and mono, settable over the wire (the panel is 1 km away).
+  control; endpoint sync types corrected to match what the hardware does
+  (asynchronous, measured — #185).
+- Serial numbers served from EEPROM, provisioned at the desk over a vendor
+  request and surviving reflash, because DFU writes exactly `payloadSize` bytes
+  (#226).
 - Byte-exact recompilation of BOTH stock images — `link51.py rev20` and
   `rev22` rebuild the 8174-byte ROMs bit-for-bit from C.
-- DFU flashers for macOS (IOKit) and Linux (pyusb), and ~40 verification gates.
+- DFU flashers for macOS (IOKit) and Linux (pyusb), both to spec, and 41
+  verification gates.
+- **macOS validated end to end** on 2026-08-17/20 at build 0x0061:
+  enumeration, the EEPROM serial, the Selector, exact-length capture, playback
+  via sox, and flashing from `mboxflash` itself. This closed what this section
+  called "the significant gap" for 34 builds.
+- **#147 closed by measurement** on 2026-08-21: the 8-frame capture artifact
+  does not exist on 0x0061 — 0.000% rails against 37.5% on record, at both
+  rates. It had been fixed by #166/#167/#168 and nobody re-ran the test.
 
 **Known and characterised, not defects to chase:**
 
@@ -48,13 +63,26 @@ sections further down are kept as the historical plan, not as current state.
   captures. Also hardware. Skip the first 400 ms of any measurement.
 - Clean audio ~15 s after power-up, full behaviour at 30 s.
 
-**The significant gap: macOS.** The project exists so Core Audio drives this
-device natively on Apple Silicon, and the last macOS validation was build
-`0x0019` on 2026-08-03 — 34 builds ago, before the Feature Units, the S/PDIF
-terminal, the sync-type corrections, the serial descriptors and the whole
-calibration rework. Everything since has been validated on Linux/ALSA only.
-Core Audio is stricter about descriptor consistency and fails silently rather
-than loudly, so a Linux pass does not predict a macOS pass.
+**What is actually left.** The live inventory is
+`firmware_stock/decomp/WHAT_REMAINS_UNKNOWN.md`; the short version:
+
+1. **DAW validation.** macOS is confirmed at the CLI only. Logic — device
+   selection, I/O assignment, sustained streaming, buffer sizes, behaviour
+   across sample-rate changes — is untested, and it is the actual use case.
+   This is the only item on the critical path.
+2. **A 16-bit alternate setting (#206), unshipped and gated on a measurement.**
+   Not needed by any modern host; needed by Mac OS 9, whose Sound Manager is a
+   16-bit world. Cheap in descriptors, but the 8051 never touches a sample —
+   DMA moves bytes straight between the endpoint buffers and the C-port — so it
+   means dropping the C-port's bits-per-slot and trusting that MSB-first
+   truncation of the I2S frame is clean. Plausible, unproven, and #46's doubled
+   sample rates were equally plausible until 30 kHz came back at 18 kHz.
+3. **The EP0 Y-count at handoff (#148).** Costed, un-instrumented since
+   telemetry block 8 was retired. Worth re-adding only alongside another
+   diagnostic build.
+4. **Documentation-level:** the codec-word lines' vendor part and package pins.
+   Every bit's function is determined; only the part-level naming needs the
+   board.
 
 - **Phase 0 dump:** complete (2026-07-16), `reference/phase0/.../FINDINGS.md`.
   Historical note: `bcdDevice = 0x0020` identified the unit as **Rev 20**, the
@@ -308,7 +336,7 @@ mbox/
   and the S/PDIF chip.
 - Deliverable: `firmware_stock_dumped/pinout.md`.
 
-### Phase 5: Class-compliant firmware — DONE (`mboxfw/`, shipping 0x0053)
+### Phase 5: Class-compliant firmware — DONE (`mboxfw/`, shipping 0x0061)
 - Start from TI's TAS1020A UAC reference (part of the eval kit,
   should be recoverable from TI archives — may need another
   research fork). Fallback: write from scratch using the TAS1020A
@@ -358,17 +386,29 @@ DOES carry over:
 3. **Save every reference artifact.** `reference/` structure paid
    off on UA-101, keep the discipline here.
 
-## 9. Open questions
+## 9. Open questions — ALL FOUR ANSWERED, kept for the record
 
-- [ ] Actual firmware version on our unit? (Phase 0 answers this.)
-- [ ] Does anything on macOS 15 bind `0x0dba:0x1000`, or is it free
-      for the taking? (Phase 0.)
-- [ ] Does clock-source=S/PDIF and input-source=S/PDIF change the
-      channel content in the 2ch stream, or are S/PDIF and analog
-      surfaced as separate channels somewhere? (Phase 5 or a
-      Windows-driver reference.)
-- [ ] Any drift observed with sync-endpoint approach? If yes, add a
-      soft feedback loop from capture packet timing.
+These were written 2026-07-16. Every one is now closed by measurement, and the
+answers are worth more than the questions were.
+
+- [x] **Actual firmware version on our unit?** Rev 20 (`bcdDevice = 0x0020`),
+      the revision with the playback static bug. Both units have since run
+      Rev 22 and now run mboxfw.
+- [x] **Does anything on macOS bind `0x0dba:0x1000`?** Nothing on macOS. The
+      trap was on LINUX, where the kernel's `mbox1` quirk claims the PID and
+      `snd-usb-audio` never binds, so no ALSA card appears. Hence
+      `MBOX_PID=0x2000`.
+- [x] **Does S/PDIF change the channel content, or is it separate channels?**
+      It changes the content of the same 2 ch stream. `0x25.4` is a global
+      analog-vs-S/PDIF swap on the input side, and every routing bit
+      `0x25.0-.5` is input-side — which is also why the OUTPUT is fixed to the
+      DAC and the CS8427 in parallel and has no selector to give (#228).
+- [x] **Any drift with the sync-endpoint approach?** Yes, and it is the
+      converter, not a defect: the ACG free-runs from the crystal, the two
+      units differ by +4.263 ± 0.989 ppm host-side and ACGCAP agrees at
+      +4.53 ppm device-side (#181/#182/#185). That is why the endpoints are
+      declared ASYNCHRONOUS with an explicit feedback endpoint on playback,
+      rather than adaptive. No soft feedback loop was needed.
 
 ## 10. References
 
