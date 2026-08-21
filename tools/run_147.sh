@@ -40,15 +40,23 @@ PLAY=${3:?playback card, e.g. hw:2,0}
 RATE=${4:-48000}
 SECS=${5:-12}
 
-OUT=/tmp/147_${ARM}_${RATE}.wav
-TONE=/tmp/147_tone_${RATE}.wav
+# THESE TWO NAMES MUST NOT COLLIDE, AND ONCE DID. With OUT=147_${ARM}_${RATE}
+# and TONE=147_tone_${RATE}, the tone arm's capture and the generator's source
+# file were THE SAME PATH -- so the next arm's mktone silently overwrote the
+# capture with the pristine 0.5 FS source, and the analyser read the generator
+# instead of the device. It reported -9.03 dBFS, which is exactly a 0.5 FS sine
+# and about 45 dB hotter than the real analog round trip. Caught only because
+# the number was too good; a null would have sailed through. Hence "cap" and
+# "gen" rather than a shared stem.
+OUT=/tmp/147_cap_${ARM}_${RATE}.wav
+GEN=/tmp/147_gen_${RATE}.wav
 HZ=1000
 
 # 0.5 FS leaves headroom so a hot input stage cannot clip the tone into
 # harmonics, and -- load-bearing for the analysis -- keeps it clear of the
 # 0.98 FS rail threshold, so the tone can never fake the artifact.
 python3 "$(dirname "$0")/mktone.py" --hz $HZ --rate "$RATE" \
-        --seconds "$(( SECS + 4 ))" --amplitude 0.5 -o "$TONE" >/dev/null
+        --seconds "$(( SECS + 4 ))" --amplitude 0.5 -o "$GEN" >/dev/null
 
 case "$ARM" in
   tone|mic) echo "arm=$ARM: B generates ${HZ}Hz, A captures" ;;
@@ -62,7 +70,7 @@ if [ "$ARM" = quiet ]; then
 else
   # Start the generator FIRST and give it a moment, so the capture window does
   # not open onto a still-silent output and read as a dead path.
-  aplay -D "$PLAY" "$TONE" >/dev/null 2>&1 &
+  aplay -D "$PLAY" "$GEN" >/dev/null 2>&1 &
   APID=$!
   sleep 1
   arecord -D "$CAP" -f S24_3LE -c 2 -r "$RATE" -d "$SECS" "$OUT"

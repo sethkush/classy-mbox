@@ -1,6 +1,6 @@
 # What remains unknown for mboxfw
 
-## STATUS 2026-08-20 — read this before the 2026-07-29 inventory below
+## STATUS 2026-08-21 — read this before the 2026-07-29 inventory below
 
 The inventory that follows was written 2026-07-29 and last touched 2026-08-11.
 It is kept in full, because it is organised by *why previous answers were
@@ -27,7 +27,12 @@ was spent for space. Cost to re-ask: the 147 bytes §3a already costed.
   references (`snd-usb-audio`'s, then our own usbfs handle) — a null from an
   instrument that was never connected, exactly as CLAUDE.md warns.
 * EP0 Y-count (#148) — STILL UNVERIFIED, and now un-instrumented; see above.
-* The 8-frame capture artifact (#147) — STILL OPEN. See "what is actually left".
+* The 8-frame capture artifact (#147) — **RESOLVED 2026-08-21, and this line is
+  the second time it has been wrong.** Measured on 0x0061: capture RMS -71.6
+  dBFS and 0.000% rails, against -3.5 dBFS and 37.5% on record, at both rates,
+  with a known-answer arm green at both. It was a symptom of the dead analog
+  path and #166/#167/#168 had already fixed it. `FINDING_147_RESOLVED_the_
+  artifact_is_gone.md`.
 * S/PDIF clock slaving (#145) — reachable through `TLM_REQ_SET_CLOCK`, but that
   request is COMPILED OUT of release builds. On a shipping unit the only S/PDIF
   control is the UAC Selector, which #228 reduced to analog-vs-S/PDIF. Slaving
@@ -51,27 +56,38 @@ answers — as of 0x0061 that is `TLM_REQ_ENTER_DFU` and nothing else. Any futur
 question phrased as "read block N" needs a diagnostic build and therefore a
 flash and a power cycle.
 
-### What is actually left, 2026-08-20
+### What is actually left, 2026-08-21
 
-**1. The 8-frame capture artifact (#147).** The only undiagnosed AUDIO defect,
-and the highest-value item here. Two divergences are on the table and NEITHER
-predicts an 8-frame period: endpoint buffers are 640 B in stock and 512 B in
-mboxfw (#162), and mboxfw re-bases them at every stream start where stock
-writes them once at init (#163). The last measurement that touched it was
-voided by a source-routing mistake, not a firmware fault, so the artifact has
-never actually been measured cleanly. `FINDING_147_cport_and_ep_buffer_
-divergences.md`.
+**#147 IS NO LONGER ON THIS LIST.** It stood here as item 1, "the only
+undiagnosed AUDIO defect and the highest-value item", until it was measured on
+2026-08-21 and turned out to have been fixed by #166/#167/#168 some time
+earlier: 0.000% rails against 37.5% on record, at both rates, with the
+known-answer arm green at both. `FINDING_147_RESOLVED_the_artifact_is_gone.md`.
 
-**2. DAW validation.** macOS is confirmed only at the CLI: enumeration, the
+It is worth being blunt about how it read the day before. This document was
+confident, specific and current about #147 — it named the two candidate
+divergences, cited the right finding, and correctly noted the artifact had
+never been measured cleanly. All of that was true. The item was still dead,
+because a prediction had been shipped against and nobody re-ran the test. **A
+"still open" entry means nobody has looked recently, never that the thing is
+still broken.** The tell was in the text: an entry that says the last
+measurement was voided is an entry with no measurement behind it at all.
+
+That also retires **#162 and #163** as suspects — endpoint buffers at 512 B vs
+stock's 640 B, and the per-stream re-base. Neither ever predicted an 8-frame
+period and there is no longer a period to predict. They stay divergences; they
+are not defects.
+
+**1. DAW validation.** macOS is confirmed only at the CLI: enumeration, the
 EEPROM serial, the Selector, exact-length capture, and playback via sox.
 Logic — device selection, I/O assignment, sustained streaming, buffer sizes,
 behaviour across sample-rate changes — is untested, and it is the actual use
 case.
 
-**3. The EP0 Y-count at handoff (#148 / §3a).** Costed and un-instrumented.
+**2. The EP0 Y-count at handoff (#148 / §3a).** Costed and un-instrumented.
 Worth re-adding only alongside another diagnostic build.
 
-**4. Documentation-level.** §3e: the codec-word lines' vendor part and package
+**3. Documentation-level.** §3e: the codec-word lines' vendor part and package
 pins. Every bit's FUNCTION is determined; only the part-level naming needs the
 board.
 
@@ -103,6 +119,9 @@ reality, and each cost real work:
   the Python tool and never propagated.
 * This document itself has been listing a retired telemetry block as
   "instrumented, awaiting a flash" since 2026-08-11.
+* And #147 sat here as "the highest-value open item" for weeks after the fix
+  that closed it had shipped, because the entry described the last *attempt*
+  rather than the last *measurement* — and there had been no measurement.
 
 The pattern is not carelessness, it is that corrections land in ONE place while
 the belief lives in several. When something here is resolved, grep for the claim
