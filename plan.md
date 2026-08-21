@@ -70,13 +70,29 @@ sections further down are kept as the historical plan, not as current state.
    selection, I/O assignment, sustained streaming, buffer sizes, behaviour
    across sample-rate changes — is untested, and it is the actual use case.
    This is the only item on the critical path.
-2. **A 16-bit alternate setting (#206), unshipped and gated on a measurement.**
-   Not needed by any modern host; needed by Mac OS 9, whose Sound Manager is a
-   16-bit world. Cheap in descriptors, but the 8051 never touches a sample —
-   DMA moves bytes straight between the endpoint buffers and the C-port — so it
-   means dropping the C-port's bits-per-slot and trusting that MSB-first
-   truncation of the I2S frame is clean. Plausible, unproven, and #46's doubled
-   sample rates were equally plausible until 30 kHz came back at 18 kHz.
+2. **A 16-bit alternate setting (#206) — ON THE MVP LIST as of 2026-08-21,**
+   because there is an OS 9 driver for the stock Mbox and it offered 16 or 24
+   bit. Needed by Mac OS 9, whose Sound Manager is an 8/16-bit world; no modern
+   host wants it.
+
+   The stock DEVICE never did 16-bit — `DMATSL0/1` is written 0x03 exactly once
+   in each image and `IEPCNF1`/`OEPCNF2` are always 0xC5, so the driver's
+   16-bit option was a host-side conversion. But the register map hands us a
+   cheaper mechanism than #206 assumed: `DMATSL 0x03 -> 0x02` and the endpoint
+   BPS field `5 -> 3`, with **the C-port untouched**. The DMA takes two bytes
+   of each three-byte slot and the converters are never told anything, so #46's
+   "the converters follow the clock" failure mode does not apply.
+
+   ONE thing must be measured before a line ships: whether the DMA takes the
+   FIRST two bytes of a slot (the MSBs — a clean truncation) or the LAST two
+   (the low bits of a 24-bit sample — full-scale garbage). The #147 rig answers
+   it in one arm. `FINDING_206_the_16bit_mechanism_is_the_dma_slot_size.md`.
+
+   Fits the budget, barely: 5814 of 6016 bytes used, ~100 B of descriptors plus
+   alt-setting handling. Note 16-bit may be necessary without being sufficient
+   — playback is asynchronous with a feedback endpoint (#185) and an OS 9-era
+   driver may not implement feedback at all, so capture is the likelier of the
+   two directions to work.
 3. **The EP0 Y-count at handoff (#148).** Costed, un-instrumented since
    telemetry block 8 was retired. Worth re-adding only alongside another
    diagnostic build.
