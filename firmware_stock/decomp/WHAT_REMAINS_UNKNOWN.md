@@ -1,4 +1,118 @@
-# What remains unknown for mboxfw — inventory, 2026-07-29
+# What remains unknown for mboxfw
+
+## STATUS 2026-08-20 — read this before the 2026-07-29 inventory below
+
+The inventory that follows was written 2026-07-29 and last touched 2026-08-11.
+It is kept in full, because it is organised by *why previous answers were
+incomplete* and that is the part worth having. But it predates #219-#228, and
+several of its entries are now false in ways that would mislead someone acting
+on them. Corrections first, then the true open set.
+
+### Corrections to the text below
+
+**§3a is STALE. Telemetry block 8 is RETIRED.** The entry says the EP0 Y-count
+at handoff is "instrumented, awaiting a flash". It is not instrumented any
+more: `telemetry.h` lists 3, 6, 7, 8 and 10 as retired indices, never reused.
+So the question — what the boot ROM leaves in `IEPDCNTY0`/`OEPDCNTY0`, and
+whether `GLOBCTL` really holds 0x04 at handoff — is **unanswered and no longer
+measurable without new firmware.** Nobody decided it did not matter; the block
+was spent for space. Cost to re-ask: the 147 bytes §3a already costed.
+
+**Most of §4 is now verified on silicon.** Of the five items:
+
+* Buttons (#150) — VERIFIED. `FINDING_buttons_are_active_high.md`, and again on
+  2026-08-20: a front-panel press moved capture +32.6 dB RMS on unit A.
+* Suspend/resume (#149) — EXERCISED on Linux via `tools/ch9_timing.py` this
+  campaign. Note two runs were VOIDED first by host-side power-management
+  references (`snd-usb-audio`'s, then our own usbfs handle) — a null from an
+  instrument that was never connected, exactly as CLAUDE.md warns.
+* EP0 Y-count (#148) — STILL UNVERIFIED, and now un-instrumented; see above.
+* The 8-frame capture artifact (#147) — STILL OPEN. See "what is actually left".
+* S/PDIF clock slaving (#145) — reachable through `TLM_REQ_SET_CLOCK`, but that
+  request is COMPILED OUT of release builds. On a shipping unit the only S/PDIF
+  control is the UAC Selector, which #228 reduced to analog-vs-S/PDIF. Slaving
+  behaviour is therefore bench-only now.
+
+**A structural fact this document did not know, and should have:** XDATA IS NOT
+IMPLEMENTED ON THIS BOARD outside the 0xF800-0xFFFF shared window. `--xram-size
+0x1000` tells the linker otherwise, so any plain `__xdata` global lands at
+0x0001 and is a hole: writes vanish, reads return 0x00. This silently broke
+#221's serial read for weeks and then consumed most of a session pretending to
+be an I2C fault. `FINDING_226_serials_in_eeprom_work.md`. **0xFA00 is not a
+safe destination either** — pinning buffers there returned varying garbage, and
+the boot canaries that would vouch for that window are compiled out of release
+builds. Only internal RAM (`__data`/`__idata`) is proven.
+
+**The release tier answers almost nothing.** Several instruments this document
+assumes are available do not exist on a shipping unit: no telemetry blocks, no
+`TLM_REQ_READ`, no mux or clock aliases, no status endpoint (#228 retired EP
+0x83). `tools/check_release_surface.py` enumerates what a release unit still
+answers — as of 0x0061 that is `TLM_REQ_ENTER_DFU` and nothing else. Any future
+question phrased as "read block N" needs a diagnostic build and therefore a
+flash and a power cycle.
+
+### What is actually left, 2026-08-20
+
+**1. The 8-frame capture artifact (#147).** The only undiagnosed AUDIO defect,
+and the highest-value item here. Two divergences are on the table and NEITHER
+predicts an 8-frame period: endpoint buffers are 640 B in stock and 512 B in
+mboxfw (#162), and mboxfw re-bases them at every stream start where stock
+writes them once at init (#163). The last measurement that touched it was
+voided by a source-routing mistake, not a firmware fault, so the artifact has
+never actually been measured cleanly. `FINDING_147_cport_and_ep_buffer_
+divergences.md`.
+
+**2. DAW validation.** macOS is confirmed only at the CLI: enumeration, the
+EEPROM serial, the Selector, exact-length capture, and playback via sox.
+Logic — device selection, I/O assignment, sustained streaming, buffer sizes,
+behaviour across sample-rate changes — is untested, and it is the actual use
+case.
+
+**3. The EP0 Y-count at handoff (#148 / §3a).** Costed and un-instrumented.
+Worth re-adding only alongside another diagnostic build.
+
+**4. Documentation-level.** §3e: the codec-word lines' vendor part and package
+pins. Every bit's FUNCTION is determined; only the part-level naming needs the
+board.
+
+### Recorded, parked, and deliberately not chased
+
+* **A byte-for-byte port of stock's `i2c_eeprom_read_byte` (CODE:0cdd) does not
+  work here** — clear mask 0xFC, no second CLEAR_ALL, slave 0xA0 for the read
+  phase, dummy 0x00, STOP_READ armed after. It never gets `RCV_DATA_FULL`.
+  Either the "R6 is still 0xA0" reading of 0x0ce4/0x0d09 is wrong or that
+  routine depends on caller state. TI's `I2CAccess` sequence works on this
+  hardware and is what ships, so this is curiosity. Recorded so it is not
+  re-derived.
+* **The post-manifest bus reset does not deliver the app switch**, on either
+  flasher. Costs one replug per flash; both tools say so and continue.
+* **Per-channel input select is not expressible to macOS.** Apple's driver
+  builds one input selector per engine, always `kIOAudioControlChannelIDAll`.
+  #228 makes this moot rather than solved: the panel owns the per-channel
+  choice, which is the only place it can honestly live.
+
+### The habit this document exists to fight
+
+Three separate times in this campaign, a stale document was believed over
+reality, and each cost real work:
+
+* `mkserial.py` was built on an assumption `UsbDfu.c` had always contradicted
+  (#226) — the same root cause `POLICY.md` records for `wrap_hex.py`.
+* The macOS flasher carried FIVE refuted beliefs for weeks, including an ABORT
+  that fired on every legitimate recovery, because the correction was made in
+  the Python tool and never propagated.
+* This document itself has been listing a retired telemetry block as
+  "instrumented, awaiting a flash" since 2026-08-11.
+
+The pattern is not carelessness, it is that corrections land in ONE place while
+the belief lives in several. When something here is resolved, grep for the claim
+before assuming this file is the only copy.
+
+---
+
+# The 2026-07-29 inventory, kept in full
+
+## Inventory, 2026-07-29
 
 Written after the defect-fix pass, in answer to "is there anything else that
 needs to be known that we don't know?" asked a second time. The first answer to
